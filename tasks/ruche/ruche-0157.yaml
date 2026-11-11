@@ -1,0 +1,31 @@
+id: ruche-0157
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'The rehearsal''s scripts and README in English'
+context: 'About 230 lines of tools/rehearsal/ are French (the README template, the scripts'' messages and comments), beyond the command names ruche-0154 fixes in load_test.py. Translate them; the dress-rehearsal tests read some of these texts.'
+files:
+- tools/rehearsal/README-template.md
+- tools/rehearsal/council-decide
+- tools/rehearsal/setup.sh
+- tools/rehearsal/simulated_ci.py
+- tools/rehearsal/common.sh
+- tools/rehearsal/publish
+- tools/rehearsal/push-fork-pr
+- tools/rehearsal/gh
+- tools/rehearsal/bee
+- tools/test_bee.py
+reach: 0.3
+metric: null
+acceptance_criteria:
+- no French left in these files except quoted data and the names La Ruche, la Nuit des abeilles, l''essaim, le miel
+- nothing that reads these texts breaks (tests, workflows, bee); the full suite passes
+- an independent adversarial review by an agent of another model than the builder's is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-11'

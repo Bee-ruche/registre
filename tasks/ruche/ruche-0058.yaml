@@ -57,3 +57,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): re-scoped: RULES.md is translated in place, no French copy and no warning (the gate refuses the retired name REGLES.md); past rows of its history table stay as written. Until this task is integrated, the rules R1 to R14 read as RULES.md's French text says; the English text replaces it once reviewed for fidelity by an agent of another model and merged by the founder. bee.yaml's comments and projects/ruche.yaml's prose stay in this task, merged after ruche-0148's first PR (both edit projects/ruche.yaml)."
