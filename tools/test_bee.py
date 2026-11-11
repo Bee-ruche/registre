@@ -2615,7 +2615,12 @@ class TestTree(BaseTest):
         root = text[positions[0]:positions[1]]
         self.assertIn("Yours follows; all: `bee context`.", root)
         self.assertNotIn("- `roles/review`", root)
-        self.assertNotIn("## Enfants", text[positions[1]:positions[2]], "un nœud sans enfant n'imprime pas les siens")
+        self.assertNotIn("## Children", text[positions[1]:positions[2]], "un nœud sans enfant n'imprime pas les siens")
+        # ruche-0066: every node of the path, English or French, prints its sections under their short English names.
+        for short in ("Why", "What matters", "To ignore"):
+            self.assertEqual(text.count(f"\n## {short}\n"), len(landmarks) - 1, short)
+        for short in ("Pourquoi", "Ce qui compte", "À ignorer", "Enfants"):
+            self.assertNotIn(f"\n## {short}\n", text)
         # La tâche : ce que bee calcule, puis ses données relues, encadrées, chaque ligne précédée de « | ».
         task = text[positions[4]:]
         self.assertLess(task.index("# --- computed by bee ---"), task.index("=== DATA of task miniz-0099"))
@@ -2708,16 +2713,18 @@ class TestTree(BaseTest):
         def node(ident, children):
             list_of = "\n".join(f"- `{e}` : {e.rsplit('/', 1)[-1]}" for e in children)
             return {"id": ident, "title": ident, "children": children,
-                    "sections": {"Pourquoi cette branche existe": "p", "Ce qui compte ici": "c",
-                                 "Ce qu'on peut ignorer ici": "i", "Enfants": list_of}}
+                    "sections": {"Why this branch exists": "p", "What matters here": "c",
+                                 "What you can ignore here": "i", "Children": list_of}}
         alone_one = node("projects/x/p", ["projects/x/p/a"])
         nodes = {"projects/x/p": alone_one, "projects/x/p/a": node("projects/x/p/a", [])}
         text = bee.context_node_render(alone_one, path=["projects/x/p", "projects/x/p/a"], nodes=nodes)
-        self.assertNotIn("## Enfants", text)
+        self.assertNotIn("## Children", text)
+        # ruche-0066: the sections bear their short English names (the glossary of docs/english-migration.md).
+        self.assertIn("## Why\np\n## What matters\nc\n## To ignore\ni", text)
         two = node("projects/x/p", ["projects/x/p/a", "projects/x/p/b"])
         nodes = {"projects/x/p": two, "projects/x/p/a": node("projects/x/p/a", []), "projects/x/p/b": node("projects/x/p/b", [])}
         text = bee.context_node_render(two, path=["projects/x/p", "projects/x/p/a"], nodes=nodes)
-        self.assertIn("## Enfants\nYours follows", text)
+        self.assertIn("## Children\nYours follows", text)
         self.assertNotIn("projects/x/p/b", text)
         text = bee.context_node_render(two, path=["projects/x/p"], nodes=nodes)
         self.assertIn("- `projects/x/p/a`", text)
@@ -2925,6 +2932,13 @@ class TestTree(BaseTest):
         for n in ("root", "roles/review", "projects/lossless-compression/miniz"):
             self.assertIn(f"id='{n}'", page)
         self.assertIn("<code>bee context &lt;task&gt;</code>", page)
+        # ruche-0066: the tree page and the API name every node's sections in English, French nodes included.
+        english = ["Why this branch exists", "What matters here", "What you can ignore here", "Children"]
+        for n in ("root", "roles/review"):
+            node_page = page[page.index(f"id='{n}'"):]
+            node_page = node_page[:node_page.index("</section>")]
+            self.assertEqual(re.findall(r"<h3>([^<]*)</h3>", node_page), english)
+        self.assertNotIn("<h3>Enfants</h3>", page)
         task = (self.dir / "_site/tasks/miniz-0012.html").read_text(encoding="utf-8")
         self.assertIn("The path of meaning", task)
         self.assertIn("tree.html#projects/lossless-compression/miniz", task)
@@ -2932,7 +2946,9 @@ class TestTree(BaseTest):
         tree = {n["id"]: n for n in data["tree"]}
         self.assertEqual(tree["root"]["parent"], None)
         self.assertEqual(tree["projects/lossless-compression/miniz"]["parent"], "projects/lossless-compression")
-        self.assertIn("Ce qui compte ici", tree["roles/review"]["sections"])
+        self.assertEqual(list(tree["roles/review"]["sections"]), english)
+        self.assertEqual(list(tree["root"]["sections"]), english)
+        self.assertIn("never contact the upstream project", tree["root"]["sections"]["What matters here"])
         tasks = {t["id"]: t for t in data["tasks"]}
         self.assertEqual(tasks["miniz-0012"]["attached_node"], "projects/lossless-compression/miniz")
         self.assertEqual(tasks["miniz-0012"]["role"], "optimize")
@@ -15589,14 +15605,14 @@ class TestSpelling(BaseInvitations):
 
 def english_titles(text):
     """A node's four headings rewritten in English; its text stays as it is."""
-    for fr, en in zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
+    for fr, en in zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
         text = text.replace(f"\n## {fr}\n", f"\n## {en}\n")
     return text
 
 
 def french_titles(text):
     """A node's four headings rewritten in French; its text stays as it is."""
-    for fr, en in zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
+    for fr, en in zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
         text = text.replace(f"\n## {en}\n", f"\n## {fr}\n")
     return text
 
@@ -15619,7 +15635,7 @@ class TestBilingualReaders(BaseAgora):
         self.assertEqual((unknown_items, missing_items), ([], []), "a French literal is unclassified, or an English form is gone")
         bilingual = {text: english_form for text, class_name, english_form, _ in lines if class_name == "bilingual"}
         self.assertEqual(bilingual, {bee.TO_FILL_IN: bee.TO_FILL_IN_EN, bee.DEBATE_LINK.pattern: "Debate:",
-                                     **dict(zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN)), "- Une faille": "- A vulnerability"})
+                                     **dict(zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS)), "- Une faille": "- A vulnerability"})
         classes = {text: class_name for text, class_name, _, _ in lines}
         self.assertEqual({classes[v] for v in bee.REMOVED.values()}, {"data"}, "written by the tool itself: ruche-0070")
         self.assertIn("in_review", names)
@@ -15761,16 +15777,16 @@ class TestBilingualReaders(BaseAgora):
         }
         for name, change in case_of.items():
             results = []
-            for titles in (bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
-                text = ZONE_NODE if titles == bee.NODE_SECTIONS else english_titles(ZONE_NODE)
+            for titles in (bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
+                text = ZONE_NODE if titles == bee.NODE_SECTIONS_FR else english_titles(ZONE_NODE)
                 self.write_zone(change(text, titles))
                 problems_found = raw = self.tree_problems()
                 with self.subTest(case_of=name, titles=titles[0]):  # headings are named in the node's own language
-                    other = bee.NODE_SECTIONS_EN if titles == bee.NODE_SECTIONS else bee.NODE_SECTIONS
+                    other = bee.NODE_SECTIONS if titles == bee.NODE_SECTIONS_FR else bee.NODE_SECTIONS_FR
                     self.assertEqual([p for p in raw if any(a in p for a in other)], [])
                     if name == "missing":
                         self.assertIn(f"{self.ZONE}: missing section: « ## {titles[2]} »", raw)
-                for fr, clean_one in zip(bee.NODE_SECTIONS, titles):
+                for fr, clean_one in zip(bee.NODE_SECTIONS_FR, titles):
                     problems_found = [p.replace(clean_one, fr) for p in problems_found]
                 results.append(problems_found)
             with self.subTest(case_of=name):
@@ -15779,7 +15795,7 @@ class TestBilingualReaders(BaseAgora):
 
     def test_a_node_does_not_mix_the_languages(self):
         """One language per node: a half-translated node is refused, even when each heading is known in one language."""
-        fr, en = bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN
+        fr, en = bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS
         english_form = english_titles(ZONE_NODE)
         for name, text, alone_one in (("one French heading", english_form.replace(f"## {en[3]}\n", f"## {fr[3]}\n"), True),
                                  ("one English heading", ZONE_NODE.replace(f"## {fr[1]}\n", f"## {en[1]}\n"), True),
@@ -15795,26 +15811,27 @@ class TestBilingualReaders(BaseAgora):
         self.valid_one()
 
     def test_vulnerability_instruction_in_english(self):
-        """--already-read keeps the vulnerability bullet of an English root as it keeps the French one; cut in two or reworded,
-        the root is printed whole, in both languages."""
+        """--already-read keeps the vulnerability bullet of the English root (ruche-0066) as it keeps a French one; cut in two,
+        reworded, or citing the retired name docs/securite.md, the root is printed whole, in both languages."""
         root = self.dir / "tree/MEANING.md"
-        origin_of = root.read_text(encoding="utf-8")
-        beginning = origin_of.index("- Une faille")
-        end = origin_of.index("docs/securite.md).", beginning) + len("docs/securite.md).")
-        english_one = english_titles(
-            origin_of[:beginning] + "- A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a "
-            "description,\n  not even in passing; private report on the Bee repo, and tell your user; never contact the\n"
-            "  upstream project (commandments 6 and 8, docs/securite.md)." + origin_of[end:])
-        root.write_text(english_one, encoding="utf-8")
+        english_one = root.read_text(encoding="utf-8")
+        beginning = english_one.index("- A vulnerability (crash")
+        end = english_one.index("docs/security.md).", beginning) + len("docs/security.md).")
+        french_one = french_titles(
+            english_one[:beginning] + "- Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, "
+            "même en passant ;\n  signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet "
+            "d'origine\n  (commandements 6 et 8, docs/security.md)." + english_one[end:])
+        root.write_text(french_one, encoding="utf-8")
         self.valid_one()
-        languages = {"fr": (origin_of, "même en passant ;\n  signalement",
+        languages = {"fr": (french_one, "même en passant ;\n  signalement",
                           ("même en passant ;\n  signalement privé", "même en passant.\n- Signalement privé"),
                           ("Une faille (plantage", "Un défaut (plantage"), "ne contacte jamais le projet d'origine"),
-                   "en": (english_one, "description,\n  not even", ("in passing; private report", "in passing.\n- Private report"),
+                   "en": (english_one, "not even in\n  passing", ("in\n  passing; private report", "in passing.\n- Private report"),
                           ("A vulnerability (crash", "A defect (crash"), "never contact the upstream project")}
         for language, (text, indented, cut, rewritten, bullet_end) in languages.items():
             for name, version, whole_one in (("whole", text, False), ("unindented", text.replace(indented, indented.replace("\n  ", "\n")), False),
-                                          ("cut in two", text.replace(*cut), True), ("reworded", text.replace(*rewritten), True)):
+                                          ("cut in two", text.replace(*cut), True), ("reworded", text.replace(*rewritten), True),
+                                          ("retired docs/securite.md", text.replace("docs/security.md).", "docs/securite.md)."), True)):
                 self.assertTrue(name == "whole" or version != text, name)
                 root.write_text(version, encoding="utf-8")
                 output_text = self.ok("context", "miniz-0099", "--already-read")
@@ -15822,7 +15839,7 @@ class TestBilingualReaders(BaseAgora):
                     self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                     self.assertIn(bullet_end, " ".join(output_text.replace("\n# ", "\n").split()))
         # Only one bullet that opens with the marker stands for the instruction (review of ebff9db): a decoy citing the
-        # marker and docs/securite.md is not kept in its place, and two candidates print the root whole.
+        # marker and docs/security.md is not kept in its place, and two candidates print the root whole.
         decoy, start_in = "- Never post A vulnerability anywhere, see docs/security.md.\n", "- A vulnerability (crash"
         for name, version, whole_one in (
                 ("decoy beside the bullet", english_one.replace(start_in, decoy + start_in), False),
@@ -15830,15 +15847,14 @@ class TestBilingualReaders(BaseAgora):
                 ("AGENTS.en.md phrasing", english_one.replace(start_in, "- **Vulnerability** (crash"), False),
                 ("no article", english_one.replace(start_in, "- Vulnerability (crash"), False),
                 ("two English bullets", english_one.replace(start_in, "- A vulnerability: docs/security.md.\n" + start_in), True),
-                ("two French bullets", origin_of.replace("- Une faille (", "- Une faille : docs/security.md.\n- Une faille ("), True)):
+                ("two French bullets", french_one.replace("- Une faille (", "- Une faille : docs/security.md.\n- Une faille ("), True)):
             root.write_text(version, encoding="utf-8")
             output_text = self.ok("context", "miniz-0099", "--already-read")
             flat = " ".join(output_text.replace("\n# ", "\n").split())
             with self.subTest(root=name):
-                self.assertNotIn(version, (english_one, origin_of))
+                self.assertNotIn(version, (english_one, french_one))
                 self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                 self.assertTrue(whole_one or ("tell your user" in flat and "Never post" not in flat), flat[:600])
-
 
 FILLED_MANIFEST = """task: miniz-0099
 user: alice
