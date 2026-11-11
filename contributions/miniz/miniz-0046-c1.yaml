@@ -8,3 +8,146 @@ status: in_review
 submitted_at: '2026-11-11T18:52:41Z'
 engaged_since: '2026-11-11T18:45:33Z'
 reviews: []
+verdict:
+  ci: green
+  base: 178b6c02808e31657fdc61eaf6060965bfba7b5a
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_n1:
+      A: 171448250.0
+      B: 171448250.0
+      gain: 0.0
+    instructions_n6:
+      A: 335508353.0
+      B: 335508353.0
+      gain: 0.0
+    instructions_n9:
+      A: 483731551.0
+      B: 483731551.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27897961.0
+      B: 27897961.0
+      gain: 0.0
+  degradations: {}
+  judge:
+    version: 3
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 0
+  declared_gap: null
+  sha: f46de386b2188d3d2c6b5bf54af44280e831c6b3
+  tree: d0de29920037940ad4c6c962f226294c7730d55c
+  checked_files: true
+  modified_judges:
+  - bee/README.md
+  - bee/bench/ab.py
+  - bee/bench/banc.c
+  - bee/bench/profil.py
+  - bee/bench/test_profil.py
+  - bee/ci/differentiel.sh
+  - bee/ci/etape.sh
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/ci/verifier_fork.py
+  - bee/ci/vocabulaire.py
+  - bee/commun/corpus.c
+  - bee/fuzz/fuzz_compression.c
+  - bee/fuzz/fuzz_inflate.c
+  - bee/fuzz/graines.py
+  - bee/fuzz/lancer.sh
+  - bee/fuzz/pilote_aleatoire.c
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/43078786047
+verdicts:
+- sha: f46de386b2188d3d2c6b5bf54af44280e831c6b3
+  tree: d0de29920037940ad4c6c962f226294c7730d55c
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 0
+  instructions:
+    instructions_n1:
+      A: 171448250.0
+      B: 171448250.0
+      gain: 0.0
+    instructions_n6:
+      A: 335508353.0
+      B: 335508353.0
+      gain: 0.0
+    instructions_n9:
+      A: 483731551.0
+      B: 483731551.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27897961.0
+      B: 27897961.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'A token comparison of every changed file against master (Python tokenize, a C tokenizer, a small
+    shell lexer that keeps expansions; adjacent C literals as one): once string literals are set aside,
+    code, names, comments and interpolated expressions are identical in all 27 files; 524 literals changed
+    (part a 128, part b 396), every printf %-specifier kept in order. Set aside and listed for review:
+    4 docstring first lines, the 32 help comment lines of the two lancer.sh (same line count, every changed
+    line still a comment), and one coupled change outside a literal, the grep pattern ''pilote : terminé''
+    → ''pilote: done''. Each changed literal was read: none is compared against anything.'
+  - 'In bee/sandbox/sans-docker.sh, master f5440c3 and this branch: test_ab.py 10 tests OK, test_profil.py
+    4 OK, test_verdict.py 74 OK, test_juge.py 19 OK (7 meta-tests skipped: they need Docker). The new
+    test_verdict.py against master''s scripts fails 14 subtests, so its assertions bind the new texts.'
+  - 'Verdict JSON on real data, in the sandbox: the CI artifacts of the last PR merged into master (miniz-0051,
+    run 42518180042, head 95d0e58) fed to master''s verdict.py and to this branch''s: both rebuild a verdict.json
+    byte-identical to each other and equal to the CI''s own; same stdout.'
+  - 'The common judge''s verification without Docker (a script that calls juge-v2''s own functions and
+    this plugin, harness built by construire.sh, seed fixed), master tooling against this branch''s, A
+    = B = master: 914 outputs compared in the verification (129 inputs), 61 per scenario in one repetition
+    and in the instruction count; Valgrind counts identical before and after (n1 171,451,924; n6 335,527,486;
+    n9 483,765,894; decompression 26,939,977, A = B); every output file byte-identical (SHA-256). Only
+    the build message and the plugin''s SHA-256 differ (3c182b96… becomes 4aa4e58c…). The work folder''s
+    path has the same length in both runs: the harness formats paths, and a folder name one character
+    longer alone moves each count by a few hundred instructions.'
+  - 'The differential step through etape.sh, master''s tooling and this branch''s, on master: 3843 checks,
+    0 discrepancies, 488 fingerprints identical, api 192 cases (55 tolerated) and 106 checks, state file
+    « succes » both times; the 15-line logs differ only by the 14 translated lines. bee/tests/lancer.sh
+    --verbeux: 371 lines both times, 298 api case lines. A fingerprint altered on purpose: exit 1 and
+    1 discrepancy both times. --regenerer-empreintes into a temporary file: identical to the committed
+    empreintes-reference.txt.'
+  - 'Bench, before and after: banc''s JSON line same keys and ratio_n6; ab.py --repetitions 2 --instructions
+    on HEAD against HEAD: same JSON structure, identical methode and ordre, instruction counts identical;
+    profil.py --json on n6 and decompression: profil.json identical, labels included; usage and error
+    paths with the same exit codes (banc 2, ab.py 2).'
+  - 'Fuzzing, before and after: bee/fuzz/lancer.sh 15 --moteur gcc --reference master: exit 0, both harnesses
+    report « no discrepancy » with the driver''s last line (the grep pattern still matches it); the auto
+    engine prints its fallback message; usage: 24 lines both times.'
+  - 'Sandbox and commun: sans-docker.sh without arguments prints its usage, exit 2; banc on a missing
+    and on an empty corpus folder prints corpus.c''s errors, exit 2 both times, as before.'
+  untested:
+  - 'The meta-tests against malicious variants (BEE_JUGE_INTEGRATION=1) need Docker, which the sandbox
+    does not give: the fork''s meta-juge job runs them.'
+  - 'The libFuzzer engine: this machine has clang-18 without its libFuzzer runtime (the build fails the
+    same way on master and on this branch); the fork''s fuzzing job runs libFuzzer for 10 minutes. Failure
+    paths of fuzz/lancer.sh (new or pre-existing discrepancy, discreet mode) were read, not triggered:
+    no failing input was produced.'
+  - 'AddressSanitizer runs of the differential tests (--sanitiseurs): not run; the CI does not run them
+    either.'
+  doubts: 'The plugin''s SHA-256 changes, as with any change to bee/juge/projet.py, so juge.greffon in
+    later verdicts changes and open fork PRs must rebase after the merge (the greffon job''s rule). The
+    plugin''s refusal and error messages reach the « juge » artifact (journal.txt with the pinned juge-v2;
+    juge.json''s juge.motif from juge-v3 on, ruche-0136), never verdict.json: verdict.py does not copy
+    them. vocabulaire.py''s messages reach details.origine_metrique only in a local simulation: in CI,
+    the manifest job writes the task copy only after reading it with the same function, so an unreadable
+    copy cannot reach verdict.py there. bee/README.md, English since miniz-0045 (merged into this branch),
+    is edited where it quotes what this PR changes: ab.py''s table verdict « DEGRADATION beyond noise
+    » (its « within noise » already matched), and the line that called execution.c unchanged since miniz-0031
+    now says only its messages changed (outputs and instruction counts identical, above). It keeps its
+    quotes of data that stays French: profil.py''s labels « hors miniz » and « miniz.c (hors fonction)
+    », and the CI''s « rebasez » messages (bee-ci.yml). The help lines of the two lancer.sh are comments
+    translated because the scripts print them; the other comments stay. The check names of the differential
+    tests (brut, vidages, sommes, empreintes) stay as identifiers, as in bee/README.md. The juges.sh block
+    stays French until bee-ci.yml changes with it.'
