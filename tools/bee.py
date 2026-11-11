@@ -3058,7 +3058,7 @@ LIFT_TOLERANCE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
-    """The agora's caps: bee.yaml (key agora; docs/agora.md, « Contre le bruit »), all required (ruche-0144)."""
+    """The agora's caps: bee.yaml (key agora; docs/agora.md, « Against noise »), all required (ruche-0144)."""
     return setting(reg, "agora")
 
 

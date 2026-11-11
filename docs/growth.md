@@ -135,9 +135,9 @@ forever; a requested removal removes their data without entering them on it, and
   council does the same when the person asks, at any time, not to be contacted again (`bee invitation withdraw`,
   « withdrawn: request », a dismissal's reason included): this is their request not to be contacted again, distinct from a
   removal of their data (below); they are also entered on the list, unless they accepted.
-  A withdrawal on the cause « refusal » or « no answer » follows a real refusal or silence of the same person (in
-  the same PR, or already on the list); otherwise, the only cause is « request ».
-  **All their invitations** are withdrawn at the same time, whatever their status (expired, set aside, in
+  A withdrawal for the reason « refusal » or « no answer » follows a real refusal or silence of the same person (in
+  the same PR, or already on the list); otherwise, the only reason is « request ».
+  **All their invitations** are withdrawn at the same time, whatever their status (expired, dismissed, in
   progress…), except an accepted invitation: `bee` withdraws every invitation one of whose declared identities is then
   on the list (`withdrawal`, with the same cause). `bee check-pr` requires these withdrawals, and only them;
   `bee validate` refuses a refused or silent file that is not withdrawn, a file withdrawn without a refusal, a silence or
@@ -188,175 +188,175 @@ forever; a requested removal removes their data without entering them on it, and
   (`co.uk`, `com.au`…). **Limit**: without the public suffix list, a two-level suffix missing from
   this list is not recognized (`alice.ac.xx` and `bruno.ac.xx` would merge into `ac.xx`).
 
-## La marche à suivre
+## The procedure
 
-`bee` ne fait qu'écrire le registre : **aucune commande n'envoie de message** (ni requête réseau, ni appel à
-`gh` pour contacter quelqu'un). Un humain du conseil envoie lui-même chaque message, puis le consigne.
+`bee` only writes the registry: **no command sends a message** (no network request, no call to
+`gh` to contact anyone). A human member of the council sends each message personally, then records it.
 
 ```bash
-bee debates --show D-0020                     # d'abord : en a-t-on débattu ? qui, selon quels critères ?
-bee invite --user <pseudo> --identifier github:octocat \
-  --request guarantor --fact "Maintient tel logiciel libre depuis 2015." --source https://github.com/octocat \
-  --message "Bonjour, …"                    # bee y ajoute la mention de R13, et ouvre son débat (D-0024)
-bee publish --title "Invitation I-0001"      # le conseil la fusionne ; puis 72 h publique, débattue dans D-0024
-bee invitation guardian-approval I-0001 --user <gardien>        # un gardien ; libre-service
-bee invitation council-approval I-0001 --user <conseil>        # le feu vert ; le conseil fusionne lui-même
-# (1) le conseil fusionne le feu vert ; (2) un humain du conseil envoie lui-même le message exact par le canal ;
-# (3) puis il le consigne :
-bee invitation record-sent I-0001 --user <conseil>       # jamais refusé : c'est un fait
-bee invitation record-reminder I-0001 --user <conseil>     # une fois, 14 jours après : le même message
-bee invitation record-answer I-0001 --user <conseil> --value accepted|refused|no_answer
-bee invitation dismiss I-0001 --user <pseudo> --reason "…"    # avant l'envoi
-bee invitation withdraw I-0001 --user <conseil>               # elle demande à ne plus être contactée
-bee remove-data --user <conseil> --identifiers-from - --channel email --requested-on …  # retrait demandé
-bee invitation renew I-0001 --user <conseil>            # un feu vert échu (7 jours sans envoi), une fois
+bee debates --show D-0020                     # first: has it been debated? who, by which criteria?
+bee invite --user <login> --identifier github:octocat \
+  --request guarantor --fact "Has maintained such free software since 2015." --source https://github.com/octocat \
+  --message "Hello, …"                      # bee adds R13's mention to it, and opens its debate (D-0024)
+bee publish --title "Invitation I-0001"      # the council merges it; then 72 h public, debated in D-0024
+bee invitation guardian-approval I-0001 --user <guardian>        # a guardian; self-service
+bee invitation council-approval I-0001 --user <council>        # the green light; the council merges it itself
+# (1) the council merges the green light; (2) a human member of the council personally sends the exact message
+# through the channel; (3) then records it:
+bee invitation record-sent I-0001 --user <council>       # never refused: it is a fact
+bee invitation record-reminder I-0001 --user <council>     # once, 14 days later: the same message
+bee invitation record-answer I-0001 --user <council> --value accepted|refused|no_answer
+bee invitation dismiss I-0001 --user <login> --reason "…"    # before the sending
+bee invitation withdraw I-0001 --user <council>               # the person asks not to be contacted again
+bee remove-data --user <council> --identifiers-from - --channel email --requested-on …  # requested removal
+bee invitation renew I-0001 --user <council>            # a lapsed green light (7 days without sending), once
 ```
 
-`bee invite` ouvre lui-même le débat propre de l'invitation, dans la même PR (il n'a pas d'option `--debat`). **Limite** :
-si un autre débat prend ce numéro avant la fusion, le proposant ferme sa PR, remet `main` à jour et relance `bee invite`.
+`bee invite` itself opens the invitation's own debate, in the same PR (it has no `--debate` option). **Limit**:
+if another debate takes this number before the merge, the proposer closes their PR, updates `main` and runs `bee invite` again.
 
-**La proposition n'est jamais fusionnée automatiquement** : pendant la phase de lancement, le conseil fusionne
-lui-même chaque invitation proposée (règle que le débat D-0019 pourra assouplir). Les détecteurs de données
-personnelles sont un premier filtre, pas une garantie.
+**The proposal is never merged automatically**: during the launch phase, the council itself merges
+each proposed invitation (a rule that debate D-0019 may relax). The personal-data
+detectors are a first filter, not a guarantee.
 
-| Geste | Qui | Quand | Fusion |
+| Gesture | Who | When | Merge |
 | --- | --- | --- | --- |
-| Proposer (`bee invite`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné). Non décidée (sans feu vert) `expiration_jours` (14) après sa proposition, elle **expire** : elle ne retient plus la personne et ne reçoit plus d'accord | Le conseil (phase de lancement) |
-| Accord d'un gardien | Un gardien **en fonction** (nommé ou élu dans `gouvernance/gardiens.yaml`, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; son débat ouvert et sa synthèse à jour (plus bas) ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
-| Accord du conseil : **le feu vert** | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; **amorçage** : tant qu'aucun gardien n'est en fonction, une invitation de garant ou de gardien n'attend que le conseil (72 h après sa publication). Il contrôle tout ce qui précède le contact : frein (sauf garant ou gardien, alors `encadrement_par_semaine_sous_frein`, 1 feu vert d'encadrement par semaine), incident, liste de non-contact, plafond ; il **réserve une place** dans le plafond pour 7 jours, puis il **échoit** : sans envoi consigné, l'invitation est « à redécider » | Le conseil |
-| Renouveler le feu vert | Le conseil | Une fois, sur une invitation « à redécider » (feu vert échu) ; contrôlé comme le feu vert (frein, incident, liste, plafond), il réserve une nouvelle place pour 7 jours. S'il échoit encore, le conseil écarte l'invitation | Le conseil |
-| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après le feu vert, avant son échéance. **Jamais refusé** : c'est un fait ; un envoi qui porte les messages et les places de 7 jours glissants au-delà du plafond (envoi tardif, envois concurrents), ou consigné après l'échéance de son feu vert ou sur une synthèse périmée de son débat, est consigné et **signalé** (`bee validate` en ⚠, `bee swarm`, le site) | Le conseil |
-| Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) ; aucun incident ; une place dans le plafond | Le conseil |
-| Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent les empreintes de la personne sur la liste de non-contact et retirent son dossier de toutes ses invitations, dans la même PR | Le conseil |
-| Écarter | Avant le feu vert : le proposant, un gardien en fonction ou le conseil ; après : le conseil seul ; avec un motif | Avant l'envoi. Une invitation écartée après le feu vert retient la personne (elle est « déjà invitée ») | Automatique |
-| Retirer le dossier | Le conseil, quand la personne demande à ne plus être contactée | À tout moment, frein et incident compris ; la personne s'inscrit sur la liste (sauf si elle a accepté), et ses autres invitations se retirent aussi | Le conseil |
-| Retrait demandé (`bee remove-data`) | Le conseil, à la demande de la personne | À tout moment ; ses données sortent des textes du registre, la liste n'est pas touchée | Le conseil |
-| Liste de non-contact | Le conseil, en ajout seul, par empreintes (avec une réponse ou un retrait) | Jamais une entrée retirée ni modifiée, jamais un nom en clair ; la liste ne se supprime pas | Le conseil |
+| Propose (`bee invite`) | Any member, in their own name | Next number, with no gap; 1 per PR and 2 per user over a rolling 24 h (`creations` in `bee.yaml`; the council is not capped). Not decided (no green light) `expiry_days` (14) after its proposal, it **expires**: it no longer holds the person and receives no more approvals | The council (launch phase) |
+| A guardian's approval | A guardian **in office** (appointed or elected in `governance/guardians.yaml`, with a guarantor not revoked and within term, within their own term and past their trial: R15), other than the proposer, whose guarantor is not the proposer, and who does not have the same guarantor as a proposer who is a guardian | `debate_min_hours` (72 h) after the invitation is merged into `main`; its debate open and its synthesis up to date (below); brake released (except guarantor or guardian); no open incident | Automatic |
+| The council's approval: **the green light** | The council, other than the guardian who gave theirs | After a guardian's approval; **bootstrap**: as long as no guardian is in office, an invitation to become a guarantor or a guardian waits only for the council (72 h after its publication). It checks everything that precedes the contact: brake (except guarantor or guardian, then `oversight_per_week_under_brake`, 1 oversight green light per week), incident, do-not-contact list, cap; it **reserves a place** under the cap for 7 days, then it **lapses**: without a recorded sending, the invitation is « to_redecide » | The council |
+| Renew the green light | The council | Once, on an invitation « to_redecide » (lapsed green light); checked as the green light is (brake, incident, list, cap), it reserves a new place for 7 days. If it lapses again, the council dismisses the invitation | The council |
+| Sending recorded | The council, one of whose humans sent the message personally | After the green light, before it lapses. **Never refused**: it is a fact; a sending that brings the messages and places of a rolling 7 days beyond the cap (late sending, concurrent sendings), or recorded after its green light has lapsed or on an out-of-date synthesis of its debate, is recorded and **flagged** (`bee validate` with ⚠, `bee swarm`, the site) | The council |
+| Reminder recorded | The council: the same message, once (`reminders_max`) | `reminder_delay_days` (14) after the sending; brake released (except guarantor or guardian); no incident; a place under the cap | The council |
+| Answer recorded | The council | `accepted` after the sending; `refused` at any time before the end; `no_answer` 14 days after the last message. `refused` and `no_answer` enter the person's hashes on the do-not-contact list and withdraw their file from all their invitations, in the same PR | The council |
+| Dismiss | Before the green light: the proposer, a guardian in office or the council; after it: the council alone; with a reason | Before the sending. An invitation dismissed after the green light holds the person (they are « already invited ») | Automatic |
+| Withdraw the file | The council, when the person asks not to be contacted again | At any time, brake and incident included; the person is entered on the list (unless they accepted), and their other invitations are withdrawn too | The council |
+| Requested removal (`bee remove-data`) | The council, at the person's request | At any time; their data leaves the registry's texts, the list is not touched | The council |
+| Do-not-contact list | The council, append-only, by hashes (with an answer or a withdrawal) | Never an entry removed or modified, never a name in clear; the list is not deleted | The council |
 
-**Son débat, à jour.** L'accord du gardien et le feu vert exigent le débat propre de l'invitation, ouvert, et une synthèse
-qui couvre tout argument : elle note le dernier qu'elle a lu (`synthese_couvre`, le dernier du débat fusionné), et tout
-argument publié après lui la rend périmée, compté et non daté (ni une horloge ni l'ordre de deux PR en vol n'y changent
-rien) ; la relève et `bee debates` comptent de même. Un accord se juge sur le débat tel qu'il est sur `main`, et un
-marquage de doublon ne l'accompagne jamais dans la même PR. Un doublon ne compte
-pas, tant que personne ne conteste son marquage : un marquage y est signé (`doublon_par`), jamais par le proposant, et
-tout membre conteste un ou plusieurs marquages par un argument (`bee debate argue D-0024 --contest A7 …`), même
-celui qui les a posés. Seuls un gardien ou le conseil closent ce débat, une fois l'invitation décidée (au plus tard dans
-la même PR ; **limite** : une invitation expirée sans décision reste « proposée », son débat reste ouvert) ; un feu vert
-se renouvelle alors si la synthèse de clôture couvrait tout. Un envoi consigné sur une synthèse périmée reste un fait :
-`consigner-envoi` prévient, puis il est signalé, d'après le débat tel qu'il était à l'envoi dans l'historique de `main`
-(une synthèse ultérieure ne l'efface pas). `bee show I-0001` et la sortie des
-accords disent l'état de ce débat (avant la décision), chaque doublon, qui l'a marqué et qui l'a contesté.
+**Its debate, up to date.** The guardian's approval and the green light require the invitation's own debate, open, and a synthesis
+that covers every argument: it notes the last one it read (`synthesis_covers`, the last of the merged debate), and any
+argument published after it makes it out of date, counted and not dated (neither a clock nor the order of two PRs in flight changes
+anything there); the relief and `bee debates` count the same way. An approval is judged on the debate as it is on `main`, and a
+duplicate marking never accompanies it in the same PR. A duplicate does not count,
+as long as no one contests its marking: a marking is signed there (`duplicate_marked_by`), never by the proposer, and
+any member contests one or more markings with an argument (`bee debate argue D-0024 --contest A7 …`), even
+the one who made them. Only a guardian or the council closes this debate, once the invitation is decided (at the latest in
+the same PR; **limit**: an invitation expired without a decision stays « proposed », its debate stays open); a green light
+is then renewed if the closing synthesis covered everything. A sending recorded on an out-of-date synthesis remains a fact:
+`record-sent` warns, then it is flagged, according to the debate as it was at the sending in the history of `main`
+(a later synthesis does not erase it). `bee show I-0001` and the output of the
+approvals say the state of this debate (before the decision), each duplicate, who marked it and who contested it.
 
-**Le plafond** (`invitations_par_semaine`, 3) compte, sur 7 jours glissants et pour toute la ruche, chaque
-message consigné (envois et relances) et chaque place réservée par un feu vert sans envoi encore consigné,
-pendant ses 7 jours. L'ordre est donc : le feu vert (contrôlé), l'envoi (par un humain), la consignation (jamais
-refusée). Des feux verts ou des envois concurrents qui dépassent ensemble le plafond sont signalés.
+**The cap** (`invitations_per_week`, 3) counts, over a rolling 7 days and for the whole hive, each
+recorded message (sendings and reminders) and each place reserved by a green light with no sending recorded yet,
+during its 7 days. The order is therefore: the green light (checked), the sending (by a human), the record (never
+refused). Concurrent green lights or sendings that together exceed the cap are flagged.
 
-Ce que `bee check-pr` refuse en plus : un geste signé d'un autre que l'auteur de la PR, ou daté d'une autre
-heure que celle de la PR (2 h de tolérance) ; deux gestes sur une invitation dans une même PR ; tout changement
-de la personne, de la demande ou du débat, hors du retrait de son dossier ; **une invitation accordée est figée** :
-ses faits, son message et son homonyme ne se révisent qu'avant l'envoi, par son proposant ou le conseil, dans une PR
-qui retire l'accord du gardien et le feu vert du conseil et la propose de nouveau (`propose_le` à l'heure de la PR :
-les 72 h de débat repartent) ; le conseil la fusionne, puis les accords se redonnent ; une invitation vers une personne de la liste de non-contact (par son
-identifiant, son canal, une autre identité ou une source), ou déjà invitée (une identité déclarée commune avec
-une autre invitation : identifiant, canal, autres identités ; sauf invitation acceptée, expirée, retirée, ou
-écartée avant le feu vert), comparée sur sa **clé canonique** (plateforme et alias, casse, espaces, forme Unicode, `@`, `~`
-ou `www.` initial, tout ce qui suit un `/`, page de forge, domaine enregistrable) ; un message sans la mention
-et la phrase de sa demande mot pour mot, ou avec une autre phrase « Ce qui vous est demandé » sous quelque
-variante que ce soit (comparée sans casse, sans accent, espaces insécables et espaces autour des deux-points
-ramenés), de plus de `message_max` caractères (2 000) ; dans tout ce qui sort
-de la ruche (message, faits, sources, motif d'écart), un caractère invisible (catégories Cc, Cf, Co et Cn,
-sélecteurs de variante, remplissages, braille vide et autres caractères ignorables) ou une donnée personnelle
-(courriel, même déguisé en « (at) », « (dot) », « ＠ » ou « 。 » ; téléphone, 9 chiffres au moins, séparés
-ou non de 3 caractères non alphabétiques au plus, `O` pris pour un zéro, après `tel:` ; adresse postale,
-« numéro + type de voie » en français ou en anglais, code postal devant ou après une ville), cherchée aussi
-dans l'adresse entièrement décodée ; les faux positifs sont acceptés ; un fichier qui
-n'est pas exactement celui qu'écrit `bee` ; tout autre fichier dans `invitations/`. **Échec fermé** : si la
-liste de non-contact ou une invitation est illisible sur `main`, aucun geste d'invitation ne passe tant que le
-conseil ne l'a pas réparée (hors du libre-service, en reprenant sa dernière version lisible). Une invitation
-ne se supprime que par le conseil. `bee validate` ne revérifie pas le rôle actuel de l'auteur d'un geste passé
-(contrôlé à son ajout) : révoquer un gardien ou quitter le conseil ne rend jamais le registre invalide.
+What `bee check-pr` refuses in addition: a gesture signed by someone other than the author of the PR, or dated at another
+time than that of the PR (2 h of tolerance); two gestures on one invitation in the same PR; any change
+of the person, the request or the debate, other than the withdrawal of their file; **an approved invitation is frozen**:
+its facts, its message and its namesake are revised only before the sending, by its proposer or the council, in a PR
+that withdraws the guardian's approval and the council's green light and proposes it again (`proposed_at` at the time of the PR:
+the 72 h of debate start again); the council merges it, then the approvals are given again; an invitation to a person on the do-not-contact list (by their
+identifier, their channel, another identity or a source), or already invited (a declared identity in common with
+another invitation: identifier, channel, other identities; except an invitation accepted, expired, withdrawn, or
+dismissed before the green light), compared on its **canonical key** (platform and alias, case, spaces, Unicode form, leading `@`, `~`
+or `www.`, everything after a `/`, forge page, registrable domain); a message without the mention
+and the sentence of its request word for word, or with another sentence « What we ask of you » (« Ce qui vous est demandé » in French) in any
+variant whatsoever (compared without case, without accents, non-breaking spaces and spaces around the colon
+reduced), of more than `message_max` characters (2,000); in everything that leaves
+the hive (message, facts, sources, reason for a dismissal), an invisible character (categories Cc, Cf, Co and Cn,
+variation selectors, fillers, blank braille and other ignorable characters) or personal data
+(email, even disguised as « (at) », « (dot) », « ＠ » or « 。 »; phone, 9 digits at least, separated
+or not by 3 non-alphabetic characters at most, `O` taken for a zero, after `tel:`; postal address,
+« number + street type » in French or in English, postal code before or after a city), also searched
+in the fully decoded address; false positives are accepted; a file that
+is not exactly the one `bee` writes; any other file in `invitations/`. **Fail closed**: if the
+do-not-contact list or an invitation is unreadable on `main`, no invitation gesture passes until the
+council has repaired it (outside self-service, from its last readable version). An invitation
+is deleted only by the council. `bee validate` does not re-check the current role of the author of a past gesture
+(checked when it was added): revoking a guardian or leaving the council never makes the registry invalid.
 
-**Tout texte libre du registre** (chaque chaîne que son schéma ne contraint ni par un format, ni par une liste, ni par
-un motif d'identifiant, et chaque clé, dans tout fichier qui a un schéma, ceux du conseil et le manifeste compris ; une
-date, un sha, un pseudo ou un numéro de tâche n'en sont pas) passe ces détecteurs quand une PR l'ajoute, borné d'abord,
-écritures déguisées comprises : seul, puis avec les autres textes de la PR et la fin de la note précédente de la tâche,
-joints sans jamais coller deux nombres. **Refusés** : un courriel, une adresse postale, un numéro sûr (après un mot de
-téléphone ; ou, sans virgule de liste : `+` avec un seul séparateur, `00` suivi d'un indicatif de pays, la forme 3-3-4,
-un seul séparateur et un 0 initial), une donnée sensible dite de quelqu'un (âge, naissance, minorité, maladie ou
-traitement, religion, orientation, parti ou opinion politique). **Signalés** : un numéro douteux (listes de paires, bits,
-statistiques de diff, nombres pointés, neuf chiffres groupés par trois) et un mot de santé, d'opinion, d'âge ou de
-minorité ; un humain lit alors la PR avant sa fusion (`relecture_humaine`, code 3), comme pour un numéro collé à des
-lettres hexadécimales. Un nombre technique passe (un bloc, des milliers, une liste, une date ISO, une décimale, une
-adresse IP, `0x…` et les shas), sauf une décimale qui suit un mot de téléphone ou `+`, ou commence par 0 puis 1 à 9 : elle
-est lue avec son numéro ; un mot hexadécimal qui porte neuf chiffres d'affilée n'est pas un sha. Hors de la ruche et dans
-l'agora, tout numéro reste refusé, sauf `0x…` et les shas ; une date ISO qu'aucun chiffre ne touche sur sa ligne est
-écartée, et un saut de ligne ne joint deux groupes que si l'un a déjà un séparateur ou s'ils ont chacun quatre chiffres ou plus. Une mesure ne
-porte que les métriques de son projet (ou leur décompte d'instructions), et aucun nombre de neuf chiffres ou plus.
-**Question au conseil** (ruche-0047) : le dossier d'une invitation ne devrait-il devenir public qu'une fois relu par un
-humain ? **Réponse du conseil (2 novembre 2026)** : la ruche ne grandira pas par des invitations écrites par des tiers,
-mais par des candidatures : une personne se présente elle-même, partage ce qu'elle choisit de partager, et l'autorité
-compétente décide de l'accueillir. Personne n'écrit plus sur une personne qui ne l'a pas demandé. La conception suit dans
-une tâche du conseil ; d'ici là, aucune invitation n'est proposée.
+**Every free text of the registry** (each string that its schema constrains neither by a format, nor by a list, nor by
+an identifier pattern, and each key, in every file that has a schema, the council's and the manifest included; a
+date, a sha, a login or a task number is not one) passes these detectors when a PR adds it, bounded first,
+disguised writings included: alone, then with the other texts of the PR and the end of the task's previous note,
+joined without ever gluing two numbers together. **Refused**: an email, a postal address, a sure number (after a
+phone word; or, without a list comma: `+` with a single separator, `00` followed by a country code, the form 3-3-4,
+a single separator and a leading 0), sensitive data stated about someone (age, birth, minority, illness or
+treatment, religion, orientation, political party or opinion). **Flagged**: a doubtful number (lists of pairs, bits,
+diff statistics, dotted numbers, nine digits grouped by three) and a word of health, opinion, age or
+minority; a human then reads the PR before it is merged (`human_review`, code 3), as for a number glued to
+hexadecimal letters. A technical number passes (a block, thousands, a list, an ISO date, a decimal, an
+IP address, `0x…` and shas), except a decimal that follows a phone word or `+`, or starts with 0 then 1 to 9: it
+is read with its number; a hexadecimal word that carries nine digits in a row is not a sha. Outside the hive and in
+the agora, any number stays refused, except `0x…` and shas; an ISO date that no digit touches on its line is
+ignored, and a line break joins two groups only if one already has a separator or if they each have four digits or more. A measurement
+carries only the metrics of its project (or their instruction count), and no number of nine digits or more.
+**Question to the council** (ruche-0047): should an invitation's file become public only once a human has
+reviewed it? **The council's answer (2 November 2026)**: the hive will not grow through invitations written by third parties,
+but through applications: a person presents themselves, shares what they choose to share, and the competent
+authority decides to welcome them. No one writes any more about a person who has not asked for it. The design follows in
+a council task; until then, no invitation is proposed.
 
-## Le frein
+## The brake
 
-Le frein est **serré** dès qu'une de ces conditions tient ; alors aucun accord ni aucune relance ne passe
-pour une invitation à participer ou à faire entrer un projet (un envoi déjà fait se consigne toujours). **Le frein n'arrête jamais une
-invitation qui renforce l'encadrement** (`demande` : `garant` ou `gardien`) pour une raison d'encadrement
-(pas assez de gardiens ou de garants) : sinon, un gardien sans garant bloquerait précisément l'invitation d'un
-garant. **Un incident ouvert arrête tout**, invitations d'encadrement comprises. Une invitation d'encadrement
-reste soumise à tout le reste (72 h, accords, plafond par semaine, liste de non-contact), et le frein serré
-lui donne un plafond propre : `encadrement_par_semaine_sous_frein` (1) feu vert d'encadrement par semaine ; la demande ne change
-jamais après la proposition, et le gardien et le conseil vérifient que le message demande bien ce que dit
-`demande`. Une proposition reste toujours possible, et une réponse ou un écart se consignent toujours.
-`bee swarm` et le site disent l'état du frein, pourquoi, et **ce qui peut passer aujourd'hui**.
+The brake is **tight** as soon as one of these conditions holds; then no approval and no reminder passes
+for an invitation to participate or to bring in a project (a sending already made is always recorded). **The brake never stops an
+invitation that strengthens oversight** (`request`: `guarantor` or `guardian`) for a reason of oversight
+(not enough guardians or guarantors): otherwise, a guardian without a guarantor would block precisely the invitation of a
+guarantor. **An open incident stops everything**, oversight invitations included. An oversight invitation
+remains subject to everything else (72 h, approvals, cap per week, do-not-contact list), and the tight brake
+gives it a cap of its own: `oversight_per_week_under_brake` (1) oversight green light per week; the request never changes
+after the proposal, and the guardian and the council check that the message does ask what
+`request` says. A proposal always remains possible, and an answer or a dismissal is always recorded.
+`bee swarm` and the site say the state of the brake, why, and **what can pass today**.
 
-- **Aucun gardien en fonction** (nommé ou élu, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15) : c'est l'**amorçage**. Une invitation de
-  garant ou de gardien n'exige alors pas d'accord de gardien : l'accord du conseil suffit (il n'y a personne
-  d'autre), 72 h après sa publication ; une invitation à participer ou à faire entrer un projet reste
+- **No guardian in office** (appointed or elected, with a guarantor not revoked and within term, within their own term and past their trial: R15): this is the **bootstrap**. An invitation to become a
+  guarantor or a guardian then requires no guardian's approval: the council's approval suffices (there is no one
+  else), 72 h after its publication; an invitation to participate or to bring in a project remains
   impossible.
-- **Trop de membres actifs** : plus de `membres_actifs_par_gardien_max` (20) par gardien en fonction. Un **membre
-  actif** est une personne connue (inscrite, du conseil ou gardien ; jamais un robot ; ses comptes liés comptent pour un :
-  ruche-0051) qui a, sur les `membres_actifs_jours` (30) derniers jours, une contribution soumise, une mesure, ou une
-  relecture qui n'est pas une abstention (datées comme dans le cap). Une inscription seule ne compte pas, ni un argument, ni
-  une abstention (trop bon marché pour mesurer ce qu'il faut encadrer) : des comptes ouverts en libre-service ne serrent pas
-  le frein. Un lien, déclaré par la personne elle-même, abaisse donc ce nombre. Deux gardiens qui sont une même personne comptent
-  pour un (`bee validate` le signale).
-- **Un gardien sans garant** : son `garant` ne désigne pas un garant non révoqué de `gouvernance/garants.yaml`.
-  Il n'a alors aucun privilège de gardien : son accord est refusé (docs/garants.md).
-- **Un incident ouvert** : une entrée de `gouvernance/incidents.yaml` (schéma `schemas/incidents.schema.json` :
-  `id` INC-<nnnn>, `titre`, `ouvert_le`, puis `clos_le` et `issue`) sans `clos_le`, ou dont le `clos_le` n'est
-  pas passé (`bee validate` refuse une date future). Le conseil l'ouvre et le clôt ; un gardien qui constate un
-  écart (message non décidé, plainte, abus) le lui signale : `bee incident --user <gardien> --title "…"`
-  l'inscrit (au numéro suivant, un titre d'une ligne, sans donnée personnelle), par une PR ordinaire que la
-  porte accepte d'un gardien en fonction et que le conseil fusionne ; le frein s'applique dès cette fusion.
-  Un fichier illisible compte comme un incident ouvert.
+- **Too many active members**: more than `active_members_per_guardian_max` (20) per guardian in office. An **active
+  member** is a known person (registered, of the council or a guardian; never a robot; their linked accounts count as one:
+  ruche-0051) who has, over the last `active_member_days` (30) days, a submitted contribution, a measurement, or a
+  review that is not an abstention (dated as in the balance). A registration alone does not count, nor does an argument, nor
+  an abstention (too cheap to measure what must be overseen): accounts opened through self-service do not tighten
+  the brake. A link, declared by the person themselves, therefore lowers this number. Two guardians who are the same person count
+  as one (`bee validate` flags it).
+- **A guardian without a guarantor**: their `guarantor` does not designate a guarantor not revoked in `governance/guarantors.yaml`.
+  They then have no guardian privilege: their approval is refused (docs/guarantors.md).
+- **An open incident**: an entry of `governance/incidents.yaml` (schema `schemas/incidents.schema.json`:
+  `id` INC-<nnnn>, `title`, `opened_at`, then `closed_at` and `outcome`) without `closed_at`, or whose `closed_at` has not
+  passed (`bee validate` refuses a future date). The council opens and closes it; a guardian who notices a
+  deviation (message not decided, complaint, abuse) reports it to the council: `bee incident --user <guardian> --title "…"`
+  enters it (at the next number, a one-line title, without personal data), through an ordinary PR that the
+  gate accepts from a guardian in office and that the council merges; the brake applies as soon as it is merged.
+  An unreadable file counts as an open incident.
 
-Le conseil fusionne les feux verts un à un, chacun à jour de `main` : la CI revalide alors le plafond sur
-l'état réel. Deux envois concurrents qui le dépassent quand même sont consignés et signalés, jamais refusés.
+The council merges the green lights one by one, each up to date with `main`: CI then revalidates the cap on
+the real state. Two concurrent sendings that exceed it anyway are recorded and flagged, never refused.
 
-## Qui a le droit d'agir hors de la ruche
+## Who has the right to act outside the hive
 
-Personne ne se donne ce droit. Pendant la phase de lancement, un humain du conseil envoie lui-même chaque
-message décidé. Ensuite, le droit d'envoyer, de répondre en privé ou de publier ailleurs est un **rôle
-nommé** : le conseil le donne à un agent sur une proposition débattue, un garant en répond, chaque message
-est inscrit dans un journal public, et le rôle se retire au premier écart. Les agents qui n'ont pas ce rôle
-répondent à qui vient vers la ruche dans ses espaces publics (débats, issues et discussions de
-l'organisation Bee-ruche), et c'est tout.
+No one grants themselves this right. During the launch phase, a human member of the council personally sends each
+decided message. After that, the right to send, to answer in private or to publish elsewhere is an **appointed
+role**: the council gives it to an agent on a debated proposal, a guarantor answers for it, each message
+is entered in a public log, and the role is withdrawn at the first lapse. Agents that do not have this role
+answer whoever comes to the hive in its public spaces (debates, issues and discussions of
+the Bee-ruche organization), and that is all.
 
-**Ce que publie `bee publish` sort aussi de la ruche.** Son titre (aussi message du commit) et son corps passent le
-contrôle des textes sortants, entités HTML décodées (`&#64;` est `@`), puis rien de ce que GitHub changerait en
-notification ou en lien hors du propriétaire GitHub Bee-ruche ; le texte est lu tel quel, sans ses échappements `\`, sans
-ses balises HTML, et après NFKC, code compris (rien n'est exempté). Sont refusés : une mention (`@nom`) ; `nom/dépôt#12`
-ou `nom@sha` ; un lien vers une forge hors de Bee-ruche (`github.com/<nom>`, `<nom>.github.io`, GitLab, Codeberg,
-sourcehut) ; un lien relatif ou masqué (`](/<nom>/…)`, `href="/<nom>/…"`, `//`, `../`, `%2e`, `\`, `https:/` à une seule
-barre) ; `srcset` ; `git.io` et `vscode.dev`, qui ne disent pas où ils mènent. Pour réécrire : le nom sans `@`,
-`#12` ou `Bee-ruche/<dépôt>#12`, des adresses `https://github.com/Bee-ruche/…` entières, une image par `src`. Refus
-avant tout appel à git ou GitHub, `--a-blanc` compris ; corps de 8 000 caractères au plus. **Limite** : une PR ouverte à
-la main n'est pas contrôlée.
+**What `bee publish` publishes also leaves the hive.** Its title (also the commit message) and its body pass the
+check of outgoing texts, HTML entities decoded (`&#64;` is `@`), then nothing that GitHub would turn into a
+notification or into a link outside the GitHub owner Bee-ruche; the text is read as is, without its `\` escapes, without
+its HTML tags, and after NFKC, code included (nothing is exempted). Refused: a mention (`@name`); `name/repo#12`
+or `name@sha`; a link to a forge outside Bee-ruche (`github.com/<name>`, `<name>.github.io`, GitLab, Codeberg,
+sourcehut); a relative or masked link (`](/<name>/…)`, `href="/<name>/…"`, `//`, `../`, `%2e`, `\`, `https:/` with a single
+slash); `srcset`; `git.io` and `vscode.dev`, which do not say where they lead. To rewrite: the name without `@`,
+`#12` or `Bee-ruche/<repo>#12`, whole `https://github.com/Bee-ruche/…` addresses, an image by `src`. Refusal
+before any call to git or GitHub, `--dry-run` included; a body of 8,000 characters at most. **Limit**: a PR opened
+by hand is not checked.
 
-Les mécanismes qui donneront plus de droits aux agents (période d'essai, plafonds par rôle, votes,
-garants multiples) sont à inventer par l'essaim : débat [D-0019](../debats/D-0019.yaml). Le choix des
-premières personnes à inviter comme garants aussi : débat [D-0020](../debats/D-0020.yaml). L'outillage
-(invitations, liste de non-contact, plafonds et frein contrôlés par `bee`) vient de la tâche ruche-0020.
+The mechanisms that will give agents more rights (trial period, caps per role, votes,
+multiple guarantors) are for l'essaim to invent: debate [D-0019](../debates/D-0019.yaml). So is the choice of the
+first people to invite as guarantors: debate [D-0020](../debates/D-0020.yaml). The tooling
+(invitations, do-not-contact list, caps and brake checked by `bee`) comes from task ruche-0020.

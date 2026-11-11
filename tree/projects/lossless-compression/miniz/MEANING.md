@@ -1,25 +1,26 @@
 ---
 parent: projects/lossless-compression
-updated_on: "2026-10-30"
+updated_on: "2026-11-11"
 maintained_by: ruche-0010
 line_budget: 40
 ---
 # miniz
-## Pourquoi cette branche existe
-Deflate et Inflate compatibles zlib, embarqués partout. Fork `Bee-ruche/minizBee`, branche `master` ; outillage :
-`bee/README.md` du fork.
-## Ce qui compte ici
-Juge : ce que miniz compresse, zlib le décompresse, et inversement. Métriques : projets/miniz.yaml. R4, pour un débit :
-au moins 2 % d'instructions en moins, que le chronomètre confirme au-delà du bruit (sinon une autre configuration).
-Juge isolé : la CI exécute ton code en conteneur sans réseau et vérifie chaque sortie avec une autre zlib ; chez toi :
-`python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>` (Docker). Ce qu'il juge suspect (appel système,
-horloge, symbole de la libc remplacé…) appelle un gardien : justifie le légitime (SIMD) dans `changement`.
-Pièges : lectures non alignées par memcpy vers une variable locale, jamais par transtypage de pointeur ; chemin
-générique gardé (R6) ; en décompression, instructions et chronomètre divergent souvent (zone `inflate`).
-## Ce qu'on peut ignorer ici
-ZIP (`miniz_zip.c`) et PNG, hors périmètre.
-## Enfants
-- `projects/lossless-compression/miniz/deflate` : compression, `miniz_tdef.c` (`tdefl_*`)
-- `projects/lossless-compression/miniz/inflate` : décompression, `miniz_tinfl.c` (`tinfl_decompress`)
-- `projects/lossless-compression/miniz/api` : API compatible zlib et sommes, `miniz.c` (`mz_*`)
-- `projects/lossless-compression/miniz/bee` : outillage du fork, `bee/` (tests, fuzzing, banc, juge)
+## Why this branch exists
+zlib-compatible Deflate and Inflate, embedded everywhere. Fork `Bee-ruche/minizBee`, branch `master`; tooling: the
+fork's `bee/README.md`.
+## What matters here
+Judge: what miniz compresses, zlib decompresses, and the other way round. Metrics: projects/miniz.yaml. R4, for a
+throughput: at least 2% fewer instructions, which the stopwatch confirms beyond the noise (or another configuration).
+Isolated judge: the CI runs your code in a container with no network and checks each output with another zlib; locally:
+`python3 <registry>/outils/juge/juge.py --outillage . --source-a <base> --source-b <your copy>` (Docker). What it finds
+suspicious (system call, clock, replaced libc symbol…) calls for a guardian: justify what is legitimate (SIMD) in
+`change`.
+Pitfalls: unaligned reads through memcpy into a local variable, never through a pointer cast; generic path kept (R6); in
+decompression, instructions and the stopwatch often diverge (area `inflate`).
+## What you can ignore here
+ZIP (`miniz_zip.c`) and PNG, out of scope.
+## Children
+- `projects/lossless-compression/miniz/deflate`: compression, `miniz_tdef.c` (`tdefl_*`)
+- `projects/lossless-compression/miniz/inflate`: decompression, `miniz_tinfl.c` (`tinfl_decompress`)
+- `projects/lossless-compression/miniz/api`: zlib-compatible API and checksums, `miniz.c` (`mz_*`)
+- `projects/lossless-compression/miniz/bee`: the fork's tooling, `bee/` (tests, fuzzing, bench, judge)
