@@ -9923,7 +9923,7 @@ class TestReviewByCommit(BaseParallel):
                                                                                                          "« alice » and « Alice »"))
         self.ok_("take", "miniz-0099", "--user", "Alice")
         reg = bee.Registry(self.dir)
-        self.assertEqual(bee.engagements_of(reg, "ALICE"), [("miniz-0099", "réservation")])
+        self.assertEqual(bee.engagements_of(reg, "ALICE"), [("miniz-0099", "reservation")])
         self.assertEqual(bee.judged_by(reg, "miniz-0099", "Bruno"), [])
         self.cid = self.submit("miniz-0099", "Alice", 99305)
         self.verdict_at("aaaaaaa")
