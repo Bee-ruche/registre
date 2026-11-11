@@ -4640,8 +4640,11 @@ class TestPublishBySession(BasePublish):
         self.prepare_reservation_and_submission()
         before = self.disk_state()
         self.a("2026-10-27T14:31:00Z")
-        for content in ("{", "[]", '{"cle": "{}"}', '{"cle": "[1]", "pr": ["u", 1]}', '{"cle": "{}", "pr": [1, "x"]}', "\xff",
-                        '{"cle": "{}", "pr": ["u", "1"]}', '{"cle": "{}", "pr": ["u", true]}', '{"cle": "{}", "pr": ["u", 1.5]}'):
+        # Each sample has one fault: not JSON, not a mapping, no "pr", a key that is not a mapping, an address that is not a string,
+        # not UTF-8, a number that is a string, a boolean, a float, or not positive (the state file's fields are "key" and "pr").
+        for content in ("{", "[]", '{"key": "{}"}', '{"key": "[1]", "pr": ["u", 1]}', '{"key": "{}", "pr": [1, 1]}', "\xff",
+                        '{"key": "{}", "pr": ["u", "1"]}', '{"key": "{}", "pr": ["u", true]}', '{"key": "{}", "pr": ["u", 1.5]}',
+                        '{"key": "{}", "pr": ["u", 0]}'):
             with self.subTest(content=content):
                 self.state_file().write_bytes(content.encode("latin-1"))
                 code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
