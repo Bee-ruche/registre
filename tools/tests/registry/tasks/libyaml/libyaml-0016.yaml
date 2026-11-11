@@ -6,7 +6,7 @@ size: M
 title: "Juge isolé de libyaml, étape 4/6 : sortie de l'émetteur"
 context: >
   Découpage de libyaml-0005 (juge isolé pour libyaml), étape 4 sur 6 ; utile seule : l'émetteur, cible de la
-  métrique debit_emission, est jugé de l'extérieur. Les greffon et harnais de libyaml-0013 et libyaml-0014
+  métrique emit_throughput, est jugé de l'extérieur. Les greffon et harnais de libyaml-0013 et libyaml-0014
   ne comparent que le flux d'événements de l'analyseur ; un changement de l'émetteur (style d'un scalaire,
   indentation, guillemets) n'y serait pas vu. Pour chaque entrée valide, le harnais ré-émet les événements
   avec l'émetteur de libyaml, et le greffon compare les octets produits à ceux de la base. Indépendante de

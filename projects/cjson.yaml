@@ -14,15 +14,15 @@ status: upcoming
 opening_phase: 4
 maintainer_tier: none
 metrics:
-  - id: debit_analyse
+  - id: parse_throughput
     description: Parsing throughput on the reference JSON corpus
     unit: MB/s
     direction: higher
-  - id: debit_serialisation
+  - id: serialize_throughput
     description: Serialization throughput on the reference JSON corpus
     unit: MB/s
     direction: higher
-  - id: memoire_max_ko
+  - id: max_memory_kb
     description: Maximum resident memory during the bench
     unit: KB
     direction: lower

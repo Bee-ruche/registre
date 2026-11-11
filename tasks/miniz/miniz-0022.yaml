@@ -16,12 +16,12 @@ context: >
   measured (note of 28 Oct below; manifest of the fork's branch essai/miniz-0022-doublement,
   candidate af45a86 against the base 1c625c3, virtualized 2.1 GHz Xeon, 2 cores, gcc 13.3):
   instructions_decompression −2.80% (−1.06% on the full corpus, which has only 84 Huffman blocks);
-  debit_decompression on the full corpus +0.63% in 300 interleaved rounds, but an identical copy of
+  decompression_throughput on the full corpus +0.63% in 300 interleaved rounds, but an identical copy of
   the base gains as much there (+0.60%), so nothing distinct from code placement; +44.6% on the
   stopwatch on the first 1,024 bytes of each file (30 rounds out of 30, copy of the base +0.28%).
   Cost: tinfl_decompress's stack from 448 to 1,120 bytes (gcc 13.3 -O3, -fstack-usage) and 800 bytes
   of code, a drawback for miniz's embedded targets. Under R4, the task seems out of reach on
-  debit_decompression: building the tables weighs about 1% of the time on the full corpus (the
+  decompression_throughput: building the tables weighs about 1% of the time on the full corpus (the
   trial's manifest), and the isolated judge's noise is about ±0.4% (miniz-0018's note). The
   configuration that would see the gain is the decompression of small streams: a 1 KiB prefix per
   file, or the corpus's petits/ family (35 files under 1 KiB, bee/README.md), which miniz-0027
@@ -29,11 +29,11 @@ context: >
   with a note, not a submission (roles/optimize, step 7).
 files: [miniz_tinfl.c]
 reach: 0.6
-metric: debit_decompression
+metric: decompression_throughput
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_decompression (instructions_decompression), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on decompression_throughput (instructions_decompression), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5)"
   - "inflate fuzzing (fuzz_inflate) for 10 minutes without a discrepancy"
   - "tinfl_decompress's stack (gcc -O3, -fstack-usage) and the code size of miniz_tinfl.o (size), before and after, declared in the manifest"

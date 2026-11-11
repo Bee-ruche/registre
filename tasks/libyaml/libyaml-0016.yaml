@@ -6,7 +6,7 @@ size: M
 title: "libyaml's isolated judge, step 4/6: the emitter's output"
 context: >
   Split of libyaml-0005 (an isolated judge for libyaml), step 4 of 6; useful on its own: the emitter, target
-  of the metric debit_emission, is judged from outside. The harness and plugin of libyaml-0013 and
+  of the metric emit_throughput, is judged from outside. The harness and plugin of libyaml-0013 and
   libyaml-0014 compare only the parser's event stream; a change to the emitter (a scalar's style,
   indentation, quotes) would not be seen there. For each valid input, the harness re-emits the events with
   libyaml's emitter, and the plugin compares the bytes produced with the base's. Independent of

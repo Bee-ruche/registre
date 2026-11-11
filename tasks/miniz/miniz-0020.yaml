@@ -21,11 +21,11 @@ context: >
   demonstrated; only the share of the cost is (profile above).
 files: [miniz_tdef.c]
 reach: 0.3
-metric: debit_compression_n1
+metric: compression_throughput_n1
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on compression_throughput_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5)"
   - "bee/tests/lancer.sh --sanitiseurs (ASan and UBSan) stays clean"
 out_of_scope: [output format, public API, new dependency, format of m_lz_code_buf]

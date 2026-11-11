@@ -15,22 +15,22 @@ status: active
 opening_phase: 1
 maintainer_tier: none
 metrics:
-  - id: debit_analyse
+  - id: parse_throughput
     description: Débit du parseur seul (événements) sur le corpus de référence
     unit: MB/s
     direction: higher
-    instructions: instructions_analyse
-  - id: debit_chargement
+    instructions: instructions_parse
+  - id: load_throughput
     description: Débit du chargeur de documents sur le corpus de référence
     unit: MB/s
     direction: higher
-    instructions: instructions_chargement
-  - id: debit_emission
+    instructions: instructions_load
+  - id: emit_throughput
     description: Débit de l'émetteur sur le corpus de référence
     unit: MB/s
     direction: higher
-    instructions: instructions_emission
-  - id: memoire_max_ko
+    instructions: instructions_emit
+  - id: max_memory_kb
     description: Pic de tas pendant le chargement
     unit: KB
     direction: lower

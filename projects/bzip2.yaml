@@ -16,23 +16,23 @@ status: upcoming
 opening_phase: 3
 maintainer_tier: none
 metrics:
-  - id: debit_compression_n1
+  - id: compression_throughput_n1
     description: Compression throughput at level -1 on the reference corpus
     unit: MB/s
     direction: higher
-  - id: debit_compression_n9
+  - id: compression_throughput_n9
     description: Compression throughput at level -9 on the reference corpus
     unit: MB/s
     direction: higher
-  - id: debit_decompression
+  - id: decompression_throughput
     description: Decompression throughput (bytes produced) on the reference corpus
     unit: MB/s
     direction: higher
-  - id: pire_cas_tri
+  - id: sort_worst_case
     description: Compression time of highly repetitive inputs (the block sort's worst case)
     unit: s
     direction: lower
-  - id: memoire_max_ko
+  - id: max_memory_kb
     description: Peak memory measured by the bzalloc and bzfree hooks
     unit: KB
     direction: lower
