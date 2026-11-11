@@ -38,7 +38,7 @@ try:
     import yaml
     from jsonschema import Draft202012Validator, FormatChecker
 except ImportError:  # pragma: no cover - message pour l'utilisateur
-    sys.exit("bee : dépendances manquantes. Installez-les avec : pip install pyyaml jsonschema")
+    sys.exit("bee: missing dependencies. Install them with: pip install pyyaml jsonschema")
 
 VERSION = "0.1.0"
 TOOL_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -2134,7 +2134,7 @@ def check_registry(reg):
 def link_problems(reg):  # ruche-0051: a declaration alone does nothing; compte_de always confirms one, and no file lists itself
     linked = {id(f) for f, _ in confirmed_links([m for _, m in reg.members.values() if isinstance(m, dict)])}
     return [f"members/{stem}.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
-            "member files that name their pseudo (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
+            "member files that name their login (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
             for stem, (_, m) in reg.members.items() if isinstance(m, dict) and (("account_of" in m and id(m) not in linked) or (
                 isinstance(m.get("other_accounts"), list) and m.get("github_id") in m["other_accounts"]))]
 
@@ -2417,7 +2417,7 @@ def check_accounts(reg):
         for problem_text in self_service_text_problems(data, reg.rel(path)):
             add_to(problem_text)
         for p in sorted({p for p in identity_values(data) if p in reg.agents}):  # ruche-0089: never a second person
-            add_to(f"{reg.rel(path)}: {p} is an agent account ({AGENT_ACCOUNTS}): a person is written by their own pseudo")
+            add_to(f"{reg.rel(path)}: {p} is an agent account ({AGENT_ACCOUNTS}): a person is written by their own login")
 
     check_agent_accounts(reg, add_to)
     check_agora_registry(reg, add_to, per_schema, valid_instant)
@@ -2914,7 +2914,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
                    f"their registration ({elected.get('since')}): the R7 deadline does not get longer")
             require(pn == without_it(pa, elected.get("user")), "only the new holder leaves the list of those registered in parallel")
         require(holder == author or is_council or (is_robot and engagement_expired(reg, ra.get("since"), now_instant())),
-               f"seul le titulaire ({holder}) libère sa réservation avant expiration")
+               f"only the holder ({holder}) releases their reservation before it expires")
         return "promotion", problems_found
 
     if old_contribution != new_contribution:
@@ -5206,8 +5206,8 @@ def vouched_by_proposer(reg, guardian, proposing_member):
     return any(who_is.same_one(g, proposing_member) or any(who_is.same_one(g, h) for h in theirs) for g in own_items)
 
 
-END_NO_FOLLOW_UP = ("{} ended without being accepted : its debate takes no new argument, synthesis or duplicate marking ; only a guardian "
-                  "in office (not guaranteed by or with the proposer) or the council closes it, with the issue no_follow_up (ruche-0139)")
+END_NO_FOLLOW_UP = ("{} ended without being accepted: its debate takes no new argument, synthesis or duplicate marking; only a guardian "
+                  "in office (not guaranteed by or with the proposer) or the council closes it, with the outcome no_follow_up (ruche-0139)")
 
 
 def invitation_debate_refusal(reg, inv, approval=True, closed=False, before=None):
@@ -5216,15 +5216,15 @@ def invitation_debate_refusal(reg, inv, approval=True, closed=False, before=None
     the debate on main, when a PR gives the accord: judged on it too, and no duplicate marking travels with the accord."""
     did, d = _clean(inv.get("debate")), own_debate(reg, inv)
     if d is None:
-        return [f"debate « {did} » : not the debate opened for {inv.get('id')} with it, by its proposer (bee invite opens it)"]
+        return [f"debate « {did} »: not the debate opened for {inv.get('id')} with it, by its proposer (bee invite opens it)"]
     base = before if isinstance(before, dict) else d
     if base.get("status") != "open" and not closed:
-        return [f"{did} is closed : an invitation is proposed and decided while its own debate is open"]
+        return [f"{did} is closed: an invitation is proposed and decided while its own debate is open"]
     markers = lambda x: {str(a.get("id")) for a in arguments_of(x) if a.get("duplicate_of")}  # noqa: E731
     if approval and markers(d) - markers(base):
-        return [f"{did} : a duplicate marking and an accord never travel in the same PR : publish the marking first"]
+        return [f"{did}: a duplicate marking and an accord never travel in the same PR: publish the marking first"]
     waiting = arguments_to_cover(base) or arguments_to_cover(d)
-    return [f"{did} : its synthesis is out of date ({'it does not cover ' + ', '.join(waiting) if base.get('synthesis') else 'none yet'}) "
+    return [f"{did}: its synthesis is out of date ({'it does not cover ' + ', '.join(waiting) if base.get('synthesis') else 'none yet'})"
             "; the rapporteur publishes one first (bee debate synthesize)"] if approval and not (synthesis_up_to_date(base) and synthesis_up_to_date(d)) else []
 
 
@@ -6012,7 +6012,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 except BeeError:
                     pass
                 require(holder == author or is_council or (is_robot and expired),
-                       f"{path} : seul le titulaire ({holder}) libère sa réservation avant expiration")
+                       f"{path}: only the holder ({holder}) releases their reservation before it expires")
                 require(not pa, f"{path}: bees are registered in parallel ({', '.join(p.get('user', '?') for p in pa)}): "
                                "the oldest becomes the holder, the task stays reserved (bee release does it)")
                 racing = [c for c, _ in racing_contributions(reg, tid)]
@@ -6423,45 +6423,45 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 natures.append("proposal")
                 creations["proposals"] += 1
                 require(is_council or level == "Confirmed" or (bootstrap and author in reg.members),
-                       f"{path} : proposer une règle est réservé aux Confirmés (R10)" + ("" if bootstrap else " hors amorçage"))
+                       f"{path}: proposing a rule is reserved for Confirmed members (R10)" + ("" if bootstrap else " outside bootstrap"))
                 expected_number(path, "proposal", "bee propose")
                 require(new.get("id") == pathlib.PurePosixPath(path).stem,
-                       f"{path} : id « {new.get('id')} » différent du nom de fichier")
-                require(new.get("author") == author, f"{path} : une proposition naît au nom de l'auteur de la PR ({author}), "
-                                                        f"pas de « {new.get('author')} »")
+                       f"{path}: id « {new.get('id')} » differs from the file name")
+                require(new.get("author") == author, f"{path}: a proposal is born in the name of the PR's author ({author}), "
+                                                        f"not of « {new.get('author')} »")
                 for field in ("proposed_text", "reason"):  # ruche-0040: like every free text the gate reads
-                    problem_text = admissible_text(new.get(field), f"{path} : {field}", text_bound("proposals", field))
+                    problem_text = admissible_text(new.get(field), f"{path}: {field}", text_bound("proposals", field))
                     require(problem_text is None, str(problem_text))
                 # T4 : à la naissance, le vote s'ouvre (R10 : 7 jours depuis ouverte_le) et personne n'en écrit l'issue ;
                 # seul le conseil change ensuite statut et resultat.
-                require(new.get("status") == "open", f"{path} : une proposition naît ouverte (status « open », pas "
-                                                           f"« {new.get('status')} ») : seul le conseil écrit ensuite son issue")
-                require("result" not in new, f"{path} : une proposition naît sans resultat : le dépouillement le calcule (bee "
-                                                  "tally) à la fin du vote, et seul le conseil l'écrit")
+                require(new.get("status") == "open", f"{path}: a proposal is born open (status « open », not "
+                                                           f"« {new.get('status')} »): only the council then writes its outcome")
+                require("result" not in new, f"{path}: a proposal is born without a result: the tally computes it (bee "
+                                                  "tally) at the end of the vote, and only the council writes it")
                 try:
                     open = read_instant(new.get("opened_at"), path)
                     require(instant - TOLERANCE_DATE <= open <= instant + LEAD_MAX,
-                           f"{path} : opened_at ({new.get('opened_at')}) doit être l'heure de la PR (à 2 h près, jamais dans le "
-                           "futur) : le vote de R10 en part ; relancez bee propose")
+                           f"{path}: opened_at ({new.get('opened_at')}) must be the time of the PR (within 2 h, never in the "
+                           "future): R10's vote starts from it; run bee propose again")
                 except BeeError as e:
                     problems_found.append(str(e))
                 continue
             natures.append("governance")
-            require(is_council, f"{path} : une proposition de règle ne change plus après sa naissance (ni statut, ni resultat) et "
-                                "ne se retire pas : seul le conseil écrit son issue")
+            require(is_council, f"{path}: a rule proposal no longer changes after its birth (neither status nor result) and "
+                                "is not withdrawn: only the council writes its outcome")
             continue
 
         if part_of[0] == "reports":  # ruche-0118: a member reports two accounts (bee signaler) ; the council decides (bee signalement)
             natures.append("report" if git_status == "A" and expected_items.get(path, path) else "governance")
             if git_status != "A":
                 guardian = decides_as_guardian and git_status == "M" and isinstance(old, dict) and reported_by_council(reg, old)  # ruche-0137
-                if require(is_council or guardian, f"{path} : a report is neither changed nor withdrawn : the council alone decides it (bee decide-report)") and git_status == "M":
-                    require((refusal := decision_refusal(reg, old, new, author, instant)) is None, f"{path} : {refusal}")
+                if require(is_council or guardian, f"{path}: a report is neither changed nor withdrawn: the council alone decides it (bee decide-report)") and git_status == "M":
+                    require((refusal := decision_refusal(reg, old, new, author, instant)) is None, f"{path}: {refusal}")
             elif expected_number(path, "report", "bee report"):
                 creations["reports"] += 1
-                require((refusal := report_refusal(reg, new, author, instant, pathlib.PurePosixPath(path).stem)) is None, f"{path} : {refusal}")
+                require((refusal := report_refusal(reg, new, author, instant, pathlib.PurePosixPath(path).stem)) is None, f"{path}: {refusal}")
                 require(_git_raw(reg.root, "cat-file", "blob", f"{head}:{path}")[1] == yaml_text({k: new.get(k) for k in ("by", "at", "accounts", "reason")}).encode(),
-                       f"{path} : not exactly the file bee report writes (trailing spaces, line breaks, quotes, order, comments) : write it with bee report")
+                       f"{path}: not exactly the file bee report writes (trailing spaces, line breaks, quotes, order, comments): write it with bee report")
                 if named_at_cap(reg, new.get("accounts"), pathlib.PurePosixPath(path).stem):  # ruche-0137: kept, for the council
                     natures[-1] = "report_at_cap_for_council"
             continue
@@ -6482,8 +6482,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         if part_of[0] == "invitations":  # R13 : seuls I-<nnnn>.yaml et la liste de non-contact arrivent ici
             if base_unreadables:
                 natures.append("governance")
-                problems_found.append(f"{path} : illisible(s) sur main : {', '.join(base_unreadables)} : aucun geste d'invitation tant "
-                                 "que le conseil ne l'a pas réparé (hors du libre-service, en reprenant sa dernière version lisible)")
+                problems_found.append(f"{path}: unreadable on main: {', '.join(base_unreadables)}: no invitation gesture until "
+                                 "the council has repaired it (outside self-service, from its last readable version)")
                 continue
             if git_status == "A" and path != PATH_NO_CONTACT:
                 creations["invitations"] += 1
@@ -6510,90 +6510,90 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             before, after = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (old, new))
             # Sur la base, le fichier est absent, ou lisible et tient une liste (revue de ruche-0052) : sinon le conseil le répare
             # d'abord, comme bee incident le dit ; « incidents: » vide ou illisible ne se remplace pas par un seul incident.
-            require(git_status == "A" or isinstance(before, list), f"{path} illisible sur main : le conseil le répare d'abord (bee incident)")
+            require(git_status == "A" or isinstance(before, list), f"{path} unreadable on main: the council repairs it first (bee incident)")
             addition = after[-1] if isinstance(after, list) and after and isinstance(after[-1], dict) else {}
             following = next_incident(before if isinstance(before, list) else [])
             require(isinstance(after, list) and after[:-1] == (before or []) and set(addition) == {"id", "title", "opened_at"}
                    and addition["id"] == following,
-                   f"{path} : un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant "
-                   f"({following or 'aucun : INC-9999 est le dernier, le conseil décide'}), avec id, title et opened_at seulement (bee incident)")
+                   f"{path}: a guardian adds only one open incident to it, at the end of the list, with the next number "
+                   f"({following or 'none: INC-9999 is the last, the council decides'}), with id, title and opened_at only (bee incident)")
             for problem_text in ((incident_title_refused(addition.get("title")), pr_date_problem(addition.get("opened_at"), "opened_at", instant))
                              if addition else ()):
-                require(problem_text is None, f"{path} : {problem_text} (bee incident)")
+                require(problem_text is None, f"{path}: {problem_text} (bee incident)")
             output_text = subprocess.run(["git", "-C", str(reg.root), "cat-file", "blob", f"{head}:{path}"], capture_output=True)
             try:
                 canonical = invitation_render(new, path).encode("utf-8") if isinstance(new, dict) else None
             except BeeError:
                 canonical = None
             require(output_text.returncode == 0 and output_text.stdout == canonical,
-                   f"{path} : le fichier n'est pas exactement sous la forme qu'écrit bee incident (commentaire, autre mise en forme) : "
-                   "écrivez-le avec bee incident")
+                   f"{path}: the file is not exactly in the form bee incident writes (comment, other layout): "
+                   "write it with bee incident")
             continue
         if not is_council and matches(path, TOOLING_PATHS):
             # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
             # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
             # ou le conseil la relit, le conseil la fusionne.
             natures.append("tooling")
-            require(author in reg.members, f"{path} : {author} doit d'abord s'inscrire (bee register) pour proposer de l'outillage")
+            require(author in reg.members, f"{path}: {author} must register first (bee register) to propose tooling")
             continue
         natures.append("governance")
-        require(is_council, f"{path} : modification réservée au conseil humain"
-               + (" (et 30 jours de discussion publique : commandement 11)" if path in ("COMMANDEMENTS.md", "COMMANDMENTS.md")
-                  else " ; si ce fichier est arrivé par erreur dans la PR, retirez-le (git rm --cached, puis commit)"))
+        require(is_council, f"{path}: change reserved for the human council"
+               + (" (and 30 days of public discussion: commandment 11)" if path in ("COMMANDEMENTS.md", "COMMANDMENTS.md")
+                  else "; if this file came into the PR by mistake, remove it (git rm --cached, then commit)"))
 
     for (path, beginning), (_, end) in zip(beginnings, beginnings[1:] + [(None, len(natures))]):
         if (ADDITIONS & set(natures[beginning:end]) or path in additions) and sizes_of.get(path, 0) > byte_bound(path) - BYTE_MARGIN:
             problems_found.append(marker_problem(path))
     conf = config_agora(reg)
     maximum = conf["arguments_max_per_pr"]
-    require(added_arguments <= maximum, f"plafond : {added_arguments} arguments ajoutés par cette PR, au plus {maximum} "
-                                         "(agora.arguments_max_per_pr) : publiez-les en plusieurs fois, et laissez les autres répondre")
+    require(added_arguments <= maximum, f"cap: {added_arguments} arguments added by this PR, at most {maximum} "
+                                         "(agora.arguments_max_per_pr): publish them in several goes, and let the others answer")
     if dates_arguments:
         # R12 (T9) : en plus du plafond par débat, un plafond par utilisateur tous débats confondus, sur 24 h glissantes
         # (la fenêtre court du plus tôt des arguments ajoutés moins 24 h jusqu'à aujourd'hui, comme par débat).
         beginning = min(dates_arguments) - CAP_WINDOW
         n = sum(arguments_since(d, author, beginning, reg.identities) for _, d in reg.debates.values() if isinstance(d, dict))
         require(n <= conf["arguments_max_per_24h_all_debates"],
-               f"plafond : {author} aurait {n} arguments en 24 h tous débats confondus (depuis le {en_iso(beginning)}), au plus "
-               f"{conf['arguments_max_per_24h_all_debates']} par utilisateur sur 24 h glissantes "
-               "(agora.arguments_max_per_24h_all_debates) : laissez les autres répondre")
+               f"cap: {author} would have {n} arguments in 24 h across all debates (since {en_iso(beginning)}), at most "
+               f"{conf['arguments_max_per_24h_all_debates']} per user over a rolling 24 h "
+               "(agora.arguments_max_per_24h_all_debates): let the others answer")
     if not (is_council or is_robot):
         # B1 : une seule PR ne prend plus tous les numéros, ni ne fait basculer le cap ; plafonds par PR et par utilisateur
         # sur 24 h glissantes, d'après l'instant de fusion dans main (le conseil et les robots ne sont pas plafonnés).
         conf_creations = config_creations(reg)
-        for folder, what_it, command in (("tasks", "tâches proposées", "bee propose-task"), ("proposals", "rule proposals",
+        for folder, what_it, command in (("tasks", "proposed tasks", "bee propose-task"), ("proposals", "rule proposals",
                                                                                                "bee propose"),
-                                        ("invitations", "invitations proposées", "bee invite"),
+                                        ("invitations", "proposed invitations", "bee invite"),
                                         ("reports", "reports", "bee report")):
             if not creations[folder]:
                 continue
             require(creations[folder] <= conf_creations[f"{folder}_max_per_pr"],
-                   f"plafond : {creations[folder]} {what_it} ajoutées par cette PR, au plus {conf_creations[f'{folder}_max_per_pr']} "
-                   f"(creations.{folder}_max_per_pr) : {command} en crée une à la fois")
+                   f"cap: {creations[folder]} {what_it} added by this PR, at most {conf_creations[f'{folder}_max_per_pr']} "
+                   f"(creations.{folder}_max_per_pr): {command} creates one at a time")
             n = recent_creations(reg, base, folder, author, instant)
             require(n <= conf_creations[f"{folder}_max_per_24h"],
-                   f"plafond : {author} aurait {n} {what_it} en 24 h glissantes, au plus {conf_creations[f'{folder}_max_per_24h']} "
+                   f"cap: {author} would have {n} {what_it} over a rolling 24 h, at most {conf_creations[f'{folder}_max_per_24h']} "
                    f"(creations.{folder}_max_per_24h)")
     if added_notes and not (is_council or is_robot):
         # T2, T3 : des notes en nombre noient l'essaim et faussent le cap ; plafonds par PR et sur 24 h glissantes, toutes
         # tâches confondues (le conseil et les robots ne sont pas plafonnés en nombre).
         conf_notes = config_notes(reg)
         require(added_notes <= conf_notes["max_per_pr"],
-               f"plafond : {added_notes} notes ajoutées par cette PR, au plus {conf_notes['max_per_pr']} (notes.max_per_pr) : "
-               "une note dit l'essentiel ; le détail va dans un débat de l'agora")
+               f"cap: {added_notes} notes added by this PR, at most {conf_notes['max_per_pr']} (notes.max_per_pr): "
+               "a note says the essentials; the detail goes into an agora debate")
         if dates_notes:
             beginning = min(dates_notes) - CAP_WINDOW
             n = notes_since(reg, author, beginning)
             require(n <= conf_notes["max_per_24h"],
-                   f"plafond : {author} aurait {n} notes en 24 h toutes tâches confondues (depuis le {en_iso(beginning)}), au plus "
-                   f"{conf_notes['max_per_24h']} sur 24 h glissantes (notes.max_per_24h)")
+                   f"cap: {author} would have {n} notes in 24 h across all tasks (since {en_iso(beginning)}), at most "
+                   f"{conf_notes['max_per_24h']} over a rolling 24 h (notes.max_per_24h)")
     if {"reservation", "parallel_registration"} & set(natures):  # ruche-0096: a new engagement takes the cap at the PR's instant;
         m = r8_maximum(reg, author, tids := [tid for tid, _ in engagements_of(reg, author)], instant)  # said here when only the end refuses
-        require(not m < len(tids) <= r8_maximum(reg, author, tids, PASS_REF), f"règle R8 : {author} prend un engagement après la fin de "
-               f"r8_bootstrap : {len(tids)} réservations ou inscriptions en parallèle, maximum {m} (un nouvel engagement se juge à l'heure de la PR)")
+        require(not m < len(tids) <= r8_maximum(reg, author, tids, PASS_REF), f"rule R8: {author} takes an engagement after the end of "
+               f"r8_bootstrap: {len(tids)} reservations or parallel registrations, maximum {m} (a new engagement is judged at the time of the PR)")
         # ruche-0051: bee valider counts accounts; the gate, persons
         require(len(reg.identities.accounts_of(author)) < 2 or len(tids) <= r8_maximum(reg, author, tids, PASS_REF),
-               f"règle R8 : {author} a {len(tids)} réservations ou inscriptions en parallèle avec ses comptes liés (une personne), "
+               f"rule R8: {author} has {len(tids)} reservations or parallel registrations with their linked accounts (one person), "
                f"maximum {m}")
     require("rename" not in natures or set(natures) == {"rename"}, "a rename (bee rename) is published alone in its PR (ruche-0022)")
     # L'arbre du sens (ruche-0010) : aucun commentaire YAML ajouté au libre-service, et un noeud introduit qui existe.
@@ -7328,7 +7328,7 @@ def cmd_rename(args):
     write_yaml(reg.root / "members" / f"{args.login}.yaml",
                 {**entry_card, "login": args.login, "former_logins": [*(entry_card.get("former_logins") or []), args.old],
                  "renamed_on": now_instant().date().isoformat()})
-    print(f"✓ members/{args.old}.yaml → members/{args.login}.yaml. Publiez, seul : bee publish --title 'Renommage {args.login}'")
+    print(f"✓ members/{args.old}.yaml → members/{args.login}.yaml. Publish, alone: bee publish --title 'Rename {args.login}'")
     return 0
 
 
@@ -9775,7 +9775,7 @@ def r3_causes(reg, cid, assessment=None):
     out_of_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
                       if m not in ignored and (g is None or g < -tolerance)}
     require(not out_of_tolerance, "R5: metric(s) degraded beyond the tolerance: "
-           + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f} %'})" for m, g in out_of_tolerance.items()))
+           + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f}%'})" for m, g in out_of_tolerance.items()))
 
     # Course entre contributions d'une même tâche : un concurrent de l'auteur ne peut que reconnaître sa contribution
     # (seul son avis favorable compte) et ne vote pas sur elle (commandement 3). Sans concurrence, rien ne change.
@@ -9905,7 +9905,7 @@ def human_gate(reg):
 
 
 def percent(x):
-    return f"{100 * x:+.1f} %" if isinstance(x, (int, float)) else "absent"
+    return f"{100 * x:+.1f}%" if isinstance(x, (int, float)) else "absent"
 
 
 def reviewer_alerts(reg, rec):
@@ -11476,7 +11476,7 @@ def build_parser():
 
     p = add_to("debates", cmd_debates, "The agora: the debates, their state, their last argument; --show <debate> (synthesis first).")
     p.add_argument("--status", default="all_of", choices=["open", "closed", "all_of"])
-    p.add_argument("--show", metavar="DEBAT", help="shows a debate: question, synthesis first, then the arguments")
+    p.add_argument("--show", metavar="DEBATE", help="shows a debate: question, synthesis first, then the arguments")
     p.add_argument("--json", action="store_true")
 
     p = add_to("invite", cmd_invite,

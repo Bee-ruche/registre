@@ -3405,7 +3405,7 @@ class TestPullRequests(BaseTest):
         self.commit()
         code, text = self.verify("alice")
         self.assertEqual(code, 1)
-        self.assertIn("30 jours", text)
+        self.assertIn("30 days", text)
 
     def test_registration_and_github_date(self):
         git(self.dir, "switch", "-qc", "i")
@@ -4313,7 +4313,7 @@ class TestPublishBySession(BasePublish):
         git(self.dir, "commit", "-qm", "lot")
         code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "chloe")
         self.assertEqual(code, 1, text)
-        self.assertIn("plafond : 11 notes ajoutées par cette PR, au plus 10", text)
+        self.assertIn("cap: 11 notes added by this PR, at most 10", text)
         for who_is, number in (("chloe", 10), ("bidji29", 11)):
             with self.subTest(who_is=who_is):
                 git(self.dir, "switch", "-qf", "main")
@@ -4840,10 +4840,10 @@ class TestPublishBySession(BasePublish):
         self.on_main("plafond d'arguments par PR ramené à 3")
         for who_is, arguments, tasks, refusal in (
                 ("bidji29", 4, 0, ("4 arguments added, at most 3 (agora.arguments_max_per_pr)",
-                                   "plafond : 4 arguments ajoutés par cette PR, au plus 3")),
+                                   "cap: 4 arguments added by this PR, at most 3")),
                 ("bidji29", 3, 0, None),
                 ("alice", 0, 4, ("4 tasks added, at most 3 (creations.tasks_max_per_pr)",
-                                 "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3")),
+                                 "cap: 4 proposed tasks added by this PR, at most 3")),
                 ("alice", 0, 3, None), ("bidji29", 0, 4, None)):
             with self.subTest(who_is=who_is, arguments=arguments, tasks=tasks):
                 git(self.dir, "switch", "-qf", "main")
@@ -5597,7 +5597,7 @@ class TestParallelPullRequests(BaseParallel):
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "alice")[0], 0)
         self.commit()
         self.self_service("alice", "promotion")
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")  # se promouvoir soi-même
+        self.refused("bruno", "only the holder (alice) releases their reservation")  # se promouvoir soi-même
 
     def test_promotion_by_the_robot_after_expiry(self):
         self.main_reserved_with_registered("bruno")
@@ -5607,7 +5607,7 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.assertEqual(self.task("miniz-0099")["reservation"]["user"], "bruno")
         self.assertEqual(self.verify("github-actions[bot]")[0], 0)
-        self.refused("bruno", "seul le titulaire (alice)")  # même après l'expiration, seul le robot la constate
+        self.refused("bruno", "only the holder (alice)")  # même après l'expiration, seul le robot la constate
 
     def test_submission_by_the_holder_and_release_to_review(self):
         self.main_reserved_with_registered("bruno")
@@ -5618,7 +5618,7 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.assertEqual(self.task("miniz-0099")["status"], "in_review")
         self.self_service("alice", "release")
-        self.refused("bruno", "seul le titulaire")
+        self.refused("bruno", "only the holder")
         git(self.dir, "switch", "-q", "main")
         self.parallel_one("miniz-0099", "chloe")
         self.commit("chloe s'inscrit")
@@ -5709,7 +5709,7 @@ class TestParallelPullRequests(BaseParallel):
         self.branch()
         bee.modify_task(self.path(), reservation={"user": "bruno", "since": "2026-10-27T13:00:00Z"}, parallel=[])
         self.commit()
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")
+        self.refused("bruno", "only the holder (alice) releases their reservation")
 
     def test_attack_promote_someone_other_than_the_earliest(self):
         self.main_reserved_with_registered("bruno", "chloe")
@@ -5731,7 +5731,7 @@ class TestParallelPullRequests(BaseParallel):
         self.branch()
         bee.modify_task(self.path(), status="open", reservation=None, parallel=[])
         self.commit()
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")
+        self.refused("bruno", "only the holder (alice) releases their reservation")
         # Même le titulaire ne libère pas en emportant les inscrits : le plus ancien prend sa place.
         self.refused("alice", "the oldest becomes the holder")
 
@@ -8232,7 +8232,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.self_service("alice", "argument")
         self.argue("alice", "for", "Le vingt et unième.", debate="D-0005")
         self.commit("21")
-        self.refused("alice", "21 arguments ajoutés par cette PR, au plus 20")
+        self.refused("alice", "21 arguments added by this PR, at most 20")
 
     def test_refusal_size_caps(self):
         self.main_with_debate()
@@ -8806,13 +8806,13 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.note_by_hand(*({"at": f"2099-01-01T00:{n:02d}:00Z", "text": f"[attempt équipe red] noyade {n + 1}/15."} for n in range(15)))
         self.commit()
         self.refused("gaspard", "dated 2099-01-01T00:00:00Z: a note is dated at the time of the PR",
-                     "plafond : 15 notes ajoutées par cette PR, au plus 10 (notes.max_per_pr)")
+                     "cap: 15 notes added by this PR, at most 10 (notes.max_per_pr)")
 
     def test_T3_forty_backdated_notes(self):
         self.branch("t3")
         self.note_by_hand(*({"at": f"2026-10-19T22:{n:02d}:00Z"} for n in range(40)))
         self.commit()
-        self.refused("gaspard", "dated 2026-10-19T22:00:00Z", "plafond : 40 notes ajoutées par cette PR")
+        self.refused("gaspard", "dated 2026-10-19T22:00:00Z", "cap: 40 notes added by this PR")
 
     def test_T15_note_of_40_kb(self):
         text = "[attempt équipe red] " + "x" * 40000
@@ -8838,7 +8838,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("trop")
         self.note_by_hand({"text": "De trop."})
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 21 notes en 24 h toutes tâches confondues")
+        self.refused("gaspard", "cap: gaspard would have 21 notes in 24 h across all tasks")
         # Une note antidatée dans la tolérance de 2 h, mais d'avant la note précédente : refusée.
         self.branch("before")
         self.note_by_hand({"at": "2026-10-29T23:05:00Z"}, task="miniz-0099")
@@ -8865,8 +8865,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         honest_one = bee.read_yaml(path)
         bee.write_yaml(path, {**honest_one, "opened_at": "2026-10-21T00:00:00Z", "status": "adopted", "result": "adoptée (essai)"})
         self.commit()
-        self.refused("gaspard", "opened_at (2026-10-21T00:00:00Z) doit être l'heure de la PR", "une proposition naît ouverte",
-                     "une proposition naît sans resultat")
+        self.refused("gaspard", "opened_at (2026-10-21T00:00:00Z) must be the time of the PR", "a proposal is born open",
+                     "a proposal is born without a result")
         bee.write_yaml(path, honest_one)
         self.commit("telle que l'écrit bee propose")
         self.self_service("gaspard", "proposal")
@@ -8878,7 +8878,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("outcome")
         bee.write_yaml(path, {**honest_one, "status": "adopted", "result": "adoptée"})
         self.commit()
-        self.refused("gaspard", "seul le conseil écrit son issue")
+        self.refused("gaspard", "only the council writes its outcome")
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 3, text)
 
@@ -8920,8 +8920,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         for number_of in range(1, 5):  # 5 arguments dans chacun de 4 débats : 20, sous le plafond par débat et par PR
             self.arguments_by_hand(f"D-{number_of:04d}", 5)
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 20 arguments en 24 h tous débats confondus",
-                     "au plus 15 par utilisateur sur 24 h glissantes (agora.arguments_max_per_24h_all_debates)")
+        self.refused("gaspard", "cap: gaspard would have 20 arguments in 24 h across all debates",
+                     "at most 15 per user over a rolling 24 h (agora.arguments_max_per_24h_all_debates)")
         # Honnête : 15 arguments, 3 dans chacun de 5 débats ; le 16e est refusé, par l'outil comme par verifier-pr.
         self.branch("quinze")
         for number_of in range(1, 6):
@@ -8935,7 +8935,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("seize")
         self.arguments_by_hand("D-0006", 1)
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 16 arguments en 24 h tous débats confondus")
+        self.refused("gaspard", "cap: gaspard would have 16 arguments in 24 h across all debates")
         self.a("2026-10-30T22:11:00Z")
         self.argue("gaspard", "for", "Le lendemain.", debate="D-0007")
 
@@ -9079,7 +9079,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         for n in range(1, 21):
             self.proposal(f"P-{n:04d}")
         self.commit()
-        self.refused("gaspard", "plafond : 20 rule proposals ajoutées par cette PR, au plus 3 (creations.proposals_max_per_pr)")
+        self.refused("gaspard", "cap: 20 rule proposals added by this PR, at most 3 (creations.proposals_max_per_pr)")
         # Honnête : 3 puis 2, fusionnées ; la 6e en 24 h est refusée, par l'outil comme par verifier-pr.
         for lot, numbers_of in (("trois", range(1, 4)), ("deux", range(4, 6))):
             self.branch(lot)
@@ -9093,7 +9093,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.branch("sixieme")
         self.proposal("P-0006")
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 6 rule proposals en 24 h glissantes, au plus 5")
+        self.refused("gaspard", "cap: gaspard would have 6 rule proposals over a rolling 24 h, at most 5")
         self.a("2026-10-30T22:01:00Z")  # 24 h après les cinq premières, une place se libère
         self.proposal("P-0006")
         self.commit("le lendemain")
@@ -9109,7 +9109,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.branch("masse")
         self.raw_tasks(4)
         self.commit()
-        self.refused("gaspard", "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3 (creations.tasks_max_per_pr)")
+        self.refused("gaspard", "cap: 4 proposed tasks added by this PR, at most 3 (creations.tasks_max_per_pr)")
         for lot, number in (("trois", 3), ("deux", 2)):
             self.branch(lot)
             for _ in range(number):
@@ -9122,7 +9122,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.branch("sixieme")
         self.raw_tasks(1)
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 6 tâches proposées en 24 h glissantes, au plus 5")
+        self.refused("gaspard", "cap: gaspard would have 6 proposed tasks over a rolling 24 h, at most 5")
 
     def test_B1_one_user_does_not_tip_the_balance(self):
         # 30 tâches proposées par gaspard, publiées sur main avant ces plafonds, et une seule d'alice, le même jour.
@@ -10606,7 +10606,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.invite()
         self.invite("alice", "github:hubot")
         self.commit()
-        self.refused("alice", "plafond : 2 invitations proposées ajoutées par cette PR, au plus 1")
+        self.refused("alice", "cap: 2 proposed invitations added by this PR, at most 1")
         self.abandon()
         for n, (identifier, when_at) in enumerate((("github:octocat", "2026-10-30T10:00:00Z"), ("github:hubot", "2026-10-30T11:00:00Z")), 1):
             self.a(when_at)
@@ -10622,7 +10622,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.write_invitation({**inv, "id": "I-0003", "person": {"identifier": "github:x", "channel": "https://github.com/x"},
                                 "proposed_at": self.now_instant()}, "I-0003")
         self.commit()
-        self.refused("alice", "plafond : alice aurait 3 invitations proposées en 24 h glissantes, au plus 2")
+        self.refused("alice", "cap: alice would have 3 proposed invitations over a rolling 24 h, at most 2")
 
     def test_disguised_text_or_without_mention(self):
         self.a("2026-10-30T10:00:00Z")
@@ -11282,7 +11282,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.branch()
         bee.write_invitation(path, {"fingerprints": [bee.fingerprint("github:x")]})
         self.commit()
-        self.refused("bidji29", "illisible(s) sur main : invitations/do-not-contact.yaml")
+        self.refused("bidji29", "unreadable on main: invitations/do-not-contact.yaml")
         self.abandon()
         code, text = self.invite_raw(identifier="github:hubot")
         self.assertEqual(code, 1, text)
@@ -11290,7 +11290,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.branch()
         self.propose_raw(person={"identifier": "github:hubot", "channel": "https://github.com/hubot"})
         self.commit()
-        self.refused("alice", "illisible(s) sur main")
+        self.refused("alice", "unreadable on main")
 
 class TestSecondReviewRuche0020(BaseReviewRuche0020):
     """Seconde revue adverse de ruche-0020 (63ee54c) : un test par constat (A1 à H2), parcours honnête accepté, détournement
@@ -13765,9 +13765,9 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.valid_one()
         case_of = (  # (ce qu'écrit la PR, son auteur, ce qui est refusé)
             ("le débat général du conseil", lambda: self.propose_raw("I-0002", "bruno", debate="D-0001"), "bruno",
-             "debate « D-0001 » : not the debate opened for I-0002"),
+             "debate « D-0001 »: not the debate opened for I-0002"),
             ("le débat d'une autre invitation", lambda: self.propose_raw("I-0002", "bruno", debate="D-0002"), "bruno",
-             "debate « D-0002 » : not the debate opened for I-0002"),
+             "debate « D-0002 »: not the debate opened for I-0002"),
             ("un débat ouvert par un autre", lambda: (self.propose_raw("I-0002", "bruno"), self.write(
                 {**self.debate("D-0003"), "opened_by": "chloe"}, "D-0003")), "bruno", "not the debate opened for I-0002 with it, by its proposer"),
             ("un débat ouvert seul pour un numéro à venir", lambda: self.write(self.new_debate(id="D-0003", invitation="I-0002"), "D-0003"),
@@ -13786,10 +13786,10 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.commit("sur main : une invitation qui nomme le débat général")
         self.assertIn("I-0002.yaml: debate « D-0001 »: not the debate opened for it", self.bee("validate")[1], "bee validate le refuse")
         self.a("2026-11-02T12:00:00Z")
-        self.ko("debate « D-0001 » : not the debate opened for I-0002", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+        self.ko("debate « D-0001 »: not the debate opened for I-0002", "invitation", "guardian-approval", "I-0002", "--user", "gina")
         self.branch()
         self.agreement_by_hand("guardian_approval", "gina", "I-0002")
-        self.refused("gina", "debate « D-0001 » : not the debate opened for I-0002")
+        self.refused("gina", "debate « D-0001 »: not the debate opened for I-0002")
 
     def test_an_invitation_debate_whose_rapporteur_is_the_proposer_is_refused(self):
         self.a("2026-10-30T10:00:00Z")
@@ -14019,11 +14019,11 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.argue("chloe", "against", "Une objection arrivée après la synthèse.", debate="D-0002")
         self.publish("chloe", "argument")
         self.a("2026-11-02T13:00:00Z")
-        self.ko("D-0003 : its synthesis is out of date (none yet)", "invitation", "guardian-approval", "I-0002", "--user", "gina")
-        self.ko("D-0002 : its synthesis is out of date (it does not cover A2)", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("D-0003: its synthesis is out of date (none yet)", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+        self.ko("D-0002: its synthesis is out of date (it does not cover A2)", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.agreement_by_hand("guardian_approval", "gina")
-        self.refused("gina", "D-0002 : its synthesis is out of date (it does not cover A2)")
+        self.refused("gina", "D-0002: its synthesis is out of date (it does not cover A2)")
         self.abandon()
         for when_at, who_is, command, nature in (
                 ("2026-11-02T13:30:00Z", "bruno", ["debate", "synthesize", "D-0002", "--text", "Pour (A1) ; une objection (A2)."], "synthesis"),
@@ -14035,10 +14035,10 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.ok(*command, "--user", who_is)
             self.publish(who_is, nature)
         self.a("2026-11-02T15:00:00Z")
-        self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+        self.ko("D-0002: its synthesis is out of date (it does not cover A3)", "invitation", "council-approval", "I-0001", "--user", "bidji29")
         self.branch()
         self.agreement_by_hand("council_approval", "bidji29")
-        self.refused("bidji29", "D-0002 : its synthesis is out of date (it does not cover A3)")
+        self.refused("bidji29", "D-0002: its synthesis is out of date (it does not cover A3)")
         self.abandon()
         # Un débat clos (ici par le conseil, sur main, sans passer par la porte) : ni feu vert, ni accord du gardien.
         for did in ("D-0002", "D-0003"):
@@ -14086,7 +14086,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.assertEqual((d["synthesis_covers"], d["arguments"][-1]["id"], d["rapporteur"]), ("A2", "A3", "bruno"))
         self.assertLess(d["arguments"][-1]["at"], d["synthesis_at"], "A3 est daté d'avant la synthèse")
         self.a("2026-11-02T14:00:00Z")
-        self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("D-0002: its synthesis is out of date (it does not cover A3)", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         state = next(x for x in json.loads(self.ok("debates", "--json")) if x["id"] == "D-0002")
         self.assertEqual(state["arguments_after_synthesis"], ["A3"], "bee debates compte comme les accords")
         # La relève compte aussi : 72 h après A3, gaspard (ni le rapporteur, ni l'auteur de la dernière synthèse) relève bruno.
@@ -14114,7 +14114,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.ok("debate", "duplicate", "D-0002", "--argument", "A2", "--of", "A1", "--user", "gina")
         self.ok("invitation", "guardian-approval", "I-0001", "--user", "gina")  # la commande voit le marquage local
         self.commit()
-        self.refused("gina", "D-0002 : a duplicate marking and an accord never travel in the same PR")
+        self.refused("gina", "D-0002: a duplicate marking and an accord never travel in the same PR")
         self.abandon()
         # Le marquage d'abord, publié et contestable ; l'accord ensuite.
         for when_at, who_is, command, nature in (
@@ -14133,7 +14133,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
                          ["debate", "close", "D-0002", "--outcome", "no_follow_up"]):
             self.ok(*command, "--user", "bidji29")
         self.commit()
-        self.refused("bidji29", "D-0002 : a duplicate marking and an accord never travel in the same PR")
+        self.refused("bidji29", "D-0002: a duplicate marking and an accord never travel in the same PR")
 
     def test_a_general_debate_keeps_the_rules_of_main(self):
         """Le scénario de la revue : dans un débat ordinaire, un argument marqué doublon après la synthèse empêche toujours le
@@ -14170,7 +14170,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.a("2026-10-30T10:00:00Z")
         self.branch()
         text = self.gesture("record-sent", "bidji29")
-        self.assertIn("⚠ I-0001: D-0002 : its synthesis is out of date (it does not cover A2)", text)
+        self.assertIn("⚠ I-0001: D-0002: its synthesis is out of date (it does not cover A2)", text)
         self.publish("bidji29", "invitation_sending", free_one=False)
         self.assertEqual(self.invitation()["status"], "sent", "un envoi consigné reste un fait")
         alert = "I-0001: sending recorded on 2026-10-30T10:00:00Z on an out-of-date synthesis (D-0002 did not cover A2)"
@@ -14198,7 +14198,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.publish("gina", "debate_closing")
         self.assertNotIn("out of date", self.ok("show", "I-0002"), "décidée : pas d'avertissement")
         self.a("2026-10-28T10:00:00Z")
-        self.ko("D-0003 : its synthesis is out of date (it does not cover A2)", "invitation", "renew", "I-0002", "--user",
+        self.ko("D-0003: its synthesis is out of date (it does not cover A2)", "invitation", "renew", "I-0002", "--user",
                 "bidji29")
         self.branch()
         self.gesture("renew", "bidji29")
@@ -14220,7 +14220,7 @@ class TestDebateWithoutFollowUpRuche0139(BaseReviewRuche0020):
     """ruche-0139 : le débat propre d'une invitation refusée, restée sans réponse ou retirée ne reçoit plus d'argument ; seul un gardien
     en fonction ou le conseil le clôt, sans suite ; bee debates le montre en attente de cette clôture ; le caviardage reste possible."""
 
-    END = "I-0001 ended without being accepted : its debate takes no new argument"
+    END = "I-0001 ended without being accepted: its debate takes no new argument"
 
     def finish(self, value="refused"):
         """I-0001 va jusqu'à la relance (D-0002 : A1 de bruno, synthèse à jour), puis le conseil consigne sa fin."""
@@ -14503,7 +14503,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
         self.commit()
         self.awaits_the_council("gina", "incident")
-        self.refused("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
+        self.refused("alice", f"{self.INCIDENTS}: change reserved for the human council")
         self.merge()
         # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
         self.ko("open incident(s): INC-0001", "invitation", "guardian-approval", "I-0001", "--user", "gina")
@@ -14557,7 +14557,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 self.branch()
                 bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
                 self.commit()
-                self.refused("gina", f"{self.INCIDENTS} illisible sur main : le conseil le répare d'abord")
+                self.refused("gina", f"{self.INCIDENTS} unreadable on main: the council repairs it first")
                 self.abandon()
 
     def test_bee_incident_says_that_the_comments_are_lost(self):
@@ -14594,7 +14594,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.branch("ivan")
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
         self.commit()
-        self.refused("ivan", "modification réservée au conseil humain")
+        self.refused("ivan", "change reserved for the human council")
         self.abandon("ivan")
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
         self.commit("INC-0001, par le conseil")
@@ -14608,12 +14608,12 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 self.branch()
                 bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": list_of})
                 self.commit()
-                self.refused("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+                self.refused("gina", "a guardian adds only one open incident to it, at the end of the list")
                 self.abandon()
         self.branch()
         (self.dir / self.INCIDENTS).unlink()
         self.commit()
-        self.refused("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+        self.refused("gina", "a guardian adds only one open incident to it, at the end of the list")
         self.abandon()
         # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
         canonical = bee.invitation_render({"incidents": [one_of, two]})
@@ -14623,11 +14623,11 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 "title : ESC": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un \x1b[2Jécart."}]}), "U+001B"),
                 "titre sur deux lignes": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un écart.\nSuite."}]}),
                                           "title: a single line"),
-                "commentaire et remplissage": ("# Ajouté à la main\n" + canonical + "\n\n\n", "pas exactement sous la forme"),
+                "commentaire et remplissage": ("# Ajouté à la main\n" + canonical + "\n\n\n", "not exactly in the form"),
                 "issue sur un incident ouvert": (bee.invitation_render({"incidents": [one_of, {**two, "outcome": "Rien à faire."}]}),
-                                                 "avec id, title et opened_at seulement"),
-                "numéro en double": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
-                "numéro sauté": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
+                                                 "with id, title and opened_at only"),
+                "numéro en double": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0001"}]}), "with the next number (INC-0002)"),
+                "numéro sauté": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0007"}]}), "with the next number (INC-0002)"),
                 "date d'hier": (bee.invitation_render({"incidents": [one_of, {**two, "opened_at": "2026-11-01T11:00:00Z"}]}),
                                 "must be the time of the PR")}
         for name, (text, message) in raw.items():
@@ -14654,7 +14654,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.branch()
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of, last, {**two, "id": "INC-10000"}]})
         self.commit()
-        self.refused("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant")
+        self.refused("gina", "a guardian adds only one open incident to it, at the end of the list, with the next number")
         self.abandon()
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
         self.commit("retour à INC-0001, par le conseil")
@@ -14666,7 +14666,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.ko("gina is neither a guardian in office", "incident", "--user", "gina", "--title", "Un écart.")
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of, two]})
         self.commit()
-        self.refused("gina", "modification réservée au conseil humain")
+        self.refused("gina", "change reserved for the human council")
 
 
 class TestCopiedManifest(BaseDressRehearsal):
@@ -15026,13 +15026,13 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R4: instructions_n6 +5.0 %, but the stopwatch does not confirm it beyond the noise (-0.4 %): a measurement from "
+        self.assertIn("R4: instructions_n6 +5.0%, but the stopwatch does not confirm it beyond the noise (-0.4%): a measurement from "
                       "another configuration that sees the gain is needed (bee record-measurement) [previous verdict of the same "
                       "measured content, commit aaa0001]", text)
         self.assertEqual(text.count("R4:"), 1, "le verdict courant, lui, confirme le gain")
         # Un recul au-delà du bruit, dans n'importe lequel des verdicts du même contenu, est un refus.
         self.verdict_("aaa0003", "7ee0001", stopwatch=-0.02)
-        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %)", self.acceptance(self.cid)[1])
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0%)", self.acceptance(self.cid)[1])
         # Parcours honnête : un autre code (autres décomptes), mesuré une fois et confirmé ; un autre contenu ne compte pas.
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)  # relu au passage suivant : rien de plus
@@ -15207,7 +15207,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001]", text)
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), -0.02 / 1.1)
         # Un verdict sans décompte se reconnaît à l'arbre.
         without_it = self.dir.parent / "without_it.json"
@@ -15231,7 +15231,7 @@ class TestRound3(BaseParallel):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001, in {first_one}]", text)
+        self.assertIn(f"goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001, in {first_one}]", text)
 
     def test_s2_the_commit_read_is_given_in_full(self):
         """S2 : une collision sur les 7 premiers caractères se fabrique en deux minutes ; --commit exige le sha entier, égal."""
@@ -15321,7 +15321,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
+        self.assertIn("goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001]", text)
         # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
         self.verdict_("bbb0001", "7ee0003", stopwatch=0.0128, instructions=0.06)
         for who_is in ("bruno", "bidji29"):
@@ -15563,7 +15563,7 @@ class TestSpelling(BaseInvitations):
         self.ko("Alice: your member file is alice", "propose-task", "miniz", "--user", "Alice", "--type", "test")
         next_value = last.with_name(f"miniz-{int(last.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
         for author, chunks in (("Alice", ["PR author « Alice »: their member file is alice", "created_by « Alice » is written alice"]),
-                                 ("alice", ["plafond : alice aurait 6"])):  # témoin honnête : le plafond d'alice tient
+                                 ("alice", ["cap: alice would have 6"])):  # témoin honnête : le plafond d'alice tient
             self.branch()
             bee.write_yaml(next_value, {**bee.read_yaml(last), "id": next_value.stem, "created_by": author})
             self.commit()
@@ -15582,7 +15582,7 @@ class TestSpelling(BaseInvitations):
         self.a("2026-10-30T11:30:00Z")
         self.ko("Gaspard: your member file is gaspard", "note", "miniz-0099", "--user", "Gaspard", "--text", "De trop.")
         for author, chunks in (("Gaspard", ["PR author « Gaspard »: their member file is gaspard", "by « Gaspard » is written gaspard"]),
-                                 ("gaspard", ["plafond : gaspard aurait 21 notes en 24 h"])):  # témoin honnête
+                                 ("gaspard", ["cap: gaspard would have 21 notes in 24 h"])):  # témoin honnête
             self.branch("trop")
             self.note_by_hand({"by": author, "text": "De trop."})
             self.commit()
@@ -16484,7 +16484,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
         self.assertIn(f"votes/{cid}/{AGENT}.yaml: {AGENT} is an agent account (governance/agent-accounts.yaml): a person is "
-                      "written by their own pseudo", text)
+                      "written by their own login", text)
 
     def author_record(self, cid):
         return bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")["author"]
@@ -16546,7 +16546,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         path.write_text(path.read_text(encoding="utf-8").replace("governance: 50", "governance: 40")
                           .replace("projects: 30", "projects: 40"), encoding="utf-8")
         self.commit()
-        self.refused("alice", "modification réservée au conseil humain")
+        self.refused("alice", "change reserved for the human council")
         self.human_one("bidji29", "governance")
         text = self.human_one(AGENT, "governance", "agent_account")
         self.assertNotIn("FUSION_AUTO=oui", text)
@@ -16599,7 +16599,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         declare_agents(self.dir, (AGENT, "bidji29"), ("alice-bot", "alice"))
         self.ok("take", "miniz-0099", "--user", "alice")
         self.commit()
-        self.refused("alice", "governance/agent-accounts.yaml : modification réservée au conseil humain")
+        self.refused("alice", "governance/agent-accounts.yaml: change reserved for the human council")
         self.refused("alice-bot", "you reserve only for yourself (alice-bot)")
         # The agent account repoints itself to another person in its own PR: refused (an authority file), and the base,
         # which still says bidji29, is what the gate reads.
@@ -17784,7 +17784,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
                 self.branch()
                 self.proposal("P-0002", **fields)
                 self.commit()
-                self.refused("gaspard", f"proposals/P-0002.yaml : {expected}")
+                self.refused("gaspard", f"proposals/P-0002.yaml: {expected}")
                 self.abandon()
         self.branch()
         self.proposal("P-0002", proposed_text="🐝" * 8000, reason="🐝" * 8000)  # at the bound, 4 bytes each: the file fits too
@@ -18332,8 +18332,8 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.commit()
         self.valid_one()  # the state alone accepts it: the latest engagement predates the end date
         for author in (AGENT, "bidji29"):
-            text = self.refused(author, "règle R8 : bidji29 prend un engagement après la fin de r8_bootstrap : 4 réservations ou inscriptions "
-                                         "en parallèle, maximum 3 (un nouvel engagement se juge à l'heure de la PR)")
+            text = self.refused(author, "rule R8: bidji29 takes an engagement after the end of r8_bootstrap: 4 reservations or parallel registrations"
+                                         ", maximum 3 (a new engagement is judged at the time of the PR)")
             self.assertNotIn("rule R8: bidji29 has 4", text)
         self.abandon("antidatee")
         self.ko("rule R8: bidji29 already has 3 reservations or parallel registrations (ruche-9001, ruche-9002, ruche-9003), maximum 3",
@@ -18369,7 +18369,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         code, text = self.verify("bidji29", *push)
         self.assertEqual(code, 1, text)
         self.assertIn("--pr-time (2026-11-30T23:30:00Z): outside [the check - 24 h, the check + 1 min]", text)
-        self.refused("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_bootstrap")  # a local run: the check's time
+        self.refused("bidji29", "rule R8: bidji29 takes an engagement after the end of r8_bootstrap")  # a local run: the check's time
 
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
         for n in range(9001, 9005):
@@ -18394,7 +18394,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
             self.commit()
             for author in authors:
                 text = self.refused(author, f"rule R8: {who_is} has 4 reservations or parallel registrations", "maximum 3")
-                self.assertNotIn("après la fin de r8_bootstrap", text, "the end date is not what refuses it: one refusal")
+                self.assertNotIn("after the end of r8_bootstrap", text, "the end date is not what refuses it: one refusal")
             self.abandon("quatrieme")
         # Tooling tasks created by the council: the agent account reserves them for bidji29, as self-service, up to the 8th.
         for n in range(9004, 9008):
@@ -18471,7 +18471,7 @@ class TestClocksRuche0091(BaseInvitations):
             self.propose_task("gaspard")
         self.commit("five proposed tasks of gaspard")
         self.pr("2026-10-31T09:30:00Z", lambda: self.propose_task("gaspard"))  # bee checks the cap at 09:30 too
-        return "gaspard", "2026-10-31T08:30:00Z", "2026-10-31T09:30:00Z", (), "plafond : gaspard aurait 6 tâches proposées en 24 h"
+        return "gaspard", "2026-10-31T08:30:00Z", "2026-10-31T09:30:00Z", (), "cap: gaspard would have 6 proposed tasks over a rolling 24 h"
 
     def r8_end(self):
         for n in range(9001, 9009):
@@ -18487,7 +18487,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("seven tooling tasks of bidji29")
         pushed_one = "2026-11-30T23:30:00Z"
         self.pr(pushed_one, lambda: self.modify("ruche-9008", status="reserved", reservation={"user": "bidji29", "since": pushed_one}))
-        return "bidji29", pushed_one, "2026-12-01T00:30:00Z", (), "règle R8 : bidji29 prend un engagement après la fin de r8_bootstrap"
+        return "bidji29", pushed_one, "2026-12-01T00:30:00Z", (), "rule R8: bidji29 takes an engagement after the end of r8_bootstrap"
 
     def silence_agora(self):
         self.a("2026-10-30T12:00:00Z")
@@ -18566,7 +18566,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("propose", "--user", "gaspard", "--rule", "R4", "--text", "Au moins 1,5 % sur la "
                                          "métrique visée.", "--reason", "Le bruit mesuré est plus faible que prévu."))
-        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "opened_at (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "opened_at (2026-10-30T10:00:00Z) must be the time of the PR"
 
     def date_d_invitation(self):
         pushed_one = "2026-10-30T10:00:00Z"
@@ -18621,7 +18621,7 @@ class TestClocksRuche0091(BaseInvitations):
         verification = "2026-11-02T09:30:00Z" if gesture != "withdrawal" else "2026-11-02T10:30:00Z"
         self.pr(verification, lambda: self.ok("release-expired"))
         refusal = ("one withdraws only one's own parallel registration (bruno" if gesture == "withdrawal" else
-                 "seul le titulaire (alice) libère sa réservation avant expiration")
+                 "only the holder (alice) releases their reservation before it expires")
         return "github-actions[bot]", "2026-11-02T08:30:00Z" if gesture != "withdrawal" else "2026-11-02T09:30:00Z", verification, (), refusal
 
     def brake(self):
@@ -20201,7 +20201,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.branch("quatrieme")
         bee.modify_task(self.task_path("miniz-9005"), status="reserved", reservation={"user": "farid", "since": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("farid", "règle R8 : farid a 4 réservations ou inscriptions en parallèle")
+        self.refused("farid", "rule R8: farid has 4 reservations or parallel registrations")
 
     def test_one_voice_one_reviewer_and_never_for_oneself(self):
         self.a("2026-10-30T10:00:00Z")
@@ -20601,7 +20601,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.assertNotIn("account_of", bee.read_yaml(self.dir / "members/bruno.yaml"))
         bee.write_yaml(self.dir / "members/alice.yaml", {k: v for k, v in alice.items() if k != "login"})
         text = self.ko("members/farid.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, "
-                        "between two member files that name their pseudo", "validate")
+                        "between two member files that name their login", "validate")
         self.assertNotIn("Traceback", text)
 
     def test_one_vote_and_one_measurement_per_person(self):
@@ -20679,7 +20679,7 @@ class ReportTools(BaseInvitations):
         self.branch()
         self.by_hand(name, by=who_is, **fields)
         self.commit()
-        self.assertNotIn("FUSION_AUTO=oui", self.refused(author or who_is, f"reports/{name}.yaml : {chunk}"))
+        self.assertNotIn("FUSION_AUTO=oui", self.refused(author or who_is, f"reports/{name}.yaml: {chunk}"))
         self.abandon()
 
 
@@ -20708,7 +20708,7 @@ class TestReportsRuche0118(ReportTools):
                 self.branch()
                 self.by_hand("S-0002", **{"by": "chloe", "accounts": ["farid", "gaspard"], **fields})
                 self.commit()
-                self.assertNotIn("FUSION_AUTO=oui", self.refused("chloe", f"reports/S-0002.yaml : {chunk}"))
+                self.assertNotIn("FUSION_AUTO=oui", self.refused("chloe", f"reports/S-0002.yaml: {chunk}"))
                 self.abandon()
         # bee signaler refuses the same before writing anything; an unknown code is not even an option.
         self.ko(outside, "report", "--user", "chloe", "--accounts", "farid", "hector", "--reason", "cross_votes")
@@ -20744,7 +20744,7 @@ class TestReportsRuche0118(ReportTools):
                 self.branch()
                 gesture(self.dir / "reports/S-0001.yaml")
                 self.commit()
-                self.refused("gaspard", "reports/S-0001.yaml : a report is neither changed nor withdrawn : the council alone decides it")
+                self.refused("gaspard", "reports/S-0001.yaml: a report is neither changed nor withdrawn: the council alone decides it")
                 self.abandon()
         # The council links: both member files are written, and the pair then counts as one person.
         self.a("2026-10-30T12:00:00Z")
@@ -20769,7 +20769,7 @@ class TestReportsRuche0118(ReportTools):
         self.branch()
         self.by_hand("S-0003", by="alice", accounts=["farid", "chloe-b"], reason="cross_reviews")
         self.commit()
-        self.refused("alice", f"reports/S-0003.yaml : {blocked}")
+        self.refused("alice", f"reports/S-0003.yaml: {blocked}")
         self.abandon()
         self.a("2026-11-29T12:01:00Z")
         self.assertEqual(self.report("alice", "farid", "chloe-b", "cross_reviews"), "S-0003")
@@ -20794,7 +20794,7 @@ class TestReportsRuche0118(ReportTools):
                 self.branch()
                 self.by_hand("S-0001", accounts=accounts)
                 self.commit()
-                self.refused("gaspard", f"reports/S-0001.yaml : {him}")
+                self.refused("gaspard", f"reports/S-0001.yaml: {him}")
                 self.abandon()
         # One open report per pair, by person: whoever files it, in whatever order.
         self.report("chloe", "alice", "bruno")
@@ -20803,14 +20803,14 @@ class TestReportsRuche0118(ReportTools):
         self.branch()
         self.by_hand("S-0002", accounts=["bruno", "alice"])
         self.commit()
-        self.refused("gaspard", f"reports/S-0002.yaml : {open}")
+        self.refused("gaspard", f"reports/S-0002.yaml: {open}")
         self.abandon()
         # The reporter's cap (bee.yaml, creations): one per PR, two over 24 sliding hours by default.
         self.branch()
         self.by_hand("S-0002", by="chloe", accounts=["alice", "farid"])
         self.by_hand("S-0003", by="chloe", accounts=["bruno", "farid"])
         self.commit()
-        self.refused("chloe", "plafond : 2 reports ajoutées par cette PR, au plus 1 (creations.reports_max_per_pr)")
+        self.refused("chloe", "cap: 2 reports added by this PR, at most 1 (creations.reports_max_per_pr)")
         self.abandon()
         self.a("2026-10-30T11:00:00Z")
         self.report("chloe", "alice", "farid")
@@ -20820,7 +20820,7 @@ class TestReportsRuche0118(ReportTools):
         self.branch()
         self.by_hand("S-0003", by="chloe", accounts=["bruno", "farid"])
         self.commit()
-        self.refused("chloe", "plafond : chloe aurait 3 reports en 24 h glissantes, au plus 2 (creations.reports_max_per_24h)")
+        self.refused("chloe", "cap: chloe would have 3 reports over a rolling 24 h, at most 2 (creations.reports_max_per_24h)")
         self.abandon()
         # The cap is bee.yaml's setting: raised by the council, the third passes and the fourth is refused (with the cap of open
         # reports per person who reports raised too; gaspard and farid are one person, so dora is the fourth person).
@@ -20873,7 +20873,7 @@ class TestReportsRuche0118(ReportTools):
         self.branch()
         self.by_hand("S-0003", by="gaspard", accounts=["bruno", "chloe"])
         self.commit()
-        self.refused("agent-de-gaspard", "plafond : gaspard aurait 3 reports en 24 h glissantes, au plus 2 (creations.reports_max_per_24h)")
+        self.refused("agent-de-gaspard", "cap: gaspard would have 3 reports over a rolling 24 h, at most 2 (creations.reports_max_per_24h)")
         self.abandon()
         self.a("2026-10-31T10:01:00Z")  # past the 24 hours: the cap of open reports remains
         reporter = "gaspard already has 2 open reports, at most 2 per person who reports (creations.reports_open_max)"
@@ -20932,7 +20932,7 @@ class TestReportsRuche0118(ReportTools):
                 (self.dir / "reports/S-0001.yaml").write_bytes(other.encode("utf-8"))
                 self.commit()
                 self.assertEqual(self.read("reports/S-0001.yaml"), honest_one)  # the same data, other bytes
-                self.refused("chloe", "reports/S-0001.yaml : not exactly the file bee report writes")
+                self.refused("chloe", "reports/S-0001.yaml: not exactly the file bee report writes")
                 self.abandon()
         for at in ("20261030T100000Z", "2026-10-30 10:00:00Z", "2026-10-30T10:00:00+00:00", "2026-10-30T10:00Z", "2026-10-30T10:00:00.0Z"):
             with self.subTest(at=at):
@@ -20968,7 +20968,7 @@ class TestReportsRuche0118(ReportTools):
                 self.branch("decision")
                 bee.write_yaml(self.dir / f"reports/{name}.yaml", {**s, "decision": {"by": "alice", "at": s["at"], "outcome": "no_evidence"}})
                 self.commit()
-                self.refused("alice", f"reports/{name}.yaml : {part_of}")
+                self.refused("alice", f"reports/{name}.yaml: {part_of}")
                 self.abandon("decision")
         # The other council member: signed by the PR's author, at the time of the PR, as bee writes it ; « lies » only with both files.
         self.a("2026-10-30T12:00:00Z")
@@ -20988,7 +20988,7 @@ class TestReportsRuche0118(ReportTools):
                 for who_is, entry_card in members.items():
                     bee.write_yaml(self.dir / f"members/{who_is}.yaml", entry_card)
                 self.commit()
-                self.refused("bidji29", f"reports/S-0001.yaml : {chunk}")
+                self.refused("bidji29", f"reports/S-0001.yaml: {chunk}")
                 self.abandon("decision")
         # Honest: bee signalement writes the decision and, to link, both member files in the same PR.
         self.decider("S-0001", "--link", "alice")
@@ -21110,7 +21110,7 @@ class TestReportsRuche0137(ReportTools):
                     self.branch("decision")
                     bee.write_yaml(self.dir / f"reports/{name}.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "no_evidence"}})
                     self.commit()
-                    self.refused(author, f"reports/{name}.yaml : {his}")
+                    self.refused(author, f"reports/{name}.yaml: {his}")
                     self.abandon("decision")
         # A guardian in office decides a report a council member filed, never another ; it links as the council does.
         self.report("gaspard", "dora", "chloe")  # S-0004
@@ -21119,7 +21119,7 @@ class TestReportsRuche0137(ReportTools):
         s = self.read("reports/S-0004.yaml")
         bee.write_yaml(self.dir / "reports/S-0004.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
         self.commit()
-        self.refused("gina", "reports/S-0004.yaml : a report is neither changed nor withdrawn : the council alone decides it")
+        self.refused("gina", "reports/S-0004.yaml: a report is neither changed nor withdrawn: the council alone decides it")
         self.abandon("decision")
         # Linking, the guardian writes the link of its decision in the two files, nothing else.
         for who_is, fields, chunk in (("alice", {"preferred_categories": ["compression"]}, "only the preferred categories can be changed"),
@@ -21194,7 +21194,7 @@ class TestReportsRuche0137(ReportTools):
                 self.branch("decision")
                 bee.write_yaml(self.dir / f"reports/{name}.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
                 self.commit()
-                self.refused("gina", f"reports/{name}.yaml : {guarantor}")
+                self.refused("gina", f"reports/{name}.yaml: {guarantor}")
                 self.abandon("decision")
         self.decider("S-0002", "--dismiss", "no_evidence")  # another council member decides it
         self.valid_one()
@@ -21253,7 +21253,7 @@ class TestReportsRuche0137(ReportTools):
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "linked"}})
         bee.write_yaml(self.dir / "members/alice.yaml", {**alice, "other_accounts": [number_from("farid")]})
         self.commit()
-        self.refused("bidji29", "reports/S-0001.yaml : decision lies: this PR links the two member files")
+        self.refused("bidji29", "reports/S-0001.yaml: decision lies: this PR links the two member files")
         self.abandon("decision")
         self.decider("S-0001", "--link", "farid")
         self.assertEqual(self.read("members/gaspard.yaml")["other_accounts"], [number_from("farid"), number_from("alice")])
@@ -22253,7 +22253,7 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
         git(self.dir, "rm", "-q", "REGLES.md")
         self.commit()
         self.assertEqual(self.verify("bidji29")[0], 0)
-        self.refused("gaspard", "REGLES.md : modification réservée au conseil humain")
+        self.refused("gaspard", "REGLES.md: change reserved for the human council")
 
 
 class TestRenamedCommandsRuche0145(BaseTest):
