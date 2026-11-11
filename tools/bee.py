@@ -7366,7 +7366,7 @@ def report_refusal_on_main(reg, s):
         (d and not (str(d["by"]).casefold() in {*who_is.numbers_of, *already_named(reg)} or d["by"] in reg.council or d["by"] in reg.guardians),
          f"decision/by: {d.get('by')} is not a known account"),  # by account : a later change of council or guardians changes nothing
         (d and account(d["by"]) in {account(x) for x in [by, *accounts]}, "decision/by: neither the reporter nor one of the two accounts"),
-        (d.get("outcome") == "linked" and not who_is.same_one(*accounts), "decision lies: the two member files are linked (bee decide-report --link writes both)")) if fault]
+        (d.get("outcome") == "linked" and not who_is.same_one(*accounts), "linked decision: the two member files are linked (bee decide-report --link writes both)")) if fault]
 
 
 def already_named(reg):
@@ -7393,7 +7393,7 @@ def decision_refusal(reg, before, after, author, instant):
     if refusal := guarantor_refusal(reg, before, author):
         return refusal
     if d.get("outcome") == "linked" and (reg.identities.same_one(*accounts) or not reg.read_identities.same_one(*accounts)):
-        return "decision lies: this PR links the two member files (bee decide-report --link writes both)"
+        return "linked decision: this PR links the two member files (bee decide-report --link writes both)"
     return pr_date_problem(d.get("at"), "decision/at", instant) or (d["at"] != en_iso(read_instant(d["at"])) and f"decision/at ({d['at']}): the time of the PR as bee writes it ({en_iso(instant)})") or None
 
 

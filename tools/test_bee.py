@@ -6198,13 +6198,13 @@ if args[:2] == ["pr", "close"]:
     pr["state"] = "CLOSED"
     sauver()
     sys.exit(0)
-# verdicts.yml, ruche-0025 : réponses brutes de l'API (bee les juge). Par PR : « branche » (tache/<numéro>), « base » (master),
-# « depot_tete » (le dépôt de la PR ; id : crc32 du nom, ou « id_tete »), « maj » (updated_at), « ouverte_le » (created_at),
-# « fermee_le » (closed_at), « cree_le » (created_at de son exécution), « evenements » (API des événements) et « chronologie »
-# (API de la chronologie ; un nom d'événement, ou l'objet entier, daté).
-# Clés globales : « defaut » (branche par défaut, master), « executions » (exécutions en plus de celle de chaque PR qui porte
-# un verdict) et « comparaisons » ({base: statut de compare}, ahead sinon ; None : 404). Les filtres head_sha, event et status
-# de l'API sont ignorés ici, comme si GitHub ne les appliquait pas : bee doit les refaire.
+# verdicts.yml, ruche-0025: the API's raw answers (bee judges them). Per PR: "branche" (tache/<number>), "base" (master),
+# "depot_tete" (the PR's repository; id: crc32 of the name, or "id_tete"), "maj" (updated_at), "ouverte_le" (created_at),
+# "fermee_le" (closed_at), "cree_le" (created_at of its run), "evenements" (the events API) and "chronologie"
+# (the timeline API; an event name, or the whole object, dated).
+# Global keys: "defaut" (default branch, master), "executions" (runs besides the one of each PR that carries
+# a verdict) and "comparaisons" ({base: compare status}, else ahead; None: 404). The API's head_sha, event and status
+# filters are ignored here, as if GitHub did not apply them: bee must redo them.
 import re, zlib
 prs = {u: p for u, p in state.items() if u.startswith("https://")}
 def depot_json(name, id_=None):
@@ -6282,7 +6282,7 @@ if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
     print("\n".join(pr.get("files") or ["miniz_tdef.c"]))
     sys.exit(0)
 if args[:1] == ["api"] and "/contents/" in args[1]:
-    # Fichiers du dépôt de la PR à un commit : {"depot": {"<sha>": {"<chemin>": "<texte>"}}} (FAUX_GH_ETAT, clé "contenus").
+    # The PR repository's files at a commit: {"depot": {"<sha>": {"<path>": "<text>"}}} (FAKE_GH_STATE, key "contenus").
     import base64
     path, _, query_text = args[1].split("/contents/", 1)[1].partition("?ref=")
     text = (state.get("contenus") or {}).get(query_text, {}).get(path)
@@ -6292,8 +6292,8 @@ if args[:1] == ["api"] and "/contents/" in args[1]:
     print(base64.b64encode(text.encode("utf-8")).decode("ascii"))
     sys.exit(0)
 if args[:1] == ["api"] and "/git/commits/" in args[1]:
-    # Arbre git d'un commit (verdicts.yml, ruche-0012) : FAUX_GH_ETAT, clé "arbres" : {"<sha>": "<sha de l'arbre>"} ; par défaut un
-    # arbre par commit (ruche-0028 : sans arbre, aucun verdict) ; None : l'API ne répond pas.
+    # A commit's git tree (verdicts.yml, ruche-0012): FAKE_GH_STATE, key "arbres": {"<sha>": "<tree sha>"}; by default one
+    # tree per commit (ruche-0028: without a tree, no verdict); None: the API does not answer.
     sha, arbres = args[1].rsplit("/", 1)[1], state.get("arbres") or {}
     tree = arbres[sha] if sha in arbres else f"{zlib.crc32(sha.encode()):08x}"
     if tree is None:
@@ -20890,7 +20890,7 @@ class TestReportsRuche0118(ReportTools):
     def test_the_council_sees_linked_or_dismissed_and_a_dismissed_pair_waits_30_days(self):
         self.a("2026-10-30T10:00:00Z")
         self.report("gaspard", "alice", "bruno")
-        # Recorded for the council: bee swarm and bee show show it.
+        # Recorded for the council: bee swarm and bee show both show it.
         swarm = self.ok("swarm")
         self.assertIn("Open reports, for the council", swarm)
         self.assertIn("S-0001: alice and bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
@@ -21141,9 +21141,9 @@ class TestReportsRuche0118(ReportTools):
                 ({"by": "gaspard"}, {}, part_of),
                 ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) must be the time of the PR"),
                 ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z): the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
-                ({"outcome": "linked"}, {}, "decision lies: this PR links the two member files"),
+                ({"outcome": "linked"}, {}, "linked decision: this PR links the two member files"),
                 ({"outcome": "linked"}, {"alice": {**alice, "other_accounts": [*alice["other_accounts"], number_from("bruno")]}},
-                 "decision lies: this PR links the two member files")):
+                 "linked decision: this PR links the two member files")):
             with self.subTest(decision=decision, members=list(members)):
                 self.branch("decision")
                 bee.write_yaml(self.dir / "reports/S-0001.yaml",
@@ -21232,7 +21232,7 @@ class TestReportsRuche0137(ReportTools):
                                 ({"decision": {**decision, "by": "inconnu"}}, "decision/by: inconnu is not a known account"),
                                 ({"decision": {**decision, "by": "gaspard"}}, "decision/by: neither the reporter nor one of the two accounts"),
                                 ({"decision": {**decision, "by": "bruno"}}, "decision/by: neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "outcome": "linked"}}, "decision lies: the two member files are linked")):
+                                ({"decision": {**decision, "outcome": "linked"}}, "linked decision: the two member files are linked")):
             with self.subTest(fields=fields):
                 self.by_hand("S-0001", **fields)
                 self.ko(f"reports/S-0001.yaml: {chunk}", "validate")
@@ -21416,7 +21416,7 @@ class TestReportsRuche0137(ReportTools):
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "linked"}})
         bee.write_yaml(self.dir / "members/alice.yaml", {**alice, "other_accounts": [number_from("farid")]})
         self.commit()
-        self.refused("bidji29", "reports/S-0001.yaml: decision lies: this PR links the two member files")
+        self.refused("bidji29", "reports/S-0001.yaml: linked decision: this PR links the two member files")
         self.abandon("decision")
         self.decider("S-0001", "--link", "farid")
         self.assertEqual(self.read("members/gaspard.yaml")["other_accounts"], [number_from("farid"), number_from("alice")])
