@@ -3,28 +3,28 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: M
-title: "Juge isolé de libyaml, étape 4/6 : sortie de l'émetteur"
+title: "libyaml's isolated judge, step 4/6: the emitter's output"
 context: >
-  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 4 sur 6 ; utile seule : l'émetteur, cible de la
-  métrique debit_emission, est jugé de l'extérieur. Les greffon et harnais de libyaml-0013 et libyaml-0014
-  ne comparent que le flux d'événements de l'analyseur ; un changement de l'émetteur (style d'un scalaire,
-  indentation, guillemets) n'y serait pas vu. Pour chaque entrée valide, le harnais ré-émet les événements
-  avec l'émetteur de libyaml, et le greffon compare les octets produits à ceux de la base. Indépendante de
-  libyaml-0015 (entrées tirées au hasard) : les deux partent de libyaml-0014. Jusqu'à libyaml-0018, la CI
-  n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges : relue par un
-  gardien ou par le conseil.
+  Split of libyaml-0005 (an isolated judge for libyaml), step 4 of 6; useful on its own: the emitter, target
+  of the metric debit_emission, is judged from outside. The harness and plugin of libyaml-0013 and
+  libyaml-0014 compare only the parser's event stream; a change to the emitter (a scalar's style,
+  indentation, quotes) would not be seen there. For each valid input, the harness re-emits the events with
+  libyaml's emitter, and the plugin compares the bytes produced with the base's. Independent of
+  libyaml-0015 (randomly drawn inputs): both start from libyaml-0014. Until libyaml-0018, CI does not call
+  bee/juge/: this step changes no verdict. It touches the judges: reviewed by a guardian or by the
+  council.
 files: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "pour chaque entrée valide, le harnais ré-émet les événements avec l'émetteur, et le greffon compare les octets à ceux de la base"
-  - "méta-test : une variante de l'émetteur qui change un style est refusée"
+  - "for each valid input, the harness re-emits the events with the emitter, and the plugin compares the bytes with the base's"
+  - "meta-test: a variant of the emitter that changes a style is refused"
 out_of_scope:
-  - "sources de libyaml"
-  - "outils/juge/ du registre"
-  - "changement des métriques suivies"
-  - "nouvelle dépendance hors image"
-  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+  - "libyaml's sources"
+  - "the registry's outils/juge/"
+  - "change to the tracked metrics"
+  - "new dependency outside the image"
+  - ".github/workflows/bee-ci.yml (wiring into CI is libyaml-0018)"
 depends_on: [libyaml-0014]
 node: projects/parsing-serialization/libyaml
 status: open

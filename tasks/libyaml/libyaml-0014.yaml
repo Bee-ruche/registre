@@ -3,32 +3,32 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: M
-title: "Juge isolé de libyaml, étape 2/6 : greffon de vérification, sans mesure, et premiers méta-tests"
+title: "libyaml's isolated judge, step 2/6: verification plugin, without measurement, and first meta-tests"
 context: >
-  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 2 sur 6 ; utile seule : la justesse d'une
-  contribution libyaml se juge déjà en conteneur sur le corpus, à la main ou par un relecteur. Le greffon
-  (bee/juge/projet.py) est lu depuis la base de la PR par le juge commun (outils/juge/juge.py) : il déclare
-  les sources contrôlées, les préfixes de symboles et les côtés d'entrées, et fait comparer les sorties du
-  harnais de libyaml-0013 à celles de la base. Le contrat du juge commun accepte SCENARIOS = {} (juge.py
-  n'en vérifie que la cohérence) : ce premier greffon vérifie sans mesurer ; les entrées tirées au hasard
-  (libyaml-0015), l'émetteur (libyaml-0016) et les mesures (libyaml-0017) viennent ensuite. Modèles :
-  outils/juge/jouet/bee/juge/projet.py (203 lignes) et outils/juge/test_juge.py du registre ;
-  bee/juge/projet.py (303 lignes) et bee/juge/test_juge.py (459) de minizBee. Jusqu'à libyaml-0018, la CI
-  n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges : relue par un
-  gardien ou par le conseil.
+  Split of libyaml-0005 (an isolated judge for libyaml), step 2 of 6; useful on its own: the correctness of a
+  libyaml contribution can already be judged in a container on the corpus, by hand or by a reviewer. The
+  plugin (bee/juge/projet.py) is read from the PR's base by the common judge (outils/juge/juge.py): it
+  declares the controlled sources, the symbol prefixes and the input sides, and has the outputs of
+  libyaml-0013's harness compared with the base's. The common judge's contract accepts SCENARIOS = {}
+  (juge.py checks only its consistency): this first plugin verifies without measuring; the randomly drawn
+  inputs (libyaml-0015), the emitter (libyaml-0016) and the measurements (libyaml-0017) come next. Models:
+  the registry's outils/juge/jouet/bee/juge/projet.py (203 lines) and outils/juge/test_juge.py; minizBee's
+  bee/juge/projet.py (303 lines) and bee/juge/test_juge.py (459). Until libyaml-0018, CI does not call
+  bee/juge/: this step changes no verdict. It touches the judges: reviewed by a guardian or by the
+  council.
 files: [bee/juge/projet.py, bee/juge/test_juge.py]
 reach: 1.0
 metric: null
 acceptance_criteria:
-  - "le greffon remplit le contrat (SOURCES = src/*.c, src/*.h, include/yaml.h ; PREFIXES = yaml_ ; COTES = f ; SCENARIOS vide) et outils/juge/juge.py, lancé base contre base, ne rend aucun refus et donne le nombre de sorties comparées"
-  - "méta-tests : une variante qui change un seul événement est refusée, et une sortie anticipée en 0 est refusée ou arrête le juge (code 2)"
-  - "le greffon est lu depuis la base, et le dit dans son en-tête"
+  - "the plugin fulfills the contract (SOURCES = src/*.c, src/*.h, include/yaml.h; PREFIXES = yaml_; COTES = f; SCENARIOS empty) and outils/juge/juge.py, run base against base, returns no refusal and gives the number of outputs compared"
+  - "meta-tests: a variant that changes a single event is refused, and an early exit with 0 is refused or stops the judge (code 2)"
+  - "the plugin is read from the base, and says so in its header"
 out_of_scope:
-  - "sources de libyaml"
-  - "outils/juge/ du registre"
-  - "changement des métriques suivies"
-  - "nouvelle dépendance hors image"
-  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+  - "libyaml's sources"
+  - "the registry's outils/juge/"
+  - "change to the tracked metrics"
+  - "new dependency outside the image"
+  - ".github/workflows/bee-ci.yml (wiring into CI is libyaml-0018)"
 depends_on: [libyaml-0013]
 node: projects/parsing-serialization/libyaml
 status: open
