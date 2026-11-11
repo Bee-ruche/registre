@@ -510,7 +510,7 @@ def main(argv=None):
         if architecture not in ANALYSED_ARCHITECTURES:
             # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
             suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
-                                                               "(analysis.py ne couvre que x86-64)"})
+                                                               "(analyse.py ne couvre que x86-64)"})
         by_type = dict(sorted(collections.Counter(s["type"] for s in suspects).items()))
         suspects.sort(key=lambda s: SEVERITY.index(s["type"]) if s["type"] in SEVERITY else len(SEVERITY))
         omitted_ones, suspects = max(0, len(suspects) - SUSPICIOUS_MAX), suspects[:SUSPICIOUS_MAX]
