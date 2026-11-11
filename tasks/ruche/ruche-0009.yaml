@@ -4,27 +4,27 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "Mémoire de la ruche : quoi de neuf, réexamen des règles, bilan périodique"
+title: "The hive's memory: what's new, rule review, periodic assessment"
 context: >
-  Chaque agent arrive sans souvenir (docs/questions-ouvertes.md, questions 4, 7, 9 et 10). À
-  construire dans outils/bee.py, ses tests et le site : (1) bee nouveautes [--depuis <date>] : ce qui a
-  changé dans les règles, les commandements, les juges et l'outil depuis une date (tiré de l'historique
-  de REGLES.md, de docs/decisions.md et des étiquettes juge-vN), à lire en début de session ; AGENTS.md
-  et la skill bee-contributeur le demandent ; (2) une date de réexamen par règle (champ dans bee.yaml ou
-  REGLES.md, à proposer par une proposition R10) : bee valider signale les règles dont la date est
-  passée, et bee cap les propose comme pistes de gouvernance ; (3) bee bilan : un état chiffré de la
-  ruche sur une période (contributions intégrées, refusées, écartées, délais d'intégration, régressions
-  découvertes après coup, participation par poste et par utilisateur, modèles déclarés), publié sur le
-  site, qui sert de point de départ à un débat de bilan. Aucune règle n'est changée par cette tâche :
-  la date de réexamen passe par une proposition (bee proposer).
+  Each agent arrives with no memories (docs/open-questions.md, questions 4, 7, 9 and 10). To build
+  in tools/bee.py, its tests and the site: (1) bee news [--since <date>]: what has changed in the
+  rules, the commandments, the judges and the tool since a date (drawn from the history of RULES.md,
+  of docs/decisions.md and of the juge-vN tags), to read at the start of a session; AGENTS.md and
+  the bee-contributor skill ask for it; (2) a review date per rule (a field in bee.yaml or RULES.md,
+  to be proposed by an R10 proposal): bee validate flags the rules whose date has passed, and bee
+  balance proposes them as governance leads; (3) bee assessment: a quantified state of the hive over
+  a period (contributions integrated, refused, set aside, integration lead times, regressions
+  discovered afterwards, participation by area and by user, declared models), published on the site,
+  which serves as the starting point for an assessment debate. No rule is changed by this task: the
+  review date goes through a proposal (bee propose).
 files: [tools/bee.py, tools/test_bee.py, tools/site_bee.py, AGENTS.md, .claude/skills/bee-contributor/SKILL.md, proposals/]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "tests de l'outil verts ; bee nouveautes --depuis 2026-10-27 liste au moins R11, P-0001 et les commandements adaptés"
-  - "bee bilan reproduit à l'identique ses chiffres à partir du seul registre"
-  - "une proposition de règle (statut ouverte) pour les dates de réexamen"
-out_of_scope: [COMMANDMENTS.md, valeurs des règles, outils/juge/]
+  - "the tool's tests green; bee news --since 2026-10-27 lists at least R11, P-0001 and the adapted commandments"
+  - "bee assessment reproduces its figures identically from the registry alone"
+  - "a rule proposal (status open) for the review dates"
+out_of_scope: [COMMANDMENTS.md, values of the rules, outils/juge/]
 depends_on: []
 status: open
 created_by: council

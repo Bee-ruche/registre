@@ -4,29 +4,30 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "R4 : le chronomètre ARM64 du juge commun compte comme mesure d'une autre configuration"
+title: "R4: the common judge's ARM64 stopwatch counts as a measurement from another configuration"
 context: >
-  Répétition générale n° 3 (30/10), constat du conseil : R4 exige, quand le chronomètre ne confirme pas un
-  gain d'instructions au-delà du bruit, qu'une mesure d'une autre configuration voie le gain (bee
-  enregistrer-mesure), mais personne n'est chargé de la faire, et un utilisateur ne mesure pas ses propres
-  contributions (commandement 3). miniz-0017-c1 et miniz-0018-c1 attendent depuis le 28/10. ruche-0024
-  ajoute au juge commun un chronomètre ARM64 (runner GitHub, même juge, même graine), publié dans
-  juge.json par architecture. À construire : (1) bee enregistrer-verdict recopie le chronomètre de chaque
-  architecture, borné et typé ; (2) R4 : pour un gain d'instructions au-dessus du seuil, la confirmation
-  vient du chronomètre x86-64 ou de celui d'ARM64 au-delà du bruit, à condition qu'aucune des deux
-  architectures ne recule au-delà du bruit (un recul est un refus) ; (3) avec ruche-0028, chaque verdict
-  d'un même contenu doit confirmer, sur la même architecture ; (4) verifier-acceptation et le site disent
-  quelle architecture a confirmé ; (5) REGLES.md (R4) et docs/evaluation.md le disent. Une mesure d'un
-  autre utilisateur (bee enregistrer-mesure) reste une autre configuration, comme aujourd'hui.
+  Dress rehearsal no. 3 (30 Oct), the council's finding: R4 requires, when the stopwatch does not
+  confirm a gain in instructions beyond the noise, that a measurement from another configuration see
+  the gain (bee record-measurement), but nobody is in charge of making it, and a user does not
+  measure their own contributions (commandment 3). miniz-0017-c1 and miniz-0018-c1 have been waiting
+  since 28 Oct. ruche-0024 adds an ARM64 stopwatch to the common judge (a GitHub runner, same judge,
+  same seed), published in juge.json per architecture. To build: (1) bee record-verdict copies the
+  stopwatch of each architecture, bounded and typed; (2) R4: for a gain in instructions above the
+  threshold, the confirmation comes from the x86-64 stopwatch or from the ARM64 one beyond the
+  noise, provided that neither architecture regresses beyond the noise (a regression is a refusal);
+  (3) with ruche-0028, each verdict of the same content must confirm, on the same architecture; (4)
+  check-acceptance and the site say which architecture confirmed; (5) RULES.md (R4) and
+  docs/evaluation.md say so. A measurement by another user (bee record-measurement) remains another
+  configuration, as today.
 files: [tools/bee.py, tools/test_bee.py, schemas/contribution-record.schema.json, RULES.md, docs/evaluation.md]
 reach: 0.9
 metric: null
 acceptance_criteria:
-  - "test : instructions −3 %, chronomètre x86-64 dans le bruit, ARM64 +1,5 % au-delà : R4 satisfaite, et la sortie dit ARM64"
-  - "test : ARM64 recule au-delà du bruit : refus, même si x86-64 confirme"
-  - "test : un verdict sans chronomètre ARM64 se juge comme aujourd'hui"
-  - "revue adverse indépendante jointe (R4 décide de l'intégration)"
-out_of_scope: [COMMANDMENTS.md, juge.yml et outils/juge/ (ruche-0024), les forks]
+  - "test: instructions −3%, x86-64 stopwatch within the noise, ARM64 +1.5% beyond it: R4 met, and the output says ARM64"
+  - "test: ARM64 regresses beyond the noise: refusal, even if x86-64 confirms"
+  - "test: a verdict without an ARM64 stopwatch is judged as today"
+  - "independent adversarial review attached (R4 decides integration)"
+out_of_scope: [COMMANDMENTS.md, juge.yml and outils/juge/ (ruche-0024), the forks]
 depends_on: [ruche-0105]
 node: projects/ruche
 status: open

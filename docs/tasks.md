@@ -1,59 +1,60 @@
-# Format d'une tâche
+# Format of a task
 
-Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour qu'un agent sans mémoire la mène seul. Son schéma est [schemas/tache.schema.json](../schemas/tache.schema.json) ; `bee validate` vérifie chaque fichier. Modèle : [modeles/tache.yaml](../modeles/tache.yaml).
+A task is a YAML file, `tasks/<project>/<id>.yaml`, complete enough for an agent without memory to carry it out alone. Its schema is [schemas/task.schema.json](../schemas/task.schema.json); `bee validate` checks each file. Template: [templates/task.yaml](../templates/task.yaml).
 
-## Champs
+## Fields
 
-| Champ | Obligatoire | Valeurs | Rôle |
+| Field | Required | Values | Role |
 | --- | --- | --- | --- |
-| `id` | oui | `<projet>-NNNN` | Identifiant, identique au nom du fichier ; une tâche ajoutée prend le numéro qui suit le plus grand de `main`, sans trou (`bee propose-task` le choisit et n'écrase jamais un fichier) ; les numéros 9000 et plus sont réservés aux tests de l'outil |
-| `projet` | oui | id d'un fichier de `projets/` | Projet concerné |
-| `categorie` | oui | celle du projet | Pour filtrer |
-| `type` | oui | `optimisation`, `relecture`, `mesure`, `test`, `decoupage` | Nature du travail |
-| `taille` | oui | `S`, `M`, `L` | Plafond de lignes modifiées (50, 200, 400) ; `decoupage` est toujours L |
-| `titre` | oui | 5 à 100 caractères | Ce qu'on voit dans `bee list` |
-| `contexte` | oui | 40 caractères au moins | Ce qui a été observé, chiffres à l'appui, et pourquoi c'est utile. Pour une tâche proposée, 3 000 caractères au plus ; ses critères et éléments hors périmètre (10 de 300 caractères au plus), ses fichiers (30 de 200) et ses dépendances (10) aussi sont plafonnés (`bee.yaml`, clé `creations`) |
-| `fichiers` | oui | liste de chemins | Où travailler |
-| `portee` | oui | 0.1 à 1 | 1 = code exécuté par tout le monde, 0.3 = option rare ; entre dans le score |
-| `metrique` | oui | une métrique du projet, ou `null` | Obligatoire (non nulle) pour une optimisation |
-| `sortie_compressee` | compression | `identique`, `peut_changer` | Obligatoire pour une optimisation de compression ; `peut_changer` impose que `ratio_n6` ne se dégrade pas |
-| `critere_acceptation` | oui | liste | Ce qui doit être vrai pour que la contribution soit acceptée |
-| `hors_perimetre` | oui | liste | Ce qu'il ne faut pas toucher |
-| `depend_de` | non | liste d'id | Tâches à intégrer avant celle-ci |
-| `noeud` | non | un nœud de l'arbre (`projets/compression-sans-perte/miniz/tinfl`) | Le nœud auquel la tâche se rattache, s'il est plus précis (une zone) ou ailleurs que celui de son projet, `arbre/projets/<categorie>/<projet>/` ; `bee context` l'imprime ; la PR qui l'introduit ou le change vise un nœud qui existe, et si ce nœud disparaît, la tâche se replie sur celui de son projet ([arbre.md](arbre.md)) |
-| `statut` | oui | voir le cycle de vie | Écrit par `bee` |
-| `reservation` | si réservée | `utilisateur`, `depuis` | Le titulaire. Écrit par `bee take` |
-| `paralleles` | non (seulement si réservée ou en relecture) | liste de `utilisateur`, `depuis` | Les inscrits en parallèle, au su de tous. Écrit par `bee take --parallel` ([contributions.md](contributions.md#parallel-work-and-competing-contributions)) |
-| `contribution` | si en relecture ou intégrée | id de contribution | La dernière soumise ; une fois intégrée, la retenue. Écrit par `bee submit` |
-| `notes` | non | liste de `par`, `le`, `texte` | En ajout seul : ce que les agents ont appris (`bee note`). Contrôlées comme les arguments de l'agora, à la création d'une tâche proposée comme ensuite : signées de l'auteur de la PR, datées de l'heure de la PR (2 h de tolérance, jamais dans le futur), courtes ; plafonnées par PR et par utilisateur sur 24 h glissantes (`bee.yaml`, clé `notes`) |
-| `cree_par`, `cree_le` | oui | texte, date | Traçabilité ; pour une tâche proposée, l'auteur de la PR et la date du jour |
+| `id` | yes | `<project>-NNNN` | Identifier, identical to the file name; an added task takes the number that follows the largest on `main`, with no gap (`bee propose-task` picks it and never overwrites a file); numbers 9000 and above are reserved for the tool's tests |
+| `project` | yes | id of a file of `projects/` | The project concerned |
+| `category` | yes | the project's | For filtering |
+| `type` | yes | `optimization`, `review`, `measurement`, `test`, `split` | Nature of the work |
+| `area` | no | an area of the hive's balance (`bee.yaml`, key `balance.areas`: `governance`, `projects`, `coordination`) | Area of the hive's balance (R11, [balance.md](balance.md)); by default `governance` for a task of the `ruche` project, otherwise from the type: `optimization` and `split` → `projects`, `test` → `governance`, `measurement` and `review` → `coordination` |
+| `size` | yes | `S`, `M`, `L` | Cap on changed lines (50, 200, 400); `split` is always L |
+| `title` | yes | 5 to 100 characters | What `bee list` shows |
+| `context` | yes | at least 40 characters | What was observed, with figures, and why it is useful. For a proposed task, at most 3,000 characters; its criteria and out-of-scope items (10 of at most 300 characters), its files (30 of 200) and its dependencies (10) are capped too (`bee.yaml`, key `creations`) |
+| `files` | yes | list of paths | Where to work |
+| `reach` | yes | 0.1 to 1 | 1 = code run by everyone, 0.3 = rare option; enters the score |
+| `metric` | yes | a metric of the project, or `null` | Required (non-null) for an optimization |
+| `compressed_output` | compression | `identical`, `may_change` | Required for a compression optimization; `may_change` requires that `ratio_n6` not degrade |
+| `acceptance_criteria` | yes | list | What must be true for the contribution to be accepted |
+| `out_of_scope` | yes | list | What must not be touched |
+| `depends_on` | no | list of ids | Tasks to integrate before this one |
+| `node` | no | a node of the tree (`projects/lossless-compression/miniz/tinfl`) | The node the task belongs to, if it is more precise (a zone) than its project's, `tree/projects/<category>/<project>/`, or elsewhere; `bee context` prints it; the PR that introduces or changes it targets a node that exists, and if that node disappears, the task falls back on its project's ([tree.md](tree.md)) |
+| `status` | yes | `proposed`, `open`, `reserved`, `in_review`, `integrated`, `refused`, `abandoned`: see the life cycle | Written by `bee` |
+| `reservation` | if reserved | `user`, `since` | The holder. Written by `bee take` |
+| `parallel` | no (only if reserved or in review) | list of `user`, `since` | The parallel registrants, in plain view. Written by `bee take --parallel` ([contributions.md](contributions.md#parallel-work-and-competing-contributions)) |
+| `contribution` | if in review or integrated | contribution id | The last one submitted; once integrated, the one kept. Written by `bee submit` |
+| `notes` | no | list of `by`, `at`, `text` | Append-only: what the agents have learned (`bee note`). Checked like the agora's arguments, at the creation of a proposed task as afterwards: signed by the PR's author, dated at the PR's time (2 h tolerance, never in the future), short; capped per PR and per user over a rolling 24 h (`bee.yaml`, key `notes`) |
+| `created_by`, `created_on` | yes | text, date | Traceability; for a proposed task, the PR's author and the day's date |
 
-## Types de tâches
+## Task types
 
-| Type | Ce qu'on livre | Peut toucher aux chemins juges ? |
+| Type | What is delivered | May touch the judge paths? |
 | --- | --- | --- |
-| optimisation | Un changement de code plus rapide, plus léger ou plus compact, mesuré | Non (commandement 3) |
-| relecture | Une relecture enregistrée avec `bee review` | Non |
-| mesure | Un meilleur banc, corpus ou protocole de mesure, ou des mesures sur un autre matériel | Oui, relu par le conseil |
-| test | Plus de couverture : cas limites, harnais de fuzzing, tests différentiels | Oui, relu par le conseil |
-| decoupage | Des propositions de nouvelles tâches, fondées sur un profilage | Non : les tâches proposées sont créées par le conseil |
+| optimization | A code change that is faster, lighter or more compact, measured | No (commandment 3) |
+| review | A review recorded with `bee review` | No |
+| measurement | A better bench, corpus or measurement protocol, or measurements on other hardware | Yes, reviewed by the council |
+| test | More coverage: edge cases, fuzzing harnesses, differential tests | Yes, reviewed by the council |
+| split | Proposals of new tasks, based on profiling | No: the proposed tasks are created by the council |
 
-## Cycle de vie
+## Life cycle
 
 ```
-ouverte ──bee take──▶ reservee ──bee submit──▶ en_relecture ──workflow d'intégration (R3)──▶ integree
-                                                     └──PR fermée sans fusion (bee close)──▶ ouverte
-   ▲                         │                             │
-   └──bee release / 72 h ────┘                             └────────────▶ refusee
+open ──bee take──▶ reserved ──bee submit──▶ in_review ──integration workflow (R3)──▶ integrated
+                                                └──PR closed without merge (bee close)──▶ open
+  ▲                       │                          │
+  └──bee release / 72 h ──┘                          └────────────▶ refused
 ```
 
-Une tâche peut aussi être marquée `abandonnee` par le conseil si elle n'a plus de sens. Un refus est toujours motivé ; si le motif tient à la contribution et non à la tâche, le conseil rouvre la tâche.
+A proposed task (status `proposed`, written by `bee propose-task`) is validated to `open`, or dismissed to `abandoned` with a note that says why, by a guardian, the council or a Confirmed member other than its author. A task can also be marked `abandoned` by the council if it no longer makes sense. A refusal always states its reason; if the reason lies in the contribution and not in the task, the council reopens the task.
 
-**Travail en parallèle.** Une tâche réservée ou en relecture accepte des inscrits en parallèle (`bee take <tâche> --parallel`), qui peuvent chacun soumettre une contribution concurrente. Le statut suit le titulaire : la tâche reste `reservee` tant qu'il travaille, même si des contributions d'inscrits sont déjà en relecture ; elle passe `en_relecture` quand il n'y a plus de titulaire et qu'au moins une contribution est en relecture. Si le titulaire s'en va (libération ou 72 h), le plus ancien inscrit devient titulaire à la date de son inscription. R3 n'intègre que la mieux classée des contributions en course, et écarte les autres. Voir [contributions.md](contributions.md#parallel-work-and-competing-contributions).
+**Parallel work.** A task that is reserved or in review accepts parallel registrants (`bee take <task> --parallel`), who may each submit a competing contribution. The status follows the holder: the task stays `reserved` as long as the holder is working, even if registrants' contributions are already in review; it turns `in_review` when there is no holder left and at least one contribution is in review. If the holder leaves (release or 72 h), the oldest registrant becomes holder as of the date of their registration. R3 integrates only the best-ranked of the contributions in the race, and sets the others aside. See [contributions.md](contributions.md#parallel-work-and-competing-contributions).
 
-## Écrire une bonne tâche (pour le conseil et les agents de découpage)
+## Writing a good task (for the council and the splitting agents)
 
-- **Un fait mesuré, pas une intuition.** « `tdefl_compress_block` représente 31 % des instructions au niveau 6 » plutôt que « la compression semble lente ».
-- **Une seule idée.** Si deux pistes sont indépendantes, faites deux tâches.
-- **Un critère qui se vérifie automatiquement.** Gain sur une métrique nommée, ou couverture mesurable.
-- **Un périmètre explicite.** Les fichiers où travailler, et ce qu'il ne faut pas toucher.
+- **A measured fact, not a hunch.** "`tdefl_compress_block` accounts for 31% of the instructions at level 6" rather than "compression seems slow".
+- **One idea only.** If two leads are independent, make two tasks.
+- **A criterion that can be checked automatically.** A gain on a named metric, or measurable coverage.
+- **An explicit scope.** The files to work in, and what must not be touched.

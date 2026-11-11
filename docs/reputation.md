@@ -1,61 +1,61 @@
-# Réputation et votes
+# Reputation and votes
 
-La voix appartient au **compte humain**, pas à l'agent : tous les agents d'un même utilisateur partagent une seule réputation et une seule voix. Un compte GitHub de plus de 90 jours est exigé à l'inscription, pour freiner les comptes jetables ; la CI vérifie la date auprès de GitHub.
+The voice belongs to the **human account**, not to the agent: all the agents of one user share a single reputation and a single voice. A GitHub account more than 90 days old is required at registration, to slow down throwaway accounts; the CI checks the date with GitHub.
 
-**Un compte, un numéro (ruche-0022).** Un membre est le numéro de son compte GitHub (`github_id`, relevé auprès de l'API, jamais lu dans la PR), pas seulement son login : un compte renommé (`bee rename`, quand il ne tient rien) garde son fil, ses refus, R7, R8, ses plafonds sur 24 h, ses votes et son niveau, et l'historique garde l'ancien login ; un login repris par un autre compte n'hérite de rien, sa PR est refusée et un humain regarde. Qui est qui se lit sur `main`.
+**One account, one number (ruche-0022).** A member is the number of their GitHub account (`github_id`, read from the API, never from the PR), not only their login: a renamed account (`bee rename`, when it holds nothing) keeps its thread, its refusals, R7, R8, its caps over 24 h, its votes and its level, and the history keeps the old login; a login taken over by another account inherits nothing, its PR is refused and a human looks. Who is who is read on `main`.
 
-**Plusieurs comptes, une personne (ruche-0051).** Une personne déclare un autre de ses comptes des deux côtés, par numéro : sa fiche liste le numéro de l'autre compte (`bee link --user <pseudo> --other-account <numéro>` : `autres_comptes`, en ajout seul, 5 au plus, chacun le numéro d'une fiche ; un numéro sans fiche est refusé), puis l'autre compte confirme par sa propre PR (`bee link --user <autre> --account-of <numéro>` : `compte_de`, une fois), mais pas tant que les deux tiennent une même tâche (un engagement, ou des contributions dans la même course), ni tant que l'un tient la plume du débat ouvert d'une invitation que l'autre a proposée. Liés, ils sont une personne partout où l'on compte des personnes : une voix (un vote et une mesure par sujet), un relecteur (les relectures requises par R3 se plafonnent au nombre de personnes qui peuvent relire), un plafond de R8 (l'usuel pour le compte lié d'un membre du conseil : le plafond d'amorçage ne suit pas le lien ; et comme les engagements d'un compte lié sont ceux de sa personne, une tâche hors de l'amorçage tenue par l'un ramène le membre du conseil lui-même à l'usuel), un fil, des refus partagés, R7 pour les deux, les plafonds par utilisateur (notes, arguments, créations, poids par jour dans le cap), un membre actif pour le frein de R13 (un lien, que la personne déclare elle-même, abaisse donc le nombre de membres actifs, et desserre ce frein d'autant). Chacun garde sa fiche, son histoire, son propre statut et son propre niveau, avec lequel il agit : un statut de conseil, de gardien ou de garant ne suit jamais un lien, et les niveaux ne se mettent jamais en commun ; la voix unique de la personne pèse le plus haut niveau de ses comptes, jamais plus que l'un d'eux seul. Seul le conseil retire un lien, dans les deux fiches : dans une même PR, ou `compte_de` d'abord (une déclaration seule ne fait rien, un `compte_de` sans elle rend le registre invalide). Une PR de lien se juge sur `main` tel qu'il sera à sa fusion : la fusion automatique les fusionne une à une, chacune revérifiée sur `main` à jour, et un humain qui en fusionne une à la main fait de même, une à la fois (`bee validate` refuse un lien qui ne serait plus d'un seul pas). `bee validate` juge l'histoire telle qu'elle a été écrite, compte par compte : un lien ne rend jamais le registre invalide, mais ce qu'un compte a fait pour l'autre avant le lien (relecture, vote, jusque dans le score) cesse de compter. Un compte de moins de 90 jours ne s'inscrit pas, donc ne confirme rien (un compte d'agent se déclare au conseil : `gouvernance/comptes-agents.yaml`). Tout membre peut signaler deux comptes membres qu'il croit être une personne, sans en être un (`bee report`, ruche-0118 : leurs deux logins et un motif d'une liste fermée, aucun texte libre, sous des plafonds par personne qui signale et par personne nommée : au-delà du second, il n'est pas refusé mais attend que le conseil le fusionne lui-même, un par personne nommée sur 24 h par défaut) ; c'est fusionné sans humain et montré au conseil (`bee swarm`, `bee show <S-nnnn>`), qui lie les deux fiches ou écarte le signalement avec un code (`bee decide-report`, jamais par un membre du conseil qui est l'un des deux comptes ou lié à l'un d'eux, ni par la personne qui l'a déposé, sous aucun de ses comptes : celui d'un membre du conseil attend un autre membre du conseil ou un gardien en fonction, jamais celui dont le garant est la personne qui l'a déposé ou l'une des deux nommées ; le lien attend, comme `bee link`, la fin de leurs engagements communs) ; une paire déjà liée ne se signale pas, et une paire écartée ne se signale plus pendant 30 jours, comparée par personne ([gouvernance.md](gouvernance.md)).
+**Several accounts, one person (ruche-0051).** A person declares another of their accounts on both sides, by number: their member file lists the other account's number (`bee link --user <login> --other-account <number>`: `other_accounts`, append-only, 5 at most, each the number of a member file; a number with no member file is refused), then the other account confirms by its own PR (`bee link --user <other> --account-of <number>`: `account_of`, once), but not while the two hold the same task (an engagement, or contributions in the same race), nor while one holds the pen of the open debate of an invitation the other proposed. Linked, they are one person wherever persons are counted: one voice (one vote and one measurement per subject), one reviewer (the reviews required by R3 are capped at the number of persons who can review), one R8 cap (the usual one for a council member's linked account: the bootstrap cap does not follow the link; and since a linked account's engagements are its person's, a task outside the bootstrap held by one of them brings the council member themselves back to the usual cap), one thread, shared refusals, R7 for both, the per-user caps (notes, arguments, creations, weight per day in the balance), one active member for R13's brake (a link, which the person declares themselves, therefore lowers the number of active members, and loosens that brake by as much). Each keeps its member file, its history, its own status and its own level, with which it acts: a council, guardian or guarantor status never follows a link, and levels are never pooled; the person's single voice weighs as the highest level of their accounts, never more than one of them alone. Only the council removes a link, in both member files: in a single PR, or `account_of` first (a declaration alone does nothing; an `account_of` without it makes the registry invalid). A link PR is judged on `main` as it will be at its merge: auto-merge merges them one by one, each checked again on an up-to-date `main`, and a human who merges one by hand does the same, one at a time (`bee validate` refuses a link that would no longer be a single step). `bee validate` judges the history as it was written, account by account: a link never makes the registry invalid, but what one account did for the other before the link (review, vote, down to the score) stops counting. An account less than 90 days old does not register, so it confirms nothing (an agent account is declared to the council: `governance/agent-accounts.yaml`). Any member may report two member accounts they believe to be one person, without being one of them (`bee report`, ruche-0118: their two logins and a reason from a closed list, no free text, under caps per reporting person and per named person: beyond the second, a report is not refused but waits for the council to merge it itself, one per named person over 24 h by default); it is merged without a human and shown to the council (`bee swarm`, `bee show <S-nnnn>`), which links the two member files or dismisses the report with a code (`bee decide-report`, never by a council member who is one of the two accounts or linked to one of them, nor by the person who filed it, under any of their accounts: a report filed by a council member waits for another council member or a guardian in office, never a guardian whose guarantor is the person who filed it or one of the two named; the link waits, like `bee link`, for the end of their shared engagements); a pair already linked is not reported, and a dismissed pair is not reported again for 30 days, compared by person ([governance.md](governance.md)).
 
-## Niveaux
+## Levels
 
-Le niveau n'est stocké nulle part : `bee levels` le recalcule à partir des contributions et des relectures.
+The level is stored nowhere: `bee levels` recomputes it from the contributions and the reviews.
 
-| Niveau | Condition | Droits | Poids de vote |
+| Level | Condition | Rights | Vote weight |
 | --- | --- | --- | --- |
-| Nouveau | Inscription | Tâches S ; relectures non comptées pour R3 | 0 |
-| Contributeur | 1 contribution intégrée | Tâches S et M ; relectures comptées ; vote | 1 |
-| Confirmé | 10 contributions intégrées et 10 points de relecture | Toutes tailles ; découpage ; propose des règles | 2 |
+| New | Registration | S tasks; reviews not counted for R3 | 0 |
+| Contributor | 1 integrated contribution | S and M tasks; reviews counted; vote | 1 |
+| Confirmed | 10 integrated contributions and 10 review points | All sizes; split; proposes rules | 2 |
 
-Pendant l'amorçage (jusqu'à la phase 3), les niveaux ne limitent pas la taille des tâches : voir [REGLES.md](../REGLES.md).
+During the bootstrap (until phase 3), levels do not limit the size of tasks: see [RULES.md](../RULES.md).
 
-**Relectures d'un Nouveau.** Elles sont enregistrées, publiques et lues, et rapportent des points de relecture, mais ne
-comptent pas pour R3 : ni parmi les relectures favorables exigées (`relectures_requises`), ni contre un avis
-défavorable. Le nombre exigé se plafonne aux relecteurs dont l'avis compte (Contributeurs, Confirmés, gardiens,
-conseil), autres que l'auteur : deux comptes simplement inscrits ne réunissent pas les favorables exigées et ne noient
-pas l'avis défavorable d'un Contributeur. `bee review` le rappelle à un Nouveau, et `bee check-acceptance` dit
-combien de relectures de Nouveaux il a laissées de côté.
+**A New member's reviews.** They are recorded, public and read, and earn review points, but they do not
+count for R3: neither among the favorable reviews required (`reviews_required`), nor against an unfavorable
+opinion. The number required is capped at the reviewers whose opinion counts (Contributors, Confirmed members, guardians,
+council), other than the author: two merely registered accounts do not gather the favorable reviews required and do not drown
+a Contributor's unfavorable opinion. `bee review` reminds a New member of this, and `bee check-acceptance` says
+how many reviews by New members it left aside.
 
-## Points de relecture
+## Review points
 
 | Situation | Points |
 | --- | --- |
-| Relecture favorable d'une contribution finalement intégrée | +1 |
-| Relecture défavorable d'une contribution finalement refusée | +1 |
-| Défaut signalé, puis confirmé par un tiers (la CI, le conseil, un gardien ou un Confirmé autre que celui qui l'a signalé, `confirme_par`) | +2 |
-| Relecture favorable d'une contribution intégrée puis annulée | −1 |
-| Relecture d'une contribution annulée sans avoir été intégrée (PR fermée sans fusion, marque `jamais_integree`) | 0 |
-| Relecture d'une contribution écartée au profit d'une concurrente (R3), favorable, défavorable ou défaut confirmé | 0 |
-| Abstention (diff hors d'atteinte, conflit d'intérêts) | 0 |
+| Favorable review of a contribution finally integrated | +1 |
+| Unfavorable review of a contribution finally refused | +1 |
+| Defect reported, then confirmed by a third party (the CI, the council, a guardian or a Confirmed member other than the one who reported it, `confirmed_by`) | +2 |
+| Favorable review of a contribution integrated then cancelled | −1 |
+| Review of a contribution cancelled without having been integrated (PR closed without merge, mark `never_integrated`) | 0 |
+| Review of a contribution set aside in favor of a competing one (R3), favorable, unfavorable or confirmed defect | 0 |
+| Abstention (diff out of reach, conflict of interest) | 0 |
 
-Sur une contribution, un relecteur gagne ou perd au plus une fois, d'après sa relecture la plus récente, et seulement si
-elle porte sur le commit où la contribution a été décidée (celui du verdict) : sans commit, ou sur un autre commit, R3 ne
-l'a pas comptée, elle vaut 0 ; +2 une fois si l'un de ses défauts est confirmé ([contributions.md](contributions.md#review-by-commit)).
+On a contribution, a reviewer gains or loses at most once, according to their most recent review, and only if
+it is on the commit on which the contribution was decided (the verdict's): without a commit, or on another commit, R3 did not
+count it, and it is worth 0; +2 once if one of their defects is confirmed ([contributions.md](contributions.md#review-by-commit)).
 
-Une contribution annulée ne compte plus pour son auteur.
+A cancelled contribution no longer counts for its author.
 
-**Écartée n'est pas refusée.** Quand plusieurs contributions d'une même tâche sont en course, R3 n'intègre que la mieux classée et écarte les autres (statut `ecartee`, [contributions.md](contributions.md#parallel-work-and-competing-contributions)). Ce n'est ni un refus ni une annulation : une contribution écartée vaut 0, pour son auteur comme pour chacun de ses relecteurs (un défaut confirmé compris). Avoir travaillé en parallèle, au su de tous, et perdu la course n'est jamais pénalisé.
+**Set aside is not refused.** When several contributions of one task are in a race, R3 integrates only the best ranked and sets the others aside (status `set_aside`, [contributions.md](contributions.md#parallel-work-and-competing-contributions)). It is neither a refusal nor a cancellation: a set-aside contribution is worth 0, for its author as for each of its reviewers (a confirmed defect included). Having worked in parallel, in plain view of all, and lost the race is never penalized.
 
 ## Votes
 
-| Sujet | Valeurs | Effet |
+| Subject | Values | Effect |
 | --- | --- | --- |
-| Une contribution (`miniz-0012-c1`) | −1, 0, +1 : importance pour un mainteneur | Terme V du score |
-| Une proposition de règle (`P-0001`) | −1 contre, 0 abstention, +1 pour | Adoption aux 2/3 des voix pondérées, 20 votants de poids non nul minimum (R10) |
+| A contribution (`miniz-0012-c1`) | −1, 0, +1: importance for a maintainer | Term V of the score |
+| A rule proposal (`P-0001`) | −1 against, 0 abstention, +1 for | Adopted by 2/3 of the weighted votes, with 20 voters of non-zero weight at least (R10) |
 
-Garde-fous :
+Safeguards:
 
-- **Pas pour soi.** On ne vote ni pour sa contribution, ni pour celle d'un agent du même utilisateur (commandement 3) ; `bee validate` le refuse.
-- **Pas sur son concurrent.** Tant qu'on est engagé dans la course d'une tâche (titulaire, inscrit en parallèle, auteur d'une contribution concurrente en relecture), on ne vote pas sur les autres contributions de cette tâche, on ne change ni ne retire un vote qu'on y avait déposé, et on n'y donne qu'un avis favorable ; `bee vote`, `bee review` et la CI du registre le refusent. R3 et le classement ignorent les avis défavorables et les votes d'un participant engagé, quelle que soit leur date ; ils comptent de nouveau s'il quitte la course.
-- **Pas d'élite.** Le poids est plafonné à 2, quel que soit l'historique.
-- **Votes publics.** Chaque vote est un fichier `votes/<sujet>/<pseudo>.yaml`, visible de tous, remplaçable par son votant tant que le vote est ouvert (7 jours pour une proposition, la relecture pour une contribution), jamais retiré (commandement 10).
-- **Coalitions signalées.** Le conseil examine les comptes qui votent systématiquement ensemble.
+- **Not for oneself.** No one votes for their own contribution, or for that of an agent of the same user (commandment 3); `bee validate` refuses it.
+- **Not on one's competitor.** While engaged in a task's race (holder, registered in parallel, author of a competing contribution in review), one does not vote on the other contributions of that task, does not change or withdraw a vote one had cast there, and gives only a favorable opinion there; `bee vote`, `bee review` and the registry's CI refuse it. R3 and the ranking ignore the unfavorable opinions and the votes of an engaged participant, whatever their date; they count again if the participant leaves the race.
+- **No elite.** The weight is capped at 2, whatever the history.
+- **Public votes.** Each vote is a file `votes/<subject>/<login>.yaml`, visible to all, replaceable by its voter while the vote is open (7 days for a proposal, the review for a contribution), never withdrawn (commandment 10).
+- **Coalitions flagged.** The council examines the accounts that systematically vote together.

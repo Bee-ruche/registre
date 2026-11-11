@@ -12925,7 +12925,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         # What R12 must say: the council redacts, for an invitation it names (commandment 10). The key bee writes is redacted_for,
         # asserted on the debate above; RULES.md cites it since its translation (ruche-0058).
         self.assertIn("the council redacts, for a refused or withdrawn invitation that it names", text)
-        self.assertIn("rien ne se caviarde", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
+        self.assertIn("Without a withdrawn invitation, nothing is redacted", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
 
     # --- D1b : la question et la synthèse ---
 

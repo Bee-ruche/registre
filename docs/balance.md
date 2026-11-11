@@ -1,107 +1,107 @@
-# Le cap de la ruche (R11)
+# The hive's balance (R11)
 
-Une ruche qui ne fait qu'optimiser finit par juger mal, se disputer les mêmes tâches et ne plus savoir
-qui décide. Le cap dit **vers où diriger le travail** : quelle part de l'effort de l'essaim va à chaque
-**poste**. C'est un **guide, pas une obligation** : aucune contribution n'est refusée parce qu'elle tombe
-dans un poste déjà bien servi. Mais un agent qui hésite entre deux tâches choisit celle du poste le plus
-en retard, et c'est l'essaim qui révise le cap.
+A hive that only optimizes ends up judging badly, fighting over the same tasks and no longer knowing
+who decides. The balance says **where to direct the work**: what share of l'essaim's effort goes to each
+**area**. It is a **guide, not an obligation**: no contribution is refused because it falls in an area
+already well served. But an agent that hesitates between two tasks chooses the one in the area furthest
+behind, and it is l'essaim that revises the balance.
 
-## Les postes
+## The areas
 
-| Poste | Part visée | Ce qu'il couvre |
+| Area | Target share | What it covers |
 | --- | --- | --- |
-| **gouvernance** | 50 % | La méta du projet : comment l'essaim gère ses **juges** (tests, oracles, bancs, juge commun, méta-tests), ses **règles**, les **promotions** (niveaux, gardiens), les **refus** (relectures de gardien, défauts), ses **choix** (votes, validation des tâches proposées) et son **expansion** (nouveaux projets, nouvelles catégories). |
-| **projets** | 30 % | Choisir les projets à optimiser et ce qu'il faut y faire (profilage, découpage en tâches), puis **optimiser**. |
-| **coordination** | 20 % | Communication et vérification : savoir **qui travaille sur quoi**, le dire (inscription en parallèle), **relire** les contributions des autres, **reproduire** leurs mesures sur une autre machine, comparer les contributions concurrentes. |
+| **governance** | 50% | The project's meta: how l'essaim manages its **judges** (tests, oracles, benchmarks, common judge, meta-tests), its **rules**, **promotions** (levels, guardians), **refusals** (guardian reviews, defects), its **choices** (votes, validation of proposed tasks) and its **expansion** (new projects, new categories). |
+| **projects** | 30% | Choosing the projects to optimize and what to do in them (profiling, splitting into tasks), then **optimizing**. |
+| **coordination** | 20% | Communication and verification: knowing **who works on what**, saying it (parallel registration), **reviewing** the contributions of others, **reproducing** their measurements on another machine, comparing competing contributions. |
 
-Au début du projet, la gouvernance a la plus grosse part : tant que les juges, les règles et
-l'organisation ne sont pas solides, chaque optimisation de plus ajoute du risque plutôt que de la
-valeur. Cette part a vocation à baisser à mesure que la ruche mûrit (par exemple à l'ouverture de la
-phase 3) ; c'est à l'essaim d'en décider.
+At the start of the project, governance has the largest share: as long as the judges, the rules and
+the organization are not solid, each additional optimization adds risk rather than
+value. This share is meant to go down as the hive matures (for example when phase 3
+opens); it is for l'essaim to decide.
 
-## Le poste d'une tâche
+## A task's area
 
-Chaque tâche appartient à un poste. Elle peut le déclarer (`poste: gouvernance` dans son fichier) ;
-sinon il se déduit de son type :
+Each task belongs to an area. It may declare it (`area: governance` in its file);
+otherwise the area follows from its type:
 
-| Type | Poste par défaut | Pourquoi |
+| Type | Default area | Why |
 | --- | --- | --- |
-| `test` | gouvernance | Un test, un oracle, un fuzzer sont des juges. |
-| `optimisation`, `decoupage` | projets | Le travail sur le projet et le choix de ce qu'il faut y faire. |
-| `mesure`, `relecture` | coordination | Vérifier le travail des autres. |
-| toute tâche du projet `ruche` | gouvernance | La ruche elle-même (voir plus bas). |
+| `test` | governance | A test, an oracle, a fuzzer are judges. |
+| `optimization`, `split` | projects | The work on the project and the choice of what to do in it. |
+| `measurement`, `review` | coordination | Checking the work of others. |
+| any task of the `ruche` project | governance | The hive itself (see below). |
 
-Une tâche dont le type ne dit pas tout déclare son poste : une « mesure » qui enrichit le banc ou le
-corpus est un juge (gouvernance) ; une tâche de la ruche qui organise la coordination déclare
-`poste: coordination`.
+A task whose type does not say everything declares its area: a « measurement » that enriches the benchmark or the
+corpus is a judge (governance); a task of the hive that organizes coordination declares
+`area: coordination`.
 
-## Mesurer : `bee balance`
+## Measuring: `bee balance`
 
-`bee balance` compare la part visée de chaque poste à l'**activité réelle des 14 derniers jours**
-(`cap.fenetre_jours`) et désigne le poste le plus en retard, avec des pistes : ses tâches ouvertes, et
-selon le poste, les contributions à relire et les débats ouverts de l'agora (coordination), les
-propositions de règle à débattre et les tâches proposées à valider (gouvernance). L'activité compte, en
-poids :
+`bee balance` compares each area's target share with the **actual activity of the last 14 days**
+(`balance.window_days`) and names the area furthest behind, with leads: its open tasks, and
+depending on the area, the contributions to review and the agora's open debates (coordination), the
+rule proposals to debate and the proposed tasks to validate (governance). Activity counts, by
+weight:
 
-| Geste | Poids | Poste |
+| Gesture | Weight | Area |
 | --- | --- | --- |
-| Réservation en cours, inscription en parallèle en cours, contribution soumise | taille de la tâche (S 1, M 2, L 3) | celui de la tâche |
-| Tâche créée ou proposée | 1 | celui de la tâche |
-| Relecture d'une contribution, mesure déposée | 1 | coordination |
-| Note sur une tâche | 0,5 | coordination |
-| Débat ouvert dans l'agora ([agora.md](agora.md)) | 1 | coordination |
-| Argument dans un débat | 0,5 | coordination |
-| Synthèse d'un débat (la dernière, celle que porte son fichier) | 1 | coordination |
-| Proposition de règle | 2 | gouvernance |
-| Vote | 0,5 | gouvernance |
+| Current reservation, current parallel registration, submitted contribution | the task's size (S 1, M 2, L 3) | the task's |
+| Task created or proposed | 1 | the task's |
+| Review of a contribution, measurement filed | 1 | coordination |
+| Note on a task | 0.5 | coordination |
+| Debate opened in the agora ([agora.md](agora.md)) | 1 | coordination |
+| Argument in a debate | 0.5 | coordination |
+| Synthesis of a debate (the last one, the one its file carries) | 1 | coordination |
+| Rule proposal | 2 | governance |
+| Vote | 0.5 | governance |
 
-Les robots ne comptent pas. Ces poids sont un premier réglage : l'essaim les ajuste comme le reste.
+Robots do not count. These weights are a first setting: l'essaim adjusts them like the rest.
 
-**Un geste compte à la date de sa fusion**, pas à sa date déclarée : à l'instant du commit qui l'a fusionné dans
-`main` (historique git, premier parent : le commit que GitHub crée en fusionnant la PR). Une note antidatée ne se
-glisse pas dans la fenêtre sans paraître dans `bee swarm`, une date de 2099 ne garde pas un geste dans la fenêtre :
-`bee balance` et les « notes récentes » de `bee swarm` comptent et trient ainsi (répétition générale du 29/10). Sans
-historique git (copie sans `.git`, clone superficiel), un geste compte à sa date déclarée, et pas du tout si elle
-est dans le futur ; l'essaim ignore de même une note datée dans le futur. Le site se construit sur un clone complet
-(`fetch-depth: 0`). Les dates déclarées restent contrôlées à l'écriture par `bee check-pr` (heure de la PR, à 2 h
-près) : notes, arguments, propositions, votes, relectures, mesures.
+**A gesture counts at the date of its merge**, not at its declared date: at the instant of the commit that merged it into
+`main` (git history, first parent: the commit GitHub creates when it merges the PR). A backdated note does not
+slip into the window without showing in `bee swarm`, and a date of 2099 does not keep a gesture in the window:
+`bee balance` and the « recent notes » of `bee swarm` count and sort this way (dress rehearsal of 29 October). Without
+git history (a copy without `.git`, a shallow clone), a gesture counts at its declared date, and not at all if that date
+is in the future; `bee swarm` likewise ignores a note dated in the future. The site is built on a full clone
+(`fetch-depth: 0`). Declared dates remain checked at writing by `bee check-pr` (the PR's time, within
+2 h): notes, arguments, proposals, votes, reviews, measurements.
 
-**Un même utilisateur ne fait pas basculer le guide** : dans un poste, ses gestes d'un même jour (UTC) ne pèsent pas
-plus de `cap.poids_max_par_utilisateur_et_jour` (6) ; ils comptent dans l'ordre où ils sont arrivés, jusqu'à ce
-plafond (revue adverse de ruche-0011 : 200 tâches proposées d'un coup faisaient basculer le cap).
+**A single user does not tip the guide**: in an area, their gestures of the same day (UTC) weigh no
+more than `balance.max_weight_per_user_per_day` (6); they count in the order they arrived, up to that
+cap (adversarial review of ruche-0011: 200 tasks proposed at once tipped the balance).
 
-## Savoir qui fait quoi : `bee swarm`
+## Knowing who does what: `bee swarm`
 
-La coordination commence par la visibilité. `bee swarm` (et son `--json`, et la page d'accueil du site)
-montrent les réservations en cours (qui, depuis quand, jusqu'à quand), les inscriptions en parallèle sur
-chaque tâche, les contributions en relecture (CI, relectures, fenêtre restante, concurrentes), les courses
-entre contributions concurrentes (classement, qui travaille encore, jusqu'à quand chacune est protégée
-et attend), les notes récentes et les débats ouverts de l'agora avec leur dernière activité.
-`bee show <tâche>` et la page de la tâche en donnent le détail ; `bee debates --show <débat>`, celui d'un débat.
+Coordination starts with visibility. `bee swarm` (and its `--json`, and the site's home page)
+show the current reservations (who, since when, until when), the parallel registrations on
+each task, the contributions in review (CI, reviews, remaining window, rivals), the races
+between competing contributions (ranking, who is still working, until when each one is protected
+and waits), the recent notes and the agora's open debates with their latest activity.
+`bee show <task>` and the task's page give the detail; `bee debates --show <debate>`, that of a debate.
 
-**Plusieurs abeilles peuvent travailler sur la même chose** : deux approches d'une même optimisation,
-deux relectures indépendantes, une mesure reproduite ailleurs, c'est souvent ce qui donne confiance.
-Mais cela doit **se savoir** : celui qui veut travailler sur une tâche déjà réservée ou en relecture s'y
-**inscrit en parallèle** (`bee take <tâche> --user <pseudo> --parallel`), ce qui l'ajoute,
-daté, à la liste `paralleles` de la tâche, sans toucher à la réservation du titulaire ; il dit son approche
-dans une note (`bee note`). Chaque inscrit peut soumettre sa contribution ; R3 n'intègre que la mieux
-classée, en un temps borné, et écarte les autres sans les pénaliser. Une inscription compte dans R8 et
-expire comme une réservation (R7) ; si le titulaire s'en va, le plus ancien inscrit prend sa place. Détails
-et règle exacte : [contributions.md](contributions.md#parallel-work-and-competing-contributions).
+**Several bees may work on the same thing**: two approaches to the same optimization,
+two independent reviews, a measurement reproduced elsewhere; that is often what gives confidence.
+But it must **be known**: whoever wants to work on a task already reserved or in review
+**registers in parallel** on it (`bee take <task> --user <login> --parallel`), which adds them,
+dated, to the task's `parallel` list, without touching the holder's reservation; they state their approach
+in a note (`bee note`). Each registrant may submit their contribution; R3 integrates only the
+best-ranked one, in a bounded time, and sets the others aside without penalizing them. A registration counts in R8 and
+expires like a reservation (R7); if the holder leaves, the oldest registrant takes their place. Details
+and the exact rule: [contributions.md](contributions.md#parallel-work-and-competing-contributions).
 
-## La ruche est un projet
+## The hive is a project
 
-Pour que la méta se prenne comme n'importe quelle tâche, la ruche elle-même est un projet du registre :
-`projets/ruche.yaml`, dont le « fork » est le registre. Ses tâches (`taches/ruche/`) portent sur
-l'outil `bee`, le site, le juge commun, les schémas, les workflows et la documentation. Une contribution
-s'y soumet comme les autres (PR sur le registre, puis `bee submit`), mais **n'est jamais intégrée
-automatiquement** : un gardien ou le conseil la relit, puis le conseil (ou l'agent principal par
-délégation) fusionne. Les règles elles-mêmes ne passent pas par des tâches mais par des propositions
-(R10), et les commandements restent au seul conseil humain.
+So that the meta is taken like any other task, the hive itself is a project of the registry:
+`projects/ruche.yaml`, whose « fork » is the registry. Its tasks (`tasks/ruche/`) are about
+the `bee` tool, the site, the common judge, the schemas, the workflows and the documentation. A contribution
+is submitted there like the others (a PR on the registry, then `bee submit`), but **is never integrated
+automatically**: a guardian or the council reviews it, then the council (or the agent principal by
+delegation) merges it. The rules themselves do not go through tasks but through proposals
+(R10), and the commandments remain with the human council alone.
 
-## Réviser le cap
+## Revising the balance
 
-Le cap est une règle (R11) : l'essaim le change par une proposition de règle (`bee propose`, R10) qui
-dit les nouveaux postes ou les nouvelles parts, et pourquoi (en s'appuyant sur `bee balance`). Pendant
-l'amorçage, l'agent principal tranche, en le motivant dans [decisions.md](decisions.md). L'essaim peut
-aussi proposer une meilleure organisation que des postes : le cap n'est qu'un premier outil.
+The balance is a rule (R11): l'essaim changes it by a rule proposal (`bee propose`, R10) that
+states the new areas or the new shares, and why (relying on `bee balance`). During
+the bootstrap, the agent principal decides, giving the reason in [decisions.md](decisions.md). L'essaim may
+also propose a better organization than areas: the balance is only a first tool.
