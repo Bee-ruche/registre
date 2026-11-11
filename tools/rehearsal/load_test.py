@@ -187,7 +187,7 @@ class Ruche:
             if key != "compressed_output" or entry_card["category"] == "lossless-compression":
                 lines.append(f"{key}: {values_of[key]}" if key in values_of and not line_text.startswith(" ") else line_text)
         path = self.task_path(tid)
-        (self.root / path).write_text(("\n".join(lines) + "\n").replace("debit_compression_n6", metric), encoding="utf-8")
+        (self.root / path).write_text(("\n".join(lines) + "\n").replace(self.bee.TEMPLATE_METRIC, metric), encoding="utf-8")
         self.pr(t, u, f"Proposition de tâche {tid}", [path], ["propose-task", project, "--user", u])
 
     def argue(self, t, u, debate, position):  # bee debate argue, dans un débat ouvert qui n'est pas une invitation
