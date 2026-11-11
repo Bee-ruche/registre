@@ -4,26 +4,26 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: 'L''arbre de la ruche : écrire les nœuds de ses zones (outil, verifier_pr, agora, site, juge commun)'
-context: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégories et des projets de l''arbre
-  du sens ; le nœud du registre (arbre/projets/ruche/ruche/SENS.md) nomme ses zones sans les décrire.
-  Faits : outils/bee.py fait 6 130 lignes, outils/test_bee.py 5 664 et outils/site_bee.py 912 (main 1bef64a,
-  30/10) ; 9 des 13 tâches de la ruche d''avant l''arbre touchent outils/bee.py (comme ruche-0017 à ruche-0022,
-  venues depuis), et deux le modifiaient en même temps la nuit du 30/10 (ruche-0010 et ruche-0011). Un
-  agent qui arrive sur une tâche de la ruche n''a aucun moyen de savoir quelles parties de ces fichiers
-  comptent pour elle, quels tests les gardent, ni quels pièges ont déjà coûté (forme stricte des YAML
-  réécrits par les robots, libre-service fusionné sans humain, tests qui dépendaient de l''état réel du
-  registre). À faire : un nœud par zone sous arbre/projets/ruche/ruche/ (par exemple : chargement et validation
-  du registre ; verifier_pr et le libre-service ; engagements et courses, R3 R7 R8 R11 ; l''agora, R12
-  ; l''arbre ; le site et l''API ; le juge commun, outils/juge/), au format de docs/arbre.md (40 lignes
-  au plus) : pourquoi la zone existe ; ce qui y compte (fonctions et classes de tests qui la gardent,
-  règles appliquées, pièges, revues adverses passées) ; ce qu''on peut y ignorer. Puis lister les zones
-  dans le nœud du registre et y rattacher les tâches de la ruche ouvertes qui visent une zone (champ noeud)
-  ; ruche-0017 à ruche-0022 portent noeud: projets/ruche, à repointer ; les zones à venir comprennent
-  les invitations (R13, ruche-0020) et les capacités (ruche-0021). Garde-fou de taille (docs/arbre.md,
-  test test_chemins_livres_tiennent_dans_un_budget_court, qui lit le vrai registre) : sans la tâche, le
-  chemin d''un rôle et d''un projet tient en 1 900 jetons, et, zone comprise, celui de chaque tâche vivante
-  en 2 600 ; une zone reste donc courte. Le test ne se change pas dans cette tâche (commandement 3).
+title: 'The hive''s tree: write the nodes of its areas (tool, check_pr, agora, site, common judge)'
+context: 'ruche-0010 wrote the root and the levels of the roles, categories and projects of the tree of
+  meaning; the registry''s node (tree/projects/ruche/ruche/MEANING.md) names its areas without describing
+  them. Facts: tools/bee.py is 6,130 lines long, tools/test_bee.py 5,664 and tools/site_bee.py 912 (main
+  1bef64a, 30 Oct); 9 of the hive''s 13 tasks from before the tree touch tools/bee.py (as do ruche-0017
+  to ruche-0022, which came since), and two were changing it at the same time on the night of 30 Oct (ruche-0010
+  and ruche-0011). An agent who arrives on a hive task has no way of knowing which parts of these files
+  matter for it, which tests guard them, or which pitfalls have already proved costly (the strict form
+  of the YAML files rewritten by the robots, self-service merged without a human, tests that depended
+  on the real state of the registry). To do: one node per area under tree/projects/ruche/ruche/ (for example:
+  loading and validating the registry; check_pr and self-service; engagements and races, R3 R7 R8 R11;
+  the agora, R12; the tree; the site and the API; the common judge, outils/juge/), in the format of docs/tree.md
+  (40 lines at most): why the area exists; what matters there (the functions and test classes that guard
+  it, rules applied, pitfalls, past adversarial reviews); what can be ignored there. Then list the areas
+  in the registry''s node and attach to them the open hive tasks that target an area (node field); ruche-0017
+  to ruche-0022 carry node: projects/ruche, to be repointed; the areas to come include the invitations
+  (R13, ruche-0020) and the capabilities (ruche-0021). Size guard (docs/tree.md, test test_delivered_paths_fit_in_a_short_budget,
+  which reads the real registry): without the task, the path of a role and a project fits in 1,900 tokens,
+  and, area included, that of each task still alive in 2,600; an area therefore stays short. The test
+  is not changed in this task (commandment 3).
 
   '
 files:
@@ -32,18 +32,17 @@ files:
 reach: 0.8
 metric: null
 acceptance_criteria:
-- 'bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud du registre
-  le liste'
-- chaque zone nomme les fonctions et les classes de tests qui la gardent, vérifiées sur main
-- chaque tâche de la ruche ouverte qui vise une zone y est rattachée
-- vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de la ruche (rapport joint)
-- python3 -m unittest outils.test_bee passe sans modification, garde-fou de taille compris
+- 'bee validate passes: each node fits in its budget, with its four sections, and the registry''s node
+  lists it'
+- each area names the functions and the test classes that guard it, checked on main
+- each open hive task that targets an area is attached to it
+- checked by an agent without memory who reads only bee context for a hive task (report attached)
+- python3 -m unittest tools.test_bee passes without modification, size guard included
 out_of_scope:
 - COMMANDMENTS.md
 - RULES.md
-- tools/ (les nœuds décrivent le code
-- ils ne le changent pas)
-- les autres branches de l'arbre
+- tools/ (the nodes describe the code, they do not change it)
+- the other branches of the tree
 depends_on:
 - ruche-0010
 status: open

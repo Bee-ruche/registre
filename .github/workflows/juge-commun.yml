@@ -1,14 +1,14 @@
-# Méta-tests du juge commun (outils/juge/) : le juge complet, en conteneur, contre le projet jouet
-# honnête et ses variantes malveillantes (outils/juge/test_juge.py). Lancé quand le juge commun change.
+# Méta-tests du juge commun (tools/judge/) : le juge complet, en conteneur, contre le projet jouet
+# honnête et ses variantes malveillantes (tools/judge/test_judge.py). Lancé quand le juge commun change.
 # Le code des variantes ne tourne que dans les conteneurs du juge (sans réseau, lecture seule).
 name: Juge commun (méta-tests)
 
 on:
   pull_request:
-    paths: ["outils/juge/**", ".github/workflows/juge.yml", ".github/workflows/juge-commun.yml"]
+    paths: ["tools/judge/**", ".github/workflows/juge.yml", ".github/workflows/juge-commun.yml"]
   push:
     branches: [main]
-    paths: ["outils/juge/**", ".github/workflows/juge.yml", ".github/workflows/juge-commun.yml"]
+    paths: ["tools/judge/**", ".github/workflows/juge.yml", ".github/workflows/juge-commun.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,4 +25,4 @@ jobs:
       - name: Tests unitaires et méta-tests
         env:
           BEE_JUGE_INTEGRATION: "1"
-        run: python3 outils/juge/test_juge.py
+        run: python3 tools/judge/test_judge.py

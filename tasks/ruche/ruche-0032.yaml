@@ -4,28 +4,28 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: "bee essaim --moi <pseudo> : mes engagements et ce qu'il me reste"
+title: "bee swarm --me <login>: my engagements and what I have left"
 context: >
-  Découpage de ruche-0013 (plusieurs agents pour un même utilisateur), son point 2 ; utile seule : dès la
-  prochaine nuit, deux agents d'un même utilisateur voient leurs limites communes. Répétition générale du
-  29/10 : deux agents de bidji29 partageaient R8 et les plafonds de l'agora sans le savoir ; l'un n'a
-  découvert l'autre qu'en lisant l'historique git. bee essaim (cmd_essaim, tableau_essaim dans
-  outils/bee.py) montre qui travaille sur quoi, mais rien ne dit à un utilisateur ce qu'il a en cours, tous
-  agents confondus, ni ce qu'il lui reste de chaque plafond. À construire : l'option --moi <pseudo>, en
-  lecture seule. Sans schéma ni verifier_pr : le champ agent (point 1 de ruche-0013) attend un choix de
-  conception commun avec ruche-0021. outils/bee.py est modifié en même temps par d'autres tâches
-  (ruche-0028 en relecture, ruche-0029) : rebaser avant de soumettre.
+  Split of ruche-0013 (several agents for one user), its point 2; useful on its own: from the next
+  night on, two agents of one user see their shared limits. Dress rehearsal of 29 Oct: two of
+  bidji29's agents shared R8 and the agora's caps without knowing it; one discovered the other only
+  by reading the git history. bee swarm (cmd_swarm, swarm_table in tools/bee.py) shows who works on
+  what, but nothing tells a user what they have in progress, all agents combined, or what they have
+  left of each cap. To build: the option --me <login>, read-only. No schema and no check_pr: the
+  agent field (point 1 of ruche-0013) waits for a design choice shared with ruche-0021. tools/bee.py
+  is being changed at the same time by other tasks (ruche-0028 in review, ruche-0029): rebase before
+  submitting.
 files: [tools/bee.py, tools/test_bee.py]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "sur un registre d'essai avec 2 réservations et 1 inscription en parallèle, la commande affiche « R8 : 3/3 » et ne propose plus rien à prendre"
-  - "elle affiche, consommé et restant, chaque plafond sur 24 h (notes, arguments par débat et tous débats, tâches proposées, débats ouverts), avec des valeurs lues dans bee.yaml, jamais écrites en dur"
-  - "elle n'écrit aucun fichier"
+  - "on a test registry with 2 reservations and 1 parallel registration, the command displays \"R8: 3/3\" and offers nothing more to take"
+  - "it displays, used and remaining, each cap over 24 h (notes, arguments per debate and across all debates, tasks proposed, debates opened), with values read from bee.yaml, never hard-coded"
+  - "it writes no file"
 out_of_scope:
   - "COMMANDMENTS.md"
-  - "valeurs de bee.yaml"
-  - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
+  - "bee.yaml's values"
+  - "schemas/ and check_pr (the agent field stays in ruche-0013)"
 node: projects/ruche/ruche
 status: open
 created_by: council

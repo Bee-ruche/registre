@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Le gh de la ruche simulée : il refuse tout, pour qu'aucune commande de la simulation n'atteigne le vrai GitHub.
-# ruche-0122 : sauf la lecture groupée des PR des forks (gh api graphql, celle de bee en-attente --pr-states), servie depuis
-# etat/prs_fork.tsv (auteur) et etat/commits_fork.tsv (tête : le dernier commit poussé) ; une PR sans commit n'a pas de réponse.
-# Elle ne répond que OPEN (CLOSED et MERGED sont couverts par le faux gh des tests unitaires), toujours d'un compte
-# utilisateur, au numéro simulé (crc32 du login).
-# Chaque appel, servi ou refusé, s'ajoute à etat/appels_gh.tsv (sa commande, puis son code).
+# The simulated hive's gh: it refuses everything, so that no command of the simulation reaches the real GitHub.
+# ruche-0122: except the bulk read of the forks' PRs (gh api graphql, the one of bee pending --pr-states), served from
+# state/prs_fork.tsv (author) and state/commits_fork.tsv (head: the last commit pushed); a PR with no commit has no answer.
+# It answers only OPEN (CLOSED and MERGED are covered by the unit tests' fake gh), always from a user account, with the
+# simulated number (crc32 of the login).
+# Each call, served or refused, is appended to state/appels_gh.tsv (its command, then its code).
 if [ -n "${BEE_SIM:-}" ] && [ -d "$BEE_SIM/state" ] && [ "${1:-} ${2:-} ${3:-}" = "api graphql -f" ]; then
   python3 - "$BEE_SIM/state" "${4#query=}" <<'EOF'
 import json, pathlib, re, sys, zlib
@@ -22,7 +22,7 @@ for m in re.finditer(r'(r\d+): repository\(owner: "([^"]*)", name: "([^"]*)"\)|(
                           "author": {"__typename": "User", "login": authors[url],
                                      "databaseId": zlib.crc32(authors[url].encode()) + 1}} if url in authors and url in heads else None
 manque = sum(v is None for r in data.values() for v in r.values())
-print(json.dumps({"data": data, **({"errors": [{"message": f"{manque} PR sans réponse"}]} if manque else {})}))
+print(json.dumps({"data": data, **({"errors": [{"message": f"{manque} PR(s) with no answer"}]} if manque else {})}))
 sys.exit(1 if manque or not data else 0)
 EOF
   code=$?
@@ -30,5 +30,5 @@ EOF
   exit "$code"
 fi
 [ -n "${BEE_SIM:-}" ] && [ -d "$BEE_SIM/state" ] && printf '%s\t1\n' "$(printf '%s ' "$@" | tr -d '\t\n' | cut -c1-200)" >> "$BEE_SIM/state/appels_gh.tsv"
-echo "gh est désactivé dans la ruche simulée (appel refusé : gh $*). Voir LISEZMOI.md pour les gestes simulés." >&2
+echo "gh is disabled in the simulated hive (call refused: gh $*). See README.md for the simulated steps." >&2
 exit 1

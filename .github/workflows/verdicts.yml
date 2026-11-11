@@ -1,17 +1,17 @@
-# Récupère les verdicts des CI des forks et les reporte dans le registre.
+# Fetches the verdicts of the forks' CIs and records them in the registry.
 #
-# Sécurité : seul l'outil bee de la branche principale s'exécute ici. verdict.json et
-# le manifeste viennent des forks et sont traités comme des données. Une contribution dont la PR
-# n'a pas été ouverte par son auteur ne reçoit aucun verdict (pas de crédit pour le travail d'un autre).
+# Security: only the bee tool of the main branch runs here. verdict.json and
+# the manifest come from the forks and are treated as data. A contribution whose PR
+# was not opened by its author receives no verdict (no credit for someone else's work).
 name: Fork verdicts
 
 on:
   schedule:
     - cron: "11,41 * * * *"
   workflow_dispatch:
-  # Activité du registre : chaque passage de la fusion automatique (réservation, soumission, relecture,
-  # vote…) déclenche aussi une collecte. En pratique, GitHub espace les cron de plusieurs heures.
-  # Seul le code de main s'exécute ; l'événement ne sert que de signal.
+  # Registry activity: each pass of the auto-merge (reservation, submission, review,
+  # vote…) also starts a collection. In practice, GitHub spaces the crons several hours apart.
+  # Only main's code runs; the event serves only as a signal.
   workflow_run:
     workflows: ["Auto-merge"]
     types: [completed]
@@ -20,9 +20,9 @@ permissions:
   contents: write
   actions: write
 
-# Groupe à part : dans un groupe partagé, GitHub ne garde qu'une exécution en attente et annule la précédente ;
-# l'intégration, déclenchée par les mêmes événements, annulait donc la collecte des verdicts. Les écritures
-# concurrentes sur main sont gérées par le rebasage et les essais de l'étape de publication (idempotente).
+# A group of its own: in a shared group, GitHub keeps only one pending run and cancels the previous one;
+# the integration, started by the same events, thus cancelled the verdict collection. Concurrent
+# writes to main are handled by the rebase and the retries of the publishing step (idempotent).
 concurrency:
   group: verdicts
   cancel-in-progress: false
@@ -46,31 +46,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          log_text() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
-          # ruche-0122: every PR is read in bulk (bee en-attente --pr-states, one GraphQL query per 50 PRs), as gh pr view reads one; a
+          log_text() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025: what bee prints, never at the start of a log line
+          # ruche-0122: every PR is read in bulk (bee pending --pr-states, one GraphQL query per 50 PRs), as gh pr view reads one; a
           # PR whose answer is unreadable, or whose author is not a user, is left out of the pass; the person its author acts for is
-          # bee acts-for's (ruche-0089), compte_pr the author's account number.
+          # bee acts-for's (ruche-0089), pr_account the author's account number.
           python3 tools/bee.py pending --pr-states \
             | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("verdict_sha") or "-", c.get("verdict_ci") or "-", c.get("author") or "-", c.get("awaiting_sha") or "-", c["pr_head"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
-            > a_traiter.tsv
+            > to_process.tsv
           while IFS=$'\t' read -r id pr known_sha known_ci author awaiting_sha sha pr_author pr_account person; do
             repo=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-            # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
-            # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
+            # A hive contribution (a PR on the registry itself): no fork CI nor verdict to collect; it
+            # is reviewed and merged by the council. Never stop the collection of the others for it.
             [ "$repo" = "$GITHUB_REPOSITORY" ] && continue
-            # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
-            # est son login GitHub). Sinon, aucun verdict : on ne juge pas le travail d'un autre sous son nom.
-            # ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (personne : bee acts-for, sur main).
+            # A contribution's pr field is declared by its author: the PR must be theirs (a member's pseudonym
+            # is their GitHub login). Otherwise, no verdict: someone else's work is not judged under the author's name.
+            # ruche-0089: a PR opened by the author's declared agent account counts as theirs (person: bee acts-for, on main).
             if [ "${person,,}" != "${author,,}" ]; then
-              echo "::notice::$id : la PR $pr a été ouverte par $pr_author, pas par $author ; aucun verdict n'est enregistré."; continue
+              echo "::notice::$id: PR $pr was opened by $pr_author, not by $author; no verdict is recorded."; continue
             fi
-            # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
-            # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
+            # A green verdict on this commit is final; a red one may come from a passing outage
+            # (runner unavailable): the last completed run, which may have been re-run, is read again.
             [ "$sha" = "$known_sha" ] && [ "$known_ci" = "green" ] && continue
-            # ruche-0025 (revues adverses de minizBee #16) : seulement la CI de CETTE PR, par l'événement pull_request, vers la
-            # branche par défaut du fork, jamais changée de base, sans autre PR de la même tête (dépôt et branche) qui la précède :
-            # sinon aucun verdict, et la contribution le dit (attente_verdict) ; pas rejugée avant une autre tête (1 000 requêtes
-            # par heure). bee juge les réponses de l'API.
+            # ruche-0025 (adversarial reviews of minizBee #16): only the CI of THIS PR, by the pull_request event, to the
+            # fork's default branch, its base never changed, with no other PR of the same head (repository and branch) before it:
+            # otherwise no verdict, and the contribution says so (awaiting_verdict); not judged again before another head (1,000 requests
+            # per hour). bee judges the API's answers.
             [ "$sha" = "$awaiting_sha" ] && continue
             n=${pr##*/}; api="$RUNNER_TEMP/api"; rm -rf "$api" && mkdir -p "$api"
             [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$repo/pulls/$n" > "$api/pr.json" \
@@ -86,45 +86,45 @@ jobs:
             read -r number_of address defect <<< "$run"
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
             gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/verdict" || continue
-            # La base que déclare verdict.json (donnée du fork) n'est jamais crue : l'API dit si elle est un ancêtre de la branche
-            # par défaut (compare : identical ou ahead) ; bee enregistrer-verdict refuse sinon.
+            # The base verdict.json declares (fork data) is never believed: the API says whether it is an ancestor of the default
+            # branch (compare: identical or ahead); bee record-verdict refuses otherwise.
             : > "$RUNNER_TEMP/verdict/bases.txt"
             for base in $(python3 tools/bee.py declared-bases "$RUNNER_TEMP/verdict/verdict.json"); do
               status=$(gh api "repos/$repo/compare/$base...$defect" --jq .status) \
                 && printf '%s %s\n' "$base" "$status" >> "$RUNNER_TEMP/verdict/bases.txt" || true
             done
-            # Contrôle de confiance : les fichiers modifiés par la PR, lus auprès de l'API GitHub. Une PR qui
-            # touche son workflow ou ses juges a pu fabriquer son verdict ; R3 la refuse (optimisation) ou
-            # exige une relecture du conseil ou d'un Confirmé (tâche d'outillage).
+            # Trust check: the files modified by the PR, read from GitHub's API. A PR that
+            # touches its workflow or its judges may have forged its verdict; R3 refuses it (optimization) or
+            # requires a review by the council or a Confirmed member (tooling task).
             gh api "repos/$repo/pulls/${pr##*/}/files" --paginate \
               --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/files.txt" || continue
             options=(--files "$RUNNER_TEMP/verdict/files.txt" --bases "$RUNNER_TEMP/verdict/bases.txt")
-            # Le manifeste de CETTE tâche : manifestes/<tâche>.yaml (bee manifeste), sinon CONTRIBUTION.yaml à la racine
-            # (ancien emplacement). Un CONTRIBUTION.yaml resté sur master d'une contribution précédente a déjà servi à
-            # calculer un écart contre le mauvais manifeste (miniz-0018-c1, tour 2) : bee enregistrer-verdict ignore un
-            # manifeste dont la tâche n'est pas celle de la contribution.
-            task=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+(-[a-z0-9]+)*-[0-9]{4})-c[0-9]+$/\1/p')  # ID_CONTRIBUTION de bee
+            # The manifest of THIS task: manifests/<task>.yaml (bee manifest), else CONTRIBUTION.yaml at the root
+            # (former place). A CONTRIBUTION.yaml left on master by a previous contribution was once used to
+            # compute a gap against the wrong manifest (miniz-0018-c1, round 2): bee record-verdict ignores a
+            # manifest whose task is not the contribution's.
+            task=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+(-[a-z0-9]+)*-[0-9]{4})-c[0-9]+$/\1/p')  # bee's ID_CONTRIBUTION
             # ruche-0145: manifests/<task>.yaml (bee manifest, from the switch on) first; the forks' former places until date D,
             # after which bee record-verdict ignores a French manifest (DATE_D in bee).
             for location in ${task:+"manifests/$task.yaml"} ${task:+"manifestes/$task.yaml"} CONTRIBUTION.yaml; do
-              # Fichier absent : gh échoue (son corps d'erreur ne doit jamais passer pour un manifeste).
+              # File absent: gh fails (its error body must never pass for a manifest).
               if content=$(gh api "repos/$repo/contents/$location?ref=$sha" --jq .content 2>/dev/null) \
                  && printf '%s' "$content" | base64 -d > "$RUNNER_TEMP/verdict/manifest.yaml" 2>/dev/null \
                  && [ -s "$RUNNER_TEMP/verdict/manifest.yaml" ]; then
                 options+=(--manifest "$RUNNER_TEMP/verdict/manifest.yaml"); break
               fi
             done
-            # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu auprès de l'API. Un commit amendé (même
-            # arbre, autre sha) n'efface pas un refus. ruche-0028 (revue adverse, M1) : sans arbre lisible (une ligne, 7 à 40
-            # caractères hexadécimaux), aucun verdict ; il est rejugé au passage suivant.
+            # Same content (adversarial review of ruche-0012): the git tree of the judged commit, read from the API. An amended commit (same
+            # tree, another sha) does not erase a refusal. ruche-0028 (adversarial review, M1): without a readable tree (one line, 7 to 40
+            # hexadecimal characters), no verdict; it is judged again at the next pass.
             if ! { tree=$(gh api "repos/$repo/git/commits/$sha" --jq .tree.sha 2>/dev/null) && [[ "$tree" =~ ^[0-9a-f]{7,40}$ ]]; }; then
-              echo "::notice::$id : arbre git du commit $sha illisible auprès de l'API ; aucun verdict, rejugé au passage suivant."; continue
+              echo "::notice::$id: git tree of commit $sha unreadable from the API; no verdict, judged again at the next pass."; continue
             fi
             options+=(--tree "$tree")
             python3 tools/bee.py record-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
               --sha "$sha" --run "$address" "${options[@]}" 2>&1 | log_text || true
-          done < a_traiter.tsv
-          rm -f a_traiter.tsv
+          done < to_process.tsv
+          rm -f to_process.tsv
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -133,7 +133,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -qam "Fork verdicts"
-            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            # main may have moved during this pass (self-service merges): rebase, validate again, retry.
             for attempt in 1 2 3; do
               if git pull -q --rebase origin main && python3 tools/bee.py validate && git push origin HEAD:main; then
                 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
@@ -142,7 +142,7 @@ jobs:
               git rebase --abort 2>/dev/null || true
               sleep $((attempt * 10))
             done
-            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            echo "::error::could not publish after 3 attempts; the next pass will redo the work (idempotent)."
             exit 1
           fi
       - name: API budget, end (ruche-0121)

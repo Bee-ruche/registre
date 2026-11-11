@@ -12,10 +12,10 @@ import statistics
 import subprocess
 import sys
 
-SEUIL_TEST_DU_SIGNE = 0.02
+SIGN_TEST_THRESHOLD = 0.02
 
 
-def seuil_signe(n, alpha=SEUIL_TEST_DU_SIGNE):
+def sign_threshold(n, alpha=SIGN_TEST_THRESHOLD):
     """Plus petit k tel que P(X >= k | n, 1/2) <= alpha ; None si aucun (n trop petit)."""
     for k in range(n + 1):
         if sum(math.comb(n, j) for j in range(k, n + 1)) / 2 ** n <= alpha:
@@ -23,67 +23,67 @@ def seuil_signe(n, alpha=SEUIL_TEST_DU_SIGNE):
     return None
 
 
-def p_unilaterale(n, k):
+def one_sided_p(n, k):
     return sum(math.comb(n, j) for j in range(k, n + 1)) / 2 ** n
 
 
-def test_du_signe(valeurs_a, valeurs_b, sens):
+def sign_test(values_a, values_b, direction):
     """Test du signe standard sur les paires (A_i, B_i).
 
     Les égalités sont écartées ; le seuil k et les valeurs p se calculent sur les N' paires restantes.
     Si toutes les paires sont à égalité (N' = 0), il n'y a ni gain ni dégradation."""
-    paires = [(a, b) for a, b in zip(valeurs_a, valeurs_b) if a is not None and b is not None]
-    meilleur = (lambda a, b: b > a) if sens == "plus_haut" else (lambda a, b: b < a)
-    victoires_b = sum(1 for a, b in paires if meilleur(a, b))
-    victoires_a = sum(1 for a, b in paires if meilleur(b, a))
-    n_utiles = victoires_a + victoires_b
-    k = seuil_signe(n_utiles) if n_utiles else None
+    pairs = [(a, b) for a, b in zip(values_a, values_b) if a is not None and b is not None]
+    best_one = (lambda a, b: b > a) if direction == "plus_haut" else (lambda a, b: b < a)
+    b_wins = sum(1 for a, b in pairs if best_one(a, b))
+    a_wins = sum(1 for a, b in pairs if best_one(b, a))
+    n_useful = a_wins + b_wins
+    k = sign_threshold(n_useful) if n_useful else None
     return {
-        "paires": len(paires), "paires_utiles": n_utiles,
-        "victoires_B": victoires_b, "victoires_A": victoires_a, "egalites": len(paires) - n_utiles,
+        "paires": len(pairs), "paires_utiles": n_useful,
+        "victoires_B": b_wins, "victoires_A": a_wins, "egalites": len(pairs) - n_useful,
         "seuil_k": k,
-        "p_amelioration": p_unilaterale(n_utiles, victoires_b) if n_utiles else None,
-        "p_degradation": p_unilaterale(n_utiles, victoires_a) if n_utiles else None,
-        "au_dela_du_bruit": k is not None and victoires_b >= k,
-        "degradation_au_dela_du_bruit": k is not None and victoires_a >= k,
+        "p_amelioration": one_sided_p(n_useful, b_wins) if n_useful else None,
+        "p_degradation": one_sided_p(n_useful, a_wins) if n_useful else None,
+        "au_dela_du_bruit": k is not None and b_wins >= k,
+        "degradation_au_dela_du_bruit": k is not None and a_wins >= k,
     }
 
 
-def resume(valeurs):
-    valeurs = [v for v in valeurs if v is not None]
-    if not valeurs:
+def summary(values_of):
+    values_of = [v for v in values_of if v is not None]
+    if not values_of:
         return {"mediane": None, "min": None, "max": None, "valeurs": []}
-    return {"mediane": statistics.median(valeurs), "min": min(valeurs), "max": max(valeurs), "valeurs": valeurs}
+    return {"mediane": statistics.median(values_of), "min": min(values_of), "max": max(values_of), "valeurs": values_of}
 
 
-def gain_relatif(a, b, sens):
+def relative_gain(a, b, direction):
     if a in (None, 0) or b is None:
         return None
-    return (b / a - 1.0) if sens == "plus_haut" else (1.0 - b / a)
+    return (b / a - 1.0) if direction == "plus_haut" else (1.0 - b / a)
 
 
 def description_machine():
-    modele = platform.processor() or platform.machine()
+    model = platform.processor() or platform.machine()
     try:
         with open("/proc/cpuinfo", encoding="utf-8") as f:
-            for ligne in f:
-                if ligne.lower().startswith(("model name", "cpu model")):
-                    modele = ligne.split(":", 1)[1].strip()
+            for line_text in f:
+                if line_text.lower().startswith(("model name", "cpu model")):
+                    model = line_text.split(":", 1)[1].strip()
                     break
     except OSError:
         pass
-    compilateur = os.environ.get("CC", "cc")
+    compiler = os.environ.get("CC", "cc")
     try:
-        version = subprocess.run([compilateur, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
+        version = subprocess.run([compiler, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     except (OSError, IndexError):
-        version = compilateur
-    return {"processeur": modele, "architecture": platform.machine(), "coeurs": os.cpu_count(),
+        version = compiler
+    return {"processeur": model, "architecture": platform.machine(), "coeurs": os.cpu_count(),
             "systeme": platform.platform(), "compilateur": version}
 
 
-def afficher_tableau(rapport):
-    lignes = [f"{'métrique':26s} {'médiane A':>12s} {'médiane B':>12s} {'gain':>8s}  {'B gagne':>8s}  verdict"]
-    for nom, m in rapport["metriques"].items():
+def show_table(report):
+    lines = [f"{'métrique':26s} {'médiane A':>12s} {'médiane B':>12s} {'gain':>8s}  {'B gagne':>8s}  verdict"]
+    for nom, m in report["metriques"].items():
         a, b = m["A"], m["B"]
         if a["mediane"] is None:
             continue
@@ -95,14 +95,14 @@ def afficher_tableau(rapport):
             verdict = "DÉGRADATION au-delà du bruit"
         else:
             verdict = "dans le bruit"
-        lignes.append(f"{nom:26s} {a['mediane']:12.3f} {b['mediane']:12.3f} {gain:>8s}  "
+        lines.append(f"{nom:26s} {a['mediane']:12.3f} {b['mediane']:12.3f} {gain:>8s}  "
                       f"{s['victoires_B']:>3d}/{s['paires_utiles']:<4d}  {verdict}"
                       + (f" ({s['egalites']} égalités écartées)" if s["egalites"] else ""))
-    for nom, m in (rapport.get("instructions") or {}).items():
+    for nom, m in (report.get("instructions") or {}).items():
         gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.3f} %"
         if not m["au_dela_du_bruit"]:
             verdict = "dans le bruit"
         else:
             verdict = "moins d'instructions" if m["gain"] > 0 else "PLUS d'instructions"
-        lignes.append(f"{nom:26s} {m['A']:12d} {m['B']:12d} {gain:>8s}  {'':>8s}  {verdict}")
-    print("\n".join(lignes), file=sys.stderr)
+        lines.append(f"{nom:26s} {m['A']:12d} {m['B']:12d} {gain:>8s}  {'':>8s}  {verdict}")
+    print("\n".join(lines), file=sys.stderr)

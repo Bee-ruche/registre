@@ -4,27 +4,28 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "Les gestes du gardien : corriger un fait, rendre une tâche tenue par une contribution vide"
+title: "The guardian's gestures: correct a fact, give back a task held by an empty contribution"
 context: >
-  Répétition générale, tour 2 (30/10), d'après farid, seul gardien. (1) Un gardien qui valide une tâche
-  proposée dont un fait est faux (ruche-0016 : « bee.py fait 4 911 lignes », 5 941 en réalité) ne peut
-  que valider avec une note ou écarter ; bee contexte imprime toujours le fait faux d'abord, la note
-  après. (2) Une contribution soumise 90 s après la réservation, sans aucune mesure, garde la tâche en
-  relecture : R3 la protège jusqu'à 96 h, et aucun gardien ne peut la rendre. (3) Une note abusive ne se
-  retire pas (ajout seul), et rien ne permet de signaler un membre. Le tour 1 notait déjà un gardien
-  « sans levier ». À faire : une validation « avec correction » que bee contexte imprime juste après le
-  champ corrigé ; un geste de gardien, motivé et public, qui clôt une contribution sans contenu vérifiable
-  (ni verdict de CI ni mesure) au-delà d'un délai à fixer, sans pénalité si l'auteur s'en explique ; une
-  façon de masquer une note abusive sans la supprimer (elle reste dans l'historique, avec le motif). Les
-  changements de règle passent par une proposition (R10).
+  Dress rehearsal, round 2 (30 Oct), according to farid, the only guardian. (1) A guardian who
+  validates a proposed task in which a fact is false (ruche-0016: "bee.py is 4,911 lines long",
+  5,941 in reality) can only validate it with a note or set it aside; bee context always prints the
+  false fact first, the note after. (2) A contribution submitted 90 s after the reservation, without
+  any measurement, keeps the task in review: R3 protects it for up to 96 h, and no guardian can give
+  it back. (3) An abusive note cannot be withdrawn (append only), and nothing allows reporting a
+  member. Round 1 already noted a guardian "without leverage". To do: a validation "with correction"
+  that bee context prints right after the corrected field; a guardian's gesture, reasoned and
+  public, that closes a contribution with no verifiable content (neither a CI verdict nor a
+  measurement) after a delay to be set, without penalty if the author explains themselves; a way to
+  hide an abusive note without deleting it (it stays in the history, with the reason). Rule changes
+  go through a proposal (R10).
 files: [tools/bee.py, tools/test_bee.py, docs/guardians.md, RULES.md, schemas/task.schema.json]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "chaque geste ajouté est réservé aux gardiens et au conseil, motivé, daté, public, et testé côté bee verifier-pr (accepté pour un gardien, refusé pour un autre membre)"
-  - "aucun geste ne supprime de donnée : ce qui est masqué ou clos reste lisible dans le registre"
-  - "une proposition de règle (R10) pour ce qui change R3 ou R7 ; revue adverse indépendante jointe"
-out_of_scope: [COMMANDMENTS.md, les workflows de .github/, le choix des gardiens]
+  - "each added gesture is reserved for the guardians and the council, reasoned, dated, public, and tested on the bee check-pr side (accepted for a guardian, refused for another member)"
+  - "no gesture deletes data: what is hidden or closed stays readable in the registry"
+  - "a rule proposal (R10) for what changes R3 or R7; independent adversarial review attached"
+out_of_scope: [COMMANDMENTS.md, the workflows of .github/, the choice of guardians]
 depends_on: []
 node: projects/ruche
 status: open

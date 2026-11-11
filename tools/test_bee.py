@@ -216,7 +216,7 @@ class TestFrozenFixture(unittest.TestCase):
 
     def test_nothing_imports_or_runs_it(self):
         codes = [ROOT / "tools" / n for n in ("bee.py", "site_bee.py", "marker_inventory.py")]
-        codes += [p for p in (ROOT / "outils/juge").rglob("*.py") if not p.name.startswith("test_")]  # one literal: the judge stays (ruche-0153)
+        codes += [p for p in (ROOT / "tools" / "judge").rglob("*.py") if not p.name.startswith("test_")]
         codes += list((ROOT / "tools" / "rehearsal").rglob("*")) + list((ROOT / ".github").rglob("*.yml"))
         for path in sorted(c for c in codes if c.is_file() and "__pycache__" not in c.parts):
             with self.subTest(file=path.relative_to(ROOT).as_posix()):
@@ -540,7 +540,7 @@ class TestCiScope(unittest.TestCase):
         steps = suite["jobs"]["tests"]["steps"]
         self.assertEqual(steps[0], {"uses": "actions/checkout@v4", "with": {"ref": "${{ inputs.commit }}", "fetch-depth": 0}})
         self.assertEqual([e.get("run") for e in steps[2:]], ["pip install -r tools/requirements.txt",
-                                                             "python3 tools/test_bee.py --processes 4", "python3 outils/juge/test_juge.py"])
+                                                             "python3 tools/test_bee.py --processes 4", "python3 tools/judge/test_judge.py"])
         self.assertFalse([e for e in steps if "if" in e or "env" in e or "${{" in str(e.get("run", ""))])
         for name in ("validation.yml", "suite.yml"):
             text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
@@ -929,10 +929,10 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         names = [s.get("name", "") for s in reach]
         beginning = names.index("Scope of the push (data only, or the full suite)") + 1
         self.assertEqual([s["run"] for s in (reach[beginning], reach[-1])],
-                         [f'python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget {m} --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true' for m in ("start", "end")])
+                         [f'python3 "$RUNNER_TEMP/tool-before/bee.py" api-budget {m} --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true' for m in ("start", "end")])
         self.assertEqual((reach[-1].get("if"), [s["env"] for s in (reach[beginning], reach[-1])]), ("always()", [{"GITHUB_TOKEN": self.TOKENS["GITHUB_TOKEN"]}] * 2))
         self.assertEqual([s.get("name", "") for s in reach[:beginning] if "gh " in s.get("run", "")], [])
-        self.assertEqual([s for s in reach if "tools/" in s.get("run", "").replace("outil-avant/", "").replace("$BEFORE:tools/", "")], [],
+        self.assertEqual([s for s in reach if "tools/" in s.get("run", "").replace("tool-before/", "").replace("$BEFORE:tools/", "")], [],
                          "nothing of the push runs in the job whose token may start a workflow")
         deploy, dispatch = self.stream("site.yml")["jobs"]["deploy"]["steps"], self.stream("validation.yml")["jobs"]["dispatch"]["steps"]
         for steps in (deploy, dispatch):
@@ -1103,7 +1103,7 @@ class TestPushScope(unittest.TestCase):
             return outputs["reach"], outputs["commit"], after
 
         self.assertEqual(step(lambda: self.write("members/alice.yaml"))[:2], ("data", git(self.repo, "rev-parse", "HEAD~1").strip()))
-        self.assertIn("pip install -q -r \"$RUNNER_TEMP/outil-avant/requirements.txt\"", validation["run"], "main's dependencies before the push")
+        self.assertIn("pip install -q -r \"$RUNNER_TEMP/tool-before/requirements.txt\"", validation["run"], "main's dependencies before the push")
         self.assertLess(TestCiScope.steps()[0].index(validation), [e.get("name") for e in TestCiScope.steps()[0]].index("Dependencies"),
                         "the scope is read before the pushed dependencies are installed")
         reach, commit, after = step(lambda: self.write("tools/bee.py", "print('data')\n"))  # the pushed tool never decides
@@ -1126,7 +1126,7 @@ class TestPushScope(unittest.TestCase):
         self.assertEqual((step["if"], step["env"]), ("steps.reach_push.outputs.reach == 'data'", {"AFTER": "${{ github.sha }}", "GH_TOKEN": "${{ github.token }}"}))
         code = self.commit("tools/x.py", "x = 1\n")
         after = self.commit("members/alice.yaml")
-        copied = f'mkdir -p "$RUNNER_TEMP/outil-avant"; cp "{ROOT / "tools/bee.py"}" "$RUNNER_TEMP/outil-avant/bee.py"\n'
+        copied = f'mkdir -p "$RUNNER_TEMP/tool-before"; cp "{ROOT / "tools/bee.py"}" "$RUNNER_TEMP/tool-before/bee.py"\n'
         case_of = {"green": ([(code, "completed", "success")], "data"), "in progress": ([(code, "in_progress", None)], "data"),
                "queued": ([(code, "queued", None), (code, "completed", "failure")], "data"),
                "failed": ([(code, "completed", "failure")], "full"), "cancelled": ([(code, "completed", "cancelled")], "full"),
@@ -2131,7 +2131,7 @@ class TestRegistry(BaseTest):
 
     def test_close_reopens_the_task(self):
         cid = self.submit_0099()
-        code, text = self.bee("close", cid, "--reason", "PR fermée sans fusion.")
+        code, text = self.bee("close", cid, "--reason", "PR closed without merge.")
         self.assertEqual(code, 0, text)
         _, rec = bee.Registry(self.dir).record(cid)
         self.assertEqual(rec["status"], "cancelled")
@@ -2268,7 +2268,7 @@ class TestRegistry(BaseTest):
         page = (self.dir / "_site/index.html").read_text(encoding="utf-8")
         self.assertIn("miniz-0001", page)
         self.assertIn("miniz-0099-c1", page)
-        self.assertIn("Compression sans perte", page)
+        self.assertIn("Lossless compression", page)
         self.assertIn("<html lang='en'>", page)  # ruche-0147: every label is English (data may stay French)
         self.assertIn("id='c-pseudo'", page)  # consigne qui se remplit
         # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
@@ -2482,8 +2482,8 @@ class TestTree(BaseTest):
         folder = self.node("projects/lossless-compression/miniz").parent / "tinfl"
         folder.mkdir()
         (folder / "MEANING.md").write_text(ZONE_NODE, encoding="utf-8")
-        self.replace_with("projects/lossless-compression/miniz", "## Enfants\n",
-                       "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n")
+        self.replace_with("projects/lossless-compression/miniz", "## Children\n",
+                       "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n")
 
     def test_delivered_tree_valid_and_tasks_attached(self):
         self.valid_one()
@@ -2500,7 +2500,7 @@ class TestTree(BaseTest):
                         "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
 
     def test_node_over_budget(self):
-        self.replace_with("roles/review", "## Enfants\n", "## Enfants\n" + "".join(f"- ligne {i}\n" for i in range(10)))
+        self.replace_with("roles/review", "## Children\n", "## Children\n" + "".join(f"- ligne {i}\n" for i in range(10)))
         self.refuse("tree/roles/review/MEANING.md: over budget")
 
     def test_budget_wider_than_the_cap(self):
@@ -2510,16 +2510,16 @@ class TestTree(BaseTest):
         self.refuse("over budget", "budget of 10")
 
     def test_invisible_character_refused(self):
-        self.replace_with("roles/review", "## Enfants\nAucun.", "## Enfants\nAucun.\u200b")
+        self.replace_with("roles/review", "## Children\nNone.", "## Children\nNone.\u200b")
         self.refuse("invisible or control character refused (U+200B)")
 
     def test_line_too_wide(self):
-        self.replace_with("roles/review", "## Enfants\nAucun.", "## Enfants\nAucun. " + "x" * 130)
+        self.replace_with("roles/review", "## Children\nNone.", "## Children\nNone. " + "x" * 130)
         self.refuse("longer than 120 characters")
 
     def test_section_missing_or_empty(self):
-        self.replace_with("roles/review", "## Ce qu'on peut ignorer ici\n", "")
-        self.refuse("missing section: « ## Ce qu'on peut ignorer ici »")
+        self.replace_with("roles/review", "## What you can ignore here\n", "")
+        self.refuse("missing section: « ## What you can ignore here »")
 
     def test_empty_section(self):
         text = self.node("projects/ruche").read_text(encoding="utf-8")
@@ -2529,7 +2529,7 @@ class TestTree(BaseTest):
         self.refuse("empty node: the section « Why this branch exists » has nothing")
 
     def test_sections_out_of_order_or_unexpected(self):
-        self.replace_with("roles/review", "## Ce qui compte ici", "## Ce qui compte, en vrai")
+        self.replace_with("roles/review", "## What matters here", "## What matters, really")
         self.refuse("unexpected section(s)")
 
     def test_header_missing_or_incomplete(self):
@@ -2566,7 +2566,7 @@ class TestTree(BaseTest):
         folder.mkdir()
         (folder / "MEANING.md").write_text(ZONE_NODE.replace("parent: projects/lossless-compression/miniz",
                                                             "parent: projects/lossless-compression"), encoding="utf-8")
-        self.replace_with("projects/lossless-compression", "## Enfants\n", "## Enfants\n- `projects/lossless-compression/zstd` : zstd\n")
+        self.replace_with("projects/lossless-compression", "## Children\n", "## Children\n- `projects/lossless-compression/zstd`: zstd\n")
         self.refuse("« zstd » is not a project of the category lossless-compression")
 
     def test_symbolic_link_refused(self):
@@ -2672,8 +2672,8 @@ class TestTree(BaseTest):
         self.assertEqual(code, 0, text)
         self.assertIn("# bee context --role invite: root > roles/invite", text)
         role = text[text.index("=== node roles/invite ==="):]
-        self.assertIn("docs/croissance.md", role)
-        for command in ("invite", "voir I-<nnnn>", "invitation", "essaim", "incident"):
+        self.assertIn("docs/growth.md", role)
+        for command in ("invite", "show I-<nnnn>", "invitation", "swarm", "incident"):
             self.assertIn(command, role)
         self.assertLess(int(re.search(r"About (\d+) tokens", text).group(1)), 1900)
         self.assertLess(bee.estimate_tokens(text), 1900)
@@ -2860,7 +2860,7 @@ class TestTree(BaseTest):
         self.assertLessEqual(int(re.search(r"About (\d+) tokens", text).group(1)), 3000)
         flat = self.flat(text)
         for keeper in ("=== node roles/optimize ===", "=== node projects/lossless-compression/miniz ===",
-                      "une session cloud n'est pas une sandbox", "sans-docker.sh", "chemins_juges"):
+                      "a cloud session is not a sandbox", "sans-docker.sh", "judge_paths"):
             self.assertIn(keeper, flat)
         self.assertNotIn("Omitted to fit", text, "aucun palier retiré : la donnée suffisait")
         self.assertRegex(text, r"# \d+ notes omitted: bee show miniz-0099")
@@ -2907,7 +2907,7 @@ class TestTree(BaseTest):
         for before, after, message in (("maintained_by: ruche-0010", "maintained_by: [ruche-0010]", "« maintained_by » must be"),
                                       ("parent: root", "parent: {a: b}", "« parent » must be"),
                                       ("line_budget: 40", 'line_budget: "40"', "« line_budget » must be"),
-                                      ('updated_on: "2026-10-30"', "updated_on: 2026", "« updated_on » must be")):
+                                      ('updated_on: "2026-11-11"', "updated_on: 2026", "« updated_on » must be")):
             with self.subTest(after=after):
                 self.replace_with("roles/review", before, after)
                 text = self.refuse(message)
@@ -2918,11 +2918,11 @@ class TestTree(BaseTest):
 
     def test_m4_races_isolated_judge_and_commands_in_the_nodes(self):
         for role in ("review", "optimize"):
-            self.assertIn("qui a jugé une course n'y entre plus", self.flat(self.node(f"roles/{role}").read_text(encoding="utf-8")))
+            self.assertIn("whoever judged a race does not enter it again", self.flat(self.node(f"roles/{role}").read_text(encoding="utf-8")))
         for role in ("optimize", "review", "measure", "debate", "guard", "propose", "invite"):
             with self.subTest(role=role):
-                self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commandes : ")
-        self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
+                self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commands: ")
+        self.assertIn("python3 <registry>/tools/judge/judge.py --tooling . --source-a <base> --source-b <your copy>",
                       self.flat(self.node("projects/lossless-compression/miniz").read_text(encoding="utf-8")))
 
     def test_site_and_api_show_the_tree(self):
@@ -2970,7 +2970,7 @@ class TestTreePullRequests(BaseTest):
     def test_a_node_changed_by_a_member_is_tooling(self):
         git(self.dir, "switch", "-qc", "node")
         path = self.dir / "tree/roles/review/MEANING.md"
-        path.write_text(path.read_text(encoding="utf-8").replace("## Enfants\nAucun.", "## Enfants\nAucun pour l'instant."),
+        path.write_text(path.read_text(encoding="utf-8").replace("## Children\nNone.", "## Children\nNone for now."),
                           encoding="utf-8")
         self.commit()
         code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "alice", "--auto-merge")
@@ -3054,7 +3054,7 @@ class TestTreePullRequests(BaseTest):
         (zone / "MEANING.md").write_text(ZONE_NODE, encoding="utf-8")
         miniz = self.dir / "tree/projects/lossless-compression/miniz/MEANING.md"
         before = miniz.read_text(encoding="utf-8")
-        miniz.write_text(re.sub(r"## Enfants\n.*", "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n", before, flags=re.S),
+        miniz.write_text(re.sub(r"## Children\n.*", "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n", before, flags=re.S),
                          encoding="utf-8")
         task = self.dir / "tasks/miniz/miniz-0099.yaml"
         task.write_text(task.read_text(encoding="utf-8").replace("status: open", "node: projects/lossless-compression/miniz/tinfl\nstatus: open"),
@@ -5322,7 +5322,7 @@ class TestParallelWork(BaseParallel):
         self.parallel_one("miniz-0099", "bruno")
         c1 = self.submit("miniz-0099", "bruno", 99101)
         # La PR de bruno est fermée pendant que le titulaire travaille : la tâche reste à alice.
-        self.assertEqual(self.bee("close", c1, "--reason", "PR fermée sans fusion.")[0], 0)
+        self.assertEqual(self.bee("close", c1, "--reason", "PR closed without merge.")[0], 0)
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["reservation"]["user"]), ("reserved", "alice"))
         self.assertNotIn("contribution", t)
@@ -5331,11 +5331,11 @@ class TestParallelWork(BaseParallel):
         self.parallel_one("miniz-0099", "chloe")
         c3 = self.submit("miniz-0099", "chloe", 99103)
         self.parallel_one("miniz-0099", "bruno")
-        self.assertEqual(self.bee("close", c3, "--reason", "PR fermée sans fusion.")[0], 0)
+        self.assertEqual(self.bee("close", c3, "--reason", "PR closed without merge.")[0], 0)
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["contribution"]), ("in_review", c2), "la course continue avec c2")
         self.valid_one()
-        self.assertEqual(self.bee("close", c2, "--reason", "PR fermée sans fusion.")[0], 0)
+        self.assertEqual(self.bee("close", c2, "--reason", "PR closed without merge.")[0], 0)
         t = self.task("miniz-0099")
         self.assertEqual(t["status"], "reserved", "plus de contribution en course : l'inscrit en parallèle devient titulaire")
         self.assertEqual(t["reservation"]["user"], "bruno")
@@ -5529,7 +5529,7 @@ class TestRace(BaseParallel):
                                           "2026-10-30T12:55:00Z", "2026-10-31T11:00:00Z"), start=99200):
             self.a(instant)
             if previous_value:  # chloe ferme sa PR (sans verdict), se réinscrit et soumet de nouveau
-                self.assertEqual(self.bee("close", previous_value, "--reason", "PR fermée sans fusion.")[0], 0)
+                self.assertEqual(self.bee("close", previous_value, "--reason", "PR closed without merge.")[0], 0)
             self.parallel_one("miniz-0099", "chloe")
             previous_value = self.submit("miniz-0099", "chloe", number_of)
             self.assertEqual(self.acceptance(c1)[0], 1, instant)
@@ -6409,8 +6409,8 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : plus rien ne retient l'une ou l'autre
         output_text, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertFalse(self.calls_of(calls, "pr", "merge"), "ni un workflow modifié, ni une liste de fichiers illisible")
-        self.assertIn("modifie un workflow de CI", output_text)
-        self.assertIn("fichiers de la PR illisibles", output_text)
+        self.assertIn("modifies a CI workflow", output_text)
+        self.assertIn("the PR's files are unreadable", output_text)
         self.assertEqual((state[PR_MINIZ + "99101"]["state"], state[PR_MINIZ + "99102"]["state"]), ("OPEN", "OPEN"))
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
         # Fusionnée à la main par le conseil sur le commit jugé : consignée au passage suivant.
@@ -6444,7 +6444,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, state, calls = self.step("Close the PRs of the contributions set aside")
         self.assertFalse(self.calls_of(calls, "pr", "close"))
         self.assertEqual(state[victim]["state"], "OPEN")
-        self.assertIn("ouverte par mallory, pas par chloe", output_text)
+        self.assertIn("opened by mallory, not by chloe", output_text)
         # La même PR, si elle était bien celle de chloe, serait fermée (avec le jeton des forks).
         state[victim]["author"] = "chloe"
         (self.dir.parent / "pr_state.json").write_text(json.dumps(state), encoding="utf-8")
@@ -6548,11 +6548,11 @@ class TestAdversarialReview(BaseParallel):
         c1, c2 = self.reviewed_race()
         merged_ones = self.dir / "merged_ones.txt"
         merged_ones.write_text(f"{c2}\n", encoding="utf-8")
-        code, text = self.bee("close", c1, "--reason", "PR fermée sans fusion.", "--merged", str(merged_ones))
+        code, text = self.bee("close", c1, "--reason", "PR closed without merge.", "--merged", str(merged_ones))
         self.assertEqual(code, 1, text)
         self.assertIn("will set it aside", text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
-        self.assertEqual(self.bee("close", c1, "--reason", "PR fermée sans fusion.")[0], 0, "sans concurrente gagnante, on clôt")
+        self.assertEqual(self.bee("close", c1, "--reason", "PR closed without merge.")[0], 0, "sans concurrente gagnante, on clôt")
 
     # --- I3 : le conseil intègre lui-même une course de la ruche ---
 
@@ -6744,7 +6744,7 @@ class TestAdversarialReview(BaseParallel):
         verdict = {"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "mallory", "verdict": verdict}}
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn(f"{c1} : la PR {PR_MINIZ}99007 a été ouverte par mallory, pas par alice ; aucun verdict", output_text)
+        self.assertIn(f"{c1}: PR {PR_MINIZ}99007 was opened by mallory, not by alice; no verdict", output_text)
         self.assertNotIn("verdict", self.rec(c1))
         self.assertFalse(self.calls_of(calls, "run"), "aucune exécution de CI n'est même lue")
         states[PR_MINIZ + "99007"]["author"] = "Alice"  # le login GitHub ne tient pas compte de la casse
@@ -6762,7 +6762,7 @@ class TestAdversarialReview(BaseParallel):
                  "arbres": {"abc1234": None}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertNotIn("verdict", self.rec(c1), "l'API n'a pas dit l'arbre : rien n'est enregistré")
-        self.assertIn(f"::notice::{c1} : arbre git du commit abc1234 illisible auprès de l'API ; aucun verdict", output_text)
+        self.assertIn(f"::notice::{c1}: git tree of commit abc1234 unreadable from the API; no verdict", output_text)
         states["arbres"] = {"abc1234": "7ee0001"}  # le passage suivant
         _, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertTrue([a for a in calls if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1234"]])
@@ -6841,13 +6841,13 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.acceptance(c1)[0], 0, "intégrable pour bee : seul le workflow voit à qui est la PR")
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "mallory"}}
         output_text, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
-        self.assertIn("ouverte par mallory, pas par alice ; ni fusionnée ni consignée", output_text)
+        self.assertIn("opened by mallory, not by alice; neither merged nor recorded", output_text)
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         self.assertEqual((state[PR_MINIZ + "99007"]["state"], self.rec(c1)["status"]), ("OPEN", "in_review"))
         # Déjà fusionnée à la main, elle n'est pas consignée non plus au nom d'alice.
         states[PR_MINIZ + "99007"].update({"state": "MERGED", "merge": "e" * 40})
         output_text, _, _ = self.step("Integrate what satisfies R3, close what is abandoned", states)
-        self.assertIn("ni fusionnée ni consignée", output_text)
+        self.assertIn("neither merged nor recorded", output_text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
         # La même PR, ouverte par alice : consignée, avec le commit de fusion.
         states[PR_MINIZ + "99007"]["author"] = "alice"
@@ -6860,7 +6860,7 @@ class TestAdversarialReview(BaseParallel):
     def test_cancelled_without_having_been_integrated_costs_its_reviewers_nothing(self):
         c1 = self.submit_0099("alice")
         self.assertEqual(self.bee("review", c1, *self.read_value(c1), "--user", "bruno", "--opinion", "favorable", "--reason", "Relu en entier, banc rejoué.")[0], 0)
-        self.assertEqual(self.bee("close", c1, "--reason", "PR fermée sans fusion.")[0], 0)
+        self.assertEqual(self.bee("close", c1, "--reason", "PR closed without merge.")[0], 0)
         rec = self.rec(c1)
         self.assertEqual((rec["status"], rec["never_integrated"]), ("cancelled", True))
         self.valid_one()
@@ -7165,7 +7165,7 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-11-02T12:00:00Z")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "bruno")[0], 0)
         c2 = self.submit("miniz-0099", "bruno", 99120)
-        code, text = self.bee("close", c2, "--reason", "PR fermée sans fusion.")
+        code, text = self.bee("close", c2, "--reason", "PR closed without merge.")
         self.assertEqual(code, 0, text)
         self.assertEqual(self.rec(c2)["status"], "cancelled")
         self.valid_one()
@@ -9115,7 +9115,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.self_service("bruno", "submission")
         self.merge("submission")
-        self.ok("close", "miniz-0099-c1", "--reason", "PR fermée sans fusion.")
+        self.ok("close", "miniz-0099-c1", "--reason", "PR closed without merge.")
         self.commit("clôture (robot)")
         self.a("2026-10-29T12:40:00Z")
         self.ko("the contribution miniz-0099-c1 of bruno on this task was closed without integration on 2026-10-29T12:30:00Z",
@@ -9253,7 +9253,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.self_service("gaspard", "submission")
         self.merge("submission")
         self.a("2026-10-29T23:40:00Z")  # passage d'integration-auto : PR fermée sans fusion
-        self.ok("close", "miniz-0099-c1", "--reason", "PR fermée sans fusion.")
+        self.ok("close", "miniz-0099-c1", "--reason", "PR closed without merge.")
         self.commit("Automatic integrations and closures (R3)")
         self.a("2026-10-29T23:41:00Z")
         reason = "R7: the contribution miniz-0099-c1 of gaspard on this task was closed without integration on 2026-10-29T23:40:00Z"
@@ -9795,7 +9795,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "bruno", "--user", "bidji29")
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.ok_("take", "miniz-0099", "--user", "alice")
         first_one, self.cid = self.cid, self.submit("miniz-0099", "alice", 99302)
         self.verdict_at("aaaaaaa")
@@ -9845,7 +9845,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "bruno", "--user", "bidji29")
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.ok_("take", "miniz-9001", "--user", "alice")
         self.cid = self.submit("miniz-9001", "alice", 99403)
         self.verdict_at("aaaaaaa")
@@ -9883,7 +9883,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertFalse(bee.same_login(None, None))
         self.confirmed_refusal_from_x()
         first_one = self.cid
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         bee.write_yaml(self.dir / "members/Alice.yaml", {**bee.read_yaml(self.dir / "members/alice.yaml"), "login": "Alice"})
         self.assertIn("« alice » and « Alice » are the same GitHub login", self.bee("validate")[1].replace("« Alice » and « alice »",
                                                                                                          "« alice » and « Alice »"))
@@ -9946,7 +9946,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn("a confirmed defect remains to be resolved (reported by bruno", text)
         first_one = self.cid
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99307)
         self.verdict_at("aaaaaac", "7ee0001")
@@ -9968,7 +9968,7 @@ class TestReviewByCommit(BaseParallel):
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [{"reviewer": "bruno", "reason": "Gardien absent, levée motivée.",
                                                                    "by": "bidji29", "at": "2026-10-28T12:00:00Z"}]})
         self.valid_one()
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99308)
         self.verdict_at("aaaaaaa")
@@ -10001,7 +10001,7 @@ class TestReviewByCommit(BaseParallel):
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         first_one = self.cid
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99309)
@@ -11821,10 +11821,10 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.assertIn(english_form, (ROOT / "COMMANDMENTS.md").read_text(encoding="utf-8"))
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
         growth = (ROOT / "docs/growth.md").read_text(encoding="utf-8")
-        for text, commons, hashes in ((r13, "is not part of the commons", "hashes"), (growth, "ne sont pas du commun", "empreintes")):
+        for text, commons, hashes in ((r13, "is not part of the commons", "hashes"), (growth, "is not part of the commons", "hashes")):
             self.assertIn(commons, text)
             self.assertIn(hashes, text)
-        for limit_value in ("recherche obstinée", "effacement de l'historique"):
+        for limit_value in ("determined search", "erasure of the history"):
             self.assertIn(limit_value, growth)
 
 
@@ -11994,10 +11994,9 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         r12, r13 = (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith(f"| {r} |"))
                     for r in ("R12", "R13"))
         self.assertIn("the council redacts", r12)
-        self.assertIn("by its number", r13)
-        for text in ((ROOT / "docs/growth.md").read_text(encoding="utf-8"),
-                      (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
-            self.assertIn("par son numéro", text)
+        for text in (r13, (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
+            self.assertIn("by its number", text)
+        self.assertIn("by its number", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
 
     # --- 4. C3 : au refus, l'identifiant, le canal et les autres identités déclarées ; jamais les sources ---
 
@@ -12070,7 +12069,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
             who_is="bidji29", namesake="Une autre personne : profil vérifié, autre nom complet.", **namesake), author="bidji29"),
             ["council"])
         self.assertEqual(self.try_it(["honnête"], lambda _: self.propose_raw(**other)), ["honnête"])
-        self.assertIn("seuls les propriétaires des dépôts d'origine sont reconnus", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
+        self.assertIn("only the owners of the upstream repositories are recognized", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
 
     # --- 7. C6 : une seule phrase « Ce qui vous est demandé » ---
 
@@ -12183,7 +12182,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         # Trente jours plus tard, ils ne comptent plus.
         self.a("2026-12-01T10:00:00Z")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 0)
-        for text, sentence in (((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "une inscription seule ne compte pas"),
+        for text, sentence in (((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "a registration alone does not count"),
                                (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines()
                                      if l.startswith("| R13 |")), "a registration alone does not count")):
             self.assertIn(sentence, text.lower())
@@ -12926,7 +12925,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         # What R12 must say: the council redacts, for an invitation it names (commandment 10). The key bee writes is redacted_for,
         # asserted on the debate above; RULES.md cites it since its translation (ruche-0058).
         self.assertIn("the council redacts, for a refused or withdrawn invitation that it names", text)
-        self.assertIn("rien ne se caviarde", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
+        self.assertIn("Without a withdrawn invitation, nothing is redacted", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
 
     # --- D1b : la question et la synthèse ---
 
@@ -13038,7 +13037,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.active("alice", "bruno")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 2)
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
-        for text, sentence in ((r13, "nor does an argument"), ((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "ni un argument")):
+        for text, sentence in ((r13, "nor does an argument"), ((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "nor does an argument")):
             self.assertIn(sentence, text)
 
     # --- Ligne du commandement 10 ---
@@ -13509,7 +13508,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : un commentaire la nomme")
         text = self.removal_in_pr()
         self.assertIn("deletes it, or writes [removed] there in place of each passage", text)
-        self.assertIn("y écrit `[retiré]` à la place de", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
+        self.assertIn("writes `[removed]` there in place of", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
         raw = task.read_text(encoding="utf-8")
         for name, corrected in (("marker", raw.replace("# Demandé par octocat", f"# Demandé par {bee.REMOVAL_MARKER}", 1)),
                              ("suppression", raw.replace("# Demandé par octocat le 12/10\n", "", 1))):
@@ -15296,7 +15295,7 @@ class TestRound3(BaseParallel):
                                       "timeline": [{"event": "base_ref_changed", "created_at": "2026-10-28T10:00:00Z"}]}}
         output_text, state, calls = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertFalse(TestAdversarialReview.calls_of(calls, "pr", "merge"), output_text)
-        self.assertEqual(output_text.count("la base de la PR a changé"), 2, output_text)
+        self.assertEqual(output_text.count("the PR's base changed"), 2, output_text)
         self.assertIn("repos/Bee-ruche/minizBee/issues/99102/timeline?per_page=100", [a["args"][1] for a in calls])
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
         del states[PR_MINIZ + "99101"]["events"]  # parcours honnête : une base jamais changée
@@ -15330,7 +15329,7 @@ class TestRound3(BaseParallel):
         self.assertEqual(self.acceptance(self.cid)[0], 0)
         # Re-soumettre le contenu refusé : la PR est fermée, alice reprend la tâche, mêmes décomptes que aaa0001.
         self.a("2026-10-29T13:00:00Z")
-        self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.a("2026-10-30T14:00:00Z")
         self.ok_("take", "miniz-0099", "--user", "alice")
         first_one, self.cid = self.cid, self.submit("miniz-0099", "alice", 99329)
@@ -15376,8 +15375,8 @@ class TestRound3(BaseParallel):
         self.assertIn(line_text, self.ok_("context", "miniz-0099", "--role", "review"))
         self.assertIn(line_text, self.ok_("context", "miniz-0099", "--role", "review", "--budget", "1"), "jamais retirée par --budget")
         node = (ROOT / "tree/roles/review/MEANING.md").read_text(encoding="utf-8")
-        self.assertIn("`gh api …/compare/<base>...<sha>`, jamais la tête de\nla PR", node)
-        self.assertIn("le sha entier lu, celui du verdict (vérifie-le)", node)
+        self.assertIn("`gh api …/compare/<base>...<sha>`, never the head of\nthe PR", node)
+        self.assertIn("the full sha you read, the verdict's (check it)", node)
         self.valid_one()
 
     def test_s4_a_voter_has_only_one_voice_whatever_the_case(self):
@@ -15410,11 +15409,11 @@ class TestRound3(BaseParallel):
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno", "base": "other"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "author": "alice", "base": "other"}}
         output_text, states, _ = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
-        self.assertEqual(output_text.count("hors de la branche par défaut du fork"), 2, output_text)
+        self.assertEqual(output_text.count("outside the fork's default branch"), 2, output_text)
         states[PR_MINIZ + "99102"]["base"] = states[PR_MINIZ + "99101"]["base"] = "master"
         states["comparaisons"] = {"f" * 40: "diverged"}  # le commit de fusion n'est pas dans master
         output_text, states, _ = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
-        self.assertEqual(output_text.count("hors de la branche par défaut du fork"), 2, output_text)
+        self.assertEqual(output_text.count("outside the fork's default branch"), 2, output_text)
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
         del states["comparaisons"]  # parcours honnête
         TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
@@ -15742,8 +15741,7 @@ class TestBilingualReaders(BaseAgora):
     def test_inventory_reports_a_forgotten_marker(self):
         """The script fails on a French literal compared with text and not classified, and on a missing English form."""
         fake = pathlib.Path(self.temp.name) / "faux"
-        (fake / "outils/juge").mkdir(parents=True)
-        (fake / "tools").mkdir()  # the judge stays in outils/juge/ (ruche-0153), the tool moves
+        (fake / "tools/judge").mkdir(parents=True)
         (fake / "tools/site_bee.py").write_text("", encoding="utf-8")
         (fake / "tools/bee.py").write_text(
             'import re\nA_REMPLIR = "À REMPLIR"\nTITRES = {"Clé à part": 1}\n\n\ndef f(ligne):\n'
@@ -15856,7 +15854,7 @@ class TestBilingualReaders(BaseAgora):
         parent = self.dir / bee.node_file("projects/lossless-compression/miniz")
         if "miniz/tinfl`" not in parent.read_text(encoding="utf-8"):
             parent.write_text(parent.read_text(encoding="utf-8").replace(
-                "## Enfants\n", "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n", 1), encoding="utf-8")
+                "## Children\n", "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n", 1), encoding="utf-8")
         (self.dir / self.ZONE).parent.mkdir(exist_ok=True)
         (self.dir / self.ZONE).write_text(text, encoding="utf-8")
 
@@ -16992,14 +16990,14 @@ class TestAgentAccountsWorkflows(BaseParallel):
             with self.subTest(pr_by=login):
                 states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": login}}
                 output_text, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
-                self.assertIn(f"ouverte par {login}, pas par alice ; ni fusionnée ni consignée", output_text)
+                self.assertIn(f"opened by {login}, not by alice; neither merged nor recorded", output_text)
                 self.assertFalse(self.calls_of(calls, "pr", "merge"))
                 self.assertEqual(self.rec(c1)["status"], "in_review")
         # An unreadable declaration maps no one: the agent account's PR is then not the author's (fail closed).
         declaration = (self.dir / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
         (self.dir / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
         output_text, _, calls = self.step("Integrate what satisfies R3, close what is abandoned", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice-agent"}})
-        self.assertIn("ouverte par alice-agent, pas par alice ; ni fusionnée ni consignée", output_text)
+        self.assertIn("opened by alice-agent, not by alice; neither merged nor recorded", output_text)
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         (self.dir / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
         _, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice-agent"}})
@@ -17015,7 +17013,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
             with self.subTest(pr_by=login):
                 states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": login, "verdict": verdict}}
                 output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-                self.assertIn(f"la PR {PR_MINIZ}99007 a été ouverte par {login}, pas par alice ; aucun verdict", output_text)
+                self.assertIn(f"PR {PR_MINIZ}99007 was opened by {login}, not by alice; no verdict", output_text)
                 self.assertNotIn("verdict", self.rec(c1))
                 self.assertFalse(self.calls_of(calls, "run"))
         # An unreadable declaration maps no one (fail closed).
@@ -17023,7 +17021,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
         (self.dir / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice-agent", "verdict": verdict}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn("ouverte par alice-agent, pas par alice ; aucun verdict", output_text)
+        self.assertIn("opened by alice-agent, not by alice; no verdict", output_text)
         self.assertNotIn("verdict", self.rec(c1))
         (self.dir / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
         self.step("Fetch the verdicts", states, stream="verdicts.yml")
@@ -17044,7 +17042,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
                                 PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "author": AGENT}})
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("integrated", "set_aside"))
         output_text, state, calls = self.step("Close the PRs of the contributions set aside")
-        self.assertIn(f"ouverte par {AGENT}, pas par chloe ; on ne la ferme pas", output_text)
+        self.assertIn(f"opened by {AGENT}, not by chloe; not closed", output_text)
         self.assertFalse(self.calls_of(calls, "pr", "close"))
         state[PR_MINIZ + "4242"]["author"] = "chloe-agent"
         (self.dir.parent / "pr_state.json").write_text(json.dumps(state), encoding="utf-8")
@@ -17370,7 +17368,7 @@ class TestRegistryMergeRecorded(BaseParallel):
         merge = self.submitted_one()
         before = self.files()
         for name, fields, opinion in (
-                ("someone else's PR", {"author": "mallory"}, "ouverte par mallory, pas par bidji29 ; ni fusionnée ni consignée"),
+                ("someone else's PR", {"author": "mallory"}, "opened by mallory, not by bidji29; neither merged nor recorded"),
                 ("another base", {"base": "develop"}, f"::notice::{self.cid}: PR #9201 was merged into develop, not main; nothing recorded."),
                 ("not the declared PR", {"merge": self.earlier, "base_sha": self.base_pr}, f"not with PR #9201's merge commit {self.earlier[:7]}"),
                 ("merged by the self-service robot", {"fusionnee_par": "github-actions[bot]"}, "merged by github-actions[bot], neither"),
@@ -19771,7 +19769,7 @@ class TestParallelSuite(unittest.TestCase):
         files and on altered copies of them."""
         read = lambda name: yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))  # noqa: E731
         per_job = {"checks": ("python3 tools/bee.py validate", "python3 tools/bee.py check-pr"),
-                   "tests": ("python3 tools/test_bee.py --processes", "python3 outils/juge/test_juge.py")}
+                   "tests": ("python3 tools/test_bee.py --processes", "python3 tools/judge/test_judge.py")}
 
         def gaps(stream, suite):
             jobs = {**stream["jobs"], **suite["jobs"]}
@@ -19828,7 +19826,7 @@ class TestIdentityByNumberThread(BaseParallel):
         c1 = self.submit("miniz-0099", "alice", 99401)
         self.verdict(c1, 0.05)
         self.ok_("review", c1, *self.read_value(c1), "--user", "bruno", "--opinion", "unfavorable", "--reason", "Régression sur n6.")
-        self.ok_("close", c1, "--reason", "PR fermée sans fusion.")
+        self.ok_("close", c1, "--reason", "PR closed without merge.")
         self.ok_("take", "miniz-9001", "--user", "chloe")
         c3 = self.submit("miniz-9001", "chloe", 99403)
         self.ok_("vote", c3, "--user", "alice", "--value", "1")
@@ -20244,7 +20242,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         c_alice = self.submit_and_merge("alice", "miniz-0099", 77011)
         self.assertEqual(self.task("miniz-0099")["status"], "in_review")
         self.ko("the two accounts both hold miniz-0099", "link", "--user", "farid", "--account-of", str(number_from("alice")))
-        self.ok("close", c_alice, "--reason", "PR fermée sans fusion.")
+        self.ok("close", c_alice, "--reason", "PR closed without merge.")
         self.commit("la PR d'alice est fermée")
         self.link("farid", "--account-of", number_from("alice"))
         reg = bee.Registry(self.dir)
@@ -20460,7 +20458,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.take_and_merge("farid")
         c1 = self.submit_and_merge("farid", "miniz-0099", 77004)
         self.ok("review", c1, "--user", "bidji29", "--opinion", "unfavorable", "--reason", "Régression sur n6, banc rejoué.")
-        self.ok("close", c1, "--reason", "PR fermée sans fusion.")
+        self.ok("close", c1, "--reason", "PR closed without merge.")
         self.commit("refus du conseil, PR fermée")
         self.a("2026-10-30T12:00:00Z")
         self.ko("R7:", "take", "miniz-0099", "--user", "alice")  # farid's contribution closed: alice is farid
@@ -21136,7 +21134,7 @@ class TestReportsRuche0118(ReportTools):
         self.release_and_merge("bruno")
         self.decider("S-0001", "--link", "alice")
         self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
-        self.ok("close", c_alice, "--reason", "PR fermée sans fusion.")
+        self.ok("close", c_alice, "--reason", "PR closed without merge.")
         self.commit("la PR d'alice est fermée")
         self.decider("S-0002", "--link", "alice")
         self.assertTrue(bee.Registry(self.dir).identities.same_one("bruno", "gaspard"))
@@ -21574,7 +21572,7 @@ class TestBulkPrReads(BaseParallel):
         ('[ "$repo" = "$GITHUB_REPOSITORY" ] && continue\n', '[ "$repo" = "$GITHUB_REPOSITORY" ] && continue\n'
          "            infos=$(gh pr view \"$pr\" --json headRefOid,author --jq '\"\\(.headRefOid) \\(.author.login)\"') || continue\n"
          '            read -r sha pr_author <<< "$infos"\n'),
-        ("(personne : bee acts-for, sur main).\n", "(bee acts-for lit main).\n            " + ACTS_FOR)],
+        ("(person: bee acts-for, on main).\n", "(bee acts-for reads main).\n            " + ACTS_FOR)],
         "auto-integration.yml": [
         ("          python3 tools/bee.py pending --pr-states \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"verdict_sha\") or \"-\", c.get(\"author\") or \"-\", c[\"pr_state\"], c[\"pr_head\"], c[\"pr_merge\"], c[\"pr_author\"], "
@@ -21586,7 +21584,7 @@ class TestBulkPrReads(BaseParallel):
          "            infos=$(gh pr view \"$pr\" --json state,headRefOid,mergeCommit,author \\\n"
          "              --jq '\"\\(.state) \\(.headRefOid) \\(.mergeCommit.oid // \"-\") \\(.author.login)\"') || continue\n"
          '            read -r state head merge pr_author <<< "$infos"\n            if [ "$state" = "CLOSED" ]; then\n'),
-        (" sous son nom (personne : bee acts-for).\n", " sous son nom.\n            " + ACTS_FOR)]}
+        (" under the author's name (person: bee acts-for).\n", " under the author's name.\n            " + ACTS_FOR)]}
 
     def before(self, stream):
         """Today's pass (1f2e749), as a workflow file next to the new one: each replaced line put back, each found exactly once."""
@@ -21867,7 +21865,7 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
     def test_criterion_1_prs_of_someone_else_turned_away(self):
         output_text, calls = self.pass_ref("auto-integration.yml", "integrate", "Integrate what satisfies R3, close what is abandoned", "intrus")
         self.assertEqual(calls, ["api graphql"] * 6)
-        self.assertEqual(output_text.count("a été ouverte par intrus"), 300)
+        self.assertEqual(output_text.count("was opened by intrus"), 300)
 
 
 class TestLoadTestInTheSuite(unittest.TestCase):
@@ -21884,6 +21882,57 @@ class TestLoadTestInTheSuite(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertGreaterEqual(len(tests), 10)  # the parse found them: one class, ten tests on 11 Nov 2026
         self.assertRegex(r.stderr, rf"\nRan {len(tests)} tests in [0-9.]+s\n\nOK\n$")  # not « OK (skipped=…) »
+
+
+class TestRehearsalKitRuche0157(unittest.TestCase):
+    """ruche-0157: the README that setup.sh generates names what the kit has. Its template said $BEE_SIMU, which setup.sh's
+    sed (it replaces $BEE_SIM) turned into paths ending in U/etat/..., and commands the switch had renamed. The usages and
+    messages say what the code reads (--rerun, merge|refuse, a manifest's task field)."""
+
+    KIT = ROOT / "tools/rehearsal"
+
+    def test_the_readme_template_says_bee_sim_whole(self):
+        template = (self.KIT / "README-template.md").read_text(encoding="utf-8")
+        self.assertNotRegex(template, r"\$BEE_SIM\w")  # each $BEE_SIM is replaced whole: no $BEE_SIMU
+        self.assertIn("export BEE_SIM=$BEE_SIM PATH=$BEE_SIM/tools:$PATH", template)
+        self.assertIn('sed -e "s#\\$BEE_SIM#$S#g"', (self.KIT / "setup.sh").read_text(encoding="utf-8"))
+
+    def test_the_usages_say_what_the_code_reads(self):
+        text = {n: (self.KIT / n).read_text(encoding="utf-8") for n in ("simulated-ci", "simulated_ci.py", "council-decide", "push-fork-pr")}
+        self.assertIn('"$url" --rerun\n', text["simulated-ci"])
+        self.assertIn("Usage: python3 simulated_ci.py <fork_pr_url> [--rerun]\n", text["simulated_ci.py"])
+        self.assertIn("echo 'usage: council-decide <number> merge|refuse \"<reason>\"'", text["council-decide"])
+        self.assertIn('case "$decision" in merge|refuse) ;;', text["council-decide"])
+        self.assertIn('isinstance(m.get("task"), str)', text["push-fork-pr"])
+        self.assertIn("manifest refused: a YAML file with at least a task field", text["push-fork-pr"])
+        for name, old in (("simulated-ci", "--relance"), ("simulated_ci.py", "--relance"), ("council-decide", "fusionner"),
+                          ("push-fork-pr", "champ tache")):
+            self.assertNotIn(old, text[name], name)
+
+    def test_the_readme_template_names_the_kits_paths_and_commands(self):
+        kit = self.KIT
+        template, setup = (kit / "README-template.md").read_text(encoding="utf-8"), (kit / "setup.sh").read_text(encoding="utf-8")
+        self.assertIn('> "$S/README.md"', setup)
+        paths = set(re.findall(r"\$BEE_SIM/([\w./-]*)", template))
+        self.assertLessEqual({"state/clock", "state/announcements.md", "bees/", "state/journals/", "tools"}, paths)
+        for path in paths:  # setup.sh creates each one
+            self.assertRegex(setup, rf'"\$S/{re.escape(path.rstrip("/"))}[/"]', path)
+        commands = set(re.findall(r"`([a-z-]+) <", template))
+        self.assertEqual(commands, {"publish", "open-fork-pr", "push-fork-pr", "simulated-ci"})
+        copied = re.search(r"\nfor f in ([^;]+); do\n", setup)[1].split()
+        for command in commands | {"council-decide"}:
+            self.assertIn(command, copied)
+            self.assertTrue((kit / command).is_file(), command)
+        for name in ("bee", "gh", "setup.sh"):  # their messages send members to the generated README
+            text = (kit / name).read_text(encoding="utf-8")
+            self.assertIn("README.md", text, name)
+            self.assertNotIn("LISEZMOI", text, name)
+        code = (kit / "load_test.py").read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(code))  # the load test's docstring names what its code writes
+        self.assertIn('folder / "trust"', code)
+        self.assertIn('("end", end + "\\n")', code)
+        self.assertIn("trust (the registry", doc)
+        self.assertIn("state/ (base, end, prs.tsv, pr_authors.tsv)", doc)
 
 
 # --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
@@ -22360,10 +22409,11 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
         names = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))
         self.assertEqual(list(bee.RETIRED_NAMES), names["retired"])
         for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md", "COMMANDEMENTS.md", "outils/bee.py", "outils/migration/names.yaml",
-                     "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md"):
+                     "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md",
+                     "outils/juge/juge.py"):  # ruche-0148: the common judge's old folder
             self.assertIn(f"{path}: a name retired by the switch to English", bee.retired_name(path) or "", path)
         for path in ("tasks/miniz/miniz-0099.yaml", "RULES.md", "COMMANDMENTS.md", "tools/bee.py", "tools/migration/names.yaml",
-                     "outils/juge/juge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
+                     "tools/judge/judge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
             self.assertIsNone(bee.retired_name(path), path)
         tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True).stdout.decode().split("\0")
         self.assertEqual([p for p in tracked if p and bee.retired_name(p)], [])  # the switch left none

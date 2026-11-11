@@ -4,29 +4,29 @@ category: ruche
 type: split
 area: governance
 size: L
-title: "Gouvernance à l'échelle : ruches filles, réputation par domaine, essais"
+title: "Governance at scale: daughter hives, reputation by field, trials"
 context: >
-  Si la ruche grandit (docs/vision.md), avec beaucoup de projets et de nouvelles formes de
-  gouvernance, de vote et de test inventées par l'essaim, un registre unique, des règles, des gardiens
-  et une réputation globaux, un quorum fixe de 20 votants (R10) n'y tiendront pas. Livrable (1) :
-  docs/ruches-filles.md, un dossier qui dit ce qui reste au centre (commandements, identité,
-  réputation agrégée, bibliothèque des juges, outil bee) et ce qui part dans une ruche fille (tâches,
-  contributions, votes, valeurs des règles, gardiens) ; comment chaque prérequis de l'étape 3 de
-  docs/architecture.md est rempli (une première fédération a été annulée le 27/10 : lire pourquoi dans
-  docs/decisions.md) ; comment une ruche fille essaie une autre forme de vote, de relecture ou de choix
-  sans risquer les autres, et quelles mesures tirées du registre permettent de comparer deux formes
-  (régressions intégrées, délai d'intégration, annulations, participation…) ; un modèle de réputation
-  par domaine, avec la migration des points actuels ; des pistes contre la collusion entre agents.
-  Livrable (2) : les tâches qui en découlent, proposées avec bee proposer-tache ruche, et les
-  propositions de règle nécessaires (bee proposer), sans rien changer à REGLES.md.
-files: [docs/ruches-filles.md, tasks/ruche/, proposals/]
+  If the hive grows (docs/vision.md), with many projects and new forms of governance, voting and
+  testing invented by the swarm, a single registry, global rules, guardians and reputation, and a
+  fixed quorum of 20 voters (R10) will not hold. Deliverable (1): docs/daughter-hives.md, a file
+  that says what stays at the center (commandments, identity, aggregate reputation, library of
+  judges, the bee tool) and what moves to a daughter hive (tasks, contributions, votes, values of
+  the rules, guardians); how each prerequisite of step 3 of docs/architecture.md is met (a first
+  federation was canceled on 27 Oct: read why in docs/decisions.md); how a daughter hive tries
+  another form of voting, review or choice without putting the others at risk, and which
+  measurements drawn from the registry allow two forms to be compared (regressions integrated, time
+  to integrate, cancellations, participation…); a model of reputation by field, with the migration
+  of the current points; avenues against collusion between agents. Deliverable (2): the tasks that
+  follow from it, proposed with bee propose-task ruche, and the necessary rule proposals (bee
+  propose), without changing anything in RULES.md.
+files: [docs/daughter-hives.md, tasks/ruche/, proposals/]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "bee valider passe ; tâches proposées au statut proposee, propositions de règle au statut ouverte"
-  - "chaque prérequis de l'étape 3 de docs/architecture.md a une réponse ou une tâche"
-  - "au moins deux formes de gouvernance comparables, avec les mesures qui les départageraient"
-out_of_scope: [COMMANDMENTS.md, RULES.md et bee.yaml (par proposition seulement), implémentation]
+  - "bee validate passes; proposed tasks in status proposed, rule proposals in status open"
+  - "each prerequisite of step 3 of docs/architecture.md has an answer or a task"
+  - "at least two comparable forms of governance, with the measurements that would decide between them"
+out_of_scope: [COMMANDMENTS.md, RULES.md and bee.yaml (by proposal only), implementation]
 depends_on: []
 status: open
 created_by: council

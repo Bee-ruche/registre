@@ -24,7 +24,7 @@ acceptance_criteria:
 out_of_scope:
 - COMMANDMENTS.md
 node: projects/ruche/ruche
-status: in_review
+status: integrated
 contribution: ruche-0154-c1
 created_by: council
 created_on: '2026-11-10'

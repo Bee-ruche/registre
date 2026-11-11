@@ -39,7 +39,8 @@ depends_on:
 - ruche-0055
 - ruche-0145
 node: projects/ruche/ruche
-status: open
+status: in_review
+contribution: ruche-0065-c1
 created_by: council
 created_on: '2026-10-31'
 notes:
@@ -52,3 +53,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-11T09:47:48Z"
     text: "Council, 11 Nov 2026 (end of the English migration, wave 0): docs/architecture.md from line 200 is already English: only lines 1 to 199 remain. open-questions.md, its test setUp regex and the import test go in one PR."
+  - by: "bidji29"
+    at: "2026-11-11T13:15:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 1): the names #292 gives to things not built yet are confirmed: schemas/gesture.schema.json (planned), bee read-gesture, bee replay-ledger, bee write-path-measures (ruche-0134's text says bee mesures-ecriture; its translation uses the new name). E20 now says AGENTS.md (English only): AGENTS.md has no French copy since the switch, so E20's deliverable no longer includes one."

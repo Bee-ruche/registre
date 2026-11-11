@@ -59,8 +59,7 @@ TO_FILL_IN_MARKERS = (TO_FILL_IN, TO_FILL_IN_EN)
 SELF_SERVICE_TASK_KEYS = {"status", "reservation", "parallel", "contribution", "notes"}
 # The registry's tooling (the hive's tasks): a member may change it by PR, never merged automatically.
 TOOLING_PATHS = ("tools/*", "schemas/*", "templates/*", "docs/*", ".github/*", ".claude/*", "tree/*",
-                     "AGENTS.md", "README.md", "USERS.md", "MAINTAINERS.md",
-                     "outils/juge/*")  # ruche-0153: the common judge stays outils/juge/ after the switch to English, until judge-v4
+                     "AGENTS.md", "README.md", "USERS.md", "MAINTAINERS.md")  # the common judge is tools/judge/ (ruche-0148)
 
 
 class BeeError(Exception):
@@ -906,15 +905,16 @@ AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "governance/council.ya
                    # under its old path either
                    "gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
                    "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md")
-# ruche-0145 (plan, R-q): every path the switch to English retired (tools/migration/names.yaml, « retired »); a folder ends with /.
+# ruche-0145 (plan, R-q): every path the switch to English retired (tools/migration/names.yaml, « retired »), and outils/juge/ since the
+# common judge moved to tools/judge/ (ruche-0148); a folder ends with /.
 # A path under one, or one of these files, is refused by the gate to everyone, and never read as data (no code reads it).
 RETIRED_NAMES = ("AGENTS.en.md", "COMMANDEMENTS.md", "MAINTENEURS.md", "REGLES.md", "UTILISATEURS.md", "arbre/", "debats/", "docs/arbre.md",
                  "docs/candidats.md", "docs/cap.md", "docs/capacites.md", "docs/croissance.md", "docs/garants.md", "docs/gardiens.md",
                  "docs/gouvernance.md", "docs/juge-commun.md", "docs/mesures.md", "docs/nouveau-projet.md", "docs/organisation.md",
                  "docs/outillage.md", "docs/perimetre.md", "docs/questions-ouvertes.md", "docs/securite.md", "docs/taches.md", "gouvernance/",
                  "invitations/ne-plus-contacter.yaml", "membres/", "mesures/", "modeles/", "outils/bee.py", "outils/inventaire_marqueurs.py",
-                 "outils/migration/", "outils/repetition/", "outils/requirements.txt", "outils/site_bee.py", "outils/test_bee.py", "outils/tests/",
-                 "projets/", "propositions/", "signalements/", "taches/")
+                 "outils/juge/", "outils/migration/", "outils/repetition/", "outils/requirements.txt", "outils/site_bee.py", "outils/test_bee.py",
+                 "outils/tests/", "projets/", "propositions/", "signalements/", "taches/")
 
 
 def retired_name(path):
@@ -2586,8 +2586,8 @@ def byte_bound(relative_one):
 
 def bytes_problem(relative_one, size):
     """The refusal of a file over its bound in bytes, the same from bee validate and check-pr."""
-    return (f"{relative_one}: {size} bytes, at most {byte_bound(relative_one)} for this file (docs/governance.md, « Dossiers du "
-            "libre-service »): it is not read")
+    return (f"{relative_one}: {size} bytes, at most {byte_bound(relative_one)} for this file (docs/governance.md, « Self-service "
+            "folders »): it is not read")
 
 
 def require_room(relative_one, text):
@@ -3058,7 +3058,7 @@ LIFT_TOLERANCE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
-    """The agora's caps: bee.yaml (key agora; docs/agora.md, « Contre le bruit »), all required (ruche-0144)."""
+    """The agora's caps: bee.yaml (key agora; docs/agora.md, « Against noise »), all required (ruche-0144)."""
     return setting(reg, "agora")
 
 
@@ -3281,8 +3281,8 @@ def text_problems(data, prefix_text, sort_kind=None):
         one_line = "the key" if place_of.endswith(" (key)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
         problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
-                    else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
-                         "libre-service »)" if bound is not None and len(text) > bound
+                    else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Self-service "
+                         "folders »)" if bound is not None and len(text) > bound
                     else free_text_problem(text, f"{prefix_text}: {place_of}", one_line))
         if problem_text:
             yield problem_text
@@ -3380,7 +3380,7 @@ def source_form(source):
     if s.startswith("https://"):
         return None if re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/\S*)?", s) else "invalid https address"
     if "://" in s or s.startswith(("/", "~", "\\")) or re.search(r"\s", s):
-        return "a source is an https:// address or a path of the registry (docs/balance.md, docs/balance.md#les-postes)"
+        return "a source is an https:// address or a path of the registry (docs/balance.md, docs/balance.md#the-areas)"
     path = s.split("#", 1)[0].rstrip("/")
     parts_of = path.split("/")
     if not path or any(p in ("", ".", "..") for p in parts_of) or parts_of[0] == ".git":
@@ -9460,7 +9460,7 @@ def cmd_record_verdict(args):
         integer_value = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
         verdict["judge"] = {
             "version": integer_value(judge.get("version")),
-            # The registry's common judge (outils/juge/, docs/common-judge.md): the tag that rendered the verdict.
+            # The registry's common judge (tools/judge/, docs/common-judge.md): the tag that rendered the verdict.
             "common": judge.get("common") if isinstance(judge.get("common"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", judge.get("common")) else None,
             "outputs_compared": integer_value(judge.get("outputs_compared")),
             "suspicious_constructs": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
@@ -11619,7 +11619,7 @@ def build_parser():
     p = add_to("close", cmd_close,
                 "Closes an abandoned contribution (PR closed without merge) and reopens its task. Used by the trusted workflow.")
     p.add_argument("contribution", help="id of the contribution (e.g. miniz-0012-c1)")
-    p.add_argument("--reason", required=True, help="the reason for the closure (e.g. « PR fermée sans fusion »)")
+    p.add_argument("--reason", required=True, help="the reason for the closure (e.g. « PR closed without merge »)")
     p.add_argument("--by", default="github-actions[bot]", help="signature of the note left on the task")
     p.add_argument("--merged", help="file of the contributions whose PR is merged (one per line): a competing one "
                                         "merged or integrated prevents the closure, the contribution will be set aside (R3)")

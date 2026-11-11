@@ -1,32 +1,32 @@
-# Vérifications communes des outils de la ruche simulée (sourcé, jamais lancé seul).
-# Elles évitent les erreurs honnêtes : agir hors de la simulation, au nom d'un autre membre, ou écrire un saut de ligne
-# dans les journaux de l'état. Elles ne séparent pas les membres au niveau du système (tous les agents tournent sous le
-# même utilisateur) : tricher sur la plomberie de la simulation n'apprend rien sur la ruche, et n'est pas un constat.
-SIM="${BEE_SIM:?BEE_SIM : dossier de la ruche simulée}"
+# Shared checks of the simulated hive's tools (sourced, never run alone).
+# They prevent honest mistakes: acting outside the simulation, in another member's name, or writing a line break
+# into the state's logs. They do not separate the members at the system level (all the agents run under the same
+# user): cheating on the simulation's plumbing teaches nothing about the hive, and is not a finding.
+SIM="${BEE_SIM:?BEE_SIM: folder of the simulated hive}"
 SIM="$(realpath -e "$SIM")"
-[ -d "$SIM/central.git" ] && [ -d "$SIM/trust" ] || { echo "$SIM n'est pas une ruche simulée (tools/rehearsal/setup.sh)" >&2; exit 2; }
+[ -d "$SIM/central.git" ] && [ -d "$SIM/trust" ] || { echo "$SIM is not a simulated hive (tools/rehearsal/setup.sh)" >&2; exit 2; }
 export BEE_SIM="$SIM"
 
-# Le pseudo d'un membre simulé : lettres minuscules, chiffres et tirets.
+# A simulated member's login: lowercase letters, digits and hyphens.
 valid_login() {
-  [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,38}$ ]] || { echo "pseudo invalide : $1" >&2; exit 2; }
+  [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,38}$ ]] || { echo "invalid login: $1" >&2; exit 2; }
 }
 
-# Un texte qui part dans les journaux tabulés de l'état : ni tabulation, ni saut de ligne, ni autre caractère de contrôle.
+# A text that goes into the state's tab-separated logs: no tab, no line break, no other control character.
 valid_text() {
-  if [[ "$1" == *[[:cntrl:]]* ]]; then echo "texte refusé (caractère de contrôle) : utilisez une seule ligne" >&2; exit 2; fi
-  [ -n "$1" ] || { echo "texte vide" >&2; exit 2; }
+  if [[ "$1" == *[[:cntrl:]]* ]]; then echo "text refused (control character): use a single line" >&2; exit 2; fi
+  [ -n "$1" ] || { echo "empty text" >&2; exit 2; }
 }
 
-# Le membre agit depuis son propre clone de la simulation, et ce clone pointe vers le dépôt simulé.
+# The member acts from their own clone of the simulation, and this clone points to the simulated repository.
 in_own_clone() {
   local login="$1" expected clone origin_of
   valid_login "$login"
-  expected="$(realpath -m "$SIM/abeilles/$login/registre")"
+  expected="$(realpath -m "$SIM/bees/$login/registre")"
   clone="$(git rev-parse --show-toplevel 2>/dev/null || true)"
   [ -n "$clone" ] && [ "$(realpath -e "$clone")" = "$expected" ] || {
-    echo "Lancez cette commande depuis votre clone : $expected (ici : ${clone:-$(pwd)})" >&2; exit 2; }
+    echo "Run this command from your clone: $expected (here: ${clone:-$(pwd)})" >&2; exit 2; }
   origin_of="$(git -C "$clone" remote get-url origin 2>/dev/null || true)"
   [ -n "$origin_of" ] && [ "$(realpath -m "$origin_of")" = "$SIM/central.git" ] || {
-    echo "Le clone $clone ne pointe pas vers $SIM/central.git : refusé" >&2; exit 2; }
+    echo "The clone $clone does not point to $SIM/central.git: refused" >&2; exit 2; }
 }

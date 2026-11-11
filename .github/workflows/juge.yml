@@ -10,7 +10,7 @@
 # Le job ne devient jamais rouge à cause de B : c'est le verdict du fork qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
 #
 # The judge's code is read at this workflow's own commit (job.workflow_sha), which must be a commit of
-# Bee-ruche/registre's main, never at a tag or a branch (test_juge.py); juge.json names it (juge.source).
+# Bee-ruche/registre's main, never at a tag or a branch (test_judge.py); juge.json names it (juge.source).
 name: Juge commun
 
 on:
@@ -106,13 +106,13 @@ jobs:
           ref: ${{ inputs.base_sha }}
           path: base
           persist-credentials: false
-      - name: Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR)
+      - name: Historique déclaré (ancêtres de la base ; seul appel de judge.py avec le jeton, avant le greffon et la PR)
         env:
           HISTORIQUE: ${{ inputs.historique }}
           GH_TOKEN: ${{ github.token }}
-        run: python3 juge-commun/outils/juge/juge.py --outillage base --historique-seulement --historique "$HISTORIQUE"
+        run: python3 juge-commun/tools/judge/judge.py --tooling base --history-only --history "$HISTORIQUE"
       - name: Image du juge (avec réseau, avant tout fichier de la PR)
-        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement
+        run: python3 juge-commun/tools/judge/judge.py --tooling base --image-only
       - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -138,8 +138,8 @@ jobs:
             [ -n "$ligne" ] && options+=(--option "$ligne")
           done <<< "$OPTIONS"
           set +e
-          python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
-            --repetitions "$REPETITIONS" --source-juge "$SOURCE" --base "$BASE" --tete "$TETE" --travail "$RUNNER_TEMP/juge" \
+          python3 juge-commun/tools/judge/judge.py --tooling base --source-a base --source-b pr \
+            --repetitions "$REPETITIONS" --judge-source "$SOURCE" --base "$BASE" --head "$TETE" --workdir "$RUNNER_TEMP/juge" \
             "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
           code=$?
           set -e
@@ -148,8 +148,8 @@ jobs:
           echo "::stop-commands::$jeton"
           tail -n 40 resultats/journal.txt | sed 's/##\[/# #[/g'
           printf '\n::%s::\n' "$jeton"
-          # The code goes out only with the figures, once rapport.py has checked the report: code 2 if it fails (ruche-0117).
-          python3 juge-commun/outils/juge/rapport.py resultats/juge.json --code "$code" > resultats/sorties
+          # The code goes out only with the figures, once report.py has checked the report: code 2 if it fails (ruche-0117).
+          python3 juge-commun/tools/judge/report.py resultats/juge.json --code "$code" > resultats/sorties
           sed -n 's/^code=//p' resultats/sorties > resultats/code
           cat resultats/sorties >> "$GITHUB_OUTPUT"
           # ruche-0136: the outcome said as what it is; an error of the environment (the judge's machine: Docker, its runtime, the

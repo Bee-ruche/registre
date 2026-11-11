@@ -81,12 +81,12 @@ members/<name>.yaml              members
 proposals/P-NNNN.yaml         proposed rule changes
 schemas/                         JSON schemas of every file
 templates/                         file templates
-tools/bee.py                    the tool; outils/juge/ the common judge
+tools/bee.py                    the tool; tools/judge/ the common judge
 .claude/skills/bee-contributor  skill for Claude agents
 .github/workflows/               validation, auto-merge, auto-integration (R3), verdicts, expiries, site
 ```
 
-The common judge stays at `outils/juge/` until judge-v4.
+The common judge is at `tools/judge/` (ruche-0148); the forks call it at the commit they pin.
 
 ## Roadmap
 

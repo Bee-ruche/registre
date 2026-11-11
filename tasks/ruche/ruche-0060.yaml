@@ -37,7 +37,8 @@ depends_on:
 - ruche-0055
 - ruche-0145
 node: projects/ruche/ruche
-status: open
+status: in_review
+contribution: ruche-0060-c1
 created_by: council
 created_on: '2026-10-31'
 notes:

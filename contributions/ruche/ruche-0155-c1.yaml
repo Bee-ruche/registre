@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/278
 summary: bee publish names engagement PRs in English and finds a PR started under the old title until
   date D
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T10:19:27Z'
 engaged_since: '2026-11-11T09:23:47Z'
 reviews: []
+decided_at: '2026-11-11T13:15:48Z'
+decision_reason: 'PR #278, merged by the agent principal at its checked head: bee publish''s engagement titles are English, with a fallback on the old French titles until 2027-01-01, so the hashed keys of engagements already published still match. Reviewed adversarially by another model, every finding fixed; the full suite passed in CI on the exact head. Recorded by hand.'
+merge_sha: 6c578f9a168e24154f6f442a6dc10b51bed82edd
