@@ -87,7 +87,7 @@ daté, à la liste `paralleles` de la tâche, sans toucher à la réservation du
 dans une note (`bee note`). Chaque inscrit peut soumettre sa contribution ; R3 n'intègre que la mieux
 classée, en un temps borné, et écarte les autres sans les pénaliser. Une inscription compte dans R8 et
 expire comme une réservation (R7) ; si le titulaire s'en va, le plus ancien inscrit prend sa place. Détails
-et règle exacte : [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).
+et règle exacte : [contributions.md](contributions.md#parallel-work-and-competing-contributions).
 
 ## La ruche est un projet
 

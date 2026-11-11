@@ -39,11 +39,11 @@ combien de relectures de Nouveaux il a laissées de côté.
 
 Sur une contribution, un relecteur gagne ou perd au plus une fois, d'après sa relecture la plus récente, et seulement si
 elle porte sur le commit où la contribution a été décidée (celui du verdict) : sans commit, ou sur un autre commit, R3 ne
-l'a pas comptée, elle vaut 0 ; +2 une fois si l'un de ses défauts est confirmé ([contributions.md](contributions.md#relire-par-commit)).
+l'a pas comptée, elle vaut 0 ; +2 une fois si l'un de ses défauts est confirmé ([contributions.md](contributions.md#review-by-commit)).
 
 Une contribution annulée ne compte plus pour son auteur.
 
-**Écartée n'est pas refusée.** Quand plusieurs contributions d'une même tâche sont en course, R3 n'intègre que la mieux classée et écarte les autres (statut `ecartee`, [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)). Ce n'est ni un refus ni une annulation : une contribution écartée vaut 0, pour son auteur comme pour chacun de ses relecteurs (un défaut confirmé compris). Avoir travaillé en parallèle, au su de tous, et perdu la course n'est jamais pénalisé.
+**Écartée n'est pas refusée.** Quand plusieurs contributions d'une même tâche sont en course, R3 n'intègre que la mieux classée et écarte les autres (statut `ecartee`, [contributions.md](contributions.md#parallel-work-and-competing-contributions)). Ce n'est ni un refus ni une annulation : une contribution écartée vaut 0, pour son auteur comme pour chacun de ses relecteurs (un défaut confirmé compris). Avoir travaillé en parallèle, au su de tous, et perdu la course n'est jamais pénalisé.
 
 ## Votes
 

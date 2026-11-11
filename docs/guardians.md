@@ -63,7 +63,7 @@ ne compte pas ; son refus tient aussi si l'auteur re-soumet ou amende sous une a
 Une copie de ce contenu soumise par un autre compte n'est pas bloquée : une alerte la signale, et le gardien y repose son refus.
 **Recours** contre un refus ou un défaut d'un relecteur qui ne revient pas : le relecteur relit, ou le conseil lève, en
 motivant, dans une PR relue (champ `levees` de la contribution, jamais fusionné automatiquement) ; la levée ne vaut que
-pour ce qu'il a publié avant elle ([contributions.md](contributions.md#relire-par-commit)).
+pour ce qu'il a publié avant elle ([contributions.md](contributions.md#review-by-commit)).
 
 ## Valider une tâche proposée
 
