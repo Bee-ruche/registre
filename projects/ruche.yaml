@@ -7,7 +7,7 @@ fork: https://github.com/Bee-ruche/registre
 reference: the tool's tests (python3 tools/test_bee.py), the common judge's tests and meta-tests (tools/judge/test_judge.py), validation of the registry (bee validate); review by a guardian or the council
 scope:
   - The bee tool and the site (tools/)
-  - The common judge (tools/judge/, workflow juge.yml)
+  - The common judge (tools/judge/, workflow judge.yml)
   - The registry's schemas, templates and workflows
   - Documentation (docs/, AGENTS.md, guides)
 out_of_scope:
