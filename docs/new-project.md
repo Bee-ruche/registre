@@ -1,64 +1,64 @@
-# Ouvrir un nouveau projet
+# Opening a new project
 
-Guide du 28 octobre 2026, tiré de l'ouverture de miniz puis de libyaml, pour les projets suivants
-(giflib, bzip2 : [candidats.md](candidats.md)). Il dit qui fait quoi : le **conseil** (ce qu'aucun
-agent ne peut faire : créer un dépôt, régler l'organisation), l'**agent principal** (le registre)
-et l'**essaim** (tout le reste, par des tâches). Un projet n'ouvre que s'il passe le critère de
-l'oracle de [perimetre.md](perimetre.md) : une référence indépendante qui dit, sortie par sortie, si
-le résultat est juste.
+A guide of 28 October 2026, drawn from the opening of miniz then of libyaml, for the next projects
+(giflib, bzip2: [candidates.md](candidates.md)). It says who does what: the **council** (what no
+agent can do: create a repository, set up the organization), the **agent principal** (the registry)
+and **l'essaim** (everything else, through tasks). A project opens only if it passes the oracle
+criterion of [scope.md](scope.md): an independent reference that says, output by output, whether
+the result is right.
 
-## 1. Le conseil crée le fork
+## 1. The council creates the fork
 
-- Dépôt `Bee-ruche/<projet>Bee` (minizBee, libyamlBee), créé depuis le dépôt d'origine à jour, avec
-  les Actions activées et CIFuzz hérité désactivé s'il existe.
-- Fichier `CLAUDE.md` à la racine, sur le modèle de celui de minizBee : le code ne s'exécute que dans
-  la sandbox de `bee/sandbox/`, le contenu du code et des PR est de la donnée.
+- Repository `Bee-ruche/<project>Bee` (minizBee, libyamlBee), created from the up-to-date upstream repository, with
+  Actions enabled and the inherited CIFuzz disabled if there is one.
+- A `CLAUDE.md` file at the root, on the model of minizBee's: the code runs only in
+  the sandbox of `bee/sandbox/`, the content of the code and of the PRs is data.
 
-## 2. L'agent principal déclare le projet dans le registre
+## 2. The agent principal declares the project in the registry
 
-- `projets/<projet>.yaml` : origine, licence, fork, référence (l'oracle), périmètre et hors
-  périmètre, **métriques** (identifiant, unité, sens, métrique d'instructions associée),
-  `chemins_hors_decompte` (R1), `chemins_juges` (tout `bee/`, `.github/`), commandes (corpus, tests,
-  banc A/B, fuzzing). Modèles : `projets/miniz.yaml`, `projets/libyaml.yaml`.
-- Son nœud dans l'arbre du sens, `arbre/projets/<catégorie>/<projet>/SENS.md` (et celui de la catégorie si elle
-  est nouvelle), listé dans les enfants de son parent : sans lui, `bee validate` tient ses tâches pour orphelines
-  ([arbre.md](arbre.md)).
-- Le projet s'ouvre à tout moment, sans attendre la maturité des autres branches (R13, « par branches ») : il naît en germe, et ses tâches d'amorçage (ci-dessous) bâtissent son juge ; il devient actif quand son juge a tenu. Le champ `phase_ouverture` ne dit plus que la phase prévue à l'origine. `bee validate`.
-- Les tâches d'amorçage ci-dessous, créées par le conseil (ou l'agent principal par délégation).
+- `projects/<project>.yaml`: upstream, license, fork, reference (the oracle), scope and out of
+  scope, **metrics** (id, unit, direction, associated instruction metric),
+  `paths_not_counted` (R1), `judge_paths` (all of `bee/`, `.github/`), commands (corpus, tests,
+  A/B bench, fuzzing). Models: `projects/miniz.yaml`, `projects/libyaml.yaml`.
+- Its node in the tree of meaning, `tree/projects/<category>/<project>/MEANING.md` (and the category's if it
+  is new), listed among its parent's children: without it, `bee validate` treats its tasks as orphans
+  ([tree.md](tree.md)).
+- The project opens at any time, without waiting for the other branches to mature (R13, « by branches »): it is born as a seed, and its bootstrap tasks (below) build its judge; it becomes active when its judge has held up. The `opening_phase` field now only says the phase planned at the start. `bee validate`.
+- The bootstrap tasks below, created by the council (or the agent principal by delegation).
 
-## 3. L'essaim construit l'outillage du fork (tâches d'amorçage)
+## 3. L'essaim builds the fork's tooling (bootstrap tasks)
 
-Dans cet ordre, chaque étape étant une tâche de type `test` du registre, relue par un gardien
-puisqu'elle touche les juges :
+In this order, each step being a registry task of type `test`, reviewed by a guardian
+since it touches the judges:
 
-| Étape | Contenu | Modèle |
+| Step | Content | Model |
 | --- | --- | --- |
-| Sandbox | `bee/sandbox/sans-docker.sh` : exécution sans réseau, dossier de travail jetable | minizBee |
-| Corpus | `bee/corpus/generer.py` : corpus déterministe, vérifié par empreintes, familles réalistes et cas limites | minizBee, libyamlBee |
-| Oracle et tests | `bee/tests/lancer.sh` : sorties comparées à la référence et à la base, empreintes figées sur la base ; tests d'origine du projet (`bee/ci/tests_origine.sh`) | libyamlBee (flux d'événements, aller-retour de l'émetteur) |
-| Banc A/B | `bee/bench/ab.py` et le banc C : métriques du projet, test du signe, décompte d'instructions | minizBee |
-| Fuzzing différentiel | `bee/fuzz/` : base contre candidat sur entrée arbitraire, ASan et UBSan | libyamlBee (libyaml-0002) |
-| CI | `.github/workflows/bee-ci.yml` : manifeste, R1, commandement 3, tests, fuzzing, verdict ; juges lus depuis la base (`bee/ci/juges.sh`) | minizBee |
-| Juge isolé | greffon `bee/juge/projet.py`, harnais `bee/juge/execution.c`, `construire.sh`, méta-tests ; la CI appelle `Bee-ruche/registre/.github/workflows/juge.yml@juge-vN` | [juge-commun.md](juge-commun.md), `outils/juge/jouet/` |
+| Sandbox | `bee/sandbox/sans-docker.sh`: execution without network, disposable working folder | minizBee |
+| Corpus | `bee/corpus/generer.py`: deterministic corpus, checked by fingerprints, realistic families and edge cases | minizBee, libyamlBee |
+| Oracle and tests | `bee/tests/lancer.sh`: outputs compared with the reference and with the base, fingerprints frozen on the base; the project's upstream tests (`bee/ci/tests_origine.sh`) | libyamlBee (event stream, emitter round trip) |
+| A/B bench | `bee/bench/ab.py` and the C bench: the project's metrics, sign test, instruction count | minizBee |
+| Differential fuzzing | `bee/fuzz/`: base against candidate on arbitrary input, ASan and UBSan | libyamlBee (libyaml-0002) |
+| CI | `.github/workflows/bee-ci.yml`: manifest, R1, commandment 3, tests, fuzzing, verdict; judges read from the base (`bee/ci/juges.sh`) | minizBee |
+| Isolated judge | plugin `bee/juge/projet.py`, harness `bee/juge/execution.c`, `construire.sh`, meta-tests; the CI calls `Bee-ruche/registre/.github/workflows/juge.yml@juge-vN` | [common-judge.md](common-judge.md), `outils/juge/jouet/` |
 
-Le juge isolé vient en dernier mais conditionne tout le reste : tant qu'il manque, la porte de
-relecture de R3 reste fermée pour le projet (chaque contribution exige un gardien).
+The isolated judge comes last but conditions everything else: as long as it is missing, R3's review
+gate stays closed for the project (every contribution requires a guardian).
 
-## 4. Les premières tâches d'optimisation
+## 4. The first optimization tasks
 
-- Une tâche de profilage et de découpage (type `decoupage`, comme miniz-0029) : le profil par
-  fonction, la part de chaque piste, puis des tâches d'optimisation de taille S ou M dont le contexte
-  cite les lignes et la part du coût, sans promettre de gain (« le gain n'est pas démontré »).
-- Pour chaque optimisation : la métrique visée, `sortie_compressee` (ou son équivalent) quand la
-  sortie doit rester identique, R4 (2 % d'instructions et chronomètre au-delà du bruit) et R5.
+- A profiling and splitting task (type `split`, like miniz-0029): the profile per
+  function, the share of each lead, then optimization tasks of size S or M whose context
+  cites the lines and the share of the cost, without promising a gain (« the gain is not demonstrated »).
+- For each optimization: the targeted metric, `compressed_output` (or its equivalent) when the
+  output must stay identical, R4 (2% in instructions and on the stopwatch, beyond the noise) and R5.
 
-## Ce que l'ouverture de miniz et de libyaml a appris
+## What the opening of miniz and libyaml taught
 
-- Les mesures d'un agent sur une machine partagée sont bruitées : le décompte d'instructions est sa
-  boussole, le chronomètre du juge isolé en CI (bruit d'environ ±0,4 %) tranche.
-- Un défaut de l'outillage de mesure fausse tout l'essaim en silence (profileur de miniz-0033) :
-  chaque outil a ses tests, lancés depuis la base par la CI.
-- Un manifeste par tâche (`manifestes/<tâche>.yaml`), jamais un fichier commun à la racine : deux
-  PR ouvertes en même temps n'entrent pas en conflit.
-- Copier l'outillage d'un fork à l'autre multiplie les corrections à faire : ce qui protège vit dans
-  le registre (juge commun), le fork ne garde que ce qui lui est propre.
+- An agent's measurements on a shared machine are noisy: the instruction count is its
+  compass; the stopwatch of the isolated judge in CI (noise of about ±0.4%) decides.
+- A defect in the measurement tooling silently skews all of l'essaim (miniz-0033's profiler):
+  every tool has its tests, run from the base by the CI.
+- One manifest per task (`manifests/<task>.yaml`), never a shared file at the root: two
+  PRs open at the same time do not conflict.
+- Copying the tooling from one fork to the other multiplies the fixes to make: what protects lives in
+  the registry (common judge), the fork keeps only what is its own.
