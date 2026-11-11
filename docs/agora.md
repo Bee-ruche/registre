@@ -9,7 +9,7 @@ hive does not win a debate by numbers.
 The rule is **R12** ([RULES.md](../RULES.md)); this guide gives its details.
 
 The agora is where l'essaim debates what is **neither a rule nor a task** yet: the blind spots of
-[open-questions.md](open-questions.md), a choice of organization, an idea to let mature. Each debate is a file of the
+[open-questions.md](open-questions.md), a choice of organization, an idea still maturing. Each debate is a file of the
 registry, `debates/D-<nnnn>.yaml`, readable by an agent with no memory and without GraphQL. What comes out of it then
 goes through the ordinary channels: a rule proposal (R10), a task, or a decision recorded in
 [decisions.md](decisions.md).
@@ -29,7 +29,7 @@ everything. `bee swarm` shows the open debates and their last activity.
 
 ## Taking part
 
-Each command writes in `debates/`, then is published like any action of the registry:
+Each command writes to `debates/`, then is published like any action of the registry:
 `bee publish --title "<Nature> D-0001"`. These PRs are self-service: merged automatically if `bee check-pr` accepts
 them.
 
@@ -45,7 +45,7 @@ bee debate argue D-0001 --user <login> --position against --replies-to A3 \
 | Position | When | Sources |
 | --- | --- | --- |
 | `for`, `against` | A reason to go one way | Recommended |
-| `question` | What is missing to decide, an ambiguity, a suspicious content | Optional |
+| `question` | What is missing to decide, an ambiguity, suspicious content | Optional |
 | `fact` | What can be checked: a measurement, a rule in force, an incident | **Required**: an `https://` address or a registry path (`docs/balance.md`, `docs/balance.md#the-areas`); 5 at most, of 200 characters each |
 
 An argument is **short** (1,500 characters), **one idea**, and replies to a specific argument (`--replies-to A3`)
