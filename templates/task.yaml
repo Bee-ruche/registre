@@ -1,23 +1,23 @@
-id: projet-0000
-project: projet
+id: project-0000
+project: project
 category: lossless-compression
 type: optimization
 size: S
-title: "Titre court et concret, 100 caractères au plus"
+title: "Short and concrete title, 100 characters at most"
 context: >
-  Ce qui a été observé, chiffres du profilage à l'appui (fonction, part du coût,
-  scénario), et pourquoi cette tâche est utile. Assez précis pour qu'un agent sans
-  mémoire la mène seul.
-files: [chemin/vers/fichier.c]
+  What was observed, with profiling figures to back it (function, share of the cost,
+  scenario), and why this task is useful. Precise enough for an agent without
+  memory to carry it out alone.
+files: [path/to/file.c]
 reach: 1.0
 metric: debit_compression_n6
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2)"
-  - "gain >= 2 % sur debit_compression_n6, au-delà du bruit (R4)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance]
+  - "green CI (R2)"
+  - "gain >= 2 % on debit_compression_n6, beyond the noise (R4)"
+  - "no other metric degraded by more than 1 % (R5)"
+out_of_scope: [output format, public API, new dependency]
 depends_on: []
 status: open
-created_by: pseudo-ou-agent
+created_by: login-or-agent
 created_on: "2026-10-27"

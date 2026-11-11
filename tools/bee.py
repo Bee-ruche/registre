@@ -7506,7 +7506,7 @@ def cmd_propose_task(args):
     else:
         # Outside optimization, the criteria of R4 and R5 have no object: a verifiable criterion to write instead.
         text = re.sub(r"(acceptance_criteria:\n)(?:  - .*\n)+",
-                       lambda m: m.group(1) + '  - "Critère vérifiable : une commande, un test ou un fichier attendu"\n', text)
+                       lambda m: m.group(1) + '  - "Verifiable criterion: a command, a test or an expected file"\n', text)
     load_yaml_text(text, str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

@@ -2972,7 +2972,7 @@ class TestTreePullRequests(BaseTest):
         task = bee.read_yaml(max(self.dir.glob("tasks/ruche/ruche-0*.yaml")))
         self.assertEqual((task["type"], task["metric"]), ("test", None))
         self.assertNotIn("compressed_output", task)
-        self.assertEqual(task["acceptance_criteria"], ["Critère vérifiable : une commande, un test ou un fichier attendu"])
+        self.assertEqual(task["acceptance_criteria"], ["Verifiable criterion: a command, a test or an expected file"])
         self.assertIn("has no metric", self.bee("propose-task", "ruche", "--user", "alice", "--type", "optimization")[1])
         code, text = self.bee("propose-task", "miniz", "--user", "alice")
         self.assertEqual(code, 0, text)
