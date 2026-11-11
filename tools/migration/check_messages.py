@@ -16,7 +16,7 @@ streams cannot change. Then each changed literal must be a message:
     its comparison together: marker_inventory's operands, and every literal reached from one through a name bound in the
     file (a constant, a local variable, an argument's default), argparse's choices, and the text parts of f-strings;
   - a template keeps its str.format fields, each with its conversion and format spec, and its %-specifiers (in any order).
-Docstrings may change and are counted apart (the template check applies to them too). Exit code 1 with every problem
+Docstrings may change and are counted apart (no template check: bee.py never formats one). Exit code 1 with every problem
 listed, 0 otherwise.
 Limits: it sees the code, not what reads bee's output (workflows, scripts, the forks' CI, docs that quote a message),
 which each PR's review checks. A literal with letters, a blank and no comparison is taken for a message: a header name, an
@@ -250,7 +250,7 @@ def check(repo, base, head, files, markers, prose=(), inner=False):
             elif kind != "doc" and not markers and a not in prose and any(p in markers_of_base for p in parts if p):
                 problems.append(f"{where}: a literal the code compares text against changed (needs --markers and the "
                                 f"comparison changed with it): {a!r} -> {b!r}")
-            elif kind != "f" and fields(a) != fields(b):
+            elif kind not in ("f", "doc") and fields(a) != fields(b):
                 problems.append(f"{where}: the template's fields changed: {fields(a)} -> {fields(b)}")
     return problems, counts
 

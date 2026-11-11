@@ -22697,5 +22697,15 @@ def f(n, path):
                                         encoding="utf-8")
         self.assertIn("moved or swapped", self.cm.check(self.repo, "HEAD", None, ["m.py"], False, (), True)[0][0])  # a swap
 
+    def test_a_docstring_may_change_its_braces(self):
+        base = 'def g():\n    """{utilisateur, depuis} : une liste."""\n    return "{x}".format(x=1)\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        (self.repo / "m.py").write_text(base.replace("{utilisateur, depuis} : une liste", "a list of {user, since}"), encoding="utf-8")
+        problems, counts = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+        self.assertEqual((problems, counts["docstrings"]), ([], 1))
+        (self.repo / "m.py").write_text(base.replace('"{x}"', '"{y}"'), encoding="utf-8")
+        self.assertIn("fields changed", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])  # a template still may not
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
