@@ -21141,9 +21141,9 @@ class TestReportsRuche0118(ReportTools):
                 ({"by": "gaspard"}, {}, part_of),
                 ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) must be the time of the PR"),
                 ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z): the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
-                ({"outcome": "linked"}, {}, "linked decision: this PR links the two member files"),
+                ({"outcome": "linked"}, {}, "a linked decision comes after the link: the two member files are linked on main, not by this PR"),
                 ({"outcome": "linked"}, {"alice": {**alice, "other_accounts": [*alice["other_accounts"], number_from("bruno")]}},
-                 "linked decision: this PR links the two member files")):
+                 "a linked decision comes after the link: the two member files are linked on main, not by this PR")):
             with self.subTest(decision=decision, members=list(members)):
                 self.branch("decision")
                 bee.write_yaml(self.dir / "reports/S-0001.yaml",
@@ -21232,7 +21232,7 @@ class TestReportsRuche0137(ReportTools):
                                 ({"decision": {**decision, "by": "inconnu"}}, "decision/by: inconnu is not a known account"),
                                 ({"decision": {**decision, "by": "gaspard"}}, "decision/by: neither the reporter nor one of the two accounts"),
                                 ({"decision": {**decision, "by": "bruno"}}, "decision/by: neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "outcome": "linked"}}, "linked decision: the two member files are linked")):
+                                ({"decision": {**decision, "outcome": "linked"}}, "a linked decision needs the two member files linked")):
             with self.subTest(fields=fields):
                 self.by_hand("S-0001", **fields)
                 self.ko(f"reports/S-0001.yaml: {chunk}", "validate")
@@ -21416,7 +21416,7 @@ class TestReportsRuche0137(ReportTools):
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "linked"}})
         bee.write_yaml(self.dir / "members/alice.yaml", {**alice, "other_accounts": [number_from("farid")]})
         self.commit()
-        self.refused("bidji29", "reports/S-0001.yaml: linked decision: this PR links the two member files")
+        self.refused("bidji29", "reports/S-0001.yaml: a linked decision comes after the link: the two member files are linked on main, not by this PR")
         self.abandon("decision")
         self.decider("S-0001", "--link", "farid")
         self.assertEqual(self.read("members/gaspard.yaml")["other_accounts"], [number_from("farid"), number_from("alice")])
