@@ -14,15 +14,15 @@ verdict:
   gain: null
   beyond_noise: false
   instructions:
-    instructions_analyse:
+    instructions_parse:
       A: 249769850.0
       B: 249769850.0
       gain: 0.0
-    instructions_chargement:
+    instructions_load:
       A: 341192769.0
       B: 341192769.0
       gain: 0.0
-    instructions_emission:
+    instructions_emit:
       A: 461725511.0
       B: 461725511.0
       gain: 0.0
@@ -47,15 +47,15 @@ verdicts:
   beyond_noise: false
   changed_lines: 45
   instructions:
-    instructions_analyse:
+    instructions_parse:
       A: 249769850.0
       B: 249769850.0
       gain: 0.0
-    instructions_chargement:
+    instructions_load:
       A: 341192769.0
       B: 341192769.0
       gain: 0.0
-    instructions_emission:
+    instructions_emit:
       A: 461725511.0
       B: 461725511.0
       gain: 0.0

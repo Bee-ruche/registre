@@ -14,11 +14,11 @@ status: upcoming
 opening_phase: 4
 maintainer_tier: none
 metrics:
-  - id: debit_decodage
+  - id: decode_throughput
     description: Decoding throughput on the reference image corpus
     unit: Mpixels/s
     direction: higher
-  - id: memoire_max_ko
+  - id: max_memory_kb
     description: Maximum resident memory during the bench
     unit: KB
     direction: lower

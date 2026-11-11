@@ -33,11 +33,11 @@ context: >
   l. 612); slow paths (end of buffer, the circular buffer of mz_inflate when streaming) stay intact.
 files: [miniz_tinfl.c]
 reach: 0.8
-metric: debit_decompression
+metric: decompression_throughput
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_decompression (instructions_decompression), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on decompression_throughput (instructions_decompression), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5)"
   - "inflate fuzzing (fuzz_inflate) for 10 minutes without a discrepancy; flux-1 and flux-4096 without a discrepancy"
   - "manifest: decompression throughput of the repetitif family before and after (ab.py --corpus bee/corpus/donnees/repetitif)"

@@ -21,7 +21,7 @@ context: >
   décompression est la cible.
 files: [miniz_tinfl.c]
 reach: 0.9
-metric: debit_decompression
+metric: decompression_throughput
 compressed_output: identical
 acceptance_criteria:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
