@@ -79,7 +79,7 @@ class Gap(Exception):  # the report read is not the one the judging job publishe
 
 
 def lire(path):
-    """The report's bytes: a regular file, never through a link, at most RAPPORT_MAX; None if there is none."""
+    """The report's bytes: a regular file, never through a link, at most REPORT_MAX; None if there is none."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
@@ -151,7 +151,7 @@ def publish(path, code):
 
 
 def verifier(path, published_ones, base, head):
-    """Refuses (Ecart) a report whose SHA-256 or any figure differs from the judging job's outputs, whose published code is
+    """Refuses (Gap) a report whose SHA-256 or any figure differs from the judging job's outputs, whose published code is
     not 0, or whose commits are not the pull request's (base, head); returns it."""
     if not isinstance(published_ones, dict) or str(published_ones.get("code")) != "0":
         raise Gap("the judging job's code is not 0")

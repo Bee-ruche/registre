@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Juge commun Bee : analyse statique des objets compilés du projet jugé.
+"""Bee's common judge: static analysis of the judged project's compiled objects.
 
-Le juge vérifie de l'extérieur que les SORTIES du projet sont justes. Ce qu'il ne peut pas voir de
-l'extérieur, c'est un code qui s'en prend à la mesure elle-même : appels système directs, lancement
-d'autres programmes, requêtes client de Valgrind (qui suspendent le décompte d'instructions), lecture de
-l'horloge, constructeurs exécutés avant le harnais, symboles qui remplacent ceux du harnais ou de la libc
-(memcmp, clock_gettime…). Ces constructions n'ont rien à faire dans une bibliothèque de calcul (compression,
-analyse, codage) ; elles se voient dans les objets compilés. Ce module compare les relevés de la PR (B)
-à ceux de la base (A), produits dans le conteneur par le script de construction du greffon (nm, objdump),
-et liste ce que B ajoute. Le greffon fournit l'espace de noms du projet (PREFIXES) et les fonctions
-externes qu'il peut appeler en plus de la liste commune (PERMIS).
+The judge checks from outside that the project's OUTPUTS are correct. What it cannot see from
+outside is code that attacks the measurement itself: direct system calls, launching
+other programs, Valgrind client requests (which suspend the instruction count), reading
+the clock, constructors run before the harness, symbols that replace the harness's or the libc's
+(memcmp, clock_gettime…). These constructs have no business in a computing library (compression,
+parsing, encoding); they show in the compiled objects. This module compares the surveys of the PR (B)
+with those of the base (A), produced in the container by the plugin's build script (nm, objdump),
+and lists what B adds. The plugin gives the project's namespace (PREFIXES) and the external
+functions it may call besides the common list (PERMIS).
 
-Une construction suspecte n'est pas une faute : elle retire seulement la confiance dans les mesures, et
-le registre exige alors la relecture d'un gardien (R3). This module reads only text and bytes; it executes nothing.
+A suspicious construct is not a fault: it only withdraws the trust in the measurements, and
+the registry then requires a guardian's review (R3). This module reads only text and bytes; it executes nothing.
 """
 
 import re
 import struct
 from collections import Counter
 
-# Fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système), pas à
-# compresser ni à analyser : jamais permises, et signalées par leur nom exact AVANT toute exemption par l'espace de
-# noms du projet ou par la liste PERMIS du greffon (revue adverse n° 2 du 28/10 : un préfixe « ge » couvrait getenv).
+# Functions that serve to deceive the measurement (clock, processes, environment, signals, system calls), not to
+# compress or to parse: never allowed, and flagged by their exact name BEFORE any exemption by the project's
+# namespace or by the plugin's PERMIS list (adversarial review no. 2 of 28 October: a prefix « ge » covered getenv).
 NEVER_ALLOWED = frozenset({
     "syscall", "clock_gettime", "clock_getres", "gettimeofday", "time", "times", "getrusage", "fork", "vfork",
     "clone", "execve", "execv", "execvp", "execl", "execlp", "system", "popen", "posix_spawn", "dlopen", "dlsym",
@@ -29,14 +29,14 @@ NEVER_ALLOWED = frozenset({
     "sched_setaffinity", "mprotect",
 })
 
-# Fonctions de la libc qu'une bibliothèque de calcul peut appeler sans rien changer à la mesure : mémoire et chaînes.
+# Functions of the libc a computing library may call without changing anything in the measurement: memory and strings.
 UNDEFINED_ALLOWED = frozenset({
     "memcpy", "memmove", "memset", "memcmp", "malloc", "calloc", "realloc", "free", "strlen",
     "abort", "__assert_fail", "__stack_chk_fail", "__memcpy_chk", "__memmove_chk", "__memset_chk",
     "_GLOBAL_OFFSET_TABLE_",
 })
 
-# Instructions sans usage dans une bibliothèque de calcul, mais utiles pour tromper une mesure ou en sortir.
+# Instructions with no use in a computing library, but useful to deceive a measurement or to escape it.
 SUSPICIOUS_MNEMONICS = {
     "syscall": "appel système direct",
     "sysenter": "appel système direct",
@@ -56,7 +56,7 @@ SUSPICIOUS_MNEMONICS = {
     "segment_wx": "memory both writable and executable in the linked program",
     "pile_executable": "executable stack in the linked program",
 }
-# Préambule des requêtes client de Valgrind sur x86-64 : rol $3, $13, $61, $51 sur %rdi.
+# Preamble of Valgrind's client requests on x86-64: rol $3, $13, $61, $51 on %rdi.
 VALGRIND_PREAMBLE = re.compile(r"\brol\s+\$0x(?:3|d|3d|33),%rdi\b")
 SEQUENCES = {nom: re.compile(b"(?=(" + reason + b"))") for nom, reason in (
     ("syscall", rb"\x0f\x05"), ("sysenter", rb"\x0f\x34"), ("int", rb"\xcd\x80"), ("rdtsc", rb"\x0f\x31"),
@@ -83,15 +83,15 @@ SOURCE_WORDS = [
     (re.compile(r"\b(?:__builtin_ia32_(?:rdtscp?|rdpmc|rdrand\w*|rdseed\w*|rdpid|xgetbv)|__?rdtscp?|__rdpmc|_xgetbv|_rd(?:rand|seed)\w*"
                 r"|__cpuid\w*|__get_cpuid\w*|__builtin_cpu_(?:supports|init|is))\b"),
      "lecture du processeur ou de l'horloge"),
-    # Ce balayage du texte n'est qu'un filet : la concaténation de jetons (« a##sm ») ou _Pragma peuvent
-    # former un mot interdit que les motifs ci-dessus ne voient pas (revue adverse du 28/10). L'analyse
-    # des objets, elle, voit le code produit.
+    # This scan of the text is only a net: token pasting (« a##sm ») or _Pragma can
+    # form a forbidden word the patterns above do not see (adversarial review of 28 October). The analysis
+    # of the objects sees the code produced.
     (re.compile(r"##|%:%:|\b_Pragma\b|(?:#|%:)\s*pragma\b"), "concaténation de jetons ou pragma (peut former un mot interdit)"),
 ]
 
 
 def symbols(text):
-    """nm -P -A : « fichier.o: nom type valeur [taille] ». Renvoie {nom: (type, fichier)}."""
+    """nm -P -A: « file.o: name type value [size] ». Returns {name: (type, file)}."""
     result = {}
     for line_text in text.splitlines():
         if ": " not in line_text:
@@ -107,7 +107,7 @@ def symbols(text):
 
 
 def sections(text):
-    """objdump -h : noms de section par fichier."""
+    """objdump -h: section names per file."""
     names = set()
     for line_text in text.splitlines():
         chunks = line_text.split()
@@ -188,12 +188,12 @@ def occurrences(files):
 
 
 def analyse(surveys_a, surveys_b, texts_a, texts_b, prefixes=(), allowed_set=()):
-    """releves_* : {"symboles": texte nm, "sections": texte objdump -h, "desassemblage": texte objdump -d}.
-    Also "objets" and "programme": [(name, ELF bytes)]; textes_*: the judged files of A and B, {path: text}.
+    """surveys_*: {"symboles": nm text, "sections": objdump -h text, "desassemblage": objdump -d text}.
+    Also "objets" and "programme": [(name, ELF bytes)]; texts_*: the judged files of A and B, {path: text}.
 
-    prefixes : espace de noms du projet (noms qu'il définit et appelle entre ses fichiers) ;
-    permis   : fonctions externes permises en plus d'INDEFINIS_PERMIS.
-    Renvoie la liste des constructions suspectes que B ajoute par rapport à A (liste de dicts), chaque détail coupé à DETAIL_MAX."""
+    prefixes:    the project's namespace (names it defines and calls between its files);
+    allowed_set: external functions allowed besides UNDEFINED_ALLOWED.
+    Returns the list of suspicious constructs B adds compared with A (a list of dicts), each detail cut to DETAIL_MAX."""
     prefixes = tuple(prefixes)
     all_allowed = UNDEFINED_ALLOWED | frozenset(allowed_set)
     suspects = []

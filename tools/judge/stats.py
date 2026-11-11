@@ -1,8 +1,8 @@
-"""Juge commun Bee : statistiques A/B, reprises telles quelles de bee/bench/ab.py de minizBee.
+"""Bee's common judge: A/B statistics, taken as they are from minizBee's bee/bench/ab.py.
 
-Test du signe sur les paires entrelacées (A, B), médianes, gain relatif, description de la machine et
-tableau lisible. Les définitions sont identiques à celles d'ab.py, si bien qu'un rapport du juge commun
-se lit comme un rapport d'ab.py (test : test_juge.TestStatistiques compare les deux).
+Sign test on the interleaved pairs (A, B), medians, relative gain, description of the machine and
+a readable table. The definitions are identical to ab.py's, so that a report of the common judge
+reads like a report of ab.py (test: test_judge.TestStatistics compares the two).
 """
 
 import math
@@ -16,7 +16,7 @@ SIGN_TEST_THRESHOLD = 0.02
 
 
 def sign_threshold(n, alpha=SIGN_TEST_THRESHOLD):
-    """Plus petit k tel que P(X >= k | n, 1/2) <= alpha ; None si aucun (n trop petit)."""
+    """Smallest k such that P(X >= k | n, 1/2) <= alpha; None if there is none (n too small)."""
     for k in range(n + 1):
         if sum(math.comb(n, j) for j in range(k, n + 1)) / 2 ** n <= alpha:
             return k
@@ -28,10 +28,10 @@ def one_sided_p(n, k):
 
 
 def sign_test(values_a, values_b, direction):
-    """Test du signe standard sur les paires (A_i, B_i).
+    """Standard sign test on the pairs (A_i, B_i).
 
-    Les égalités sont écartées ; le seuil k et les valeurs p se calculent sur les N' paires restantes.
-    Si toutes les paires sont à égalité (N' = 0), il n'y a ni gain ni dégradation."""
+    Ties are set aside; the threshold k and the p-values are computed on the N' remaining pairs.
+    If every pair is a tie (N' = 0), there is neither gain nor degradation."""
     pairs = [(a, b) for a, b in zip(values_a, values_b) if a is not None and b is not None]
     best_one = (lambda a, b: b > a) if direction == "plus_haut" else (lambda a, b: b < a)
     b_wins = sum(1 for a, b in pairs if best_one(a, b))
