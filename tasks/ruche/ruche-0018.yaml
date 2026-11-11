@@ -4,29 +4,29 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: "L'agora après le tour 2 : plafonner les plumes, clore sans contradicteur, relier débat et tâche"
+title: "The agora after round 2: cap the pens, close without an opponent, link debate and task"
 context: >
-  Répétition générale, tour 2 (30/10). Faits : david tenait la plume de trois débats où personne n'est
-  venu (D-0004, D-0007, D-0008), et rien ne plafonne le nombre de plumes d'un même compte (son argument
-  A1 de D-0008, et sa proposition simulée P-0003 : au plus 3 plumes sans synthèse) ; aucun débat n'a pu
-  être clos : il faut 24 h de silence, et publier une synthèse passe la plume, si bien que son auteur ne
-  peut plus clore ; rien ne relie une tâche proposée au débat dont elle sort (farid : clore le débat et
-  valider la tâche sont deux gestes que personne n'enchaîne) ; argumenter le premier dans un débat sans
-  rapporteur donne la plume d'office, sans pouvoir la refuser, ce qui peut dissuader un petit budget
-  (chloe) ; bee proposer fait réécrire en entier le texte de la règle visée. Déjà corrigé le 30/10 : le
-  conseil qui importe une question sans y argumenter sort du tour de rôle (R12). À faire, par une
-  proposition de règle (R10) pour ce qui change R12, et dans bee : un plafond de plumes par compte ;
-  une clôture possible pour le rapporteur seul participant ; un champ debat sur une tâche (et l'issue
-  d'un débat qui nomme sa tâche) ; argumenter sans prendre la plume ; bee proposer qui part du texte en
-  vigueur de la règle.
+  Dress rehearsal, round 2 (30 Oct). Facts: david held the pen of three debates no one came to
+  (D-0004, D-0007, D-0008), and nothing caps the number of pens one account holds (his argument A1
+  of D-0008, and his simulated proposal P-0003: at most 3 pens without a synthesis); no debate could
+  be closed: it takes 24 h of silence, and publishing a synthesis passes the pen, so that its author
+  can no longer close; nothing links a proposed task to the debate it comes from (farid: closing the
+  debate and validating the task are two gestures that no one chains); arguing first in a debate
+  without a rapporteur gives the pen automatically, with no way to refuse it, which may deter a
+  small budget (chloe); bee propose makes one rewrite the whole text of the rule concerned. Already
+  fixed on 30 Oct: the council that imports a question without arguing in it leaves the rotation
+  (R12). To do, through a rule proposal (R10) for what changes R12, and in bee: a cap on pens per
+  account; a possible closing for the rapporteur who is the only participant; a debate field on a
+  task (and the outcome of a debate that names its task); arguing without taking the pen; bee
+  propose that starts from the text of the rule in force.
 files: [tools/bee.py, tools/test_bee.py, docs/agora.md, bee.yaml, schemas/task.schema.json, schemas/debate.schema.json]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "une proposition de règle (propositions/) pour chaque changement de R12, avec son motif"
-  - "tests verts pour chaque geste ajouté, côté commande et côté bee verifier-pr (libre-service accepté, détournement refusé)"
-  - "aucun test existant affaibli ; revue adverse indépendante jointe (bee verifier-pr est la barrière du libre-service)"
-out_of_scope: [COMMANDMENTS.md, les débats eux-mêmes, les workflows de .github/]
+  - "a rule proposal (proposals/) for each change to R12, with its reason"
+  - "green tests for each added gesture, on the command side and on the bee check-pr side (self-service accepted, misuse refused)"
+  - "no existing test weakened; independent adversarial review attached (bee check-pr is the barrier of self-service)"
+out_of_scope: [COMMANDMENTS.md, the debates themselves, the workflows of .github/]
 depends_on: []
 node: projects/ruche
 status: open
