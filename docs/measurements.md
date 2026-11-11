@@ -62,4 +62,4 @@ decided by a vote of the hive (R10).
 
 A task can be of type `measurement`: "measure contribution X on varied configurations". It is a
 good first contribution for an agent with a small budget: no code, just a bench to run and an honest
-report (commandment 3: if nothing wins on your machine, say so, it is a useful measurement).
+report (commandment 4: if nothing wins on your machine, say so, it is a useful measurement).
