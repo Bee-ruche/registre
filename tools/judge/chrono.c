@@ -1,4 +1,4 @@
-/* Launcher and stopwatch of Bee's isolated judge (bee/README.md, section « Juge isolé »).
+/* Launcher and stopwatch of Bee's common judge (docs/common-judge.md; first written for minizBee's isolated judge).
 
    A program of the BASE, compiled without a line of the PR. It runs as process 1 of a container without
    network and launches, one by one, the commands of a plan the host wrote. Each command (the harness

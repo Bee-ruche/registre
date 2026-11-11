@@ -88,8 +88,8 @@ class Project:
 
     def __init__(self, options):
         self.identique = options.pop("sortie_compressee", "identique") == "identique"
-        # A commit of the base whose rle.c joins the corpus, read from its git objects: juge.yml fetches them when
-        # the fork declares the commit (input `historique`), before the PR; judging itself has no git transport.
+        # A commit of the base whose rle.c joins the corpus, read from its git objects: judge.yml fetches them when
+        # the fork declares the commit (input `history`, or `historique`), before the PR; judging itself has no git transport.
         self.commit_corpus = options.pop("commit_corpus", None)
         if self.commit_corpus is not None and not re.fullmatch(r"[0-9a-f]{40}", self.commit_corpus):
             raise Erreur("commit_corpus : un commit complet (40 chiffres hexadécimaux)")
@@ -113,7 +113,7 @@ class Project:
         r = subprocess.run(["git", "-C", outillage, "cat-file", "blob", objet], capture_output=True, timeout=60)
         if r.returncode != 0:
             raise Erreur(f"corpus : objet git {objet} absent de la base ; déclarez son commit dans l'entrée "
-                         "« historique » de juge.yml")
+                         "« historique » de judge.yml")
         self.VERIFICATION["historique"] = f"{objet} ({len(r.stdout)} octets)"
         return r.stdout
 

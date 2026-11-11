@@ -138,10 +138,11 @@ vulnerable) nor for federation.
 
 - The registry publishes the **versioned common tooling**: the `chrono` launcher, the safe reading of outputs, the
   analysis of objects, container isolation, A/B statistics, and **reusable workflows** (`workflow_call`) tagged
-  `juge-vN`.
+  `juge-vN`, then `judge-vN` from version 4.
 - Each fork keeps only **what is its own**: its execution harness, its verification rule (which outputs, compared
   how), its corpus and its metrics (`projects/<project>.yaml`).
-- A fork's CI calls `Bee-ruche/registre/.github/workflows/juge.yml@juge-vN`. Changing the common judge is a tooling
+- A fork's CI calls `Bee-ruche/registre/.github/workflows/judge.yml` pinned to the commit of a tag `judge-vN` (`juge.yml` up to
+  `juge-v3`: callers pinned to `juge.yml@<sha>` keep working). Changing the common judge is a tooling
   task of the registry (two guardians, meta-tests against malicious variants) followed by a new tag; each fork moves up
   a version through a PR.
 - Opening a new project then comes down to writing a harness, a verification and a corpus.

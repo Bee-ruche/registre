@@ -37,7 +37,7 @@ builds them (DockerLocal; built, surveyed and analysed, never run): seeded const
 variant (TestSeededObjects), constructs added anywhere in a judged file (TestSeededText), failing tools
 (TestFailClosed).
 
-ruche-0024 (juge-v2): juge.yml's scripts are run with bash, gh replaced by a stand-in (TestWorkflowJuge: judge code
+ruche-0024 (juge-v2): judge.yml's scripts are run with bash, gh replaced by a stand-in (TestJudgeWorkflow: judge code
 at a commit of the registry's main, preparation failing closed, a hostile journal that issues no workflow command);
 the declared history is checked against the base's ancestry, fetched within a time budget, then read without any
 git transport (TestHistorique); with Docker, historique_declare and historique_non_declare.
@@ -1273,7 +1273,7 @@ class TestOrderAndFingerprints(unittest.TestCase):
 
     def test_drawn_order_and_processor_time(self):
         """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
-        inputs' seed) recorded in juge.json, and is the order run; each scenario's CPU time is the one chrono measured; one
+        inputs' seed) recorded in judge.json, and is the order run; each scenario's CPU time is the one chrono measured; one
         command and one fresh writable folder per container."""
         report, emulated = self.run_the_judge(graine_ordre="00" * 16)
         self.assertEqual(len(emulated.containers), 2 * 2 + 2 * 4 * 4 + 2 * 2)  # verification, 1 + 3 repetitions, instructions
@@ -1310,7 +1310,7 @@ class TestOrderAndFingerprints(unittest.TestCase):
         self.assertEqual(len(seeds), 3)
 
     def test_where_each_seed_came_from(self):
-        """ruche-0136: juge.json says, for each seed (the inputs', the order's), whether the judge drew it or it was given on the
+        """ruche-0136: judge.json says, for each seed (the inputs', the order's), whether the judge drew it or it was given on the
         command line (--seed, --order-seed: a local reproduction); only a report whose seeds were both drawn passes
         report.py --verify."""
         path = os.path.join(self.workdir, "graines.json")
@@ -1346,7 +1346,7 @@ class TestOrderAndFingerprints(unittest.TestCase):
         self.assertFalse(any(os.path.ismount(os.path.dirname(c["ecrits"][0])) for c in emulated.containers))
 
     def test_suspicious_most_serious_first(self):
-        """ruche-0117: juge.json lists the most serious constructs first (GRAVITE), SUSPECTES_MAX at most, and counts each kind."""
+        """ruche-0117: judge.json lists the most serious constructs first (SEVERITY), SUSPICIOUS_MAX at most, and counts each kind."""
         found_ones = [{"type": "source", "detail": f"pragma {i}"} for i in range(judge.SUSPICIOUS_MAX + 20)]
         found_ones += [{"type": "symbole", "detail": "s"}, {"type": "inconnu", "detail": "?"}, {"type": "appel_interdit", "detail": "g"}]
         with mock.patch.object(judge.analysis, "analyse", return_value=found_ones), \
@@ -1358,7 +1358,7 @@ class TestOrderAndFingerprints(unittest.TestCase):
 
     def test_fixed_metric_read_on_verification_alone(self):
         """ruche-0117: a fixed metric that no scenario computes from its timed outputs (the ratio, here the base's scenario
-        returns none) is flagged in juge.json and never beyond the noise, even where the sign test says so; the toy's own
+        returns none) is flagged in judge.json and never beyond the noise, even where the sign test says so; the toy's own
         ratio, read on its timed outputs, is not flagged."""
         base = os.path.join(self.workdir, "sans-ratio")
         if not os.path.isdir(base):
@@ -1496,7 +1496,7 @@ def runner_commands(output_text):
 
 @unittest.skipUnless(yaml, "PyYAML required (pip install -r outils/requirements.txt)")
 class TestJudgeWorkflow(unittest.TestCase):
-    """juge.yml reads the judge at its own commit, a commit of the registry's main, and prints the journal without
+    """judge.yml reads the judge at its own commit, a commit of the registry's main, and prints the journal without
     workflow commands (ruche-0024); its scripts are run here with bash, gh replaced by a stand-in."""
 
     @classmethod
@@ -1715,7 +1715,7 @@ class TestJudgeWorkflow(unittest.TestCase):
                                  [l for l in r.stdout.splitlines() if l.startswith(announcements[expected])])
 
     def test_work_folder_bounded(self):
-        """ruche-0038: the judge works in a size-bounded tmpfs that juge.yml mounts just before judging (executable: the
+        """ruche-0038: the judge works in a size-bounded tmpfs that judge.yml mounts just before judging (executable: the
         harness runs from it)."""
         names = [e.get("name") for e in self.wf["jobs"]["judge"]["steps"]]
         self.assertEqual(names.index(WORKDIR) + 1, names.index("Judge"))
@@ -1726,7 +1726,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         self.assertIn('--base "$BASE" --head "$TETE" --workdir "$RUNNER_TEMP/juge"', step(self.wf, "Judge")["run"])
 
     def test_report_tied_to_the_judging_job(self):
-        """ruche-0038: the judging step publishes juge.json's SHA-256 and key figures as job outputs; on the verdict side,
+        """ruche-0038: the judging step publishes judge.json's SHA-256 and key figures as job outputs; on the verdict side,
         report.py --verify, given those outputs (toJSON(needs.<job>.outputs)), refuses a report changed in between."""
         common_judge = os.path.join(self.dir, "juge-commun", "tools", "judge")
         os.makedirs(common_judge)
@@ -2048,8 +2048,8 @@ class TestBounds(unittest.TestCase):
                     "B", "/e", os.path.join(self.dir, "s"), [("verifier", [container.HARNESS, "verifier", "/entrees", "/sorties"])])
 
     def test_judge_json_says_the_environment_error(self):
-        """ruche-0136: the judge stopped by a failure of the machine exits with 2, and its juge.json says so (code 2,
-        erreur_environnement, panne_machine); stopped by a refusal, 1 and refus; report.py publishes the code only when the
+        """ruche-0136: the judge stopped by a failure of the machine exits with 2, and its judge.json says so (code 2,
+        environment_error, machine_failure); stopped by a refusal, 1 and refusal; report.py publishes the code only when the
         report agrees with it."""
         path = os.path.join(self.dir, "resultats", "juge.json")
         env = {"FAUX_DOCKER_ID": "sha256:" + "a" * 64, "FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ERREUR": OCI, "FAUX_DOCKER_INSPECT": "1"}
@@ -2070,7 +2070,7 @@ class TestBounds(unittest.TestCase):
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "1", "2"])
 
     def test_a_refusal_stays_a_refusal_whatever_its_message_holds(self):
-        """ruche-0136: a refusal quoting a name that is not UTF-8 exits with 1, its juge.json whole and saying refus, and
+        """ruche-0136: a refusal quoting a name that is not UTF-8 exits with 1, its judge.json whole and saying refusal, and
         report.py publishes 1; a report that cannot be written leaves none, neither partial nor stale."""
         self.assertEqual(lecture.propre("a\udcffb\ud800"), "a?b?")
         path, source_b = os.path.join(self.dir, "resultats", "juge.json"), os.path.join(os.fsencode(self.dir), b"B\xff")
@@ -2143,7 +2143,7 @@ def toy_repo_with_history(travail, toy=TOY):
 
 @unittest.skipUnless(shutil.which("git"), "git required")
 class TestHistory(unittest.TestCase):
-    """juge.yml's `historique` input: commits of the base's ancestry only (compare API, gh replaced by a stand-in),
+    """judge.yml's `history` input (`historique` until judge-v5): commits of the base's ancestry only (compare API, gh replaced by a stand-in),
     checked before any fetch and before the plugin is loaded, fetched within one time budget; judging then runs
     without any git transport (ruche-0024)."""
 
@@ -2239,7 +2239,7 @@ class TestHistory(unittest.TestCase):
         """--history-only checks and fetches the history with the token and never loads the plugin;
         --image-only neither reads the history nor needs a token, and refuses --history; judging refuses every
         git transport before the plugin is loaded. GH_TOKEN is out of os.environ before any plugin load (defence in
-        depth: juge.yml gives the token to the history step alone)."""
+        depth: judge.yml gives the token to the history step alone)."""
         seen_items = []
 
         def load(tooling, options):
@@ -3135,7 +3135,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         for m in report["instructions"].values():
             self.assertEqual(m["A"], m["B"])
         self.assertEqual(set(report["metrics"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
-        self.assertIsNone(report["judge"]["source"])  # named by juge.yml (--source-juge), not by a local run
+        self.assertIsNone(report["judge"]["source"])  # named by judge.yml (--judge-source), not by a local run
         self.assertEqual(report["judge"]["seed_origin"], {"seed": "drawn", "order_seed": "drawn"})  # ruche-0136
         verification = report["judge"]["verification"]  # ruche-0037: 20 f and 30 z verification inputs, over 2 repetitions
         self.assertEqual(verification["mixed_per_repetition"], {"f": 10, "z": 15})
@@ -3154,7 +3154,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         """ruche-0036, on the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
         modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons at the
         same seeds; the order changes between repetitions (each scenario of a side running before and after the other,
-        at this order seed) and is recorded in juge.json with each scenario's CPU time."""
+        at this order seed) and is recorded in judge.json with each scenario's CPU time."""
         base, seeds = toy_with_four_scenarios(os.path.join(self.workdir, "base-quatre-scenarios"), self.toy), ["--seed", "00" * 16,
                                                                                                       "--order-seed", "01" * 16]
         code_h, honest_one, header_output = self.run_the_judge("voisins_reference", self.prepare("voisins_reference"), base=base,
@@ -3235,7 +3235,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
 
     def test_machine_failure(self):
         """ruche-0136, with Docker: the container of B's build created with a runtime Docker does not have, then the one of
-        B's verification that the runtime fails to start (OCI): each time the judge ends with code 2, and its juge.json says
+        B's verification that the runtime fails to start (OCI): each time the judge ends with code 2, and its judge.json says
         an error of the environment, a failure of the machine; before ruche-0136, both were refusals of B."""
         folder = os.path.join(self.workdir, "docker-en-panne")
         os.makedirs(folder)
@@ -3256,7 +3256,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
 
     def test_simulated_failure(self):
         """ruche-0136, with Docker: B's code writes a daemon's error and exits with 125, as a failing runtime would: the
-        container ran to its end, so it is a refusal of B (code 1, « refus » in juge.json), never an error of the environment."""
+        container ran to its end, so it is a refusal of B (code 1, « refusal » in judge.json), never an error of the environment."""
         def simulate(text, corpus):
             text = replace_with(text, INCLUDE, INCLUDE + "#include <stdio.h>\n#include <stdlib.h>\n")
             return replace_with(text, COMPRESS_START, COMPRESS_START + f"    fputs({json.dumps(OCI)}, stderr); exit(125);\n")
@@ -3521,7 +3521,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         return r.returncode, json.loads(r.stdout) if r.returncode == 0 else None, r.stderr, time.monotonic() - beginning
 
     def test_job_report(self):
-        """ruche-0038: juge.json names the commits judged and the image's id, lists SUSPECTES_MAX suspicious constructs and
+        """ruche-0038: judge.json names the commits judged and the image's id, lists SUSPICIOUS_MAX suspicious constructs and
         counts the rest; its figures are those report.py publishes, and a report changed afterwards is refused. ruche-0117: the
         most serious first, a forbidden call and a global symbol of 2,000 characters added after 125 pragmas, each kind counted,
         each detail cut to DETAIL_MAX; report.py --verify wants the code 0 and the pull request's commits."""
@@ -3568,7 +3568,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         self.assertLess(duration, 600)
 
     def test_full_disk(self):
-        """ruche-0038: a judged code that fills the work folder (a small tmpfs here, as juge.yml mounts a larger one): a
+        """ruche-0038: a judged code that fills the work folder (a small tmpfs here, as judge.yml mounts a larger one): a
         refusal, in bounded time, and the folder left empty."""
         folder, sudo = os.path.join(self.workdir, "tmpfs-borne"), ([] if os.geteuid() == 0 else ["sudo", "-n"])
         os.makedirs(folder)

@@ -39,7 +39,7 @@ since it touches the judges:
 | A/B bench | `bee/bench/ab.py` and the C bench: the project's metrics, sign test, instruction count | minizBee |
 | Differential fuzzing | `bee/fuzz/`: base against candidate on arbitrary input, ASan and UBSan | libyamlBee (libyaml-0002) |
 | CI | `.github/workflows/bee-ci.yml`: manifest, R1, commandment 3, tests, fuzzing, verdict; judges read from the base (`bee/ci/juges.sh`) | minizBee |
-| Isolated judge | plugin `bee/juge/projet.py`, harness `bee/juge/execution.c`, `construire.sh`, meta-tests; the CI calls `Bee-ruche/registre/.github/workflows/juge.yml@juge-vN` | [common-judge.md](common-judge.md), `tools/judge/jouet/` |
+| Isolated judge | plugin `bee/judge/project.py` (or, until judge-v5, `bee/juge/projet.py`), harness `execution.c`, build script, meta-tests; the CI calls `Bee-ruche/registre/.github/workflows/judge.yml` pinned to the commit of a tag `judge-vN` (callers pinned to `juge.yml@<sha>`, up to `juge-v3`, keep working) | [common-judge.md](common-judge.md), `tools/judge/toy/` (`tools/judge/jouet/` in French) |
 
 The isolated judge comes last but conditions everything else: as long as it is missing, R3's review
 gate stays closed for the project (every contribution requires a guardian).
