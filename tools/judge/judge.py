@@ -93,6 +93,11 @@ VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=
 COMMIT, HISTORY_MAX, REPO = re.compile(r"[0-9a-f]{40}"), 16, re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")
 
 
+def common_tag(version=COMMON_VERSION):
+    """The registry's tag of this judge: juge-v1 to juge-v3, then judge-v4 on (ruche-0148); bee reads no other name of a number."""
+    return f"{'juge' if version <= 3 else 'judge'}-v{version}"
+
+
 # ------------------------------------------------------------------ greffon
 
 class EnglishPlugin:
@@ -115,9 +120,12 @@ def load_plugin(tooling, options):
     found = [p for p in (PLUGIN_PATH, FRENCH_PLUGIN_PATH) if os.path.lexists(os.path.join(tooling, p))]
     if len(found) == 2:
         raise Erreur(f"two plugins in {tooling}, {PLUGIN_PATH} (English) and {FRENCH_PLUGIN_PATH} (French): a base holds one")
-    english, path = found != [FRENCH_PLUGIN_PATH], os.path.join(tooling, (found or [PLUGIN_PATH])[0])
-    if not os.path.isfile(path) or os.path.islink(path):
+    relative = (found or [PLUGIN_PATH])[0]
+    english, path, parts = relative == PLUGIN_PATH, os.path.join(tooling, relative), relative.split(os.sep)
+    if not os.path.isfile(path):
         raise Erreur(f"greffon introuvable : {' ou '.join(found or (PLUGIN_PATH, FRENCH_PLUGIN_PATH))} dans {tooling}")
+    if any(os.path.islink(os.path.join(tooling, *parts[:i + 1])) for i in range(len(parts))):
+        raise Erreur(f"plugin {relative}: every component of its path must be a real folder or file, not a link")
     with open(path, "rb") as f:
         fingerprint = hashlib.sha256(f.read()).hexdigest()
     spec = importlib.util.spec_from_file_location("bee_greffon_projet", path)
@@ -126,10 +134,13 @@ def load_plugin(tooling, options):
     names = PLUGIN_NAMES if english else {}
     if not hasattr(module, names.get("Projet", "Projet")):
         raise Erreur(f"le greffon ne définit pas de classe {names.get('Projet', 'Projet')}")
-    plugin = getattr(module, names.get("Projet", "Projet"))(dict(options))
-    other = [n for n in (PLUGIN_NAMES if english else PLUGIN_NAMES.values()) if hasattr(module if n in ("Projet", "Project") else plugin, n)]
+    cls = getattr(module, names.get("Projet", "Projet"))
+    plugin = cls(dict(options))
+    # Names of the other contract defined in the module or in the class body (not those an instance or __getattr__ answers).
+    other = [n for n in (PLUGIN_NAMES if english else PLUGIN_NAMES.values())
+             if n in (vars(module) if n in ("Projet", "Project") else getattr(cls, "__dict__", {}))]
     if other:
-        raise Erreur(f"plugin {os.path.relpath(path, tooling)}: names of the {'French' if english else 'English'} contract "
+        raise Erreur(f"plugin {relative}: names of the {'French' if english else 'English'} contract "
                      f"({', '.join(other)}): one contract per plugin")
     projet = EnglishPlugin(plugin) if english else plugin
     missing_items = [names.get(a, a) for a in REQUIRED_ATTRIBUTES if not hasattr(projet, a)] + \
@@ -505,7 +516,7 @@ def main(argv=None):
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
     # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
     token = os.environ.pop("GH_TOKEN", None)
-    FAILURE.update(json=args.json, juge={"version": JUDGE_VERSION, "commun": f"juge-v{COMMON_VERSION}", "source": args.judge_source,
+    FAILURE.update(json=args.json, juge={"version": JUDGE_VERSION, "commun": common_tag(), "source": args.judge_source,
                                        "base": args.base, "tete": args.head})
     if args.history_only:
         print(" ".join(fetch_history(os.path.abspath(args.tooling), args.history, token)))
@@ -699,7 +710,7 @@ def main(argv=None):
         verification.update(getattr(projet, "VERIFICATION", {}))
         report["juge"] = {
             "version": JUDGE_VERSION,
-            "commun": f"juge-v{COMMON_VERSION}",
+            "commun": common_tag(),
             "source": args.judge_source,
             "base": args.base, "tete": args.head,
             "projet": projet.NOM,

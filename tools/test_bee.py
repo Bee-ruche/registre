@@ -2000,12 +2000,13 @@ class TestRegistry(BaseTest):
             self.assertIn("common judge missing or below common_judge_min", text)
 
     def test_judge_v4_tag_recorded_and_sufficient(self):
-        # ruche-0148: judge-v4 is a common judge's; so is the label judge.py writes, under the name of its number.
-        text = (ROOT / "tools/judge/judge.py").read_text(encoding="utf-8")
-        number = int(re.search(r"^COMMON_VERSION = ([0-9]+)", text, re.M).group(1))
-        labels = re.findall(r'"commun": f"([a-z]+-v)\{COMMON_VERSION\}"', text)
-        self.assertEqual(len(labels), 2)
-        self.assertEqual({bee.common_judge_number(f"{p}{number}") for p in labels}, {number})
+        # ruche-0148: judge-v4 is a common judge's; so is the label judge.py writes (common_tag), whatever its COMMON_VERSION.
+        judge = common_judge_module("judge")
+        self.assertEqual((ROOT / "tools/judge/judge.py").read_text(encoding="utf-8").count('"commun": common_tag(),'), 2)
+        for number in [*range(1, 10), 10, 99, 9999]:
+            with self.subTest(number=number):
+                self.assertEqual(bee.common_judge_number(judge.common_tag(number)), number)
+        self.assertEqual(bee.common_judge_number(judge.common_tag()), judge.COMMON_VERSION)
         self.judged_with_tag("judge-v4", True)
 
     def test_juge_v4_tag_refused(self):

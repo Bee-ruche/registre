@@ -481,6 +481,35 @@ class TestPlugin(unittest.TestCase):
         shutil.copytree(os.path.join(TOY, "bee", "juge"), os.path.dirname(french), dirs_exist_ok=True)
         self.assertNotIsInstance(judge.load_plugin(base, {})[0], judge.EnglishPlugin)
 
+    def test_every_component_of_the_plugin_path_a_real_folder_or_file(self):
+        """bee, bee/judge or bee/juge, and the plugin itself: each a real folder or file, not a link, in either contract."""
+        for english in (True, False):
+            for linked in (("bee",), ("bee", "judge" if english else "juge")):
+                with self.subTest(english=english, linked=linked):
+                    root = tempfile.mkdtemp(dir=self.base)
+                    real = english_toy(os.path.join(root, "real")) if english else shutil.copytree(TOY, os.path.join(root, "real"))
+                    base = os.path.join(root, "base")
+                    os.makedirs(os.path.join(base, *linked[:-1]), exist_ok=True)
+                    os.symlink(os.path.join(real, *linked), os.path.join(base, *linked))
+                    self.assertTrue(os.path.isfile(toy_file(real, "plugin")) and os.path.isfile(os.path.join(base, os.path.relpath(
+                        toy_file(real, "plugin"), real))))
+                    with self.assertRaises(lecture.Erreur) as e:
+                        judge.load_plugin(base, {})
+                    self.assertIn("every component of its path must be a real folder or file, not a link", str(e.exception))
+                    judge.load_plugin(real, {})
+
+    def test_other_contract_names_an_instance_answers_are_not_refused(self):
+        """Only names the module or the class body defines count as the other contract's: an instance's attributes do not, so a
+        plugin that sets fixed or NAME (French) or fixes or NOM (English) on itself loads as before."""
+        base = english_toy(os.path.join(self.base, "en"))
+        for root, cls, added in ((self.base, "Projet", "self.fixed, self.NAME = {}, 'x'"), (base, "Project", "self.fixes, self.NOM = {}, 'x'")):
+            with open(toy_file(TOY if root == self.base else ENGLISH_TOY, "plugin"), encoding="utf-8") as f:
+                text = f.read()
+            with self.subTest(cls=cls), open(toy_file(root, "plugin"), "w", encoding="utf-8") as f:
+                f.write(f"{text}\n_init = {cls}.__init__\n\n\ndef _init_too(self, options):\n    _init(self, options)\n    {added}\n\n\n"
+                        f"{cls}.__init__ = _init_too\n")
+            self.assertEqual(judge.load_plugin(root, {})[0].NOM, "jouet")
+
     def test_one_contract_per_plugin(self):
         """A plugin that also bears a name of the other contract (the class, a constant, a method) is refused, each way."""
         base = english_toy(os.path.join(self.base, "en"))
@@ -1452,7 +1481,7 @@ class TestJudgeWorkflow(unittest.TestCase):
     def test_judge_code_read_at_the_workflow_commit(self):
         """No tag, no branch: the registry is checked out at the commit the preparation step checked."""
         self.assertNotIn("JUGE_COMMUN_REF", self.text)
-        self.assertIn(f"juge-v{judge.COMMON_VERSION}", self.text)  # the version label stays named in the usage comment
+        self.assertIn(judge.common_tag(), self.text)  # the version label stays named in the usage comment
         steps = self.wf["jobs"]["juge"]["steps"]
         self.assertEqual([steps[0]["name"], steps[1]["name"]], [INPUTS, PREPARATION])  # the caller's inputs first (ruche-0038)
         self.assertEqual(steps[1]["env"], {"DEPOT": "${{ job.workflow_repository }}", "COMMIT": "${{ job.workflow_sha }}",
@@ -1938,7 +1967,7 @@ class TestBounds(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             j = json.load(f)["juge"]
         self.assertEqual((j["code"], j["issue"], j["panne_machine"], j["tete"], j["commun"]),
-                         (2, "erreur_environnement", True, "3" * 40, f"juge-v{judge.COMMON_VERSION}"))
+                         (2, "erreur_environnement", True, "3" * 40, judge.common_tag()))
         self.assertIn("machine du juge en panne", j["motif"])
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "2", "2"])
         with mock.patch.dict(judge.FAILURE, json=path, juge={}), contextlib.redirect_stderr(io.StringIO()):
