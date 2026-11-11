@@ -3537,7 +3537,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         self.assertEqual([s["type"] for s in j["suspicious_constructs"][:3]], ["appel_interdit", "symbole_defini", "source"])
         self.assertEqual(j["suspicious_constructs_by_type"], {"appel_interdit": 1, "source": 126, "symbole_defini": 1})
         self.assertLessEqual(max(len(s["detail"]) for s in j["suspicious_constructs"]), analysis.DETAIL_MAX)
-        self.assertEqual(log_.count("construction suspecte :"), judge.SUSPICIOUS_MAX)
+        self.assertEqual(log_.count("suspicious construct:"), judge.SUSPICIOUS_MAX)
         self.assertRegex(j["image_id"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(j["image_id"], container.image_id(j["image"]))
         published_ones = report.digits(report.lire(path))

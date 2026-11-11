@@ -1,34 +1,34 @@
-/* Lanceur et chronomètre du juge isolé Bee (bee/README.md, section « Juge isolé »).
+/* Launcher and stopwatch of Bee's isolated judge (bee/README.md, section « Juge isolé »).
 
-   Programme de la BASE, compilé sans une ligne de la PR. Il tourne en processus 1 d'un conteneur sans
-   réseau et lance, une par une, les commandes d'un plan écrit par l'hôte. Chaque commande (le harnais
-   lié au miniz à juger) est un processus fils : son temps processeur et sa mémoire maximale sont lus
-   par wait4, c'est-à-dire mesurés par le noyau, pas déclarés par le code mesuré.
+   A program of the BASE, compiled without a line of the PR. It runs as process 1 of a container without
+   network and launches, one by one, the commands of a plan the host wrote. Each command (the harness
+   linked to the miniz being judged) is a child process: its processor time and its maximum memory are read
+   by wait4, that is, measured by the kernel, not declared by the measured code.
 
-   Ce que le fils ne peut pas faire :
-   - écrire sur la sortie standard du conteneur, qui porte les mesures : son descripteur 1 est /dev/null,
-     2 un tube lu par chrono (sa fin va sur la sortie d'erreur du conteneur) ; ce processus se déclare non
-     « dumpable » (prctl), si bien que /proc/1/fd et /proc/1/mem lui sont fermés ;
-   - lancer d'autres processus : le conteneur est limité à deux processus (--pids-limit 2) ;
-   - forger une ligne de mesure : chaque ligne porte un jeton lu sur l'entrée standard avant le premier
-     fork, que le fils ne voit jamais ;
-   - savoir dans quel mode il tourne (ruche-0037) : quel que soit le mode, mêmes arguments, environnement fixe,
-     dossier courant « / », 0 = un tube portant ses paramètres (taille fixe) ; chrono n'a ni argument ni fichier.
+   What the child cannot do:
+   - write on the container's standard output, which carries the measurements: its descriptor 1 is /dev/null,
+     2 a pipe read by chrono (its end goes to the container's error output); this process declares itself not
+     « dumpable » (prctl), so that /proc/1/fd and /proc/1/mem are closed to it;
+   - launch other processes: the container is limited to two processes (--pids-limit 2);
+   - forge a measurement line: each line carries a token read on standard input before the first
+     fork, which the child never sees;
+   - know in which mode it runs (ruche-0037): whatever the mode, the same arguments, a fixed environment,
+     current folder « / », 0 = a pipe carrying its parameters (fixed size); chrono has neither argument nor file.
 
-   Décompte d'instructions (valgrind à 1) : la commande est valgrind --tool=cachegrind, dont le résumé
-   (« I refs: N ») est la DERNIÈRE ligne écrite sur la sortie d'erreur du fils. chrono lit cette sortie
-   par un tube et relève la dernière ligne non vide. Le code mesuré peut écrire sur la même sortie, mais
-   seulement AVANT le résumé, que Valgrind écrit en dernier, une fois le programme terminé ; s'il tue le
-   processus pour empêcher le résumé, le signal est relevé et la mesure refusée par l'hôte. Le fichier
-   cachegrind.out, lui, n'est pas lu : le code mesuré pourrait le forger.
+   Instruction count (valgrind at 1): the command is valgrind --tool=cachegrind, whose summary
+   (« I refs: N ») is the LAST line written on the child's error output. chrono reads that output
+   through a pipe and takes the last non-empty line. The measured code can write on the same output, but
+   only BEFORE the summary, which Valgrind writes last, once the program has ended; if it kills the
+   process to prevent the summary, the signal is recorded and the host refuses the measurement. The file
+   cachegrind.out is not read: the measured code could forge it.
 
-   Usage : chrono ; l'entrée standard donne le jeton (une ligne de 16 à 64 caractères hexadécimaux), une ligne
-     « <délai en secondes> <valgrind : 0 ou 1> », puis le plan : une commande par ligne, champs séparés par des
-     tabulations : étiquette (lettres, chiffres, « _ » et « - »), paramètres, programme, arguments.
-   Sortie : une ligne JSON par commande, dans l'ordre du plan :
+   Usage: chrono; standard input gives the token (a line of 16 to 64 hexadecimal characters), a line
+     « <timeout in seconds> <valgrind: 0 or 1> », then the plan: one command per line, fields separated by
+     tabs: label (letters, digits, « _ » and « - »), parameters, program, arguments.
+   Output: one JSON line per command, in the plan's order:
      {"jeton": "...", "etiquette": "...", "code": 0, "signal": 0, "utilisateur_s": 0.0, "systeme_s": 0.0,
       "mur_s": 0.0, "maxrss_ko": 0, "instructions": null}
-   Code de sortie : 0 si le plan a été lu et toutes les commandes lancées (quel que soit leur code), 2 sinon. */
+   Exit code: 0 if the plan was read and all the commands launched (whatever their code), 2 otherwise. */
 
 #define _GNU_SOURCE
 #include <errno.h>
@@ -49,9 +49,9 @@
 #define CHAMPS_MAX 32
 #define LIGNE_MAX 4096
 #define QUEUE_MAX 65536
-#define PARAMETRES 256 /* les paramètres du fils : un enregistrement de taille fixe, quel que soit le mode */
+#define PARAMETRES 256 /* the child's parameters: a record of fixed size, whatever the mode */
 
-static char *const ENVIRONNEMENT[] = {"HOME=/tmp", "LC_ALL=C", "PATH=/usr/bin:/bin", NULL}; /* le même pour chaque fils */
+static char *const ENVIRONNEMENT[] = {"HOME=/tmp", "LC_ALL=C", "PATH=/usr/bin:/bin", NULL}; /* the same for each child */
 static volatile pid_t fils_courant = 0;
 
 static void sur_alarme(int signal_recu)
@@ -79,8 +79,8 @@ static double maintenant(void)
     return (double)t.tv_sec + (double)t.tv_nsec * 1e-9;
 }
 
-/* Dernière ligne non vide de la sortie d'erreur : « ==PID== I refs: 1,234,567 » (résumé de Cachegrind).
-   Renvoie le nombre, ou -1 si la dernière ligne n'est pas un résumé bien formé. */
+/* Last non-empty line of the error output: « ==PID== I refs: 1,234,567 » (Cachegrind's summary).
+   Returns the number, or -1 if the last line is not a well-formed summary. */
 static long long releve_instructions(const char *texte, size_t n)
 {
     size_t fin = n, debut;
@@ -130,8 +130,8 @@ int main(int argc, char **argv)
     int nul;
     struct sigaction action;
 
-    umask(0); /* hérité du fils : l'hôte doit pouvoir effacer ce qu'il écrit (autre utilisateur) */
-    /* D'abord : plus personne (même uid) n'ouvre /proc/<ce processus>/fd ni /mem. */
+    umask(0); /* inherited by the child: the host must be able to erase what it writes (another user) */
+    /* First: nobody (same uid) opens /proc/<this process>/fd or /mem any more. */
     if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
         mourir("prctl(PR_SET_DUMPABLE) a échoué");
 
@@ -166,7 +166,7 @@ int main(int argc, char **argv)
     nul = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (nul < 0)
         mourir("/dev/null introuvable");
-    /* L'entrée standard (le tube qui portait le jeton) se ferme ici : le fils n'en hérite pas. */
+    /* Standard input (the pipe that carried the token) closes here: the child does not inherit it. */
     if (dup2(nul, 0) < 0)
         mourir("dup2 a échoué");
 
@@ -191,8 +191,8 @@ int main(int argc, char **argv)
         if (nchamps < 3 || !etiquette_valide(champs[0]))
             mourir("ligne de plan invalide");
 
-        /* Les paramètres (le mode compris) : PARAMETRES octets, la ligne complétée d'espaces et finie par une fin de
-           ligne, dans un tube que le fils lit puis ferme. */
+        /* The parameters (the mode included): PARAMETRES bytes, the line padded with spaces and ended by a line
+           feed, in a pipe the child reads, then closes. */
         n = strlen(champs[1]);
         if (n >= PARAMETRES)
             mourir("paramètres trop longs");
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
         if (delai)
             alarm(delai);
         {
-            /* Lit tout ce que le fils écrit sur sa sortie d'erreur ; ne garde que la fin. */
+            /* Reads everything the child writes on its error output; keeps only the end. */
             char morceau_lu[8192];
             close(tube[1]);
             for (;;)
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
             queue[remplissage] = 0;
             if (valgrind)
                 instructions = releve_instructions(queue, remplissage);
-            fwrite(queue, 1, remplissage, stderr); /* le journal du fils, pour l'hôte */
+            fwrite(queue, 1, remplissage, stderr); /* the child's log, for the host */
         }
         while (wait4(pid, &statut, 0, &ru) < 0)
             if (errno != EINTR)

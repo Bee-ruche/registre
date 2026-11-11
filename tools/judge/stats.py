@@ -82,27 +82,27 @@ def description_machine():
 
 
 def show_table(report):
-    lines = [f"{'métrique':26s} {'médiane A':>12s} {'médiane B':>12s} {'gain':>8s}  {'B gagne':>8s}  verdict"]
+    lines = [f"{'metric':26s} {'median A':>12s} {'median B':>12s} {'gain':>8s}  {'B wins':>8s}  verdict"]
     for nom, m in report["metrics"].items():
         a, b = m["A"], m["B"]
         if a["median"] is None:
             continue
         s = m["sign_test"]
-        gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.2f} %"
+        gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.2f}%"
         if m["beyond_noise"]:
-            verdict = "amélioration au-delà du bruit"
+            verdict = "improvement beyond the noise"
         elif m["degradation_beyond_noise"]:
-            verdict = "DÉGRADATION au-delà du bruit"
+            verdict = "DEGRADATION beyond the noise"
         else:
-            verdict = "dans le bruit"
+            verdict = "within the noise"
         lines.append(f"{nom:26s} {a['median']:12.3f} {b['median']:12.3f} {gain:>8s}  "
                       f"{s['b_wins']:>3d}/{s['useful_pairs']:<4d}  {verdict}"
-                      + (f" ({s['ties']} égalités écartées)" if s["ties"] else ""))
+                      + (f" ({s['ties']} ties set aside)" if s["ties"] else ""))
     for nom, m in (report.get("instructions") or {}).items():
-        gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.3f} %"
+        gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.3f}%"
         if not m["beyond_noise"]:
-            verdict = "dans le bruit"
+            verdict = "within the noise"
         else:
-            verdict = "moins d'instructions" if m["gain"] > 0 else "PLUS d'instructions"
+            verdict = "fewer instructions" if m["gain"] > 0 else "MORE instructions"
         lines.append(f"{nom:26s} {m['A']:12d} {m['B']:12d} {gain:>8s}  {'':>8s}  {verdict}")
     print("\n".join(lines), file=sys.stderr)
