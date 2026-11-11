@@ -3,30 +3,29 @@ project: miniz
 category: lossless-compression
 type: optimization
 size: S
-title: "tdefl_flush_block : écrire un bloc brut de repli par memcpy plutôt qu'octet par octet"
+title: "tdefl_flush_block: write a fallback raw block with memcpy rather than byte by byte"
 context: >
-  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
-  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Quand un bloc compressé serait plus gros
-  que l'original (données incompressibles), tdefl_flush_block réécrit un bloc brut, octet par
-  octet, avec TDEFL_PUT_BITS(…, 8) (miniz_tdef.c l. 672-675). Cette boucle coûte 1,7 % des
-  instructions au niveau 1, 0,9 % au niveau 6 et 0,6 % au niveau 9, en moyenne sur le corpus. Sur
-  binaire/aleatoire.bin (1 Mio incompressible), c'est le chemin principal pour tous les niveaux.
-  Au moment de cette boucle, m_bits_in vaut 0 (alignement à l'octet, l. 664-667) : les octets
-  peuvent être copiés par memcpy depuis m_dict, en deux morceaux si la fenêtre circulaire reboucle
-  (TDEFL_LZ_DICT_SIZE_MASK), dans la limite de m_pOutput_buf_end. Portée réduite : seules les
-  données incompressibles en profitent, d'où une métrique visée au niveau 1, où la part est la
-  plus forte. Aucun essai exploratoire n'a été fait pour cette piste : le gain n'est pas démontré,
-  seule la part du coût l'est (profil ci-dessus).
+  Callgrind profile of the base 2948eeb (python3 bee/bench/profil.py: measured passes only, first
+  128 KiB of each file of the corpus, 2.2 MB). When a compressed block would be larger than the
+  original (incompressible data), tdefl_flush_block rewrites a raw block, byte by byte, with
+  TDEFL_PUT_BITS(…, 8) (miniz_tdef.c l. 672-675). This loop costs 1.7% of the instructions at
+  level 1, 0.9% at level 6 and 0.6% at level 9, on average over the corpus. On binaire/aleatoire.bin
+  (1 MiB, incompressible), it is the main path at every level. At the time of this loop, m_bits_in
+  is 0 (byte alignment, l. 664-667): the bytes can be copied with memcpy from m_dict, in two pieces
+  if the circular window wraps around (TDEFL_LZ_DICT_SIZE_MASK), within the limit of
+  m_pOutput_buf_end. Reduced reach: only incompressible data benefits, hence a metric targeted at
+  level 1, where the share is highest. No exploratory trial was made for this lead: the gain is not
+  demonstrated, only the share of the cost is (profile above).
 files: [miniz_tdef.c]
 reach: 0.3
 metric: debit_compression_n1
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-  - "gain mesuré aussi sur binaire/aleatoire.bin seul et rapporté dans le manifeste"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, règle de choix du bloc brut]
+  - "green CI (R2), x86-64 and ARM64 (R6)"
+  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5)"
+  - "gain also measured on binaire/aleatoire.bin alone and reported in the manifest"
+out_of_scope: [output format, public API, new dependency, the rule that chooses the raw block]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/deflate
 status: open

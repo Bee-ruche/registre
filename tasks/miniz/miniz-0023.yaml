@@ -3,28 +3,28 @@ project: miniz
 category: lossless-compression
 type: test
 size: M
-title: "Tests différentiels des stratégies : MZ_FILTERED, MZ_HUFFMAN_ONLY, MZ_RLE, MZ_FIXED"
+title: "Differential tests of the strategies: MZ_FILTERED, MZ_HUFFMAN_ONLY, MZ_RLE, MZ_FIXED"
 context: >
-  Les tests différentiels de bee/tests/differentiel.c n'utilisent que MZ_DEFAULT_STRATEGY. Une
-  mesure de couverture (gcc --coverage sur bee/tests/lancer.sh) montre que les lignes propres aux
-  autres stratégies ne sont jamais exécutées : la recherche RLE de tdefl_compress_normal
-  (miniz_tdef.c l. 1163-1174), la traduction des stratégies dans
-  tdefl_create_comp_flags_from_zip_params (l. 1471-1477) ; et la branche TDEFL_FILTER_MATCHES de
-  la condition l. 1181 n'est jamais prise. Couverture actuelle : 77,8 % des lignes et 70,2 % des
-  branches prises de miniz_tdef.c. Une optimisation qui casserait ces chemins passerait donc les
-  tests différentiels (seul le fuzzing de compression tire une stratégie au hasard). Ajouter, pour
-  chaque stratégie et les niveaux 1, 6 et 9 : aller-retour miniz->zlib et miniz->miniz, et une
-  empreinte de déterminisme (nouveaux niveaux « 6r », « 6h »…, à ajouter à
-  empreintes-reference.txt en le régénérant sur la base). Garder la durée totale sous 30 s.
+  The differential tests of bee/tests/differentiel.c use only MZ_DEFAULT_STRATEGY. A coverage
+  measurement (gcc --coverage on bee/tests/lancer.sh) shows that the lines specific to the other
+  strategies are never executed: the RLE search of tdefl_compress_normal (miniz_tdef.c
+  l. 1163-1174), the translation of the strategies in tdefl_create_comp_flags_from_zip_params
+  (l. 1471-1477); and the TDEFL_FILTER_MATCHES branch of the condition at l. 1181 is never taken.
+  Current coverage of miniz_tdef.c: 77.8% of the lines and 70.2% of the branches taken. An
+  optimization that broke these paths would therefore pass the differential tests (only the
+  compression fuzzing draws a strategy at random). Add, for each strategy and levels 1, 6 and 9:
+  round trips miniz->zlib and miniz->miniz, and a determinism fingerprint (new levels « 6r »,
+  « 6h »…, to be added to empreintes-reference.txt by regenerating it on the base). Keep the total
+  duration under 30 s.
 files: [bee/tests/differentiel.c, bee/tests/empreintes-reference.txt]
 reach: 0.4
 metric: null
 acceptance_criteria:
-  - "CI verte (R2) sur la base et sur cette contribution"
-  - "lignes 1163-1174 et 1471-1477 de miniz_tdef.c couvertes (rapport gcov joint au manifeste)"
-  - "une mutation de la recherche RLE (par exemple cur_match_dist = 2) fait échouer les tests"
-  - "durée de bee/tests/lancer.sh inférieure à 30 s sur la machine de CI"
-out_of_scope: [code de miniz, tests existants (seulement des ajouts), nouvelle dépendance]
+  - "green CI (R2) on the base and on this contribution"
+  - "lines 1163-1174 and 1471-1477 of miniz_tdef.c covered (gcov report attached to the manifest)"
+  - "a mutation of the RLE search (for example cur_match_dist = 2) makes the tests fail"
+  - "duration of bee/tests/lancer.sh under 30 s on the CI machine"
+out_of_scope: [miniz's code, existing tests (additions only), new dependency]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/bee
 status: open
