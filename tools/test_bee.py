@@ -21750,6 +21750,22 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
         self.assertEqual(output_text.count("a été ouverte par intrus"), 300)
 
 
+class TestLoadTestInTheSuite(unittest.TestCase):
+    """ruche-0154: the load test's own tests (tools/rehearsal/test_load_test.py: generation at 100, 300 and 1,000 members,
+    replay, each replayed step running the command it names) run in the full suite, in a process of their own, so their
+    audit hook and their disposable hives stay there; offline (one of them checks it). Every test of the file runs and
+    passes, none skipped."""
+
+    def test_the_load_test_tests_run_and_pass(self):
+        path = ROOT / "tools" / "rehearsal" / "test_load_test.py"
+        tests = [f.name for c in ast.parse(path.read_text(encoding="utf-8")).body if isinstance(c, ast.ClassDef)
+                 for f in c.body if isinstance(f, ast.FunctionDef) and f.name.startswith("test")]
+        r = subprocess.run([sys.executable, "-B", str(path)], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertGreaterEqual(len(tests), 10)  # the parse found them: one class, ten tests on 11 Nov 2026
+        self.assertRegex(r.stderr, rf"\nRan {len(tests)} tests in [0-9.]+s\n\nOK\n$")  # not « OK (skipped=…) »
+
+
 # --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
 
 class TestReservedPseudonyms(BaseTest):
