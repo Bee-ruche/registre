@@ -18527,7 +18527,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("propose", "--user", "gaspard", "--rule", "R4", "--text", "Au moins 1,5 % sur la "
                                          "métrique visée.", "--reason", "Le bruit mesuré est plus faible que prévu."))
-        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "opened_at (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "opened_at (2026-10-30T10:00:00Z) must be the time of the PR"
 
     def date_d_invitation(self):
         pushed_one = "2026-10-30T10:00:00Z"
