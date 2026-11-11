@@ -8,7 +8,7 @@ title: "Judge families: build, prove, decide without an oracle"
 context: >
   The common judge (outils/juge/, docs/common-judge.md) can judge only one sort of work: optimizing
   C code without changing its outputs. Building, proving and deciding would require others
-  (docs/vision.md). Deliverable (1): docs/judges.md, a dossier that, for each family, says what is
+  (docs/vision.md). Deliverable (1): docs/judges.md, a file that, for each family, says what is
   judged, how one could cheat and what prevents it, and what must be added to the plugin contract or
   beside it. Families at least: build (who writes the tests before the code, and how to judge the
   tests themselves, for example by seeded mutants they must catch; separation between the authors of
@@ -17,7 +17,7 @@ context: >
   before the proof task); decide without an oracle (competing proposals of ruche-0001, votes, juries
   drawn by lot, decisions revised by their measured consequences). Each family states its
   meta-tests: which seeded errors the judge must catch. Deliverable (2): the tasks that follow from
-  it, proposed with bee propose-task ruche (status « proposed »), small and verifiable. Every claim
+  it, proposed with bee propose-task ruche (status "proposed"), small and verifiable. Every claim
   about an external tool (Lean, mutation testing…) cites its source.
 files: [docs/judges.md, tasks/ruche/]
 reach: 0.8

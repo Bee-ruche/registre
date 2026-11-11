@@ -4,27 +4,27 @@ category: ruche
 type: split
 area: governance
 size: L
-title: "Expansion: bzip2's opening dossier and proposed bootstrap tasks"
+title: "Expansion: bzip2's opening file and proposed bootstrap tasks"
 context: >
   bzip2 is the next planned project (docs/candidates.md, phase 3; projects/bzip2.yaml, status
   upcoming). Opening a project follows docs/new-project.md: the council creates the fork, the hive
-  prepares everything else. Deliverables: (1) docs/bzip2-opening.md, a factual, sourced dossier:
+  prepares everything else. Deliverables: (1) docs/opening-bzip2.md, a factual, sourced file:
   up-to-date upstream repository (sourceware, not the frozen mirror), license and license file,
   oracles (upstream output byte for byte, the bzip2-tests corpus, Wuffs, libbzip2-rs) and what each
   one can check, proposed metrics and instruction scenarios (compression -1 and -9, decompression,
   memory), planned corpus, judge_paths, commands, risks (code from 1996, compilation options, speed
   of the tests); it also says the changes to make to projects/bzip2.yaml, which the council will
   carry over; (2) the guide's bootstrap tasks, proposed with bee propose-task bzip2 (status
-  « proposed »): sandbox, corpus, oracle and differential tests, A/B bench, differential fuzzing,
-  CI, common judge plugin; each with a verifiable context, with no promised gain. Every claim about
+  "proposed"): sandbox, corpus, oracle and differential tests, A/B bench, differential fuzzing, CI,
+  common judge plugin; each with a verifiable context, with no promised gain. Every claim about
   bzip2 (size, uses, license, existing tests) cites its source.
-files: [docs/bzip2-opening.md, tasks/bzip2/]
+files: [docs/opening-bzip2.md, tasks/bzip2/]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "bee validate passes; every proposed task has the status proposed and a factual context"
-  - "the dossier cites a source for every fact about bzip2; no contact with the upstream project (commandment 8)"
-  - "the dossier lists the changes to projects/bzip2.yaml for the council to make"
+  - "the file cites a source for every fact about bzip2; no contact with the upstream project (commandment 8)"
+  - "the file lists the changes to projects/bzip2.yaml for the council to make"
 out_of_scope: [creating the fork (council), projects/bzip2.yaml (the council carries over the changes), bzip2's code]
 depends_on: []
 status: open

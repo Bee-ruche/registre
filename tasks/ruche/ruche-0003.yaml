@@ -9,9 +9,9 @@ context: >
   The architecture must close no door (docs/vision.md) to projects of every sort: optimizing a fork
   (miniz, libyaml), building software or a component born in the hive, proving. Today,
   schemas/project.schema.json and tools/bee.py assume a fork of an upstream repository and metrics
-  to optimize (only exception: the ruche project). To build: a project field `type` (optimization by
-  default, construction, proof), with, for each one, the required fields (upstream repository and
-  fork for optimization; a repository of the hive for a project born in the hive; metrics only for
+  to optimize (only exception: the ruche project). To build: a project field `type` (optimization,
+  the default, construction, proof), with, for each one, the required fields (upstream repository
+  and fork for optimization; the hive's repository for a project born in the hive; metrics only for
   optimization), the task types allowed (no optimization in a proof project), the validation by bee
   validate, the display on the site and the update of docs/new-project.md. The ruche project becomes
   a case of this model rather than an exception. Existing projects and tasks must stay valid without
