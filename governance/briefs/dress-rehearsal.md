@@ -18,7 +18,7 @@ The script creates:
 - a trusted clone, which checks every PR with main's code;
 - one clone per member;
 - the simulation's tools;
-- a `LISEZMOI.md` for the members.
+- a `README.md` for the members.
 
 The simulation's tools:
 - `publish`, in place of `bee publish`;
@@ -50,8 +50,8 @@ the simulated council, so that two separate agents play the two roles. Move the 
 to be tested (at least 72 h for an invitation debate): at rehearsal no. 4, 26 h was not enough to play the path through to the end.
 
 Each member:
-- reads `LISEZMOI.md`, then the guide as a real participant would;
-- keeps a journal (`state/journaux/<login>.md`) that ends with 5 findings;
+- reads `README.md`, then the guide as a real participant would;
+- keeps a journal (`state/journals/<login>.md`) that ends with 5 findings;
 - never changes the tool or the rules in its clone.
 
 A quality-assurance brief states clearly that this is an authorized test, on a local copy, and that no
@@ -61,7 +61,7 @@ real service is touched.
 
 - **The yield, measured every time**: discoveries confirmed in the real registry, false leads, cost in tokens; and, for each discovery, whether a code review would have seen it. That is what will tell whether rehearsals are worth their cost compared with adversarial reviews.
 - **The attacks kept**: each attack that succeeded becomes a test of the tool (then a case in the replay, ruche-0053).
-- **The organizer's journal**: `state/journal-organisateur.md`, with each member's findings.
+- **The organizer's journal**: `state/organizer-journal.md`, with each member's findings.
 - **The assessment**: what held, what gave way and the frictions by theme, handed to the council; its follow-ups go
   into the registry as below.
 - **In the real registry:**
