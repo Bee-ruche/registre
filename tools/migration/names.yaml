@@ -130,7 +130,12 @@ paths:
   outils/tests/registre/: tools/tests/registry/
   outils/tests/registre/taches/: tools/tests/registry/tasks/
   outils/tests/textes-0047/: tools/tests/texts-0047/
-  outils/juge/: outils/juge/
+  outils/juge/: tools/judge/
+  outils/juge/juge.py: tools/judge/judge.py
+  outils/juge/analyse.py: tools/judge/analysis.py
+  outils/juge/conteneur.py: tools/judge/container.py
+  outils/juge/rapport.py: tools/judge/report.py
+  outils/juge/test_juge.py: tools/judge/test_judge.py
   outils/repetition/: tools/rehearsal/
   outils/repetition/LISEZMOI-modele.md: tools/rehearsal/README-template.md
   outils/repetition/ci-simulee: tools/rehearsal/simulated-ci
@@ -499,6 +504,34 @@ cli:
     <tache>: <task>
     <verdict>: <verdict>
   scripts:
+    outils/juge/juge.py:
+      --outillage: --tooling
+      --source-a: --source-a
+      --source-b: --source-b
+      --image-seulement: --image-only
+      --historique-seulement: --history-only
+      --historique: --history
+      --source-juge: --judge-source
+      --base: --base
+      --tete: --head
+      --travail: --workdir
+      --option: --option
+      --repetitions: --repetitions
+      --chauffe: --warmup
+      --sans-instructions: --no-instructions
+      --prefixe-instructions: --instructions-prefix
+      --seuil-instructions: --instructions-threshold
+      --json: --json
+      --graine: --seed
+      --graine-ordre: --order-seed
+      --reseau-construction: --build-network
+      --memoire: --memory
+      --garder: --keep
+    outils/juge/rapport.py:
+      --code: --code
+      --verifier: --verify
+      --base: --base
+      --tete: --head
     outils/test_bee.py:
       --processus: --processes
     outils/repetition/load_test.py:
