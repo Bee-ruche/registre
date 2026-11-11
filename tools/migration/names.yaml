@@ -237,6 +237,7 @@ workflows:
     verif: check
     vert_push: green_push
   io:
+    historique: history
     immediat: immediate
     sans_instructions: no_instructions
     tete_sha: head_sha

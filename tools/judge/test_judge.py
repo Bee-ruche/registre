@@ -71,6 +71,7 @@ test_juge_json_says_the_environment_error; with Docker, panne_de_la_machine, pan
 (test_one_mount_order_whatever_docker_draws; with Docker, test_profondeurs).
 """
 
+import ast
 import concurrent.futures
 import contextlib
 import glob
@@ -104,6 +105,32 @@ import stats  # noqa: E402
 
 sys.path.insert(0, os.path.join(TOY, "bee", "juge"))
 import projet as toy_plugin  # noqa: E402
+
+# ruche-0148 (J2): the toy's twin in the English contract, its plugin and build script alone (toy/bee/judge/); english_toy makes it
+# a whole base with the toy's sources and harness. Each meta-test runs on both (TestJudgeAgainstVariantsEnglish).
+ENGLISH_TOY = os.path.join(HERE, "toy")
+TOY_FILES = {"plugin": ("projet.py", "project.py"), "build": ("construire.sh", "build.sh"), "harness": ("execution.c", "execution.c")}
+
+
+def english_toy(folder):
+    """The toy project as a base that speaks the English contract: bee/judge/ (the twin's plugin and build script, the toy's
+    harness) and the toy's sources, no bee/juge/."""
+    shutil.copytree(TOY, folder, ignore=shutil.ignore_patterns("__pycache__", "bee"))
+    shutil.copytree(os.path.join(ENGLISH_TOY, "bee"), os.path.join(folder, "bee"), ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copyfile(os.path.join(TOY, "bee", "juge", "execution.c"), os.path.join(folder, "bee", "judge", "execution.c"))
+    return folder
+
+
+def toy_file(base, kind):
+    """A toy base's plugin, build script or harness, in the contract it speaks."""
+    english = os.path.isdir(os.path.join(base, "bee", "judge"))
+    return os.path.join(base, "bee", "judge" if english else "juge", TOY_FILES[kind][english])
+
+
+def contract(base, text):
+    """A text that names the French contract (Projet.verifier…), in the contract the base speaks."""
+    english = os.path.isdir(os.path.join(base, "bee", "judge"))
+    return re.sub(r"\b\w+\b", lambda m: judge.PLUGIN_NAMES.get(m.group(0), m.group(0)) if english else m.group(0), text)
 
 
 # ------------------------------------------------------------------ tests unitaires
@@ -418,6 +445,114 @@ class TestPlugin(unittest.TestCase):
         sys.path.insert(0, HERE)
         with self.assertRaises(lecture.Erreur):
             judge.load_plugin(self.base, {})
+
+    def test_english_toy_plugin(self):
+        """ruche-0148 (J2): the twin's bee/judge/project.py is read under the French names, its directions as the French ones."""
+        base = english_toy(os.path.join(self.base, "en"))
+        (projet, fingerprint), french = judge.load_plugin(base, {}), judge.load_plugin(TOY, {})[0]
+        self.assertIsInstance(projet, judge.EnglishPlugin)
+        self.assertEqual((projet.OUTILLAGE, projet.CONSTRUIRE), (["bee/judge"], "bee/judge/build.sh"))
+        for n in set(judge.REQUIRED_ATTRIBUTES + ("PAQUETS", "PERMIS", "METHODE", "VERIFICATION")) - {"OUTILLAGE", "CONSTRUIRE"}:
+            self.assertEqual(getattr(projet, n), getattr(french, n), n)
+        self.assertEqual(projet.METRIQUES[3], ("memoire_max_ko", "plus_bas", "Ko"))
+        self.assertEqual([callable(getattr(projet, m, None)) for m in judge.REQUIRED_METHODS], [True] * len(judge.REQUIRED_METHODS))
+        with open(toy_file(base, "plugin"), "rb") as f:
+            self.assertEqual(fingerprint, hashlib.sha256(f.read()).hexdigest())
+        with self.assertRaises(lecture.Erreur):
+            judge.load_plugin(base, {"inconnue": "1"})
+        os.remove(toy_file(base, "plugin"))
+        with self.assertRaises(lecture.Erreur) as e:  # bee/judge/ without its plugin: none found, in either contract
+            judge.load_plugin(base, {})
+        self.assertIn("bee/judge/project.py ou bee/juge/projet.py", str(e.exception))
+
+    def test_one_plugin_per_base(self):
+        """Both bee/judge/project.py and bee/juge/projet.py, a link or a folder counting: refused, whichever is valid."""
+        base = english_toy(os.path.join(self.base, "deux"))
+        french = os.path.join(base, "bee", "juge", "projet.py")
+        os.makedirs(os.path.dirname(french))
+        for make in (lambda: shutil.copyfile(toy_file(TOY, "plugin"), french), lambda: os.symlink("nowhere", french), lambda: os.mkdir(french)):
+            make()
+            with self.assertRaises(lecture.Erreur) as e:
+                judge.load_plugin(base, {})
+            self.assertIn("a base holds one", str(e.exception))
+            (os.rmdir if os.path.isdir(french) and not os.path.islink(french) else os.remove)(french)
+        self.assertIsInstance(judge.load_plugin(base, {})[0], judge.EnglishPlugin)
+        shutil.rmtree(os.path.join(base, "bee", "judge"))
+        shutil.copytree(os.path.join(TOY, "bee", "juge"), os.path.dirname(french), dirs_exist_ok=True)
+        self.assertNotIsInstance(judge.load_plugin(base, {})[0], judge.EnglishPlugin)
+
+    def test_one_contract_per_plugin(self):
+        """A plugin that also bears a name of the other contract (the class, a constant, a method) is refused, each way."""
+        base = english_toy(os.path.join(self.base, "en"))
+        with open(toy_file(base, "plugin"), encoding="utf-8") as f:
+            english_text = f.read()
+        with open(toy_file(TOY, "plugin"), encoding="utf-8") as f:
+            french_text = f.read()
+        for french, english in judge.PLUGIN_NAMES.items():
+            for root, text, added in ((base, english_text, "Projet = Project" if french == "Projet" else f"Project.{french} = Project.{english}"),
+                                      (self.base, french_text, "Project = Projet" if french == "Projet" else f"Projet.{english} = Projet.{french}")):
+                with self.subTest(added=added), open(toy_file(root, "plugin"), "w", encoding="utf-8") as f:
+                    f.write(f"{text}\n{added}\n")
+                with self.assertRaises(lecture.Erreur) as e:
+                    judge.load_plugin(root, {})
+                self.assertIn("one contract per plugin", str(e.exception))
+
+    def test_directions_in_the_contract_language(self):
+        """A metric's direction is higher or lower in English, plus_haut or plus_bas in French: the other language's, any
+        other value or shape is refused (before ruche-0148, anything but plus_haut was read as lower)."""
+        base = english_toy(os.path.join(self.base, "en"))
+        with open(toy_file(base, "plugin"), encoding="utf-8") as f:
+            english_text = f.read()
+        for old, new in (("higher", "plus_haut"), ("higher", "Higher"), ("higher", "plus haut"), ("lower", "plus_bas")):
+            with self.subTest(english=new), open(toy_file(base, "plugin"), "w", encoding="utf-8") as f:
+                f.write(replace_with(english_text, f'("ratio", "{old}", "ratio")' if old == "higher" else f'"{old}", "Ko"',
+                                     f'("ratio", "{new}", "ratio")' if old == "higher" else f'"{new}", "Ko"'))
+            with self.assertRaises(lecture.Erreur) as e:
+                judge.load_plugin(base, {})
+            self.assertIn("higher or lower", str(e.exception))
+        for new in ('("ratio", "higher", "ratio")', '("ratio", "plus_bas")', '("ratio", ["plus_haut"], "ratio")', '"ratio"'):
+            with self.subTest(french=new):
+                self.changed_plugin('("ratio", "plus_haut", "ratio")', new)
+                with self.assertRaises(lecture.Erreur) as e:
+                    judge.load_plugin(self.base, {})
+                self.assertIn("plus_haut or plus_bas", str(e.exception))
+
+    def test_english_toy_is_the_toy_renamed(self):
+        """The twin is the toy's plugin with the contract's names (PLUGIN_NAMES) and four strings (its folder, its build script,
+        the directions) in English, and nothing else: the same syntax tree once they are put back; its build script is the
+        toy's with bee/judge/ for bee/juge/."""
+        back, strings = {e: f for f, e in judge.PLUGIN_NAMES.items()}, {"bee/judge": "bee/juge", "bee/judge/build.sh": "bee/juge/construire.sh",
+                                                                         "higher": "plus_haut", "lower": "plus_bas"}
+
+        class French(ast.NodeTransformer):
+            def visit_Name(self, node):
+                node.id = back.get(node.id, node.id)
+                return node
+
+            def visit_Attribute(self, node):
+                self.generic_visit(node)
+                node.attr = back.get(node.attr, node.attr)
+                return node
+
+            def visit_FunctionDef(self, node):
+                self.generic_visit(node)
+                node.name = back.get(node.name, node.name)
+                return node
+
+            visit_ClassDef = visit_FunctionDef
+
+            def visit_Constant(self, node):
+                node.value = strings.get(node.value, node.value) if isinstance(node.value, str) else node.value
+                return node
+        texts = {}
+        for key, path in (("en", toy_file(ENGLISH_TOY, "plugin")), ("fr", toy_file(TOY, "plugin")), ("en.sh", toy_file(ENGLISH_TOY, "build")),
+                          ("fr.sh", toy_file(TOY, "build"))):
+            with open(path, encoding="utf-8") as f:
+                texts[key] = f.read()
+        self.assertNotEqual(texts["en"], texts["fr"])
+        self.assertEqual(ast.dump(French().visit(ast.parse(texts["en"]))), ast.dump(ast.parse(texts["fr"])))
+        self.assertEqual(texts["en.sh"], texts["fr.sh"].replace("bee/juge", "bee/judge"))
+        self.assertEqual(sorted(os.listdir(os.path.join(ENGLISH_TOY, "bee", "judge"))), ["build.sh", "project.py"])
 
 
 class TestExpectedObjects(unittest.TestCase):
@@ -934,15 +1069,16 @@ class TestConditionsFixes(unittest.TestCase):
 FOUR_SCENARIOS = {"compression": "f", "compression_bis": "f", "decompression": "z", "decompression_bis": "z"}
 
 
-def toy_with_four_scenarios(folder):
-    """A copy of the toy project with two scenarios per side (the harness does the same work in every mode)."""
-    shutil.copytree(TOY, folder, ignore=shutil.ignore_patterns("__pycache__"))
+def toy_with_four_scenarios(folder, toy=TOY):
+    """A copy of the toy project (or of its English twin's base) with two scenarios per side (the harness does the same work
+    in every mode)."""
+    shutil.copytree(toy, folder, ignore=shutil.ignore_patterns("__pycache__"))
     for file, old, new in (
-            ("projet.py", 'SCENARIOS = {"compression": "f", "decompression": "z"}', f"SCENARIOS = {FOUR_SCENARIOS!r}"),
-            ("execution.c", '|| strcmp(mode, "decompression") == 0);',
+            ("plugin", 'SCENARIOS = {"compression": "f", "decompression": "z"}', f"SCENARIOS = {FOUR_SCENARIOS!r}"),
+            ("harness", '|| strcmp(mode, "decompression") == 0);',
              '|| strcmp(mode, "decompression") == 0 || strcmp(mode, "compression_bis") == 0\n'
              '         || strcmp(mode, "decompression_bis") == 0);')):
-        path = os.path.join(folder, "bee", "juge", file)
+        path = toy_file(folder, file)
         with open(path, encoding="utf-8") as f:
             text = f.read()
         with open(path, "w", encoding="utf-8") as f:
@@ -1041,6 +1177,17 @@ class TestOrderAndFingerprints(unittest.TestCase):
             self.assertEqual(judge.main(["--tooling", base, "--source-a", base, "--source-b", base, "--repetitions", "3"]
                                        + (["--seed", seed] if seed else []) + (["--order-seed", graine_ordre] if graine_ordre else [])), 0)
         return json.loads(output_text.getvalue()), emulated
+
+    def test_both_contracts_same_judgement(self):
+        """ruche-0148 (J2): the toy and its English twin, at the same seeds, get the same report but for the plugin's SHA-256 and
+        the judge's duration."""
+        english = toy_with_four_scenarios(os.path.join(self.workdir, "toy-4"), english_toy(os.path.join(self.workdir, "toy")))
+        reports = [self.run_the_judge(graine_ordre="01" * 16, base=b)[0] for b in (self.base, english)]
+        for r, path in zip(reports, (toy_file(self.base, "plugin"), toy_file(english, "plugin"))):
+            with open(path, "rb") as f:
+                self.assertEqual(r["juge"].pop("greffon"), hashlib.sha256(f.read()).hexdigest())
+            self.assertIsInstance(r.pop("duree_s"), float)
+        self.assertEqual(reports[1], reports[0])
 
     def test_drawn_order_and_processor_time(self):
         """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
@@ -1351,11 +1498,11 @@ class TestJudgeWorkflow(unittest.TestCase):
     def test_history_in_its_own_step_the_only_judge_call_with_the_token(self):
         """The declared history is checked and fetched in its own step, the only call of judge.py given GH_TOKEN, before
         the image (which loads the plugin) and before the PR; it is never interpolated into a script."""
-        self.assertEqual(self.wf["on"]["workflow_call"]["inputs"]["historique"]["type"], "string")
+        self.assertEqual([self.wf["on"]["workflow_call"]["inputs"][i]["type"] for i in ("history", "historique")], ["string", "string"])
         steps = self.wf["jobs"]["juge"]["steps"]
         names = [e.get("name") for e in steps]
         history, image = step(self.wf, HISTORY), step(self.wf, IMAGE)
-        self.assertEqual(history["env"], {"HISTORIQUE": "${{ inputs.historique }}", "GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual(history["env"], {"HISTORIQUE": "${{ inputs.history || inputs.historique }}", "GH_TOKEN": "${{ github.token }}"})
         self.assertEqual(history["run"], "python3 juge-commun/tools/judge/judge.py --tooling base --history-only "
                                             '--history "$HISTORIQUE"')
         self.assertNotIn("env", image)
@@ -1407,22 +1554,35 @@ class TestJudgeWorkflow(unittest.TestCase):
         steps = self.wf["jobs"]["juge"]["steps"]
         entrees = steps[0]
         self.assertEqual(entrees["name"], INPUTS)
-        self.assertEqual(entrees["env"], {"BASE": "${{ inputs.base_sha }}", "TETE": "${{ inputs.tete_sha }}",
+        self.assertEqual(entrees["env"], {"BASE": "${{ inputs.base_sha }}", "HEAD_SHA": "${{ inputs.head_sha }}", "TETE": "${{ inputs.tete_sha }}",
                                           "BASE_EVENEMENT": "${{ github.event.pull_request.base.sha }}",
                                           "TETE_EVENEMENT": "${{ github.event.pull_request.head.sha }}",
-                                          "REPETITIONS": "${{ inputs.repetitions }}", "SANS_INSTRUCTIONS": "${{ inputs.sans_instructions }}"})
+                                          "HISTORY": "${{ inputs.history }}", "HISTORIQUE": "${{ inputs.historique }}",
+                                          "REPETITIONS": "${{ inputs.repetitions }}", "NO_INSTRUCTIONS": "${{ inputs.no_instructions }}",
+                                          "SANS_INSTRUCTIONS": "${{ inputs.sans_instructions }}"})
+        # ruche-0148 (J2): after it, every step reads an input by its English name, else by its French one
+        self.assertEqual(sorted(set(re.findall(r"inputs\.\w+(?: \|\| inputs\.\w+)?", json.dumps(steps[1:])))),
+                         ["inputs.base_sha", "inputs.head_sha || inputs.tete_sha", "inputs.history || inputs.historique", "inputs.options",
+                          "inputs.repetitions"])
         self.assertEqual([e["name"] for e in steps if "if" in e or "continue-on-error" in e], ["Conserver le rapport"])
         self.assertNotIn("continue-on-error", self.wf["jobs"]["juge"])
         self.assertNotIn("--no-instructions", self.text)  # the judging step never skips the instruction count
         base, head = "0123456789abcdef0123456789abcdef01234567", "89abcdef0123456789abcdef0123456789abcdef"
-        call = {"BASE": base, "TETE": head, "BASE_EVENEMENT": base, "TETE_EVENEMENT": head, "REPETITIONS": "10", "SANS_INSTRUCTIONS": "false"}
-        for env in (call, dict(call, REPETITIONS="27"), dict(call, REPETITIONS="50")):
+        call = {"BASE": base, "HEAD_SHA": "", "TETE": head, "BASE_EVENEMENT": base, "TETE_EVENEMENT": head, "HISTORY": "", "HISTORIQUE": "",
+                "REPETITIONS": "10", "NO_INSTRUCTIONS": "false", "SANS_INSTRUCTIONS": "false"}
+        english = dict(call, HEAD_SHA=head, TETE="")  # ruche-0148 (J2): each input by its English name or by its French one
+        for env in (call, dict(call, REPETITIONS="27"), dict(call, REPETITIONS="50"), english, dict(english, HISTORY="1" * 40),
+                    dict(call, HISTORIQUE="1" * 40), dict(english, HISTORIQUE="1" * 40)):
             with self.subTest(accepted=env):
                 r, output_text = self.launch(entrees["run"], env)
                 self.assertEqual((r.returncode, output_text, r.stderr), (0, "", ""))
         refused_ones = [dict(call, REPETITIONS=v) for v in ("9", "2", "0", "-10", "51", "100", "010", "10.5", "1e1", "", " 10", "10\n",
                                                           "a[$(touch injection)]")]
         refused_ones += [dict(call, SANS_INSTRUCTIONS=v) for v in ("true", "", "False", "0")]
+        refused_ones += [dict(english, NO_INSTRUCTIONS=v) for v in ("true", "", "False", "0")]
+        refused_ones += [dict(call, HEAD_SHA=head), dict(english, TETE=base), dict(call, HISTORY="1" * 40, HISTORIQUE="1" * 40),
+                         dict(english, HISTORY="1" * 40, HISTORIQUE="2" * 40), dict(english, HEAD_SHA=""), dict(english, HEAD_SHA=base),
+                         dict(english, HEAD_SHA=head[:39], TETE_EVENEMENT=head[:39])]
         refused_ones += [dict(call, BASE=v, BASE_EVENEMENT=v) for v in (base[:39], base.upper(), base + "\n", base + "0", "main", "HEAD", "")]
         refused_ones += [dict(call, TETE=v, TETE_EVENEMENT=v) for v in (head[:39], "v1.0", "refs/pull/1/head")]
         refused_ones += [dict(call, BASE_EVENEMENT=""), dict(call, TETE_EVENEMENT=""), dict(call, BASE_EVENEMENT="", TETE_EVENEMENT=""),
@@ -1834,12 +1994,12 @@ def git_test(repo, *args):
                           + list(args), capture_output=True, text=True, check=True).stdout.strip()
 
 
-def toy_repo_with_history(travail):
+def toy_repo_with_history(travail, toy=TOY):
     """An origin whose older commit X has another rle.c, and a base cloned from it without history (as actions/checkout
     does): X's objects are not in the base. Returns (origin, base, X, rle.c at X, full repository, a commit off the
     base's ancestry)."""
     source, origin_of, base = (os.path.join(travail, n) for n in ("source", "origine.git", "base"))
-    shutil.copytree(TOY, source, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(toy, source, ignore=shutil.ignore_patterns("__pycache__"))
     with open(os.path.join(source, "rle.c"), "a", encoding="utf-8") as f:
         f.write("/* rle.c as it was at the corpus commit */\n")
     subprocess.run(["git", "init", "-q", "-b", "main", source], check=True)
@@ -2768,6 +2928,8 @@ os.execv(DOCKER, [DOCKER] + arguments)
 class TestJudgeAgainstVariants(unittest.TestCase):
     """Le juge commun complet, en conteneur, contre le projet jouet et des variantes malveillantes."""
 
+    toy = TOY  # the base, its plugin in the French contract (TestJudgeAgainstVariantsEnglish: in English)
+
     @classmethod
     def setUpClass(cls):
         cls.workdir = tempfile.mkdtemp(prefix="bee-meta-commun-")
@@ -2781,7 +2943,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         source_b = os.path.join(self.workdir, nom)
         os.makedirs(source_b)
         for file in ("rle.c", "rle.h"):
-            shutil.copyfile(os.path.join(TOY, file), os.path.join(source_b, file))
+            shutil.copyfile(os.path.join(self.toy, file), os.path.join(source_b, file))
         if transformation:
             with open(os.path.join(source_b, "rle.c"), encoding="utf-8") as f:
                 text = f.read()
@@ -2790,17 +2952,18 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         return source_b
 
     def changed_base(self, nom, file, old, new):
-        """Copie du jouet (la BASE) dont un fichier d'outillage est modifié."""
+        """Copie du jouet (la BASE) dont un fichier d'outillage est modifié (file: plugin, build ou harness)."""
         base = os.path.join(self.workdir, "base-" + nom)
-        shutil.copytree(TOY, base, ignore=shutil.ignore_patterns("__pycache__"))
-        path = os.path.join(base, file)
+        shutil.copytree(self.toy, base, ignore=shutil.ignore_patterns("__pycache__"))
+        path = toy_file(base, file)
         with open(path, encoding="utf-8") as f:
             text = f.read()
         with open(path, "w", encoding="utf-8") as f:
             f.write(text.replace(old, new) if text.count(old) >= 1 else replace_with(text, old, new))
         return base
 
-    def run_the_judge(self, nom, source_b, no_instructions=False, base=TOY, repetitions=2, options=(), extra=()):
+    def run_the_judge(self, nom, source_b, no_instructions=False, base=None, repetitions=2, options=(), extra=()):
+        base = base or self.toy
         command = [sys.executable, os.path.join(HERE, "judge.py"), "--tooling", base, "--source-a", base,
                     "--source-b", source_b, "--repetitions", str(repetitions), "--warmup", "0"] + list(extra)
         for o in options:
@@ -2814,8 +2977,9 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         print(f"\n[{nom}] code {r.returncode} : {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}", file=sys.stderr)
         return r.returncode, report, r.stderr
 
-    def spied_judge_run(self, source_b, base=TOY, extra=(), report_=None):
+    def spied_judge_run(self, source_b, base=None, extra=(), report_=None):
         """judge.py in this process; for each container that runs B: its standard input (options, plan) and error."""
+        base = base or self.toy
         containers, launch, execute, variants_of = [], container.Docker.launch, container.Execution.launch, []
 
         def spy_on(docker, command, mounts, pids=2, entry=None, timeout_seconds=3600):
@@ -2869,7 +3033,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons at the
         same seeds; the order changes between repetitions (each scenario of a side running before and after the other,
         at this order seed) and is recorded in juge.json with each scenario's CPU time."""
-        base, seeds = toy_with_four_scenarios(os.path.join(self.workdir, "base-quatre-scenarios")), ["--seed", "00" * 16,
+        base, seeds = toy_with_four_scenarios(os.path.join(self.workdir, "base-quatre-scenarios"), self.toy), ["--seed", "00" * 16,
                                                                                                       "--order-seed", "01" * 16]
         code_h, honest_one, header_output = self.run_the_judge("voisins_reference", self.prepare("voisins_reference"), base=base,
                                                repetitions=3, extra=seeds)
@@ -2895,7 +3059,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         step (before the plugin and the PR), once the compare API (a stand-in for gh here) puts it in the base's ancestry; then the
         judge runs with the origin gone and every git transport refused."""
         travail = os.path.join(self.workdir, "historique-declare")
-        origin_of, base, commit, old, source, _ = toy_repo_with_history(travail)
+        origin_of, base, commit, old, source, _ = toy_repo_with_history(travail, self.toy)
         path, gh_log = fake_gh(travail)
         env = dict(os.environ, PATH=path, FAUX_GH_JOURNAL=gh_log, FAUX_GH_DEPOT=source, GITHUB_REPOSITORY="Bee-ruche/jouetBee")
         r = subprocess.run([sys.executable, os.path.join(HERE, "judge.py"), "--tooling", base, "--history-only",
@@ -2914,8 +3078,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_undeclared_history(self):
         """Not declared: a clean environment error (code 2), even for a plugin that tries to fetch it itself from an
         origin that is still there (minizBee's former workaround): judging has no git transport."""
-        _, base, commit, _, _, _ = toy_repo_with_history(os.path.join(self.workdir, "historique-non-declare"))
-        path = os.path.join(base, "bee", "juge", "projet.py")
+        _, base, commit, _, _, _ = toy_repo_with_history(os.path.join(self.workdir, "historique-non-declare"), self.toy)
+        path = toy_file(base, "plugin")
         with open(path, encoding="utf-8") as f:
             text = f.read()
         with open(path, "w", encoding="utf-8") as f:
@@ -3020,15 +3184,15 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_plugin_of_the_pr(self):
         """B est faux (sortie compressée tronquée) mais apporte un greffon et un harnais qui acceptent tout."""
         source_b = self.prepare("greffon_de_la_pr", lambda t, c: replace_with(t, "    return o + 4;\n", "    return o > 8 ? o - 1 : o + 4;\n"))
-        shutil.copytree(os.path.join(TOY, "bee"), os.path.join(source_b, "bee"))
-        with open(os.path.join(source_b, "bee", "juge", "projet.py"), "a", encoding="utf-8") as f:
-            f.write("\nProjet.verifier = lambda self, a, b, e: 1\nProjet.compressee = lambda self, a, b, r, o: 0\n")
+        shutil.copytree(os.path.join(self.toy, "bee"), os.path.join(source_b, "bee"))
+        with open(toy_file(source_b, "plugin"), "a", encoding="utf-8") as f:
+            f.write(contract(source_b, "\nProjet.verifier = lambda self, a, b, e: 1\nProjet.compressee = lambda self, a, b, r, o: 0\n"))
         code, _, output_text = self.run_the_judge("greffon_de_la_pr", source_b, True)
         self.assertEqual(code, 1)
         self.assertIn("REFUS", output_text)
 
     def test_empty_readings(self):
-        base = self.changed_base("releves_vides", "bee/juge/construire.sh", 'echo "construction terminée"',
+        base = self.changed_base("releves_vides", "build", 'echo "construction terminée"',
                                   ': > "$sortie/desassemblage.txt"\necho "construction terminée"')
         code, report, _ = self.run_the_judge("releves_vides", self.prepare("releves_vides", valgrind_request), True, base=base)
         self.assertEqual(code, 0)
@@ -3036,7 +3200,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
 
     def test_forgotten_object(self):
         """L'objet du projet est compilé hors de obj/ : il échapperait à l'analyse, le juge s'arrête."""
-        base = self.changed_base("objet_oublie", "bee/juge/construire.sh", '"$sortie/obj/rle.o"', '"$sortie/rle.o"')
+        base = self.changed_base("objet_oublie", "build", '"$sortie/obj/rle.o"', '"$sortie/rle.o"')
         code, _, output_text = self.run_the_judge("objet_oublie", self.prepare("objet_oublie"), True, base=base)
         self.assertEqual(code, 2)
         self.assertIn("sans objet", output_text)
@@ -3048,7 +3212,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
 
     def test_distracted_plugin(self):
         """Le greffon de la base oublie de lire les sorties de B d'un scénario : erreur, jamais une acceptation."""
-        base = self.changed_base("greffon_distrait", "bee/juge/projet.py",
+        base = self.changed_base("greffon_distrait", "plugin",
                                   'self.juste(a, b, e, f"{s}/")', 'self.juste(a, a, e, f"{s}/")')
         code, _, output_text = self.run_the_judge("greffon_distrait", self.prepare("greffon_distrait"), True, base=base)
         self.assertEqual(code, 2)
@@ -3090,9 +3254,9 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         links, mode, owner, size, access and modification times, directory order, statfs; the ages of its change and birth
         times within AGE_MAX_MS; each tmpfs's f_fsid the same or drawn anew; RESTE aside (outside the judge's mounts). The
         8 MiB each container leaves in its outputs are seen by none of the others."""
-        base = toy_with_four_scenarios(os.path.join(self.workdir, "base-memes-montures"))
-        with open(os.path.join(base, "bee", "juge", "projet.py"), "a", encoding="utf-8") as f:
-            f.write(SAME_INPUTS)
+        base = toy_with_four_scenarios(os.path.join(self.workdir, "base-memes-montures"), self.toy)
+        with open(toy_file(base, "plugin"), "a", encoding="utf-8") as f:
+            f.write(contract(base, SAME_INPUTS))
         seed = next(g for g in (f"{i:02x}" * 16 for i in range(256)) if (lambda t: (lambda o, p: all(
             o.index(s) != p.index(s) for s in FOUR_SCENARIOS))(t.sample(list(FOUR_SCENARIOS), 4), t.sample(list(FOUR_SCENARIOS), 4)))(
             random.Random(bytes.fromhex(g))))
@@ -3130,16 +3294,16 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def run_modes(self, source_b, modes):
         """B built and run by the judge's own containers on one /entrees (the f side of a repetition), once per mode:
         [(mode, valgrind)]. Returns its records, in order."""
-        projet, travail = toy_plugin.Projet({}), tempfile.mkdtemp(dir=self.workdir)
+        projet, travail = judge.load_plugin(self.toy, {})[0], tempfile.mkdtemp(dir=self.workdir)
         os.chmod(travail, 0o755)
         docker = container.Docker(container.build_image(projet.PAQUETS, os.environ.get("BEE_JUGE_RESEAU")))
         sources = judge.copy_sources(source_b, os.path.join(travail, "sources-B"), projet.SOURCES, projet.SOURCES_REQUISES)
-        tools = judge.copy_tooling(TOY, TOY, os.path.join(travail, "outillage"), projet)
+        tools = judge.copy_tooling(self.toy, self.toy, os.path.join(travail, "outillage"), projet)
         judge.build(docker, projet, sources, tools, os.path.join(travail, "construction-B"), "B", travail)
         run = container.Execution(docker, container.compile_stopwatch(docker, travail),
                                         {"B": judge.variant(os.path.join(travail, "construction-B"), os.path.join(travail, "variante-B"))},
                                         travail)
-        entrees = [e for e in projet.repetition(random.Random(1), projet.corpus(TOY)) if e.cote == "f"]
+        entrees = [e for e in projet.repetition(random.Random(1), projet.corpus(self.toy)) if e.cote == "f"]
         folder = judge.prepare(travail, "", judge.rename(random.Random(1), entrees)[0], ("f", "z"))["f"]
         errors, launch = [], docker.launch
 
@@ -3170,8 +3334,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def base_that_states_the_mode(self, nom):
         """A copy of the toy whose harness tells the library the mode (int rle_mesure): the case mixing must catch."""
         base = os.path.join(self.workdir, "base-" + nom)
-        shutil.copytree(TOY, base, ignore=shutil.ignore_patterns("__pycache__"))
-        path = os.path.join(base, "bee", "juge", "execution.c")
+        shutil.copytree(self.toy, base, ignore=shutil.ignore_patterns("__pycache__"))
+        path = toy_file(base, "harness")
         with open(path, encoding="utf-8") as f:
             text = f.read()
         text = replace_with(text, "static char entrees[256], sorties[256];\n", "static char entrees[256], sorties[256];\nint rle_mesure = 0;\n")
@@ -3203,7 +3367,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
 
     def test_side_without_shuffle(self):
         """ruche-0037: a measured side without verification inputs to mix in is an error of the plugin, never a pass."""
-        base = self.changed_base("cote_sans_melange", "bee/juge/projet.py", "return self.entrees(fichiers, self.flux(rng, fichiers))",
+        base = self.changed_base("cote_sans_melange", "plugin", "return self.entrees(fichiers, self.flux(rng, fichiers))",
                                   "return self.entrees(fichiers, [])")
         code, _, output_text = self.run_the_judge("cote_sans_melange", self.prepare("cote_sans_melange"), True, base=base)
         self.assertEqual(code, 2, output_text)
@@ -3219,14 +3383,14 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_symbolic_link(self):
         source_b = self.prepare("lien_symbolique")
         os.remove(os.path.join(source_b, "rle.c"))
-        os.symlink(os.path.join(TOY, "rle.c"), os.path.join(source_b, "rle.c"))
+        os.symlink(os.path.join(self.toy, "rle.c"), os.path.join(source_b, "rle.c"))
         code, _, output_text = self.run_the_judge("lien_symbolique", source_b, True)
         self.assertEqual(code, 1)
         self.assertIn("lien symbolique", output_text)
 
     def bounded_judge(self, nom, source_b, *options):
         """judge.py against the toy base, with the options given (ruche-0038); returns (code, report, journal, seconds)."""
-        command = [sys.executable, os.path.join(HERE, "judge.py"), "--tooling", TOY, "--source-a", TOY, "--source-b", source_b,
+        command = [sys.executable, os.path.join(HERE, "judge.py"), "--tooling", self.toy, "--source-a", self.toy, "--source-b", source_b,
                     "--repetitions", "2", "--warmup", "0", "--no-instructions", *options]
         command += ["--build-network", os.environ["BEE_JUGE_RESEAU"]] if os.environ.get("BEE_JUGE_RESEAU") else []
         beginning = time.monotonic()
@@ -3305,6 +3469,15 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         self.assertEqual(code, 1, log_)
         self.assertLess(duration, 600)
         self.assertEqual(os.listdir(folder), [])
+
+
+class TestJudgeAgainstVariantsEnglish(TestJudgeAgainstVariants):
+    """ruche-0148 (J2): every meta-test again, the base's plugin in the English contract (the toy's twin, bee/judge/project.py)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.toy = english_toy(os.path.join(cls.workdir, "toy"))
 
 
 if __name__ == "__main__":

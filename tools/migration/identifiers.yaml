@@ -4549,3 +4549,12 @@ judge:
     variables (TETE…) and the fake gh''s (FAUX_GH_…), kept as their strings are. Strings stay byte for byte, but the judge''s
     options, its paths and attribute names; kept_strings are values juge.json holds that name a file of the judge (the detail of
     the architecture construct, in constructions_suspectes), byte for byte too'
+  plugin:
+    names: {Projet: Project, NOM: NAME, SOURCES: SOURCES, SOURCES_REQUISES: REQUIRED_SOURCES, OUTILLAGE: TOOLING, EN_TETES_BASE: BASE_HEADERS,
+            CONSTRUIRE: BUILD, PREFIXES: PREFIXES, COTES: SIDES, SCENARIOS: SCENARIOS, INSTRUCTIONS: INSTRUCTIONS, METRIQUES: METRICS,
+            PAQUETS: PACKAGES, PERMIS: ALLOWED, METHODE: METHOD, VERIFICATION: VERIFICATION, DIFF: DIFF, corpus: corpus,
+            verification: verification, verifier: verify, fixes: fixed, repetition: repetition, instructions: instructions, scenario: scenario}
+    why: 'ruche-0148 (J2): the plugin contract in English (bee/judge/project.py) beside the French one (bee/juge/projet.py), every name
+      the judge reads on a plugin, the class first. The map above is the code''s; three names part from it on purpose: VERIFICATION and
+      repetition keep their spelling (the plugin''s report section and one repetition''s inputs, not VERIFICATION_CMD and rehearsal), and
+      fixes, absent above, becomes fixed (the fixed metrics). judge.py''s PLUGIN_NAMES is this map less the names that stay (test_bee.py)'

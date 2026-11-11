@@ -4,6 +4,8 @@
 #   juge:
 #     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v3> # juge-v3
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
+# ruche-0148 (J2): from judge-v4 on, each input has its English name (head_sha, history, no_instructions) and, until judge-v5, its
+# French one (tete_sha, historique, sans_instructions): a call gives one of the two.
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
 # 1 refusé, 2 environnement, une panne de la machine du juge comprise : jamais un refus de B, ruche-0136).
@@ -20,13 +22,23 @@ on:
         description: "commit de base (référence A ; son bee/juge/projet.py est le greffon)"
         required: true
         type: string
+      head_sha:
+        description: "judged commit (candidate B); or tete_sha, not both"
+        required: false
+        type: string
+        default: ""
       tete_sha:
         description: "commit jugé (candidate B)"
-        required: true
+        required: false
         type: string
+        default: ""
       options:
         description: "options du greffon, CLE=VALEUR, une par ligne"
         required: false
+        type: string
+        default: ""
+      history:
+        description: "commits whose git objects the plugin reads (full SHAs, blank-separated): ancestors of the base, fetched before the PR; or historique, not both"
         type: string
         default: ""
       historique:
@@ -37,6 +49,10 @@ on:
         required: false
         type: number
         default: 10
+      no_instructions:
+        required: false
+        type: boolean
+        default: false
       sans_instructions:
         required: false
         type: boolean
@@ -73,15 +89,21 @@ jobs:
       - name: Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici)
         env:
           BASE: ${{ inputs.base_sha }}
+          HEAD_SHA: ${{ inputs.head_sha }}
           TETE: ${{ inputs.tete_sha }}
           BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
           TETE_EVENEMENT: ${{ github.event.pull_request.head.sha }}
+          HISTORY: ${{ inputs.history }}
+          HISTORIQUE: ${{ inputs.historique }}
           REPETITIONS: ${{ inputs.repetitions }}
+          NO_INSTRUCTIONS: ${{ inputs.no_instructions }}
           SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
         run: |
-          [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$TETE" =~ ^[0-9a-f]{40}$ && "$BASE" == "$BASE_EVENEMENT" && "$TETE" == "$TETE_EVENEMENT" ]] || { echo "base_sha, tete_sha: the event's pull request's (40 hexadecimal digits)" >&2; exit 1; }
+          [[ -z "$HEAD_SHA" || -z "$TETE" ]] && [[ -z "$HISTORY" || -z "$HISTORIQUE" ]] || { echo "head_sha or tete_sha, history or historique: one name of each, not both" >&2; exit 1; }
+          TETE="${HEAD_SHA:-$TETE}"
+          [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$TETE" =~ ^[0-9a-f]{40}$ && "$BASE" == "$BASE_EVENEMENT" && "$TETE" == "$TETE_EVENEMENT" ]] || { echo "base_sha, head_sha: the event's pull request's (40 hexadecimal digits)" >&2; exit 1; }
           [[ "$REPETITIONS" =~ ^[1-9][0-9]{0,2}$ ]] && (( REPETITIONS >= 10 && REPETITIONS <= 50 )) || { echo "repetitions: 10 to 50" >&2; exit 1; }
-          [[ "$SANS_INSTRUCTIONS" == false ]] || { echo "sans_instructions: a verdict needs the instruction count" >&2; exit 1; }
+          [[ "$NO_INSTRUCTIONS" == false && "$SANS_INSTRUCTIONS" == false ]] || { echo "no_instructions: a verdict needs the instruction count" >&2; exit 1; }
       - name: Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)
         id: preparation
         env:
@@ -108,7 +130,7 @@ jobs:
           persist-credentials: false
       - name: Historique déclaré (ancêtres de la base ; seul appel de judge.py avec le jeton, avant le greffon et la PR)
         env:
-          HISTORIQUE: ${{ inputs.historique }}
+          HISTORIQUE: ${{ inputs.history || inputs.historique }}
           GH_TOKEN: ${{ github.token }}
         run: python3 juge-commun/tools/judge/judge.py --tooling base --history-only --history "$HISTORIQUE"
       - name: Image du juge (avec réseau, avant tout fichier de la PR)
@@ -116,7 +138,7 @@ jobs:
       - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ inputs.tete_sha }}
+          ref: ${{ inputs.head_sha || inputs.tete_sha }}
           path: pr
           fetch-depth: 0
           persist-credentials: false
@@ -129,7 +151,7 @@ jobs:
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
           BASE: ${{ inputs.base_sha }}
-          TETE: ${{ inputs.tete_sha }}
+          TETE: ${{ inputs.head_sha || inputs.tete_sha }}
           SOURCE: Bee-ruche/registre@${{ steps.preparation.outputs.commit }}
         run: |
           mkdir -p resultats
