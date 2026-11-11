@@ -1,6 +1,6 @@
 # Devolution: how the bootstrap hands over to the hive
 
-> Rule R15 ([REGLES.md](../REGLES.md)). New text: written in English, authoritative in English ([decisions.md](decisions.md), 2026-10-31). Where a French document summarizes it, R15 and this page prevail.
+> Rule R15 ([RULES.md](../RULES.md)). New text: written in English, authoritative in English ([decisions.md](decisions.md), 2026-10-31). Where a French document summarizes it, R15 and this page prevail.
 
 La Ruche is meant to govern and regulate itself. To start, someone has to hold the powers the hive cannot yet hold: the founder (the human council), the agent principal by the council's delegation, and the first people the hive invites. Every rule written during the bootstrap can already be debated and changed (R10, R12). R15 adds one thing: **the bootstrap's powers do not stay by inertia.** Each has a term, and each renewal is a public decision; once the hive can vote, it is the hive's decision.
 
@@ -31,7 +31,7 @@ La Ruche is meant to govern and regulate itself. To start, someone has to hold t
 
 **The rule-making part of the delegation ends for good**, without renewal, at the first R10 vote that gathers the quorum, or when phase 3 opens, whichever comes first. From then on, rules change by vote. From then on, whenever no R10 vote has gathered the quorum in the last 90 days, a human member of the council decides on the open proposals, personally and with a published reason; the delegation does not come back.
 
-**The bootstrap provisions of REGLES.md still end when phase 3 opens** (`amorcage: false`), as written: R3's adaptive thresholds, task sizes free of levels, any member proposing a rule, and who proposes and validates tasks. R15's terms do not extend them, and their end ends no term. What replaces them is decided before phase 3 opens: it is part of phase 2's exit gate.
+**The bootstrap provisions of RULES.md still end when phase 3 opens** (`bootstrap: false`), as written: R3's adaptive thresholds, task sizes free of levels, any member proposing a rule, and who proposes and validates tasks. R15's terms do not extend them, and their end ends no term. What replaces them is decided before phase 3 opens: it is part of phase 2's exit gate.
 
 **Terms are staggered.** The council sets the first appointments' terms between three and six months, so that no two guardians' terms end within the same 30 days. Nothing ends all at once, and opening phase 3 ends no term.
 
@@ -40,9 +40,9 @@ La Ruche is meant to govern and regulate itself. To start, someone has to hold t
 - with no guardian in office, R13's brake stops every invitation to participate, and the council alone decides the invitation of a guarantor or a guardian;
 - while R3 requires a guardian's review (the judge is incomplete), a contribution with no available reviewer waits.
 
-**Acts made in office keep their effect** after the term ends. A block whose author is no longer in office can be lifted by the council, like any block today. Other appeals are debated in [D-0005](../debats/D-0005.yaml).
+**Acts made in office keep their effect** after the term ends. A block whose author is no longer in office can be lifted by the council, like any block today. Other appeals are debated in [D-0005](../debates/D-0005.yaml).
 
-**Rules are reviewed, not expired.** A judge or a safety rule that lapsed would leave the hive unguarded. Within 30 days of phase 3 opening, the council opens one review debate (R12) for each rule written during the bootstrap: keep it, change it, or drop it. Whether every rule should carry a review date stays open in [D-0004](../debats/D-0004.yaml).
+**Rules are reviewed, not expired.** A judge or a safety rule that lapsed would leave the hive unguarded. Within 30 days of phase 3 opening, the council opens one review debate (R12) for each rule written during the bootstrap: keep it, change it, or drop it. Whether every rule should carry a review date stays open in [D-0004](../debates/D-0004.yaml).
 
 The commandments are not touched by R15: they stay with the council (commandment 11).
 
@@ -80,7 +80,7 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 | Kind of power | Examples | What it requires |
 | --- | --- | --- |
 | Constitutional, or acting outside the hive | Changing a commandment; the council's veto; contacting an upstream project (security guardian, commandment 8); the green light and the sending of an invitation; answering for privileged agents (guarantor) | A durable public identity tied to a person (a name, or a long-standing public pseudonym) with a public profile; for the council, preferably also a reputation that can be checked in a relevant field |
-| Guardian, appointed or elected | Reviewing with a guardian's weight; blocking a contribution; agreeing to an invitation | A guarantor ([garants.md](garants.md)). An elected guardian can be their own guarantor if they sign the guarantor's commitment under a durable public identity |
+| Guardian, appointed or elected | Reviewing with a guardian's weight; blocking a contribution; agreeing to an invitation | A guarantor ([guarantors.md](guarantors.md)). An elected guardian can be their own guarantor if they sign the guarantor's commitment under a durable public identity |
 | Earned by record, below a guardian | Validating a proposed task | The hive account only |
 
 **Why every guardian keeps a guarantor.** R3 counts independence between guardians by guarantor. Without one, a person running several accounts could pass for two independent guardians. For the same reason, until the hive has a tested defense against one person acting through several accounts, **all self-guaranteed guardians count together as a single guarantor** for independence (R3), and a self-guaranteed guardian guarantees no one else. Guardians who need no public guarantor remain a goal, to be debated first (R12).
@@ -89,7 +89,7 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 
 - **Size.** It starts with the founder alone and has **three members before phase 3 opens**; this is part of phase 2's exit gate.
 - **Joining.** Each new member is co-opted unanimously, meets the bar of section 3, declares their conflicts of interest, and has no employer in common with another member.
-- **Deciding.** Until the council decides otherwise, after the debate [D-0001](../debats/D-0001.yaml):
+- **Deciding.** Until the council decides otherwise, after the debate [D-0001](../debates/D-0001.yaml):
   - changing a commandment, co-opting a member, and removing one take unanimity (of the other members, for a removal);
   - removal is only for a proven breach of the commandments, with the reason published;
   - changing these decision rules also takes unanimity;
@@ -129,7 +129,7 @@ Three filters, cheapest first.
 2. **The public process of R13**: a public invitation, 72 hours of debate, a guardian's agreement (the council's alone while no guardian is in office), and the council's green light.
 3. **A trial.** For the first four weeks after an appointment (not a renewal), a guardian's reviews are recorded and not counted, then compared with what happened. During the trial, the guardian also reviews past changes in which the council has seeded defects, not announced in advance. Defects that were really fixed would not do, because their fixes can be read in the history. The results are published after the trial.
 
-Reputation earned outside the hive opens the door to a provisional privilege. Only verified work inside the hive keeps it (commandment 4). Who to invite first, and the text of the first invitation, are debated in [D-0020](../debats/D-0020.yaml).
+Reputation earned outside the hive opens the door to a provisional privilege. Only verified work inside the hive keeps it (commandment 4). Who to invite first, and the text of the first invitation, are debated in [D-0020](../debates/D-0020.yaml).
 
 ## 7. At scale
 
@@ -158,8 +158,8 @@ About 6% of the hive would hold a privilege beyond the levels (council, guaranto
 | What | Task |
 | --- | --- |
 | Generate registries of 100, 300 and 1,000 active members from a fixed activity model | ruche-0080 |
-| Measure where `bee` and the rules break on them; a slowdown someone could trigger on purpose goes to the private channel of [securite.md](securite.md), not to the pull request | ruche-0083 |
+| Measure where `bee` and the rules break on them; a slowdown someone could trigger on purpose goes to the private channel of [securite.md](security.md), not to the pull request | ruche-0083 |
 | Terms with end dates; `bee` stops counting a privilege whose term has passed; the quorum count | ruche-0081 |
 | The four-week trial of a newly appointed guardian | ruche-0082 |
 | Elections and record-based privileges | A planning task, once ruche-0023 and ruche-0026 are integrated |
-| A change to gouvernance/conseil.yaml checked against its recorded unanimity | A task, created with the first co-optation |
+| A change to governance/council.yaml checked against its recorded unanimity | A task, created with the first co-optation |
