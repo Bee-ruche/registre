@@ -8439,7 +8439,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("alice", "closed debate: it takes nothing more")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
-        d.update({"outcome": "task", "reference": "ruche-0008"})  # réécrire l'issue
+        d.update({"outcome": "task", "reference": "ruche-0008"})  # rewriting the outcome
         self.write(d)
         self.commit()
         self.refused("bidji29", "closed debate")
@@ -8449,7 +8449,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(position="fact")
         text = self.refused("alice", "a fact cites its sources")
-        self.assertIn("arguments/2", text)  # le schéma l'exige aussi
+        self.assertIn("arguments/2", text)  # the schema requires it too
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(position="fact", sources=["docs/fichier-imaginaire.md"])
         self.refused("alice", "does not exist in the registry")
@@ -8507,7 +8507,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate()
         path, before = self.debate_path(), self.debate()
         path.write_text(path.read_text(encoding="utf-8").replace("status: open", 'status: "open"'), encoding="utf-8")
-        self.assertEqual(self.debate(), before)  # mêmes données, autre forme
+        self.assertEqual(self.debate(), before)  # same data, another form
         self.commit()
         self.refused("alice", "a PR does not reformat a debate")
         git(self.dir, "reset", "-q", "--hard", "main")
@@ -8533,30 +8533,30 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit("clé en double")
         self.refused("bruno", "duplicate")
 
-    # --- Revue adverse de l'agora (B1, m1, m2, m3) et liens symboliques : chaque constat est désormais refusé ---
+    # --- Adversarial review of the agora (B1, m1, m2, m3) and symbolic links: each finding is now refused ---
 
     def add_by_hand(self, yaml_lines):
-        """Un argument écrit à la main en fin de fichier, sans passer par l'outil (comme dans la revue adverse)."""
+        """An argument written by hand at the end of the file, without going through the tool (as in the adversarial review)."""
         path = self.debate_path()
         path.write_text(path.read_text(encoding="utf-8").rstrip("\n") + "\n" + yaml_lines, encoding="utf-8")
         self.commit()
 
     def test_refusal_yaml_line_breaks_in_an_argument(self):
-        """B1 : NEL (U+0085), U+2028 ou U+2029 dans un texte rendaient le débat impossible à réécrire par l'outil."""
+        """B1: NEL (U+0085), U+2028 or U+2029 in a text made the debate impossible for the tool to rewrite."""
         self.main_with_debate()
         self.a("2026-10-29T13:00:00Z")
-        for escaping in ("\\N", "\\n\\L", "\\P"):  # échappements YAML de U+0085, U+2028, U+2029
+        for escaping in ("\\N", "\\n\\L", "\\P"):  # YAML escapes of U+0085, U+2028, U+2029
             with self.subTest(escaping=escaping):
                 self.add_by_hand("- id: A3\n  by: chloe\n  at: '2026-10-29T13:00:00Z'\n  position: against\n"
                                        f'  text: "Et les comptes multiples ?{escaping}"\n')
                 self.refused("chloe", "invisible character or control character")
                 git(self.dir, "reset", "-q", "--hard", "main")
-        self.argue("bruno", "for", "Une réponse.")  # le débat reste écrivable par l'outil
+        self.argue("bruno", "for", "Une réponse.")  # the debate stays writable by the tool
         self.commit()
         self.self_service("bruno", "argument")
 
     def test_refusal_comment_slipped_into_the_argument_of_another(self):
-        """m1 : un commentaire YAML glissé dans l'argument de chloe, invisible pour bee mais lu dans le fichier brut."""
+        """m1: a YAML comment slipped into chloe's argument, invisible to bee but read in the raw file."""
         self.main_with_debate()
         self.a("2026-10-29T13:00:00Z")
         self.argue("alice", "for", "Les comptes multiples relèvent du conseil.", "--replies-to", "A2")
@@ -8573,7 +8573,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("alice", "not exactly in the form bee debate writes")
 
     def test_refusal_sources_over_the_cap(self):
-        """m2 : les sources ne contournent pas le plafond du texte : 5 au plus, 200 caractères chacune."""
+        """m2: the sources do not get around the text's cap: 5 at most, 200 characters each."""
         self.main_with_debate()
         self.a("2026-10-29T13:00:00Z")
         long_one = "https://exemple.org/" + "x" * 181
@@ -8592,8 +8592,8 @@ class TestPullRequestsAgora(BaseAgora):
         self.self_service("alice", "argument")
 
     def test_refusal_invisible_characters(self):
-        """m3 : catégories Cc et Cf (sauf saut de ligne et tabulation), U+0085, U+2028, U+2029 : refusés par l'outil et par
-        le schéma, dans les arguments, la synthèse et les sources."""
+        """m3: categories Cc and Cf (except line break and tab), U+0085, U+2028, U+2029: refused by the tool and by the
+        schema, in the arguments, the synthesis and the sources."""
         import re
         reason = re.compile(json.loads((ROOT / "schemas/debate.schema.json").read_text(encoding="utf-8"))["$defs"]["texte"]["pattern"])
         for code in (0x00, 0x1B, 0x7F, 0x85, 0x9B, 0xAD, 0x061C, 0x200B, 0x200F, 0x202E, 0x2028, 0x2029, 0x2066, 0xFEFF, 0xE0001):
@@ -8619,10 +8619,10 @@ class TestPullRequestsAgora(BaseAgora):
         self.add_raw(sources=[f"docs/balance.md{chr(0x2066)}"])
         self.refused("alice", "U+2066")
 
-    # --- Débat né sans rapporteur : prise de plume par le premier qui argumente ---
+    # --- A debate born without a rapporteur: the first one who argues takes the pen ---
 
     def main_with_debate_without_rapporteur(self):
-        """Sur main : D-0001 ouvert par le conseil, sans rapporteur (comme bee debate import-questions)."""
+        """On main: D-0001 opened by the council, without a rapporteur (like bee debate import-questions)."""
         self.a("2026-10-29T12:00:00Z")
         self.write({"id": "D-0001", "question": "Si le conseil disparaît, qui garde le dernier mot ?", "opened_by": "bidji29",
                      "opened_at": "2026-10-29T12:00:00Z", "status": "open", "synthesis": "", "arguments": []})
@@ -8640,16 +8640,16 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate_without_rapporteur()
         self.add_raw(by="bruno")
         d = self.debate()
-        d["rapporteur"] = "chloe"  # bruno argumente mais donne la plume à chloe
+        d["rapporteur"] = "chloe"  # bruno argues but gives the pen to chloe
         self.write(d)
         self.commit()
         self.refused("bruno", "nobody else can be it in their place")
         git(self.dir, "reset", "-q", "--hard", "main")
-        self.add_raw(by="bruno")  # bruno argumente sans prendre la plume
+        self.add_raw(by="bruno")  # bruno argues without taking the pen
         self.refused("bruno", "bruno becomes its rapporteur, in the same PR")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
-        d["rapporteur"] = "alice"  # se désigner sans argumenter
+        d["rapporteur"] = "alice"  # appointing oneself without arguing
         self.write(d)
         self.commit()
         self.refused("alice", "gets one only through its first argument")
@@ -8663,8 +8663,8 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("bruno", "the synthesis is published in a later PR")
 
     def test_a_sole_arguer_in_an_imported_debate_keeps_the_pen(self):
-        """Tour 2 : le conseil qui importe une question sans y argumenter n'est pas dans le tour de rôle ; un argumenteur
-        seul garde la plume en publiant sa synthèse, au lieu de devoir la passer au conseil."""
+        """Round 2: the council that imports a question without arguing in it is not in the rotation; a sole arguer keeps the
+        pen by publishing his synthesis, instead of having to pass it to the council."""
         self.main_with_debate_without_rapporteur()
         self.argue("bruno", "against", "Un conseil d'un seul humain est un point de défaillance unique.")
         self.commit()
@@ -8685,8 +8685,8 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dir, "merge", "-q", "--ff-only", name)
 
     def test_second_relief_in_an_imported_debate(self):
-        """Revue adverse du tour 2 : le conseil importateur, hors du tour de rôle, comptait encore comme « un autre
-        participant » pour la relève ; chloe ne pouvait relever bruno qu'une fois."""
+        """Adversarial review of round 2: the importing council, outside the rotation, still counted as « another participant »
+        for the takeover; chloe could take over from bruno only once."""
         self.main_with_debate_without_rapporteur()
         self.argue("bruno", "against", "Un conseil d'un seul humain est un point de défaillance unique.")
         self.commit()
@@ -8715,7 +8715,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.self_service("chloe", "synthesis")
 
     def test_a_council_that_held_the_pen_stays_in_the_turn(self):
-        """Revue adverse du tour 2 : un conseil qui ouvre un débat à la main et en publie la synthèse y a pris part."""
+        """Adversarial review of round 2: a council that opens a debate by hand and publishes its synthesis has taken part in it."""
         self.branch()
         self.a("2026-10-29T12:00:00Z")
         self.ok("debate", "open", "--user", "bidji29", "--question", "Une question ouverte à la main par le conseil ?")
@@ -8728,7 +8728,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.assertIn("next rapporteur: bidji29", text)
 
     def test_refusal_pen_taking_in_a_debate_that_has_a_rapporteur(self):
-        self.main_with_debate()  # alice, qui a ouvert, est rapporteure
+        self.main_with_debate()  # alice, who opened it, is rapporteur
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(by="bruno")
         d = self.debate()
@@ -8747,17 +8747,17 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("alice", "is born without an argument or a synthesis")
 
     def test_refusal_symbolic_link(self):
-        """Un lien symbolique, dans n'importe quel dossier, est refusé proprement par check-pr (sans plantage), et l'outil
-        ne le suit jamais : il lirait, et pourrait citer dans un message d'erreur, un fichier de la machine de CI."""
+        """A symbolic link, in any folder, is refused cleanly by check-pr (without crashing), and the tool never follows it: it
+        would read, and could quote in an error message, a file of the CI machine."""
         elsewhere = self.dir.parent / "elsewhere"
         elsewhere.mkdir()
         for file in (elsewhere / "secret.yaml", elsewhere / "x.yaml"):
-            file.write_text("token: SECRET-123\n  : [\n", encoding="utf-8")  # YAML invalide : une erreur citerait la ligne
+            file.write_text("token: SECRET-123\n  : [\n", encoding="utf-8")  # invalid YAML: an error would quote the line
         self.branch()
         (self.dir / "debates").mkdir()
-        os.symlink("id: D-0001\nquestion: absente\n", self.debate_path())  # lien cassé, comme dans la revue
+        os.symlink("id: D-0001\nquestion: absente\n", self.debate_path())  # broken link, as in the review
         os.symlink(str(elsewhere / "secret.yaml"), self.dir / "tasks/miniz/miniz-0098.yaml")
-        os.symlink(str(elsewhere), self.dir / "tasks/elsewhere")  # un dossier
+        os.symlink(str(elsewhere), self.dir / "tasks/elsewhere")  # a folder
         os.symlink("../AGENTS.md", self.dir / "docs/link.md")
         self.commit()
         code, text = self.verify("alice")
@@ -8769,12 +8769,12 @@ class TestPullRequestsAgora(BaseAgora):
 
 
 class BaseDressRehearsal(BaseAgora):
-    """ruche-0011 : l'équipe rouge de la répétition générale du 29/10 (journal de gaspard, attaques T1 à T15). Chaque attaque
-    est rejouée par une PR et refusée ; le parcours honnête qui lui correspond passe toujours.
+    """ruche-0011: the red team of the dress rehearsal of 29 Oct (gaspard's log, attacks T1 to T15). Each attack is replayed
+    by a PR and refused; the honest path that matches it always passes.
 
-    Les commits sont datés (auteur et commit) de l'heure de l'outil, comme sur main, où GitHub date chaque fusion ; main
-    reçoit les PR par fusion « squash » (un commit par PR, daté de la fusion). Le registre copié est publié bien avant la
-    fenêtre du cap : seuls les gestes du test y comptent."""
+    The commits are dated (author and committer) with the tool's time, as on main, where GitHub dates each merge; main
+    receives the PRs by « squash » merge (one commit per PR, dated at the merge). The copied registry is published well
+    before the balance's window: only the test's gestures count in it."""
 
     BASE = "2026-09-01T00:00:00Z"
 
@@ -8794,15 +8794,15 @@ class BaseDressRehearsal(BaseAgora):
                            check=True, capture_output=True, env=env)
 
     def branch(self, name="pr"):
-        """Une branche de PR, partie de main."""
+        """A PR branch, started from main."""
         git(self.dir, "switch", "-q", "main")
         git(self.dir, "switch", "-qc", name)
 
     def merge(self, name="pr"):
-        """Fusionne la PR comme GitHub : un commit sur main, daté de la fusion."""
+        """Merges the PR as GitHub does: one commit on main, dated at the merge."""
         git(self.dir, "switch", "-q", "main")
-        # Une identité explicite : sans elle, une fusion qui n'est pas une avance rapide échoue là où git n'en a
-        # aucune (la CI), alors qu'elle passe sur une machine configurée.
+        # An explicit identity: without it, a merge that is not a fast-forward fails where git has none (the CI), while it
+        # passes on a configured machine.
         git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--squash", name)
         self.commit(f"fusion de {name}")
         git(self.dir, "branch", "-qD", name)
@@ -8830,7 +8830,7 @@ class BaseDressRehearsal(BaseAgora):
         return self.dir / "tasks" / identifier.rsplit("-", 1)[0] / f"{identifier}.yaml"
 
     def note_by_hand(self, *notes, task="miniz-0099"):
-        """Ajoute des notes écrites à la main (sans bee note), signées et datées comme on veut."""
+        """Adds notes written by hand (without bee note), signed and dated at will."""
         for note in notes:
             bee.modify_task(self.task_path(task), note={"by": "gaspard", "at": os.environ["BEE_NOW"],
                                                                "text": "[attempt équipe red] note.", **note})
@@ -8847,7 +8847,7 @@ class BaseDressRehearsal(BaseAgora):
         return self.dir / "proposals" / f"{identifier}.yaml"
 
     def open_debates(self, number):
-        """Le conseil (pas plafonné) ouvre des débats sur main."""
+        """The council (not capped) opens debates on main."""
         for i in range(number):
             self.ok("debate", "open", "--user", "bidji29", "--question", f"Question ouverte numéro {i + 1} : qu'en dit l'essaim ?")
         self.commit("open debates")
@@ -8867,7 +8867,7 @@ class BaseDressRehearsal(BaseAgora):
         self.merge("release")
 
     def arguments_by_hand(self, debate, number, who_is="gaspard"):
-        """Ajoute des arguments écrits à la main, sous la forme canonique (comme le ferait bee debate)."""
+        """Adds arguments written by hand, in the canonical form (as bee debate would)."""
         d = self.debate(debate)
         for _ in range(number):
             d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "by": who_is, "at": os.environ["BEE_NOW"],
@@ -8876,9 +8876,9 @@ class BaseDressRehearsal(BaseAgora):
 
 
 class TestDressRehearsal(BaseDressRehearsal):
-    """Chaque attaque de l'équipe rouge (T1 à T10, T13, T15) est refusée ; les parcours honnêtes passent."""
+    """Each attack of the red team (T1 to T10, T13, T15) is refused; the honest paths pass."""
 
-    # --- (1) Numérotation : T5, T6 ---
+    # --- (1) Numbering: T5, T6 ---
 
     def test_T5_proposal_P_9999_refused_and_no_longer_freezes_bee_propose(self):
         self.branch("t5")
@@ -8889,7 +8889,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.proposal("P-0005")
         self.commit("numéro qui saute")
         self.refused("gaspard", "proposals/P-0005.yaml: the next proposal is P-0001")
-        # Un P-9999 déjà sur main (publié avant ce contrôle) ne gèle plus bee proposer : la suivante est P-0001, pas P-10000.
+        # A P-9999 already on main (published before this check) no longer freezes bee propose: the next is P-0001, not P-10000.
         git(self.dir, "switch", "-q", "main")
         self.proposal("P-9999")
         self.commit("P-9999 sur main")
@@ -8912,8 +8912,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.refused("gaspard", "tasks/miniz/miniz-8999.yaml: the next proposed task is miniz-0100",
                      "tasks/miniz/miniz-9000.yaml: numbers 9000 and above are reserved for the tool's tests")
-        # Déjà sur main (publiées avant ce contrôle), elles bloquent bee proposer-tache miniz, qui le dit sans rien écraser ;
-        # les autres projets n'en souffrent pas.
+        # Already on main (published before this check), they block bee propose-task miniz, which says so without overwriting
+        # anything; the other projects do not suffer from it.
         self.merge("t6")
         before = self.task_path("miniz-9000").read_bytes()
         self.ko("no free number left for miniz", "propose-task", "miniz", "--user", "alice")
@@ -8925,7 +8925,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.self_service("alice", "task_proposal")
         self.assertRegex(path.name, r"^libyaml-0\d{3}\.yaml$")
 
-    # --- (2) Notes : T1, T2, T3, T15 ---
+    # --- (2) Notes: T1, T2, T3, T15 ---
 
     def test_T1_task_proposed_with_a_note_signed_by_the_council(self):
         self.branch("t1")
@@ -8969,7 +8969,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.refused("gaspard", "text: 40021 characters, at most 1500 (notes.text_max)")
 
     def test_notes_capped_over_24_h_and_added_in_order(self):
-        # Deux PR de 10 notes, fusionnées : 20 notes en 24 h, le plafond ; la 21e est refusée, par l'outil comme par verifier-pr.
+        # Two PRs of 10 notes, merged: 20 notes in 24 h, the cap; the 21st is refused, by the tool as by check-pr.
         for lot in range(2):
             self.branch(f"lot{lot}")
             for n in range(10):
@@ -8984,12 +8984,12 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.note_by_hand({"text": "De trop."})
         self.commit()
         self.refused("gaspard", "cap: gaspard would have 21 notes in 24 h across all tasks")
-        # Une note antidatée dans la tolérance de 2 h, mais d'avant la note précédente : refusée.
+        # A note backdated within the 2 h tolerance, but from before the previous note: refused.
         self.branch("before")
         self.note_by_hand({"at": "2026-10-29T23:05:00Z"}, task="miniz-0099")
         self.commit()
         self.refused("gaspard", "dated before the previous note (2026-10-29T23:09:00Z)")
-        # Le conseil n'est pas plafonné en nombre ; 24 h après les premières notes, une place se libère.
+        # The council is not capped in number; 24 h after the first notes, a slot frees up.
         self.branch("council")
         self.ok("note", "miniz-0099", "--user", "bidji29", "--text", "Le conseil note aussi.")
         self.commit()
@@ -9000,7 +9000,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.self_service("gaspard", "note")
 
-    # --- (3) Propositions de règle : T4 ---
+    # --- (3) Rule proposals: T4 ---
 
     def test_T4_backdated_proposal_and_prefilled_result(self):
         self.branch("t4")
@@ -9016,10 +9016,10 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit("telle que l'écrit bee propose")
         self.self_service("gaspard", "proposal")
         self.merge("t4")
-        self.ok("vote", "P-0001", "--user", "alice", "--value", "1")  # le vote est ouvert
+        self.ok("vote", "P-0001", "--user", "alice", "--value", "1")  # the vote is open
         git(self.dir, "checkout", "-q", "--", ".")
         git(self.dir, "clean", "-qfd")
-        # Ensuite, seul le conseil écrit son issue.
+        # Then only the council writes its outcome.
         self.branch("outcome")
         bee.write_yaml(path, {**honest_one, "status": "adopted", "result": "adoptée"})
         self.commit()
@@ -9027,7 +9027,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 3, text)
 
-    # --- (4) Fichiers du libre-service : T7, T8 ---
+    # --- (4) Self-service files: T7, T8 ---
 
     def test_T7_free_file_under_members(self):
         self.branch("t7")
@@ -9039,7 +9039,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         text = self.refused("gaspard", "members/gaspard.md: unexpected file in members/: only the files members/<login>.yaml")
         for name in ("gaspard.html", "gaspard:", "gaspard.yml", "under_it/gaspard.yaml"):
             self.assertIn(f"members/{name}", text)
-        # Le bon nom, mais pas un objet YAML : refusé aussi.
+        # The right name, but not a YAML object: refused too.
         self.branch("list_of")
         (self.dir / "members/zoe.yaml").write_text("- login: zoe\n", encoding="utf-8")
         self.commit()
@@ -9056,18 +9056,18 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.refused("gaspard", "proposals/essai-equipe-rouge.bin: unexpected file in proposals/",
                      "proposals/P-0001.yaml: unreadable file", "votes/miniz-0099-c1/gaspard.txt: unexpected file in votes/")
 
-    # --- (6) Agora : T9, T10 ---
+    # --- (6) Agora: T9, T10 ---
 
     def test_T9_drowning_the_agora_in_several_debates(self):
         self.open_debates(8)
         self.branch("t9")
         self.a("2026-10-29T22:10:00Z")
-        for number_of in range(1, 5):  # 5 arguments dans chacun de 4 débats : 20, sous le plafond par débat et par PR
+        for number_of in range(1, 5):  # 5 arguments in each of 4 debates: 20, under the per-debate and per-PR caps
             self.arguments_by_hand(f"D-{number_of:04d}", 5)
         self.commit()
         self.refused("gaspard", "cap: gaspard would have 20 arguments in 24 h across all debates",
                      "at most 15 per user over a rolling 24 h (agora.arguments_max_per_24h_all_debates)")
-        # Honnête : 15 arguments, 3 dans chacun de 5 débats ; le 16e est refusé, par l'outil comme par verifier-pr.
+        # Honest: 15 arguments, 3 in each of 5 debates; the 16th is refused, by the tool as by check-pr.
         self.branch("quinze")
         for number_of in range(1, 6):
             for k in range(3):
@@ -9099,7 +9099,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.refused("gaspard", "cap: gaspard would have 6 arguments in 24 h in this debate")
 
-    # --- (5) R7 : T13 ---
+    # --- (5) R7: T13 ---
 
     def test_T13_release_then_take_again_does_not_renew_the_reservation(self):
         self.a("2026-10-29T23:06:33Z")
@@ -9109,13 +9109,13 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.a("2026-10-29T23:06:54Z")
         self.ko("R7: gaspard left this task without a contribution on 2026-10-29T23:06:45Z", "take", "miniz-0099",
                 "--user", "gaspard")
-        # Écrite à la main, la reprise est refusée par verifier-pr, qui lit la libération dans l'historique de main.
+        # Written by hand, the retake is refused by check-pr, which reads the release in main's history.
         self.branch("t13")
         bee.modify_task(self.task_path(), status="reserved", reservation={"user": "gaspard", "since": "2026-10-29T23:06:54Z"})
         self.commit()
         self.refused("gaspard", "R7: gaspard left this task without a contribution on 2026-10-29T23:06:45Z",
                      "they do not take it back before 2026-10-30T23:06:45Z")
-        # Un autre la prend aussitôt ; gaspard, 24 h après sa libération.
+        # Someone else takes it at once; gaspard, 24 h after his release.
         self.branch("bruno")
         self.ok("take", "miniz-0099", "--user", "bruno")
         self.commit()
@@ -9124,7 +9124,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.take_and_merge("gaspard")
 
     def test_R7_expiry_parallel_withdrawal_and_submission(self):
-        # Expiration constatée par le robot : pas de reprise avant 24 h.
+        # Expiry recorded by the robot: no retake before 24 h.
         self.a("2026-10-26T10:00:00Z")
         self.take_and_merge("gaspard")
         self.a("2026-10-29T11:00:00Z")
@@ -9133,7 +9133,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.a("2026-10-29T12:00:00Z")
         self.ko("R7: gaspard left this task without a contribution on 2026-10-29T11:00:00Z", "take", "miniz-0099",
                 "--user", "gaspard")
-        # Retrait d'une inscription en parallèle : pas de réinscription avant 24 h.
+        # Withdrawal of a parallel registration: no new registration before 24 h.
         self.take_and_merge("alice", "miniz-9001")
         self.take_and_merge("gaspard", "miniz-9001", "--parallel")
         self.a("2026-10-29T12:30:00Z")
@@ -9145,8 +9145,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.assertEqual(t.get("parallel"), None)
         self.commit()
         self.refused("gaspard", "R7: gaspard left this task without a contribution on 2026-10-29T12:30:00Z")
-        # Une réservation finie par une soumission n'est pas une libération ; mais si la contribution est close sans
-        # intégration, c'en est une (revue adverse, I1) : l'auteur ne reprend la tâche rouverte que 24 h après la clôture.
+        # A reservation ended by a submission is not a release; but if the contribution is closed without integration, it is one
+        # (adversarial review, I1): the author retakes the reopened task only 24 h after the closing.
         self.take_and_merge("bruno", "miniz-0099")
         self.branch("submission")
         self.ok("submit", "miniz-0099", "--user", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99301")
@@ -9161,11 +9161,11 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.a("2026-10-30T12:31:00Z")
         self.take_and_merge("bruno", "miniz-0099")
 
-    # --- (7) Cap et essaim : un geste compte à la date de sa fusion (T3, T2) ---
+    # --- (7) Balance and swarm: a gesture counts at the date of its merge (T3, T2) ---
 
     def test_balance_and_swarm_date_the_gestures_by_their_merge(self):
-        # Publiées sur main avant ces contrôles : 40 notes antidatées de 10 jours (T3), puis 3 datées de 2099 (T2), puis une
-        # vraie note d'alice.
+        # Published on main before these checks: 40 notes backdated by 10 days (T3), then 3 dated 2099 (T2), then a real note by
+        # alice.
         self.note_by_hand(*({"at": f"2026-10-19T22:{n:02d}:00Z"} for n in range(40)))
         self.commit("T3", when_at="2026-10-29T22:00:00Z")
         self.note_by_hand(*({"at": f"2099-01-01T00:{n:02d}:00Z"} for n in range(3)))
@@ -9174,21 +9174,21 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit("note d'alice", when_at="2026-10-29T23:00:00Z")
         self.a("2026-10-30T00:00:00Z")
         notes = lambda state: {l["area"]: l["gestures"] for l in state["areas"]}["coordination"].get("notes", 0)  # noqa: E731
-        # gaspard pèse au plus 6 en coordination ce jour-là (cap.poids_max_par_utilisateur_et_jour) ; alice, 0,5.
+        # gaspard weighs at most 6 in coordination that day (balance.max_weight_per_user_per_day); alice, 0.5.
         self.assertEqual(notes(json.loads(self.ok("balance", "--json"))), 6 + 0.5)
         swarm = json.loads(self.ok("swarm", "--json"))["notes"]
         self.assertEqual((swarm[0]["by"], swarm[0]["merged_at"]), ("alice", "2026-10-29T23:00:00Z"),
                          "the note merged last comes first, not those dated 2099")
         self.assertEqual([n["merged_at"] for n in swarm[1:4]], ["2026-10-29T22:30:00Z"] * 3)
         self.assertTrue(all(n["at"].startswith("2026-10-19") for n in swarm[4:]), "the backdated notes show in bee swarm")
-        # Dix jours après leur fusion, elles sortent de l'essaim (7 jours) et comptent encore au cap (14 jours) ; quinze jours
-        # après, plus du tout, même datées de 2099.
+        # Ten days after their merge, they leave the swarm (7 days) and still count in the balance (14 days); fifteen days after,
+        # not at all, even dated 2099.
         self.a("2026-11-08T00:00:00Z")
         self.assertEqual(json.loads(self.ok("swarm", "--json"))["notes"], [])
         self.assertEqual(notes(json.loads(self.ok("balance", "--json"))), 6 + 0.5)
         self.a("2026-11-14T00:00:00Z")
         self.assertEqual(notes(json.loads(self.ok("balance", "--json"))), 0)
-        # Un geste pas encore publié (dans le clone) compte à sa date déclarée.
+        # A gesture not yet published (in the clone) counts at its declared date.
         self.ok("note", "miniz-0099", "--user", "alice", "--text", "Pas encore publiée.")
         self.assertEqual(notes(json.loads(self.ok("balance", "--json"))), 0.5)
 
@@ -9204,10 +9204,10 @@ class TestDressRehearsal(BaseDressRehearsal):
 
 
 class TestAdversarialReviewRuche0011(BaseDressRehearsal):
-    """Revue adverse de ruche-0011 (B1, I1, I2, m1, m2, m4) : chaque constat est rejoué et refusé."""
+    """Adversarial review of ruche-0011 (B1, I1, I2, m1, m2, m4): each finding is replayed and refused."""
 
     def raw_tasks(self, number, who_is="gaspard"):
-        """Des tâches proposées écrites à la main, aux numéros qui suivent, comme le ferait bee propose-task."""
+        """Proposed tasks written by hand, with the following numbers, as bee propose-task would."""
         number_of = bee.next_number([int(p.stem.split("-")[1]) for p in (self.dir / "tasks/miniz").glob("miniz-*.yaml")])
         for n in range(number_of, number_of + number):
             tid = f"miniz-{n:04d}"
@@ -9217,7 +9217,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
                      .replace('created_on: "2026-10-27"', f'created_on: "{os.environ["BEE_NOW"][:10]}"'))
             self.task_path(tid).write_text(text, encoding="utf-8")
 
-    # --- B1 : une seule PR, ou un seul utilisateur, ne prend plus tous les numéros ni ne fait basculer le cap ---
+    # --- B1: a single PR, or a single user, no longer takes all the numbers or tips the balance ---
 
     def test_B1_proposals_capped_per_pr_and_over_24_h(self):
         self.branch("remplissage")
@@ -9225,7 +9225,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
             self.proposal(f"P-{n:04d}")
         self.commit()
         self.refused("gaspard", "cap: 20 rule proposals added by this PR, at most 3 (creations.proposals_max_per_pr)")
-        # Honnête : 3 puis 2, fusionnées ; la 6e en 24 h est refusée, par l'outil comme par verifier-pr.
+        # Honest: 3 then 2, merged; the 6th in 24 h is refused, by the tool as by check-pr.
         for lot, numbers_of in (("trois", range(1, 4)), ("deux", range(4, 6))):
             self.branch(lot)
             for n in numbers_of:
@@ -9239,11 +9239,11 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.proposal("P-0006")
         self.commit()
         self.refused("gaspard", "cap: gaspard would have 6 rule proposals over a rolling 24 h, at most 5")
-        self.a("2026-10-30T22:01:00Z")  # 24 h après les cinq premières, une place se libère
+        self.a("2026-10-30T22:01:00Z")  # 24 h after the first five, a slot frees up
         self.proposal("P-0006")
         self.commit("le lendemain")
         self.self_service("gaspard", "proposal")
-        # Le conseil n'est pas plafonné.
+        # The council is not capped.
         self.branch("council")
         for n in range(6, 10):
             self.proposal(f"P-{n:04d}", author="bidji29")
@@ -9270,7 +9270,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.refused("gaspard", "cap: gaspard would have 6 proposed tasks over a rolling 24 h, at most 5")
 
     def test_B1_one_user_does_not_tip_the_balance(self):
-        # 30 tâches proposées par gaspard, publiées sur main avant ces plafonds, et une seule d'alice, le même jour.
+        # 30 tasks proposed by gaspard, published on main before these caps, and a single one by alice, the same day.
         self.raw_tasks(30)
         self.raw_tasks(1, who_is="alice")
         self.commit("tâches en masse", when_at="2026-10-29T22:00:00Z")
@@ -9279,7 +9279,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.assertEqual(state["governance"].get("tasks created or proposed"), 6 + 1,
                          "gaspard weighs at most 6 in the area that day (balance.max_weight_per_user_per_day), alice 1")
 
-    # --- I1 : une soumission close sans intégration est une fin d'engagement pour R7 ---
+    # --- I1: a submission closed without integration is an end of engagement for R7 ---
 
     def test_I1_closed_submission_does_not_renew_the_reservation(self):
         self.a("2026-10-29T23:00:00Z")
@@ -9303,7 +9303,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.a("2026-10-30T23:41:00Z")
         self.take_and_merge("gaspard")
 
-    # --- I2 : les champs libres d'une tâche proposée sont courts ---
+    # --- I2: the free fields of a proposed task are short ---
 
     def test_I2_fields_of_a_proposed_task_capped(self):
         self.branch("gros")
@@ -9320,7 +9320,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
                      "files: 31 items, at most 30 (creations.files_max)",
                      "depends_on: 11 tasks, at most 10")
 
-    # --- m1 : votes, relectures et mesures datés de l'heure de la PR ; sans historique, une date future ne compte pas ---
+    # --- m1: votes, reviews and measurements dated at the time of the PR; without history, a future date does not count ---
 
     def alice_s_contribution_on_main(self):
         self.take_and_merge("alice")
@@ -9331,8 +9331,8 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         return "miniz-0099-c1"
 
     def test_round2_free_fields_bounded_summary_measurement_profile(self):
-        """Revue adverse du tour 2 : le résumé d'une soumission, la description de la machine d'une mesure et les catégories
-        d'un profil passaient en libre-service, longs de milliers de caractères et avec U+202E."""
+        """Adversarial review of round 2: a submission's summary, a measurement's machine description and a profile's categories
+        went through as self-service, thousands of characters long and with U+202E."""
         cid = self.alice_s_contribution_on_main()
         now_instant = os.environ["BEE_NOW"]
         measurement = {"contribution": cid, "submitted_by": "gaspard", "at": now_instant, "base": "2948eeb", "candidate": "839b676",
@@ -9358,7 +9358,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
                 bee.write_yaml(path, {**entry_card, "preferred_categories": categories})
                 self.commit()
                 self.refused("gaspard", expected)
-        # Le résumé d'une soumission : refusé par bee soumettre, et par verifier-pr s'il est écrit à la main.
+        # A submission's summary: refused by bee submit, and by check-pr if it is written by hand.
         self.branch("summary")
         self.ok("take", "miniz-9001", "--user", "gaspard")
         self.commit()
@@ -9387,7 +9387,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.refused("gaspard", f"votes/{cid}/gaspard.yaml: at (2099-01-01T00:00:00Z) must be the time of the PR",
                      f"review by gaspard, at (2099-01-01T00:00:00Z) must be the time of the PR",
                      f"measurements/{cid}/gaspard.yaml: at (2026-10-01T00:00:00Z) must be the time of the PR")
-        # Les mêmes gestes, écrits par l'outil : en libre-service.
+        # The same gestures, written by the tool: self-service.
         self.branch("honnete")
         self.ok("vote", cid, "--user", "gaspard", "--value", "1")
         self.ok("review", cid, *self.read_value(cid), "--user", "gaspard", "--opinion", "favorable", "--reason", "Relue aujourd'hui.")
@@ -9396,7 +9396,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
 
     def test_m1_shallow_clone_ignores_a_future_date(self):
         cid = self.alice_s_contribution_on_main()
-        # Publié sur main avant ce contrôle : un vote daté de 2099.
+        # Published on main before this check: a vote dated 2099.
         bee.write_yaml(self.dir / f"votes/{cid}/gaspard.yaml", {"voter": "gaspard", "subject": cid, "value": 1, "at": "2099-01-01T00:00:00Z"})
         self.commit("vote de 2099 sur main")
         self.a("2026-12-31T12:00:00Z")
@@ -9412,7 +9412,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         step = next(s for s in stream["jobs"]["build"]["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
         self.assertEqual((step.get("with") or {}).get("fetch-depth"), 0)
 
-    # --- m2 : sans historique, verifier-pr refuse une réservation ou une inscription en parallèle (échec fermé) ---
+    # --- m2: without history, check-pr refuses a reservation or a parallel registration (fail closed) ---
 
     def test_m2_without_history_reservation_refused(self):
         clone = self.dir.parent / "superficiel"
@@ -9426,7 +9426,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.assertIn("main's git history is unavailable", text)
         self.assertIn("fail closed", text)
 
-    # --- m4 : la confiance C du score ne compte pas les relectures des Nouveaux ---
+    # --- m4: the score's confidence C does not count the reviews of New members ---
 
     def test_m4_the_trust_does_not_count_the_newcomers(self):
         reg = bee.Registry(self.dir)
@@ -9438,8 +9438,8 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
 
 
 class TestBalanceWithoutHistory(BaseTest):
-    """Sans historique git, un geste compte à sa date déclarée, et pas du tout si elle est dans le futur (revue adverse, m1) ;
-    l'essaim ignore de même une date future."""
+    """Without git history, a gesture counts at its declared date, and not at all if that date is in the future (adversarial
+    review, m1); the swarm likewise ignores a future date."""
 
     def test_future_date_ignored(self):
         os.environ["BEE_NOW"] = "2027-06-01T12:00:00Z"
@@ -9454,7 +9454,7 @@ class TestBalanceWithoutHistory(BaseTest):
 
 
 class TestReviewsByNewcomers(BaseParallel):
-    """docs/reputation.md : la relecture d'un Nouveau est enregistrée mais ne compte pas pour R3 (répétition générale, F12)."""
+    """docs/reputation.md: a New member's review is recorded but does not count for R3 (dress rehearsal, F12)."""
 
     def chloe_s_contribution(self):
         self.close_gate()
@@ -9498,8 +9498,8 @@ class TestReviewsByNewcomers(BaseParallel):
         self.assertEqual(code, 0, text)
 
     def test_council_contribution_when_the_others_are_newcomers(self):
-        """Amorçage : le seuil se plafonne aux relecteurs dont l'avis compte ; si les autres membres sont tous Nouveaux, une
-        contribution du conseil n'attend aucune relecture, comme aujourd'hui (leurs relectures restent enregistrées)."""
+        """Bootstrap: the threshold is capped at the reviewers whose opinion counts; if the other members are all New, a
+        contribution of the council waits for no review, as today (their reviews remain recorded)."""
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "bidji29")[0], 0)
         cid = self.submit("miniz-0099", "bidji29", 99202)
         self.verdict(cid, 0.05)
@@ -9510,9 +9510,9 @@ class TestReviewsByNewcomers(BaseParallel):
 
 
 class TestReviewByCommit(BaseParallel):
-    """ruche-0012 (répétitions générales des 29 et 30/10) : une relecture par relecteur et par commit jugé ; avant le verdict,
-    avertie et non comptée ; le gardien relit le correctif qu'il a demandé ; l'abstention ne compte ni pour ni contre.
-    Ces tests remplacent l'ancien refus « a déjà relu » quel que soit le commit."""
+    """ruche-0012 (dress rehearsals of 29 and 30 Oct): one review per reviewer and per judged commit; before the verdict,
+    warned and not counted; the guardian reviews the fix he asked for; an abstention counts neither for nor against.
+    These tests replace the former refusal « a déjà relu » whatever the commit."""
 
     def setUp(self):
         super().setUp()
@@ -9539,7 +9539,7 @@ class TestReviewByCommit(BaseParallel):
         return text
 
     def council_and_window(self):
-        """Le conseil vote et relit favorablement le commit jugé ; la fenêtre de R3 est écoulée."""
+        """The council votes and reviews the judged commit favorably; R3's window has elapsed."""
         self.ok_("vote", self.cid, "--user", "bidji29", "--value", "1")
         self.a("2026-10-29T12:00:00Z")
         self.review_("bidji29", "favorable")
@@ -9572,7 +9572,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn("unfavorable review by bruno", text)
         self.assertIn("at commit abc1234, and it is their most recent review", self.review_("bruno", "favorable", expected=1))
-        self.verdict_at("def5678")  # le correctif demandé : le défavorable du gardien tient jusqu'à sa relecture
+        self.verdict_at("def5678")  # the fix asked for: the guardian's unfavorable holds until his review
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("0 favorable review(s) of 2 required; 1 review(s) concern an earlier", text)
@@ -9592,11 +9592,11 @@ class TestReviewByCommit(BaseParallel):
 
     def contributors_chloe_and_david(self):
         self.ok_("register", "--login", "david", "--account-created-on", "2020-01-01")
-        self.contributors("chloe", "david")  # leurs avis comptent pour R3 : 2 relectures favorables requises, vote net 2
+        self.contributors("chloe", "david")  # their opinions count for R3: 2 favorable reviews required, net vote 2
 
     def test_return_to_an_old_commit(self):
-        """Revue adverse (A1) : l'auteur remet sa PR sur un commit X déjà approuvé ; le défaut confirmé et le défavorable du
-        gardien posés sur Y tiennent (plus récents), et le gardien peut relire X (X, Y, puis X)."""
+        """Adversarial review (A1): the author puts the PR back on a commit X already approved; the confirmed defect and the
+        guardian's unfavorable placed on Y hold (more recent), and the guardian can review X (X, Y, then X)."""
         self.contributors_chloe_and_david()
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "favorable")
@@ -9608,7 +9608,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("david", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "david", "--user", "bruno")
         self.review_("bruno", "unfavorable")
-        self.verdict_at("aaaaaaa")  # retour à X
+        self.verdict_at("aaaaaaa")  # back to X
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("a confirmed defect remains to be resolved (reported by david", text)
@@ -9616,15 +9616,15 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn("1 favorable review(s) of 2 required", text, "only chloe's most recent review is a favorable one of X")
         self.assertIn("For R3, it replaces your previous review (bbbbbbb)", self.review_("bruno", "unfavorable"))
         self.valid_one()
-        self.verdict_at("ccccccc")  # le vrai correctif
+        self.verdict_at("ccccccc")  # the real fix
         for who_is in ("david", "bruno", "chloe"):
             self.review_(who_is, "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
 
     def test_return_to_a_commit_refused_by_the_guardian(self):
-        """Revue adverse (A1b) : le gardien a refusé X, approuvé Y ; l'auteur revient à X : son refus de X tient jusqu'à ce qu'il
-        relise X."""
+        """Adversarial review (A1b): the guardian refused X, approved Y; the author goes back to X: his refusal of X holds until
+        he reviews X."""
         self.contributors_chloe_and_david()
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "unfavorable")
@@ -9639,13 +9639,13 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("unfavorable review by bruno", text)
-        self.review_("bruno", "favorable")  # il relit X : le refus est levé, par lui
+        self.review_("bruno", "favorable")  # he reviews X: the refusal is lifted, by him
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
 
     def test_an_empty_commit_does_not_drop_the_guardian_s_unfavorable(self):
-        """Revue adverse (A2) : porte levée ; le gardien refuse X ; un commit vide Y ne fait pas tomber son refus, sa relecture de
-        Y le fait."""
+        """Adversarial review (A2): gate lifted; the guardian refuses X; an empty commit Y does not drop his refusal, his review
+        of Y does."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -9669,7 +9669,7 @@ class TestReviewByCommit(BaseParallel):
         self.ok_("vote", self.cid, "--user", "chloe", "--value", "1")
         self.council_and_window()
         self.assertIn("not by an abstention", self.review_("bruno", "abstention", "--defect", expected=1))
-        self.assertIn("Abstention: neither for nor against", self.review_("bruno", "abstention"))  # le gardien, en conflit d'intérêts
+        self.assertIn("Abstention: neither for nor against", self.review_("bruno", "abstention"))  # the guardian, in a conflict of interest
         self.review_("david", "abstention")
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
@@ -9677,7 +9677,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn("2 favorable review(s) of this commit for 2 required", text, "nor for: the threshold does not drop")
         rec, reg = self.rec(self.cid), bee.Registry(self.dir)
         self.assertAlmostEqual(bee.compute_score(reg, rec, bee.compute_levels(reg))["C"], 2 / 3, msg="bidji29 et chloe seulement")
-        # Sans la relecture du conseil, le gardien qui s'abstient n'ouvre pas la porte, et l'abstention ne remplace aucune favorable.
+        # Without the council's review, the guardian who abstains does not open the gate, and the abstention replaces no favorable one.
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         bee.write_yaml(path, {**rec, "reviews": [r for r in rec["reviews"] if r["reviewer"] != "bidji29"]})
         code, text = self.acceptance(self.cid)
@@ -9696,7 +9696,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "favorable")
         self.verdict_at("bbbbbbb")
         self.review_("bidji29", "favorable")
-        self.review_("chloe", "abstention")  # elle ne peut plus juger : sa favorable de X ne vaut plus rien, sur aucun commit
+        self.review_("chloe", "abstention")  # she can no longer judge: her favorable on X is worth nothing any more, on any commit
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
@@ -9709,7 +9709,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "chloe", "--user", "bruno")
         self.assertIn("a confirmed defect remains to be resolved", self.acceptance(self.cid)[1])
-        self.review_("chloe", "favorable", expected=1)  # même commit : sa relecture, et son défaut, restent
+        self.review_("chloe", "favorable", expected=1)  # same commit: her review, and her defect, remain
         self.verdict_at("def5678")
         self.review_("bruno", "favorable")
         self.review_("bidji29", "favorable")
@@ -9726,12 +9726,12 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(bee.compute_levels(bee.Registry(self.dir))["chloe"]["reviews"], 2, "+2 once, not +3")
 
     def test_points_only_on_the_decided_commit(self):
-        """Revue adverse (P1) : une relecture que R3 n'a pas comptée (sans commit, ou sur un autre commit) ne rapporte rien."""
+        """Adversarial review (P1): a review that R3 did not count (without a commit, or on another commit) earns nothing."""
         self.contributors_chloe_and_david()
         self.close_gate()
-        self.review_("chloe", "favorable")  # sans commit
+        self.review_("chloe", "favorable")  # without a commit
         self.verdict_at("aaaaaaa")
-        self.review_("david", "favorable")  # sur X, jamais relu ensuite
+        self.review_("david", "favorable")  # on X, never reviewed afterwards
         self.verdict_at("bbbbbbb")
         self.review_("bruno", "favorable")
         self.review_("bidji29", "favorable")
@@ -9746,11 +9746,11 @@ class TestReviewByCommit(BaseParallel):
                          {"chloe": 0, "david": 0, "bruno": 1, "bidji29": 1})
 
     def test_trust_and_swarm_count_as_r3(self):
-        """Revue adverse (P4, D1) : la confiance C du score, bee swarm et le site ne comptent que ce que R3 compte."""
+        """Adversarial review (P4, D1): the score's confidence C, bee swarm and the site count only what R3 counts."""
         self.contributors_chloe_and_david()
-        self.review_("chloe", "favorable")  # sans commit
+        self.review_("chloe", "favorable")  # without a commit
         self.verdict_at("aaaaaaa")
-        self.review_("david", "favorable")  # périmée au commit suivant
+        self.review_("david", "favorable")  # stale at the next commit
         self.verdict_at("bbbbbbb")
         self.review_("bruno", "favorable")
         reg = bee.Registry(self.dir)
@@ -9762,7 +9762,7 @@ class TestReviewByCommit(BaseParallel):
         self.ok_("site", "--output", str(site))
         self.assertIn(">1 (3)</td>", (site / "index.html").read_text(encoding="utf-8"))
 
-    # --- Deuxième revue adverse (R1 à R5, D2, V1) : un test par constat ---
+    # --- Second adversarial review (R1 to R5, D2, V1): one test per finding ---
 
     def four_contributors(self):
         for login in ("david", "eve", "farid"):
@@ -9770,8 +9770,8 @@ class TestReviewByCommit(BaseParallel):
         self.contributors("chloe", "david", "eve", "farid")
 
     def test_balance_on_return_to_a_refused_commit(self):
-        """R1 : X, chloe et david pour, eve et farid contre ; eve et farid approuvent le correctif Y ; l'auteur revient à X : leurs
-        refus de X comptent encore dans la balance, jusqu'à ce qu'ils relisent X."""
+        """R1: X, chloe and david for, eve and farid against; eve and farid approve the fix Y; the author goes back to X: their
+        refusals of X still count in the balance, until they review X."""
         self.four_contributors()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -9788,14 +9788,14 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("2 unfavorable review(s) against 2 favorable", text)
-        self.review_("eve", "favorable")  # elle relit X : son refus de X est levé, par elle
+        self.review_("eve", "favorable")  # she reviews X: her refusal of X is lifted, by her
         self.review_("farid", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
 
     def test_an_inadmissible_opinion_brings_nothing_back(self):
-        """R3, R5 : la plus récente relecture d'un concurrent, si elle n'est pas recevable (abstention), ne compte pas, et ne fait
-        pas revenir une plus ancienne (ni une favorable, ni un défaut levé). Et qui a signalé un défaut n'entre plus en course."""
+        """R3, R5: a competitor's most recent review, if it is not admissible (abstention), does not count, and does not bring
+        back an older one (neither a favorable one, nor a lifted defect). And whoever reported a defect no longer enters the race."""
         self.four_contributors()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -9813,7 +9813,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(self.acceptance(self.cid)[0], 0)
         self.parallel_one("miniz-0099", "chloe")
         self.assertIn("reported or confirmed a defect", self.parallel_one("miniz-0099", "david", expected=1), "signaler est juger")
-        # Écrit hors de l'outil : david en course malgré tout. Son abstention n'est pas recevable ; son défaut de X ne revient pas.
+        # Written outside the tool: david in the race anyway. His abstention is not admissible; his defect on X does not come back.
         task_path = self.dir / "tasks/miniz/miniz-0099.yaml"
         bee.modify_task(task_path, parallel=self.task("miniz-0099")["parallel"]
                            + [{"user": "david", "since": "2026-10-29T12:00:00Z"}])
@@ -9826,8 +9826,8 @@ class TestReviewByCommit(BaseParallel):
                          "in the race, chloe's abstention does not restore her favorable review of X; X's defect, for its part, is on X")
 
     def test_resubmit_or_amend_erases_neither_refusal_nor_defect(self):
-        """R2, C3 : le gardien refuse X, avec un défaut confirmé, sur c1 ; l'auteur ferme sa PR et soumet X sous c2, puis un
-        commit amendé (même arbre, autre sha) : le refus suit le fil (même auteur, même tâche), quel que soit le commit."""
+        """R2, C3: the guardian refuses X, with a confirmed defect, on c1; the author closes the PR and submits X under c2, then
+        an amended commit (same tree, another sha): the refusal follows the thread (same author, same task), whatever the commit."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -9845,17 +9845,18 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
-        self.verdict_at("aaaaaab")  # amendé : même contenu, autre sha
+        self.verdict_at("aaaaaab")  # amended: same content, another sha
         self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", self.acceptance(self.cid)[1])
         self.review_("chloe", "favorable")
         self.review_("david", "favorable")
-        self.review_("bruno", "favorable")  # le gardien relit sous c2 : son refus est levé, par lui
+        self.review_("bruno", "favorable")  # the guardian reviews under c2: his refusal is lifted, by him
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
 
     def test_the_copy_of_another_author_does_not_block_the_original(self):
-        """C2, C2b : farid, inscrit en parallèle, soumet le même commit qu'alice ; le gardien refuse la copie. Le fil d'alice
-        (même auteur, même tâche) n'en est pas touché : son original reste intégrable, sans que le gardien ait à le relire."""
+        """C2, C2b: farid, registered in parallel, submits the same commit as alice; the guardian refuses the copy. alice's
+        thread (same author, same task) is not touched by it: her original stays integrable, without the guardian having to
+        review it."""
         self.contributors_chloe_and_david()
         self.ok_("register", "--login", "farid", "--account-created-on", "2020-01-01")
         self.close_gate()
@@ -9869,15 +9870,15 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-28T14:00:00Z")
         original, self.cid = self.cid, self.submit("miniz-0099", "farid", 99404)
         self.verdict_at("aaaaaaa")
-        self.review_("bruno", "unfavorable")  # « copie du commit d'alice »
+        self.review_("bruno", "unfavorable")  # « a copy of alice's commit »
         self.a("2026-11-05T12:00:00Z")
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         code, text = self.acceptance(original)
         self.assertEqual(code, 0, text)
 
     def test_same_commit_under_another_task(self):
-        """C1 : une tâche, un fil. Le refus de X sous miniz-0099 ne suit pas X sous une autre tâche (décision de l'architecte) ;
-        il est jugé à nouveau, par ses propres relecteurs."""
+        """C1: one task, one thread. The refusal of X under miniz-0099 does not follow X under another task (the architect's
+        decision); it is judged again, by its own reviewers."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -9894,10 +9895,10 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
-        self.review_("bruno", "unfavorable")  # il le refuse sous cette tâche aussi : cela bloque, ici
+        self.review_("bruno", "unfavorable")  # he refuses it under this task too: that blocks, here
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
-    # --- Quatrième revue adverse (F1, F2, B1, D1, D2, P1) : un test par décision ---
+    # --- Fourth adversarial review (F1, F2, B1, D1, D2, P1): one test per decision ---
 
     def confirmed_refusal_from_x(self, sha="aaaaaaa", tree=None):
         self.contributors_chloe_and_david()
@@ -9913,10 +9914,10 @@ class TestReviewByCommit(BaseParallel):
             self.ok_("vote", self.cid, "--user", voter, "--value", "1")
 
     def test_the_identity_ignores_the_case(self):
-        """F1, P1 : « Alice » est le login d'alice ; elle ne s'inscrit pas une seconde fois, et si la fiche existe malgré tout, son
-        fil, ses engagements (R8) et ses jugements (qui a jugé une course) sont ceux d'alice."""
+        """F1, P1: « Alice » is alice's login; she does not register a second time, and if the record exists anyway, its
+        thread, its engagements (R8) and its judgments (who has judged a race) are alice's."""
         self.assertIn("already registered (as « alice »", self.bee("register", "--login", "Alice", "--account-created-on", "2020-01-01")[1])
-        for login in ("ſam", "\u212aim", "a" * 40, "-alice"):  # s long, signe Kelvin : le motif d'un login, avant toute comparaison
+        for login in ("ſam", "\u212aim", "a" * 40, "-alice"):  # long s, Kelvin sign: the pattern of a login, before any comparison
             self.assertIn("invalid login", self.bee("register", f"--login={login}", "--account-created-on", "2020-01-01")[1], login)
         self.assertFalse(bee.same_login(None, None))
         self.confirmed_refusal_from_x()
@@ -9938,10 +9939,10 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
 
     def test_a_content_refused_elsewhere_is_reported_without_blocking(self):
-        """Cinquième revue adverse (B1, B1b, B2, E1, E2) : un refus posé sur un contenu dans une autre contribution de la tâche
-        n'est pas un blocage (le contenu d'une contribution change à chaque commit poussé : tout ordre entre contributions
-        bloquait l'original ou libérait la copie) ; c'est une alerte, là où ce contenu est jugé ailleurs : check-acceptance,
-        classement et bee show. Levée par une relecture plus récente du même relecteur sur ce contenu."""
+        """Fifth adversarial review (B1, B1b, B2, E1, E2): a refusal placed on a content in another contribution of the task
+        is not a block (a contribution's content changes with each pushed commit: any order between contributions blocked the
+        original or freed the copy); it is an alert, where that content is judged elsewhere: check-acceptance, ranking and bee
+        show. Lifted by a more recent review by the same reviewer on that content."""
         self.confirmed_refusal_from_x(tree="7ee0001")
         self.ok_("register", "--login", "farid", "--account-created-on", "2020-01-01")
         original = self.cid
@@ -9949,7 +9950,7 @@ class TestReviewByCommit(BaseParallel):
         self.parallel_one("miniz-0099", "farid")
         self.a("2026-10-27T14:00:00Z")
         self.cid = self.submit("miniz-0099", "farid", 99306)
-        self.verdict_at("aaaaaab", "7ee0001")  # même arbre, autre sha
+        self.verdict_at("aaaaaab", "7ee0001")  # same tree, another sha
         self.have_reviewed_and_voted()
         self.a("2026-11-01T15:00:00Z")
         alert = f"this content was refused by bruno in {original} (same tree, other contribution of the task)"
@@ -9958,22 +9959,22 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn(alert, text)
         self.assertIn(alert, self.ok_("ranking"))
         self.assertIn(f"⚠ {self.cid}: {alert}", self.ok_("show", "miniz-0099"))
-        self.verdict_at("ccccccc", "7ee0002")  # un autre contenu : pas d'alerte
+        self.verdict_at("ccccccc", "7ee0002")  # another content: no alert
         self.assertNotIn("this content was refused", self.acceptance(self.cid)[1])
         self.verdict_at("aaaaaab", "7ee0001")
-        self.review_("bruno", "unfavorable")  # le refus se repose sur la copie : il la bloque, elle
+        self.review_("bruno", "unfavorable")  # the refusal is placed again on the copy: it blocks it, the copy
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         reasons = [l for l in self.acceptance(original)[1].splitlines() if l.startswith("  - ")]
         self.assertFalse([l for l in reasons if self.cid in l], "the copy's refusal never blocks the original (at most, an alert)")
-        self.review_("bruno", "favorable", expected=1)  # pas deux de suite sur le même commit
+        self.review_("bruno", "favorable", expected=1)  # not two in a row on the same commit
         self.verdict_at("ddddddd", "7ee0003")
         self.review_("bruno", "favorable")
         self.verdict_at("aaaaaab", "7ee0001")
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1], "back to the content he refused here")
 
     def test_an_amended_commit_stays_the_refused_content(self):
-        """F2, F2b : le gardien refuse X (défaut confirmé), approuve Y ; l'auteur revient au contenu de X, amendé (X' : même
-        arbre, autre sha), dans la contribution puis sous une nouvelle : le refus et le défaut tiennent."""
+        """F2, F2b: the guardian refuses X (confirmed defect), approves Y; the author goes back to X's content, amended (X':
+        same tree, another sha), in the contribution and then under a new one: the refusal and the defect hold."""
         self.confirmed_refusal_from_x(tree="7ee0001")
         self.verdict_at("bbbbbbb", "7ee0002")
         self.review_("bruno", "favorable")
@@ -9996,7 +9997,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 0, text)
 
     def test_a_lifting_holds_for_the_thread(self):
-        """B1 : le conseil lève le refus du gardien absent sur c1 ; la PR de c1 est fermée ; alice re-soumet : la levée vaut."""
+        """B1: the council lifts the absent guardian's refusal on c1; c1's PR is closed; alice resubmits: the lift holds."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -10016,7 +10017,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 0, text)
 
     def test_validate_does_not_depend_on_the_clock_to_the_second(self):
-        """D1, D2 : une date jusqu'à 2 h dans le futur passe bee validate (horloges décalées, CI rejouée) ; au-delà, refusée."""
+        """D1, D2: a date up to 2 h in the future passes bee validate (clocks out of step, CI replayed); beyond, refused."""
         self.verdict_at("aaaaaaa")
         self.a("2026-10-28T12:00:50Z")
         self.review_("chloe", "favorable")
@@ -10025,7 +10026,7 @@ class TestReviewByCommit(BaseParallel):
             self.valid_one()
         self.a("2026-10-28T09:00:00Z")
         self.assertIn("is in the future", self.bee("validate")[1])
-        # Une levée (jamais en libre-service) n'a que 5 min d'avance : datée dans le futur, elle neutraliserait d'avance.
+        # A lift (never self-service) has only 5 min of leeway: dated in the future, it would neutralize in advance.
         self.a("2026-10-28T13:00:00Z")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         for at, expected in (("2026-10-28T13:04:00Z", 0), ("2026-10-28T13:30:00Z", 1)):
@@ -10034,8 +10035,8 @@ class TestReviewByCommit(BaseParallel):
             self.assertEqual(self.bee("validate")[0], expected, at)
 
     def test_a_lifting_of_the_thread_allows_reviewing(self):
-        """La levée posée sur une autre contribution du fil couvre aussi, pour l'unicité, les relectures levées de celle-ci (comme
-        dans R3) : le gardien peut relire le commit jugé."""
+        """The lift placed on another contribution of the thread also covers, for uniqueness, this one's lifted reviews (as in
+        R3): the guardian can review the judged commit."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.verdict_at("aaaaaaa")
@@ -10054,12 +10055,12 @@ class TestReviewByCommit(BaseParallel):
         self.valid_one()
         self.assertEqual(self.acceptance(self.cid)[0], 0, "the thread's lift holds in R3")
         self.a("2026-10-29T13:00:00Z")
-        self.review_("bruno", "unfavorable")  # et pour l'unicité : il peut relire le commit jugé
+        self.review_("bruno", "unfavorable")  # and for uniqueness: he can review the judged commit
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_forged_or_future_liftings_are_worth_nothing(self):
-        """L1b, L1c : une levée datée du futur, ou écrite par un autre que le conseil, est refusée par bee validate et ne neutralise
-        rien dans R3 ; L2 : après une vraie levée, le gardien peut relire le commit jugé, et sa relecture compte."""
+        """L1b, L1c: a lift dated in the future, or written by anyone but the council, is refused by bee validate and neutralizes
+        nothing in R3; L2: after a real lift, the guardian can review the judged commit, and his review counts."""
         self.contributors_chloe_and_david()
         self.close_gate()
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -10084,14 +10085,14 @@ class TestReviewByCommit(BaseParallel):
         self.valid_one()
         self.assertEqual(self.acceptance(self.cid)[0], 0, "a real council lift: the refusal and the defect no longer weigh")
         self.a("2026-10-29T13:00:00Z")
-        self.review_("bruno", "unfavorable")  # L2 : il relit le commit jugé, malgré sa relecture levée de ce même commit
+        self.review_("bruno", "unfavorable")  # L2: he reviews the judged commit, despite his lifted review of that same commit
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
-        self.review_("bruno", "favorable", expected=1)  # la nouvelle, non levée, est sa plus récente : pas deux de suite
+        self.review_("bruno", "favorable", expected=1)  # the new one, not lifted, is his most recent: not two in a row
         self.valid_one()
 
     def test_council_lifting(self):
-        """D2 : le gardien dit non avant le verdict puis disparaît. Recours : le conseil lève, en motivant (levees), dans une PR
-        relue ; si le gardien relit ensuite, sa relecture compte de nouveau."""
+        """D2: the guardian says no before the verdict and then disappears. Recourse: the council lifts, giving reasons (lifts),
+        in a reviewed PR; if the guardian reviews afterwards, his review counts again."""
         self.contributors_chloe_and_david()
         self.close_gate()
         self.review_("bruno", "unfavorable")
@@ -10113,12 +10114,13 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.a("2026-11-10T13:00:00Z")
-        self.review_("bruno", "unfavorable")  # il revient et relit : son avis compte de nouveau
+        self.review_("bruno", "unfavorable")  # he comes back and reviews: his opinion counts again
         self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_validate_keeps_one_review_per_commit(self):
-        """Poussé sans PR (bee validate, sur main et dans chaque PR) : deux relectures de suite d'un relecteur au même commit, deux
-        sans commit ou une sans commit après une autre, et une abstention qui signale un défaut, sont refusées ; X, Y, X passe."""
+        """Pushed without a PR (bee validate, on main and in each PR): two reviews in a row by one reviewer on the same commit,
+        two without a commit or one without a commit after another, and an abstention that reports a defect, are refused; X, Y,
+        X passes."""
         self.verdict_at("abc1234")
         self.review_("chloe", "favorable")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -10165,8 +10167,8 @@ class TestReviewByCommit(BaseParallel):
 
 
 class TestReviewByCommitPR(BaseDressRehearsal):
-    """ruche-0012, côté bee check-pr (la barrière du libre-service) : chaque détournement des relectures par commit et de la
-    mise à jour du résumé est refusé ; le geste honnête, fait par la commande, passe."""
+    """ruche-0012, on bee check-pr's side (the self-service barrier): each misuse of the reviews by commit and of the
+    summary's update is refused; the honest gesture, made by the command, passes."""
 
     def setUp(self):
         super().setUp()
@@ -10180,7 +10182,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.cid, self.path = "miniz-0099-c1", self.dir / "contributions/miniz/miniz-0099-c1.yaml"
 
     def verdict_on_main(self, sha):
-        """Le robot de la CI écrit un verdict sur main (comme verdicts.yml)."""
+        """The CI's robot writes a verdict on main (as verdicts.yml does)."""
         git(self.dir, "switch", "-q", "main")
         verdict, files = self.dir.parent / "verdict.json", self.dir.parent / "files.txt"
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
@@ -10189,7 +10191,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.commit(f"verdict {sha}")
 
     def gesture(self, who_is, *arguments, natures=("review",)):
-        """Un geste honnête, fait par la commande, publié en libre-service puis fusionné."""
+        """An honest gesture, made by the command, published as self-service and then merged."""
         self.branch("gesture")
         self.ok(*arguments)
         self.commit()
@@ -10203,7 +10205,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         return {"reviewer": who_is, "opinion": opinion, "reason": "Diff du commit relu en entier.", "at": os.environ["BEE_NOW"], **fields}
 
     def attack(self, author, modify, *chunks):
-        """Une PR écrite à la main, depuis main : refusée, puis oubliée."""
+        """A PR written by hand, from main: refused, then forgotten."""
         self.branch("attack")
         try:
             rec = bee.read_yaml(self.path)
@@ -10219,15 +10221,15 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         return lambda rec: rec["reviews"].extend(reviews)
 
     def test_honest_gestures_before_the_verdict_then_at_each_commit(self):
-        self.review("gaspard")  # avant le verdict : sans commit
+        self.review("gaspard")  # before the verdict: without a commit
         self.verdict_on_main("abc1234")
         self.review("gaspard", "unfavorable", "--defect")
         self.review("farid", "abstention")
         self.gesture("bidji29", "confirm-defect", self.cid, "--reviewer", "gaspard", "--user", "bidji29")
-        self.verdict_on_main("def5678")  # le correctif
+        self.verdict_on_main("def5678")  # the fix
         self.review("gaspard")
         self.review("farid")
-        self.verdict_on_main("abc1234")  # retour à un commit déjà relu : X, Y, puis X redevient possible (revue adverse)
+        self.verdict_on_main("abc1234")  # back to a commit already reviewed: X, Y, then X becomes possible again (adversarial review)
         self.review("gaspard", "unfavorable")
         rec = bee.read_yaml(self.path)
         self.assertEqual([(r["reviewer"], r.get("sha"), r["opinion"]) for r in rec["reviews"]],
@@ -10266,14 +10268,14 @@ class TestReviewByCommitPR(BaseDressRehearsal):
             ("farid", self.addition(self.review_record("farid", "neutre", sha="def5678")), "neutre"),
         ]
 
-        def make_younger(rec):  # gaspard fait porter son ancienne relecture sur le commit jugé
+        def make_younger(rec):  # gaspard moves his old review onto the judged commit
             rec["reviews"][1]["sha"] = "def5678"
 
-        def turn_back(rec):  # farid relit, et change au passage l'avis d'une relecture existante
+        def turn_back(rec):  # farid reviews, and on the way changes the opinion of an existing review
             rec["reviews"].append(self.review_record("farid", sha="def5678"))
             rec["reviews"][2]["opinion"] = "unfavorable"
 
-        def confirm_elsewhere(rec):  # la confirmation déplace le défaut sur le commit jugé
+        def confirm_elsewhere(rec):  # the confirmation moves the defect onto the judged commit
             rec["reviews"][1].update(confirmed_defect=True, confirmed_by="bidji29", sha="def5678")
 
         attacks += [("gaspard", make_younger, "append-only"), ("farid", turn_back, "append-only"),
@@ -10297,8 +10299,9 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.review("farid")
 
     def test_liftings_and_registered_accounts(self):
-        """Deuxième revue adverse : une levée est écrite par le conseil seul, en ajout seul, datée de la PR, jamais en libre-service
-        (D2) ; une relecture ou un vote d'un compte non inscrit est refusé (V1) ; qui a signalé un défaut n'entre plus en course."""
+        """Second adversarial review: a lift is written by the council alone, as an addition only, dated at the PR, never as
+        self-service (D2); a review or a vote by an unregistered account is refused (V1); whoever reported a defect no longer
+        enters the race."""
         self.verdict_on_main("abc1234")
         self.review("gaspard", "favorable", "--defect")
         lift = {"reviewer": "gaspard", "reason": "Défaut corrigé, relecteur absent : levée motivée par le conseil.",
