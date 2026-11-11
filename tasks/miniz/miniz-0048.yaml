@@ -28,9 +28,7 @@ out_of_scope:
 - the common judge (outils/juge/ in the registry)
 - COMMANDMENTS.md
 node: projects/lossless-compression/miniz/bee
-status: reserved
-reservation:
-  user: "bidji29"
-  since: "2026-11-11T22:31:03Z"
+status: in_review
+contribution: miniz-0048-c1
 created_by: council
 created_on: '2026-11-02'
