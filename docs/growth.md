@@ -135,9 +135,9 @@ forever; a requested removal removes their data without entering them on it, and
   council does the same when the person asks, at any time, not to be contacted again (`bee invitation withdraw`,
   « withdrawn: request », a dismissal's reason included): this is their request not to be contacted again, distinct from a
   removal of their data (below); they are also entered on the list, unless they accepted.
-  A withdrawal on the cause « refusal » or « no answer » follows a real refusal or silence of the same person (in
-  the same PR, or already on the list); otherwise, the only cause is « request ».
-  **All their invitations** are withdrawn at the same time, whatever their status (expired, set aside, in
+  A withdrawal for the reason « refusal » or « no answer » follows a real refusal or silence of the same person (in
+  the same PR, or already on the list); otherwise, the only reason is « request ».
+  **All their invitations** are withdrawn at the same time, whatever their status (expired, dismissed, in
   progress…), except an accepted invitation: `bee` withdraws every invitation one of whose declared identities is then
   on the list (`withdrawal`, with the same cause). `bee check-pr` requires these withdrawals, and only them;
   `bee validate` refuses a refused or silent file that is not withdrawn, a file withdrawn without a refusal, a silence or
@@ -291,7 +291,7 @@ hexadecimal letters. A technical number passes (a block, thousands, a list, an I
 IP address, `0x…` and shas), except a decimal that follows a phone word or `+`, or starts with 0 then 1 to 9: it
 is read with its number; a hexadecimal word that carries nine digits in a row is not a sha. Outside the hive and in
 the agora, any number stays refused, except `0x…` and shas; an ISO date that no digit touches on its line is
-set aside, and a line break joins two groups only if one already has a separator or if they each have four digits or more. A measurement
+ignored, and a line break joins two groups only if one already has a separator or if they each have four digits or more. A measurement
 carries only the metrics of its project (or their instruction count), and no number of nine digits or more.
 **Question to the council** (ruche-0047): should an invitation's file become public only once a human has
 reviewed it? **The council's answer (2 November 2026)**: the hive will not grow through invitations written by third parties,
