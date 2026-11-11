@@ -107,8 +107,8 @@ def option_value(arguments, option):
 
 def launch(*arguments):
     arguments = list(arguments)
-    # ruche-0022: like the workflows, which read the PR author's number from the API, each login has its number (numero_de) for
-    # bee inscrire and bee verifier-pr, unless the test gives one (--github-id) or none (--github-id=).
+    # ruche-0022: like the workflows, which read the PR author's number from the API, each login has its number (number_from)
+    # for bee register and bee check-pr, unless the test gives one (--github-id) or none (--github-id=).
     for command, option in (("register", "--login"), ("check-pr", "--author")):
         if command in arguments and option_value(arguments, "--github-id") is None and option_value(arguments, option) is not None:
             arguments += ["--github-id", str(number_from(option_value(arguments, option)))]
@@ -460,7 +460,7 @@ class TestCiScope(unittest.TestCase):
     @staticmethod
     def runs(*runs, **fields):
         """A response of actions/workflows/suite.yml/runs, newest first: one dispatched run on main per (commit, status,
-        conclusion[, run_attempt, 1 by default]); `champs` replace fields of every run."""
+        conclusion[, run_attempt, 1 by default]); `fields` replace fields of every run."""
         return json.dumps({"workflow_runs": [{"id": 100 - k, "path": ".github/workflows/suite.yml", "head_branch": "main",
                                               "event": "workflow_dispatch", "display_title": f"Full suite on {commit}",
                                               "head_sha": commit, "status": status, "conclusion": conclusion,
@@ -470,7 +470,7 @@ class TestCiScope(unittest.TestCase):
     @staticmethod
     def runs_now(step, event, reach):
         """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case),
-        `portee` being the output of the event's scope step (ruche-0133: the PR's or the push's), alone or joined by « || »;
+        `reach` being the output of the event's scope step (ruche-0133: the PR's or the push's), alone or joined by « || »;
         any other shape fails the test, to be added here knowingly."""
         condition = step.get("if")
         if condition is None or condition == "always()":  # ruche-0121: the API budget's end step
@@ -494,7 +494,7 @@ class TestCiScope(unittest.TestCase):
                 expected = {id(roles["reach"]): event == "pull_request", id(roles["rules"]): event == "pull_request",
                            id(roles["push"]): event == "push", id(roles["green_value"]): event == "push" and data,
                            id(roles["actual"]): data or event == "push"}  # ruche-0133: the live registry on every push
-                for step in steps:  # every other step, « Validation complète » included, always runs
+                for step in steps:  # every other step, « Full validation of the registry » included, always runs
                     with self.subTest(event=event, reach=output_text, step=step.get("name") or step.get("uses")):
                         self.assertEqual(self.runs_now(step, event, reach), expected.get(id(step), True))
         stream = yaml.safe_load((ROOT / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
@@ -510,7 +510,7 @@ class TestCiScope(unittest.TestCase):
 
     def test_wiring_of_the_jobs(self):
         """ruche-0132: the full suite is suite.yml, called after the checks of a PR unless the scope is data (ruche-0133: and
-        dispatched for a push that is not data only); the required check `valider` always runs and passes only if the checks
+        dispatched for a push that is not data only); the required check `validate` always runs and passes only if the checks
         passed and the suite did, or was skipped for a data-only PR or push, or dispatched for a code push; suite.yml keeps
         the suite's steps, a read-only token and no PR text in a script."""
         read = lambda name: yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))  # noqa: E731
@@ -570,7 +570,7 @@ class TestCiScope(unittest.TestCase):
                                 "GITHUB_REPOSITORY": "Bee-ruche/registre"})
         self.assertNotEqual(r.returncode, 0)
         self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
-        # ruche-0120: fusion-auto reads, with the PRs' validations, each run's creation (TestPasseFusion: the gate gets it).
+        # ruche-0120: auto-merge reads, with the PRs' validations, each run's creation (TestMergePass: the gate gets it).
         step = next(s for s in yaml.safe_load((ROOT / ".github/workflows/auto-merge.yml").read_text(encoding="utf-8"))["jobs"]
                      ["verify"]["steps"] if s.get("name", "").startswith("List the open PRs and their validations (ruche-0120)"))
         self.assertIn("--jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv'", step["run"])
@@ -3463,7 +3463,7 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verify("david", "--account-created-on", "2026-10-20")[0], 1, "declared date ≠ GitHub date")
         self.assertEqual(self.verify("eve")[0], 1, "one registers only in one's own name")
 
-    # --- ruche-0039: the dates of a member file are checked at the time of the PR (BEE_MAINTENANT: 2026-10-27T12:00Z) ---
+    # --- ruche-0039: the dates of a member file are checked at the time of the PR (BEE_NOW: 2026-10-27T12:00Z) ---
 
     def member_pr(self, branch, login="david", **dates):
         """A PR adding members/<login>.yaml in bee register's form, with the given dates (by default, honest ones)."""
@@ -3563,13 +3563,13 @@ class TestPullRequests(BaseTest):
         code, text = self.verify("david", "--account-created-on", "2021-05-05")
         self.assertEqual(code, 0, text)
 
-    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--instant-pr), not the time of the check ---
+    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--pr-time), not the time of the check ---
 
     def test_member_file_is_dated_at_the_push_and_the_account_age_runs_to_the_check(self):
         """registered_on is the day of the push, even when the check runs the next day, and a later day is refused whenever the
         check runs; the account's age still runs to the check (as before), and a local run still takes the current time."""
         age_89, push = "2026-07-30", ("--pr-time", "2026-10-27T12:00:00Z")  # 89 days old on 2026-10-27, 90 on 2026-10-28
-        self.member_pr("late-check", account_created_on=age_89)  # inscrit_le 2026-10-27, as bee inscrire writes it at the push
+        self.member_pr("late-check", account_created_on=age_89)  # registered_on 2026-10-27, as bee register writes it at the push
         os.environ["BEE_NOW"] = "2026-10-28T09:00:00Z"
         code, text = self.verify("david", "--account-created-on", age_89, *push, "--auto-merge")
         self.assertEqual(code, 0, text)
@@ -3714,7 +3714,7 @@ class TestPullRequests(BaseTest):
         git(self.dir, "switch", "-qc", "duplicate")
         self.assertEqual(self.bee("submit", "miniz-0099", "--user", "alice",
                                   "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
-        # bee soumettre refuses the second one (ruche-0041): the file is written by hand.
+        # bee submit refuses the second one (ruche-0041): the file is written by hand.
         self.submit_with_pr("miniz-9001", "https://github.com/Bee-ruche/minizBee/pull/99007")
         self.commit()
         code, text = self.verify("alice", "--auto-merge")
@@ -3731,7 +3731,7 @@ class TestPullRequests(BaseTest):
     TOO_LONG = ("https://github.com/Bee-ruche/minizBee/pull/" + "9" * 10, "https://github.com/Bee-ruche/minizBee/pull/" + "9" * 5000)
 
     def submit_with_pr(self, task, address):
-        """bee submit on `tache` with an unused PR, then `adresse` written in place of it, the rest of the file unchanged."""
+        """bee submit on `task` with an unused PR, then `address` written in place of it, the rest of the file unchanged."""
         code, text = self.bee("submit", task, "--user", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99049")
         self.assertEqual(code, 0, text)
         path = self.dir / f"contributions/miniz/{task}-c1.yaml"
@@ -3804,7 +3804,7 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 code, text = self.bee("check-pr", "--base", base, "--head", "HEAD", "--author", "alice", "--auto-merge")
                 code_v, text_v = self.bee("validate")
-                own_ones = bee.check_pr(bee.Registry(self.dir), base, "HEAD", "alice", github_id=number_from("alice"))[0]  # without bee valider's checks
+                own_ones = bee.check_pr(bee.Registry(self.dir), base, "HEAD", "alice", github_id=number_from("alice"))[0]  # without bee validate's checks
                 self.assertNotIn("Traceback", text + text_v)
                 if address in self.OTHER_PRS:
                     self.assertEqual((code, code_v, own_ones), (0, 0, []), text + text_v)
@@ -4059,7 +4059,7 @@ class TestPublish(BasePublish):
         "téléphone": ("Au 06 12 34 56 78", "a phone number"),
         "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, category Cf)"),
     }
-    # The adversarial review's texts (31/10 fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
+    # The adversarial review's texts (31 Oct fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
     # the GitHub owner Bee-ruche is inside (S1), no link that hides where it leads and no relative link outside (S2).
     REVIEW_REFUSED = {
         "B1": ["`@upstream`", "```\n@upstream\n```", "`\n# h\n@upstream `", '<b title="`">@upstream</b> `', "<http://x.example/`>@upstream `",
@@ -4162,14 +4162,14 @@ class TestPublish(BasePublish):
             self.assertEqual(code, 0, text)
             code, text = self.bee("publish", "--title", "Réservation miniz-0099", "--body", body, "--interval", "0")
             self.assertEqual(code, 0, text)
-        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organisation.
+        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organization.
         calls = [c.args for c in control.call_args_list if len(c.args) == 4]
         self.assertEqual(calls, [("Réservation miniz-0099", "title", 256, "Bee-ruche"), (body, "body", 8000, "Bee-ruche")] * 2)
         self.assertIn(f"body={body}", self.log_text.read_text(encoding="utf-8"))
 
     def test_texts_of_the_review_refused_in_the_title_and_the_body(self):
         """No code skipping, entities decoded, raw and NFKC forms read, only the GitHub owner Bee-ruche inside; honest texts pass.
-        Invitations and other outgoing texts keep their check (no organisation)."""
+        Invitations and other outgoing texts keep their check (no organization)."""
         for what_it, maximum in (("title", 256), ("body", 8000)):
             for group_of, texts_of in {**self.REVIEW_REFUSED, **self.SECOND_REVIEW_REFUSED}.items():
                 for text in texts_of:
@@ -4456,7 +4456,7 @@ class TestPublishBySession(BasePublish):
             self.assertEqual((self.prs(), on_disk()), (["Reservation miniz-0099"] * 2, before))
         self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/2)", text)
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
-        # The reservation merges; run once more, bee publier follows it, then sends the submission alone.
+        # The reservation merges; run once more, bee publish follows it, then sends the submission alone.
         self.mode.write_text("merge", encoding="utf-8")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
@@ -5951,7 +5951,7 @@ class TestParallelPullRequests(BaseParallel):
              ("2020-01-01T00:00:00Z", False), ("2099-01-01T00:00:00Z", False))
 
     def date_it(self, who_is, since, task="miniz-0099"):
-        """In the working tree, the reservation or the parallel registration of `qui` on `tache` dated `depuis`."""
+        """In the working tree, the reservation or the parallel registration of `who_is` on `task` dated `since`."""
         t = bee.read_yaml(self.path(task))
         for e in [t.get("reservation") or {}, *(t.get("parallel") or [])]:
             if e.get("user") == who_is:
@@ -6379,8 +6379,8 @@ class TestAdversarialReview(BaseParallel):
         return r.stdout, json.loads(state.read_text(encoding="utf-8")), calls
 
     def pass_ref(self, sha, author, instant, states, success=True):
-        """ruche-0120: auto-merge's pass on PR 1 (head `sha`, by `auteur`, its validation created at `instant`): the listing
-        step's last line (preparer, with the stub gh) on these listings, then the check step: (what to do, output, gh calls)."""
+        """ruche-0120: auto-merge's pass on PR 1 (head `sha`, by `author`, its validation created at `instant`): the listing
+        step's last line (prepare, with the stub gh) on these listings, then the check step: (what to do, output, gh calls)."""
         steps = {e.get("name", ""): e["run"] for job in yaml.safe_load((self.dir / ".github/workflows/auto-merge.yml").read_text(
             encoding="utf-8"))["jobs"].values() for e in job["steps"] if "run" in e}
         pass_ref = self.dir.parent / "runner/pass_ref"
@@ -7158,7 +7158,7 @@ class TestAdversarialReview(BaseParallel):
         git(self.dir, "push", "-q", "origin", "submission:refs/pull/1/head")
         sha = git(self.dir, "rev-parse", "submission").strip()
         git(self.dir, "switch", "-q", "main")
-        self.a("2026-10-27T17:30:00Z")  # the pass runs 4 h 30 after the push
+        self.a("2026-10-27T17:30:00Z")  # the pass runs 4 h 30 min after the push
         for pr_time, expected in (("2026-10-27T13:00:05Z", "merge"), ("2026-10-27T12:58:00Z", "refused"), ("", "refused"),
                                     ("null", "refused"), ("2026-10-27 13:00:05", "refused")):
             with self.subTest(pr_time=pr_time):
@@ -12261,7 +12261,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
             author="bidji29"), ["honnête"])
 
 
-# ruche-0044: honest English and French, written in the style of PR descriptions, code reviews and optimisation reports; the
+# ruche-0044: honest English and French, written in the style of PR descriptions, code reviews and optimization reports; the
 # Catch2 and miniz comments are real (minizBee's tests/catch_amalgamated.cpp and tests/large_fuzzer.c). The first thirty-six
 # were refused before ruche-0044 (taken for "<name> at <domain> point <tld>"); the others guard what was already accepted.
 HONEST_SENTENCES_0044 = (
@@ -12642,7 +12642,7 @@ def schema_free_texts_0047():
 
 
 def plant_0047(path, value):
-    """A document that holds `valeur` at `chemin` (« notes[]/text » : {"notes": [{"texte": valeur}]} ; « * » : any key)."""
+    """A document that holds `value` at `path` (« notes[]/text »: {"notes": [{"text": value}]}; « * »: any key)."""
     for chunk in reversed([m for m in path.split("/") if m]):
         name = chunk.replace("[]", "")
         for _ in range(chunk.count("[]")):
@@ -15834,7 +15834,7 @@ class TestBilingualReaders(BaseAgora):
                 self.assertEqual(any("fields left at" in p for p in results[0]), refuse, results[0])
                 self.assertEqual(any("repetitions: « <value> » should be" in p for p in results[0]), not refuse)
 
-    # --- Debate links in docs/questions-ouvertes.md ---
+    # --- Debate links in docs/open-questions.md ---
 
     def test_english_debate_link_read_like_the_french(self):
         model = "## Se gouverner\n\n1. **Une question.** Sa suite,\n   sur deux lignes.\n   {link}(../debates/D-0007.yaml).\n"
@@ -16350,7 +16350,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 if field != "inconnue":  # an unknown field is named, its value is not printed
                     self.assertIn(": :error::PIEGE", output_text, "neutralized, still readable")
                 self.assertEqual(workflow_commands(output_text), [], output_text)
-        # A YAML error quotes the offending line; a warning (⚠) names an unknown node; principal prints an ErreurBee.
+        # A YAML error quotes the offending line; a warning (⚠) names an unknown node; principal prints a BeeError.
         path.write_text(OPTIMIZATION_TASK + "\t::error::PIEGE\n", encoding="utf-8")
         self.assertEqual(workflow_commands(self.bee("validate")[1]), [])
         bee.write_yaml(path, {**clean_one, "node": "projects/miniz\n::error::PIEGE"})
@@ -16381,7 +16381,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 self.assertEqual(len(problems_found), 1, problems_found)
                 self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(refused key) (key): {cause}"), problems_found)
         self.assertEqual(list(bee.text_problems({"Honnête" + HONEST_CONTROL: {1: "ok"}}, "f.yaml")), [])
-        # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
+        # Through bee validate, in a task note: refused, named as a refused key, the character never printed.
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
         clean_one = bee.read_yaml(path)
         for key, cause in self.REFUSED_KEYS.items():
@@ -16457,7 +16457,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
 
 
 
-# --- ruche-0089: declared agent accounts (gouvernance/comptes-agents.yaml: laruche-architect acts for bidji29) ---
+# --- ruche-0089: declared agent accounts (governance/agent-accounts.yaml: laruche-architect acts for bidji29) ---
 
 AGENT = "laruche-architect"
 
@@ -16576,7 +16576,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.commit("tasks of the test")
 
     def published(self, author, *command, natures=()):
-        """A gesture made by its bee command, published from `auteur`'s account as self-service, then merged."""
+        """A gesture made by its bee command, published from `author`'s account as self-service, then merged."""
         self.branch("gesture")
         self.ok(*command)
         self.commit()
@@ -16617,8 +16617,8 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.self_service(AGENT, "reservation")
         self.refused("alice", "you reserve only for yourself (alice)")
         self.merge("taking")
-        # Submission: bidji29's contribution; its fork PR counts as bidji29's when the agent account opened it (fusion-auto
-        # relays the fork PR's author with --auteurs-pr), and when bidji29 did; for no one else.
+        # Submission: bidji29's contribution; its fork PR counts as bidji29's when the agent account opened it (auto-merge
+        # relays the fork PR's author with --pr-authors), and when bidji29 did; for no one else.
         self.branch("submission")
         self.ok("submit", "miniz-0099", "--user", "bidji29", "--pr", f"{PR_MINIZ}89001", "--summary", "Essai.")
         self.commit()
@@ -16727,7 +16727,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.commit()
         self.self_service("bidji29", "review")
         self.human_one(AGENT, "review", "agent_account")
-        # Validating a proposed task (a guardian, the council or a Confirmé): the same.
+        # Validating a proposed task (a guardian, the council or a Confirmed member): the same.
         self.published("alice", "propose-task", "miniz", "--user", "alice", "--type", "test", natures=("task_proposal",))
         tid = next(i for i, (_, t) in bee.Registry(self.dir).tasks.items() if t.get("status") == "proposed")
         self.branch("validation")
@@ -16780,7 +16780,7 @@ class TestAgentAccounts(BaseDressRehearsal):
             with self.subTest(variant=variant):
                 self.refused(variant, f"PR author « {variant} »: their member file is {AGENT}")
         self.self_service(AGENT, "reservation")
-        # A chain, even merged by the council: bee valider refuses it, and the gate never follows it to bidji29.
+        # A chain, even merged by the council: bee validate refuses it, and the gate never follows it to bidji29.
         git(self.dir, "switch", "-q", "main")
         declare_agents(self.dir, (AGENT, "bidji29"), ("chaine-bot", AGENT))
         self.commit("the council declares a chain")
@@ -16818,7 +16818,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.assertEqual([r["reviewer"] for r in bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")["reviews"]], ["alice"])
 
     def test_authority_files_only_from_the_councils_own_account(self):
-        """Commandments, council, agent accounts, guardians, guarantors, every instruction file, the organisation, guarantors'
+        """Commandments, council, agent accounts, guardians, guarantors, every instruction file, the organization, guarantors'
         and devolution docs (any case): an agent account's PR changing one is refused (code 1, also with --auto-merge), whether it edits,
         deletes, renames from or to, or changes the mode of the file; the council's own account is unchanged (0, then 3)."""
         def expected(path, *options):
@@ -17122,7 +17122,7 @@ VALIDATION_YML, COMMON_JUDGE_YML = ".github/workflows/validation.yml", ".github/
 
 
 def head_run(**fields):
-    """A run of validation.yml for PR #9201 on its merged head, as GitHub's REST API gives it (actions/runs): green unless `champs`
+    """A run of validation.yml for PR #9201 on its merged head, as GitHub's REST API gives it (actions/runs): green unless `fields`
     say otherwise."""
     return {"id": 1, "path": VALIDATION_YML, "event": "pull_request", "head_sha": MERGED_HEAD, "head_branch": "task/9201",
             "head_repository": {"full_name": "Bee-ruche/registre"}, "status": "completed", "conclusion": "success", **fields}
@@ -17163,7 +17163,7 @@ class TestRegistryMergeRecorded(BaseParallel):
 
     def submitted_one(self, in_the_pr=True, travail=True, also=None):
         """bidji29 submits ruche-9094-c1 inside the code PR it declares: the contribution reaches main with the PR's (squash) merge
-        commit, returned, which also changes README.md (travail) and what `aussi` writes. dans_la_pr=False: submitted by a commit of
+        commit, returned, which also changes README.md (travail) and what `also` writes. in_the_pr=False: submitted by a commit of
         its own, before the PR's merge commit (also returned)."""
         self.a("2026-10-27T13:00:00Z")
         code, text = self.bee("submit", "ruche-9094", "--user", "bidji29", "--pr", self.pr, "--summary", SUMMARY_9094)
@@ -17194,7 +17194,7 @@ class TestRegistryMergeRecorded(BaseParallel):
         return len(r.stdout.splitlines()) if r.returncode == 0 else 0
 
     def answers(self, merge, runs=None, **fields):
-        """GitHub's answers as auto-integration stores them for bee record-merge (pulls/N, actions/runs), `champs` changed."""
+        """GitHub's answers as auto-integration stores them for bee record-merge (pulls/N, actions/runs), `fields` changed."""
         api = pathlib.Path(self.temp.name) / "api"
         api.mkdir(exist_ok=True)
         pr = {"number": 9201, "state": "closed", "merged": True, "merged_at": "2026-10-27T14:00:00Z", "merge_commit_sha": merge,
@@ -17440,7 +17440,7 @@ class TestRegistryMergeRecorded(BaseParallel):
         self.a("2026-11-03T14:00:01Z")
         output_text, _, _ = self.step("Integrate what satisfies R3, close what is abandoned", self.states(merge))
         self.assertNotIn(self.cid, output_text)
-        # Closed without merge: the existing close (bee cloturer), never an integration record.
+        # Closed without merge: the existing close (bee close), never an integration record.
         output_text, _, _ = self.step("Integrate what satisfies R3, close what is abandoned", self.states(merge, state="CLOSED", merge=None, fusionnee_par=None))
         self.assertEqual(self.rec(self.cid)["status"], "cancelled")
         self.assertFalse(self.lines_of(self.cid))
@@ -17583,8 +17583,8 @@ SELF_SERVICE_SCHEMAS = {"tasks": "task", "contributions": "contribution-record",
                          "proposals": "proposal", "debates": "debate", "invitations": "invitation",
                          bee.PATH_NO_CONTACT: "do-not-contact", "reports": "report"}
 # The only texts of a self-service schema that the common check does not read: the verdict of a contribution, written by the
-# CI under its own bounds (VERDICT_MAX, verdict_montrable; enregistrer-verdict never writes a contribution past its bound or off
-# its schema: TestBornesVerdictEtMarque) and refused by verifier-pr from anyone else.
+# CI under its own bounds (VERDICT_MAX, showable_verdict; record-verdict never writes a contribution past its bound or off
+# its schema: TestVerdictAndMarkBounds) and refused by check-pr from anyone else.
 OUTSIDE_COMMON_CHECK = {("contributions", "verdict")}
 
 
@@ -17684,7 +17684,7 @@ class TestSelfServiceBounds(unittest.TestCase):
 
 
 def fill_in(test, path, key, element, write):
-    """Appends `element(i)` (1,400 characters of text) to the list `cle` of the file, as close under its mark as one fits: one more
+    """Appends `element(i)` (1,400 characters of text) to the list `key` of the file, as close under its mark as one fits: one more
     item of 1,500 characters takes it past the mark."""
     marker = bee.byte_bound(str(path.relative_to(test.dir))) - bee.BYTE_MARGIN
     data = bee.read_yaml(path)
@@ -17736,7 +17736,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         self.assertEqual(set(self.FILES), set(bee.BYTES_MAX))
 
     def lay_down(self, sort_kind, value):
-        """Writes `valeur` as the growing text of the file of kind `sorte`, as bee writes the file; returns its path."""
+        """Writes `value` as the growing text of the file of kind `sort_kind`, as bee writes the file; returns its path."""
         relative_one, keys = self.FILES[sort_kind]
         path = self.dir / relative_one
         data = bee.read_yaml(path)
@@ -18039,7 +18039,7 @@ class TestVerdictAndMarkBounds(BaseTest):
         cid = TestRegistry.prepare_green_contribution(self, "bidji29", ("bruno", "chloe"))  # reservation, submission, verdict, reviews
         # Back at its mark (ruche-0145): fill_in stops up to one note under the mark, and these writes crossed what was left of it in
         # French (by 20 bytes) but stop about 390 bytes under it in English (shorter keys, another remainder): small notes close the
-        # gap, so the append below meets the mark again. A fixture's sizes, not a behaviour: no bound of bee changed.
+        # gap, so the append below meets the mark again. A fixture's sizes, not a behavior: no bound of bee changed.
         fill_in(self, path, "notes", lambda i: {"by": "alice", "at": "2026-10-27T12:00:00Z", "text": "x"}, bee.write_yaml)
         code, text = self.bee("take", "miniz-0099", "--user", "alice", "--parallel")
         self.assertIn(bee.marker_problem("tasks/miniz/miniz-0099.yaml"), text)
@@ -18053,7 +18053,7 @@ class TestVerdictAndMarkBounds(BaseTest):
 
 
 R8_BOOTSTRAP = 'r8_bootstrap: {max: 8, until: "2026-12-01T00:00:00Z"}'
-# ruche-0096: settings that leave only the usual cap (fails closed); the last one ends at the instant of BaseRepetitionGenerale.
+# ruche-0096: settings that leave only the usual cap (fails closed); the last one ends at the instant of BaseDressRehearsal.
 R8_WITHOUT_EXCEPTION = (None, "r8_bootstrap: 8", "r8_bootstrap: [8, '2026-12-01T00:00:00Z']", "r8_bootstrap: {max: 8}",
                      "r8_bootstrap: {until: '2026-12-01T00:00:00Z'}", "r8_bootstrap: {max: '8', until: '2026-12-01T00:00:00Z'}",
                      "r8_bootstrap: {max: true, until: '2026-12-01T00:00:00Z'}", "r8_bootstrap: {max: 8.5, until: '2026-12-01T00:00:00Z'}",
@@ -18349,7 +18349,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.setting(R8_BOOTSTRAP)  # the test's own setting, never the live one (a council PR may change it)
 
     def setting(self, line_text):
-        """bee.yaml with `ligne` as its r8_bootstrap setting (None: none), committed on main as the council would."""
+        """bee.yaml with `line_text` as its r8_bootstrap setting (None: none), committed on main as the council would."""
         git(self.dir, "switch", "-q", "main")
         path = self.dir / "bee.yaml"
         text = re.sub(r"(?m)^r8_bootstrap:.*\n(?:[ \t]+.*\n)*", "", path.read_text(encoding="utf-8"))  # flow or block style
@@ -18470,7 +18470,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.a("2026-12-01T00:00:01Z")
         self.valid_one()  # the clock alone never makes the registry invalid: everyone's PRs still pass the gate
         self.take_and_merge("alice", "miniz-9001")
-        # No 9th and no new engagement of any kind for bidji29, by bee prendre or through the gate.
+        # No 9th and no new engagement of any kind for bidji29, by bee take or through the gate.
         for command in (("ruche-9009",), ("miniz-9003",), ("ruche-9013",), ("miniz-9001", "--parallel")):
             text = self.ko("rule R8: bidji29 already has 8 reservations or parallel registrations", "take", *command, "--user", "bidji29")
             self.assertIn("maximum 3", text)
@@ -18479,7 +18479,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.commit()
         self.refused(AGENT, "rule R8: bidji29 has 9 reservations or parallel registrations", "maximum 3")
         self.abandon("neuvieme")
-        # Releases still pass, from bidji29's own PR as from bee liberer.
+        # Releases still pass, from bidji29's own PR as from bee release.
         self.branch("release")
         self.ok("release", "ruche-9008", "--user", "bidji29")
         self.commit()
@@ -18596,7 +18596,7 @@ class TestClocksRuche0091(BaseInvitations):
         return code, text
 
     def pr(self, when_at, write):
-        """A PR branch from main whose changes `ecrire` makes at `quand`, the time of its push."""
+        """A PR branch from main whose changes `write` makes at `when_at`, the time of its push."""
         self.a(when_at)
         self.branch()
         write()
@@ -18842,7 +18842,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
     once closed; its voter replaces it while the vote is open. A published measurement is neither changed nor withdrawn; adding
     one stays self-service."""
 
-    CLOSED_VOTE = "2026-11-06T00:00:00Z"  # P-0001 opens at 2026-10-29T22:00Z (setUp): its vote lasts 7 days (duree_vote_jours)
+    CLOSED_VOTE = "2026-11-06T00:00:00Z"  # P-0001 opens at 2026-10-29T22:00Z (setUp): its vote lasts 7 days (vote_duration_days)
 
     def setUp(self):
         super().setUp()
@@ -18934,7 +18934,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                 bee.write_yaml(path, {**published_one, **fields})
                 self.commit()
                 self.refused("farid", f"measurements/{self.cid}/farid.yaml: a published measurement is neither changed nor withdrawn")
-        # bee enregistrer-mesure does not overwrite it either, and does not claim that a local file is published.
+        # bee record-measurement does not overwrite it either, and does not claim that a local file is published.
         git(self.dir, "checkout", "-q", "main", "--", ".")
         text = self.ko(f"measurements/{self.cid}/farid.yaml already exists: one measurement per person and per contribution, never "
                         "changed once published (commandment 10); if this file is not published yet, delete it, then rerun",
@@ -18968,7 +18968,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
 
     def test_adding_a_measurement_stays_self_service(self):
         self.a("2026-10-30T09:00:00Z")
-        # Dated before the PR, it is refused: the remedy deletes the local file first, since bee enregistrer-mesure never overwrites.
+        # Dated before the PR, it is refused: the remedy deletes the local file first, since bee record-measurement never overwrites.
         self.branch("perimee")
         self.ok("record-measurement", self.cid, "--ab", self.ab_report(), "--user", "chloe")
         self.a("2026-10-30T12:00:00Z")
@@ -18990,7 +18990,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         self.valid_one()
 
     def close_it(self, status):
-        """As the robot or the council writes it, on the current branch: the contribution leaves review with `statut`. Integrated,
+        """As the robot or the council writes it, on the current branch: the contribution leaves review with `status`. Integrated,
         or set aside in favor of miniz-0099-c2 (integrated), its task is integrated; otherwise (cancelled, refused…) it reopens."""
         now_instant, folder, kept = os.environ["BEE_NOW"], self.dir / "contributions/miniz", self.cid
         if status == "set_aside":
@@ -19010,8 +19010,8 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         self.commit(f"contribution {status}")
 
     def vote_by_hand(self, voter, name, folder=None, since="main"):
-        """A PR writing `votant`'s vote on the contribution by hand, dated now (bee vote refuses once it is closed), in the folder
-        `dossier` (by default, the contribution's)."""
+        """A PR writing `voter`'s vote on the contribution by hand, dated now (bee vote refuses once it is closed), in the folder
+        `folder` (by default, the contribution's)."""
         git(self.dir, "switch", "-qf", since)
         git(self.dir, "switch", "-qc", name)
         bee.write_yaml(self.dir / f"votes/{folder or self.cid}/{voter}.yaml",
@@ -19068,7 +19068,7 @@ QUOTED_CHARACTERS = {"non-ASCII": "é", "quote": '"', "backslash": "\\", "tab": 
 GIT_NON_LISTING = {"add", "branch", "cat-file", "checkout", "commit", "config", "fetch", "for-each-ref", "hash-object", "init",
                    "ls-remote", "merge", "merge-base", "pull", "push", "remote", "reset", "rev-parse", "switch",
                    "symbolic-ref", "update-index", "var", "version",
-                   "rebase", "restore", "archive"}  # not show: it prints a patch, or a tree's paths; rebase, restore: bee publier reads
+                   "rebase", "restore", "archive"}  # not show: it prints a patch, or a tree's paths; rebase, restore: bee publish reads
                                          # only their exit code (ruche-0129), as for merge and checkout
                                          # archive: a tar of a commit, which tar unpacks; bee reads no path from it (ruche-0143)
 GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--porcelain", "--objects", "--stat", "--summary",
@@ -19275,9 +19275,9 @@ class TestQuotedPathsFork(BaseTest):
         git(self.fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
 
     def verify(self, name):
-        """check_fork on a branch that adds, each named after `nom`: a judged file (60 lines, out of R1's count), a file of
+        """check_fork on a branch that adds, each named after `name`: a judged file (60 lines, out of R1's count), a file of
         the task (3 lines), a file outside the task's files (2 lines) and another task's manifest; the task's file is then
-        changed again, but not committed. The result, with `nom` written <name>."""
+        changed again, but not committed. The result, with `name` written <name>."""
         self.prepare(name)
         problems_found, total, warnings = bee.check_fork(bee.Registry(self.dir), self.fork, "master", "HEAD", "miniz-0099")
         name_it = lambda m: m.replace(bee.cite(name), "<name>").replace(name, "<name>")  # noqa: E731 (quoted as bee prints it, ruche-0088)
@@ -19409,7 +19409,7 @@ class TestQuotedPathsGate(BaseDressRehearsal):
         git(self.dir, "switch", "-qf", "main")
         (self.dir / "votes").mkdir(exist_ok=True)
         (self.dir / f"votes/{HOSTILE_NAME}.txt").write_text("x\n", encoding="utf-8")
-        bee.note_written(self.dir / f"votes/{HOSTILE_NAME}.txt")  # ruche-0138: bee publier publishes only what bee wrote
+        bee.note_written(self.dir / f"votes/{HOSTILE_NAME}.txt")  # ruche-0138: bee publish publishes only what bee wrote
         code, text = self.bee("publish", "--title", "Essai", "--dry-run")
         self.assertEqual(code, 0, text)
         self.assertIn("  - votes/a", text)
@@ -19556,7 +19556,7 @@ class TestGitHelper(unittest.TestCase):
         self.assertEqual([versions.get(d) for d in requests], [None, "b: 2\n", None, None, "a: 1\n"])
 
     def test_a_name_ending_with_a_newline_in_history_is_never_read(self):
-        """DatesDeFusion reads the history of the gestures' folders: the twin with a final newline is listed as it is, matched
+        """MergeDates reads the history of the gestures' folders: the twin with a final newline is listed as it is, matched
         by no path regex, and the file it imitates is dated by its own commit."""
         self.write("tasks/miniz/miniz-0100.yaml", "id: miniz-0100\ncreated_by: alice\n")
         self.write("tasks/miniz/miniz-0100.yaml\n", "id: miniz-0100\ncreated_by: mallory\n")
@@ -19571,8 +19571,8 @@ class TestGitHelper(unittest.TestCase):
         self.assertIsNone(dates.date("tasks/miniz/miniz-0100.yaml\n", bee.creation_key({"id": "miniz-0100", "created_by": "mallory"})))
 
 
-# ruche-0092: the suite in parallel processes, inside validation.yml's single « valider » job (`python3 outils/test_bee.py
-# --processus N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organisation's
+# ruche-0092: the suite in parallel processes, inside validation.yml's single « validate » job (`python3 tools/test_bee.py
+# --processes N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organization's
 # concurrent jobs, not minutes: processes, not jobs. No test is lost: each process reports the suite it loaded and the tests
 # it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
 # an empty shard or a failed process fails the run.
@@ -19630,8 +19630,8 @@ def run_in_parallel(command, tests, processus):
 
 
 def run_slices(command, tests, slices):
-    """Starts `commande --tranche <plan> <i>` for each shard at once, prints each shard's log as soon as it ends, then returns
-    the errors of controler on their reports and of their exit codes."""
+    """Starts `command --tranche <plan> <i>` for each shard at once, prints each shard's log as soon as it ends, then returns
+    the errors of check_it on their reports and of their exit codes."""
     n, children, codes, reports = len(slices), [], {}, {}
     print(f"{len(tests)} tests in {n} shards of {', '.join(str(len(t)) for t in slices)}", flush=True)
     with tempfile.TemporaryDirectory() as folder:
@@ -19910,7 +19910,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
             (self.dir / f"tasks/miniz/miniz-{n}.yaml").write_text(OPTIMIZATION_TASK.replace("miniz-0099", f"miniz-{n}"),
                                                                       encoding="utf-8")
         self.commit("tasks of the test")
-        self.accounts = {}  # login: the number the API gives for it, when it is not numero_de(login)
+        self.accounts = {}  # login: the number the API gives for it, when it is not number_from(login)
 
     def verify(self, author, *options):
         if author in self.accounts and not any(o.startswith("--github-id") for o in options):
@@ -20113,7 +20113,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         code, text = self.verify("david", "--account-created-on", "2020-01-01", "--auto-merge")
         self.assertEqual(code, 0, text)
         self.assertIn("FUSION_AUTO=oui", text)
-        for number_of in ([], ["--github-id", "null"]):  # bee inscrire requires a number: a bee fails early
+        for number_of in ([], ["--github-id", "null"]):  # bee register requires a number: a bee fails early
             error = io.StringIO()
             with self.subTest(number_of=number_of), contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
                 bee.principal(["--registry", str(self.dir), "register", "--login", "eve", "--account-created-on", "2020-01-01", *number_of])
@@ -20128,15 +20128,15 @@ class TestIdentityByNumber(BaseDressRehearsal):
                 self.assertEqual(step["env"]["GITHUB_ID"], source)
                 self.assertIn('''created=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi''', step["run"])
                 self.assertIn('--account-created-on "$created" --github-id "$GITHUB_ID" ', step["run"])
-        # ruche-0120: fusion-auto takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
-        # gate, and reads the date by it (TestPasseFusion).
+        # ruche-0120: auto-merge takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
+        # gate, and reads the date by it (TestMergePass).
         listing = next(s["run"] for s in yaml.safe_load((ROOT / ".github/workflows/auto-merge.yml").read_text(encoding="utf-8"))["jobs"]
                        ["verify"]["steps"] if s.get("name", "").startswith("List the open PRs and their validations (ruche-0120)"))
         self.assertIn('''[.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv''', listing)
 
     def test_a_pr_does_not_change_who_is_who_for_its_own_checks(self):
         # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
-        # would be bidji29, so the council ; the gate reads who is who on main.
+        # would be bidji29, so the council; the gate reads who is who on main.
         self.branch("usurpation")
         bee.write_yaml(self.dir / "members/eve.yaml", {"login": "eve", "registered_on": "2026-10-29", "account_created_on": "2020-01-01",
                                                             "github_id": number_from("eve"), "former_logins": ["bidji29"]})
@@ -20327,7 +20327,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.commit()
                 self.refused("bruno", "other_accounts: 5 at most, each the number of a member file linked to no one (a number without a file is refused)")
                 self.abandon(name)
-        # bee valider: a link is one step, confirmed from both sides, never to oneself.
+        # bee validate: a link is one step, confirmed from both sides, never to oneself.
         chloe = bee.read_yaml(self.dir / "members/chloe.yaml")
         for fields in ({"account_of": number_from("bruno")}, {"other_accounts": [number_from("chloe")]}):
             with self.subTest(fields=fields):
@@ -20514,9 +20514,9 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.assertIn(f"refusal by bidji29 in {c1} (same author, same task)", self.bee("check-acceptance", c2)[1])
 
     def test_the_levels_are_never_pooled(self):
-        """alice has ten contributions integrated and no review point (Contributeur), farid ten review points and no contribution
-        (Nouveau): pooled, they would make one Confirmé (weight 2). Linked, each keeps its own level, and their one voice weighs as
-        the best of them alone (1)."""
+        """alice has ten contributions integrated and no review point (Contributor), farid ten review points and no contribution
+        (New): pooled, they would make one Confirmed member (weight 2). Linked, each keeps its own level, and their one voice weighs
+        as the best of them alone (1)."""
         self.a("2026-10-30T10:00:00Z")
         self.linked()
         for _ in range(10):
@@ -20566,7 +20566,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         rec = reg.record(cid)[1]
         self.assertEqual(([r["reviewer"] for r in bee.reviews_survey(reg, rec, bee.compute_levels(reg))["favorable_ones"]],
                           bee.net_vote(reg, rec, bee.compute_levels(reg))), (["farid"], 1))
-        self.linked()  # the confirming PR passes the gate and bee valider, on the history as written
+        self.linked()  # the confirming PR passes the gate and bee validate, on the history as written
         self.ok("validate")
         reg = bee.Registry(self.dir)
         rec = reg.record(cid)[1]
@@ -20616,7 +20616,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                     self.abandon("approval")
 
     def test_r3_asks_for_the_reviews_of_persons(self):
-        """R3's required reviews are capped at the persons whose review counts: alice and farid, both Contributeurs, are one
+        """R3's required reviews are capped at the persons whose review counts: alice and farid, both Contributors, are one
         person; once alice has reviewed bidji29's work, farid gives no second review, and R3 asks for one."""
         self.a("2026-10-30T10:00:00Z")
         self.contributors("alice", "farid")
@@ -20820,7 +20820,7 @@ class ReportTools(BaseInvitations):
         return bee.read_yaml(self.dir / path)
 
     def link(self, a, b):
-        """a lists b, b confirms (ruche-0051), on main : one person."""
+        """a lists b, b confirms (ruche-0051), on main: one person."""
         bee.write_yaml(self.dir / f"members/{a}.yaml", {**self.read(f"members/{a}.yaml"), "other_accounts": [number_from(b)]})
         bee.write_yaml(self.dir / f"members/{b}.yaml", {**self.read(f"members/{b}.yaml"), "account_of": number_from(a)})
         self.commit(f"{a} et {b} liés")
@@ -20837,7 +20837,7 @@ class ReportTools(BaseInvitations):
         return text.split("contribution ", 1)[1].split(" ", 1)[0]
 
     def refused_by_hand(self, who_is, name, chunk, author=None, **fields):
-        """The report written by hand in a PR of `auteur` (else `qui`), refused by the gate with `morceau`."""
+        """The report written by hand in a PR of `author` (else `who_is`), refused by the gate with `chunk`."""
         self.branch()
         self.by_hand(name, by=who_is, **fields)
         self.commit()
@@ -20873,12 +20873,12 @@ class TestReportsRuche0118(ReportTools):
                 self.commit()
                 self.assertNotIn("FUSION_AUTO=oui", self.refused("chloe", f"reports/S-0002.yaml: {chunk}"))
                 self.abandon()
-        # bee signaler refuses the same before writing anything; an unknown code is not even an option.
+        # bee report refuses the same before writing anything; an unknown code is not even an option.
         self.ko(outside, "report", "--user", "chloe", "--accounts", "farid", "hector", "--reason", "cross_votes")
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             self.bee("report", "--user", "chloe", "--accounts", "farid", "gaspard", "--reason", "other")
         self.assertFalse((self.dir / "reports/S-0002.yaml").exists())
-        # bee valider: the schema, whoever wrote it.
+        # bee validate: the schema, whoever wrote it.
         self.by_hand("S-0002", by="chloe", accounts=["farid", "gaspard"], text="Ils votent toujours ensemble.")
         self.ko("reports/S-0002.yaml: (root)", "validate")
         # The honest file, written by hand as bee writes it, passes and is merged without a human.
@@ -20890,7 +20890,7 @@ class TestReportsRuche0118(ReportTools):
     def test_the_council_sees_linked_or_dismissed_and_a_dismissed_pair_waits_30_days(self):
         self.a("2026-10-30T10:00:00Z")
         self.report("gaspard", "alice", "bruno")
-        # Recorded for the council: bee essaim and bee voir show it.
+        # Recorded for the council: bee swarm and bee show show it.
         swarm = self.ok("swarm")
         self.assertIn("Open reports, for the council", swarm)
         self.assertIn("S-0001: alice and bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
@@ -20936,7 +20936,7 @@ class TestReportsRuche0118(ReportTools):
         self.abandon()
         self.a("2026-11-29T12:01:00Z")
         self.assertEqual(self.report("alice", "farid", "chloe-b", "cross_reviews"), "S-0003")
-        # An unknown dismissal code is refused: not an option of the command, and bee valider refuses it written by hand.
+        # An unknown dismissal code is refused: not an option of the command, and bee validate refuses it written by hand.
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             self.bee("decide-report", "S-0003", "--user", "bidji29", "--dismiss", "inconnu")
         s = self.read("reports/S-0003.yaml")
@@ -21001,7 +21001,7 @@ class TestReportsRuche0118(ReportTools):
 
     def test_a_pair_compares_by_persons_and_a_linked_pair_is_not_reported(self):
         """Review of ruche-0118, (1) and (2): one open report per pair and the 30 days after a dismissal compare persons
-        (identities.key), so the linked account of either side changes nothing ; a pair already linked is not reported."""
+        (identities.key), so the linked account of either side changes nothing; a pair already linked is not reported."""
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
         already = "accounts: these two accounts are already linked (one person): nothing to report"
@@ -21021,7 +21021,7 @@ class TestReportsRuche0118(ReportTools):
 
     def test_at_most_two_open_per_reporting_person_and_three_naming_a_person(self):
         """Review of ruche-0118, (2): open reports are capped per person who reports, from any of their accounts (a linked account, an
-        agent account), and per person named ; the four caps are bee.yaml's (creations)."""
+        agent account), and per person named; the four caps are bee.yaml's (creations)."""
         self.assertLessEqual({"reports_max_per_pr", "reports_max_per_24h", "reports_open_max",
                               "reports_naming_max"}, set(self.read("bee.yaml")["creations"]))
         self.a("2026-10-30T10:00:00Z")
@@ -21049,7 +21049,7 @@ class TestReportsRuche0118(ReportTools):
                                  config.read_text(encoding="utf-8")), encoding="utf-8")
         self.commit("le conseil relève le plafond")
         self.assertEqual(self.report("farid", "bruno", "chloe"), "S-0003")
-        # Per person named: alice is named in three open reports (one from farid, gaspard's account) ; a fourth is refused, whoever
+        # Per person named: alice is named in three open reports (one from farid, gaspard's account); a fourth is refused, whoever
         # files it, until the council decides one.
         self.report("chloe", "alice", "farid")
         # ruche-0137: past that cap a fourth is not refused but kept for the council (never merged automatically), whoever files it,
@@ -21080,7 +21080,7 @@ class TestReportsRuche0118(ReportTools):
                          ([f"S-{n:04d}" for n in range(1, 11)], 12))
 
     def test_the_file_is_exactly_the_one_bee_report_writes(self):
-        """Review of ruche-0118, (3): the gate takes the file bee report writes, byte for byte, dated as bee writes it ; the schema
+        """Review of ruche-0118, (3): the gate takes the file bee report writes, byte for byte, dated as bee writes it; the schema
         refuses a compact date and a login with a final line break."""
         self.a("2026-10-30T10:00:00Z")
         honest_one = {"by": "chloe", "at": "2026-10-30T10:00:00Z", "accounts": ["alice", "bruno"], "reason": "cross_votes"}
@@ -21112,15 +21112,15 @@ class TestReportsRuche0118(ReportTools):
                 self.assertFalse(schema.is_valid({**honest_one, **fields}))
 
     def test_the_decision_is_by_a_council_third_party_at_the_time_of_the_pr_and_links_in_the_same_pr(self):
-        """Review of ruche-0118, (4): a council member who is one of the two accounts, or linked to one, does not decide ; the gate
+        """Review of ruche-0118, (4): a council member who is one of the two accounts, or linked to one, does not decide; the gate
         refuses a decision not signed by the council member who authors the PR, not dated at the time of the PR, or « linked » without
         the two member files linked in the same PR."""
         self.a("2026-10-30T10:00:00Z")
         council = self.dir / "governance/council.yaml"
         council.write_text(council.read_text(encoding="utf-8") + "  - login: alice\n    role: member\n", encoding="utf-8")
         self.link("alice", "farid")
-        self.report("chloe", "alice", "bruno")  # S-0001 : alice is one of the two accounts
-        self.report("bruno", "farid", "chloe")  # S-0002 : alice is linked to farid
+        self.report("chloe", "alice", "bruno")  # S-0001: alice is one of the two accounts
+        self.report("bruno", "farid", "chloe")  # S-0002: alice is linked to farid
         part_of = "decision/by: the council member who authors this PR, neither of the two accounts nor linked to one"
         for name in ("S-0001", "S-0002"):
             with self.subTest(report=name):
@@ -21133,7 +21133,7 @@ class TestReportsRuche0118(ReportTools):
                 self.commit()
                 self.refused("alice", f"reports/{name}.yaml: {part_of}")
                 self.abandon("decision")
-        # The other council member: signed by the PR's author, at the time of the PR, as bee writes it ; « lies » only with both files.
+        # The other council member: signed by the PR's author, at the time of the PR, as bee writes it; « lies » only with both files.
         self.a("2026-10-30T12:00:00Z")
         s = self.read("reports/S-0001.yaml")
         alice = self.read("members/alice.yaml")
@@ -21153,15 +21153,15 @@ class TestReportsRuche0118(ReportTools):
                 self.commit()
                 self.refused("bidji29", f"reports/S-0001.yaml: {chunk}")
                 self.abandon("decision")
-        # Honest: bee signalement writes the decision and, to link, both member files in the same PR.
+        # Honest: bee decide-report writes the decision and, to link, both member files in the same PR.
         self.decider("S-0001", "--link", "alice")
         self.decider("S-0002", "--dismiss", "distinct_persons")
         self.assertTrue(bee.Registry(self.dir).identities.same_one("bruno", "farid"))
         self.valid_one()
 
     def test_link_waits_for_the_end_of_the_common_engagements(self):
-        """Review of ruche-0118, (5): --link waits, as bee link does, until the two accounts no longer hold the same task : a shared
-        engagement (engagement_relay), contributions in the same race (copied_contribution) ; nothing is written before."""
+        """Review of ruche-0118, (5): --link waits, as bee link does, until the two accounts no longer hold the same task: a shared
+        engagement (engagement_relay), contributions in the same race (copied_contribution); nothing is written before."""
         self.a("2026-10-30T10:00:00Z")
         self.take_and_merge("alice")
         self.take_and_merge("bruno", "miniz-0099", "--parallel")
@@ -21175,7 +21175,7 @@ class TestReportsRuche0118(ReportTools):
         c_alice = self.submit_and_merge("alice", "miniz-0099", 77011)
         self.report("chloe", "alice", "gaspard", "copied_contribution")
         self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
-        # bruno leaves the task: the first link is written ; once alice's contribution has left the race, the second.
+        # bruno leaves the task: the first link is written; once alice's contribution has left the race, the second.
         self.release_and_merge("bruno")
         self.decider("S-0001", "--link", "alice")
         self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
@@ -21186,12 +21186,12 @@ class TestReportsRuche0118(ReportTools):
         self.valid_one()
 
 class TestReportsRuche0137(ReportTools):
-    """ruche-0137: past the cap on reports naming one person, a report waits for the council instead of being refused ; bee validate
-    judges reports/ on main as strictly as the gate ; no one decides a report they filed, under any of their accounts."""
+    """ruche-0137: past the cap on reports naming one person, a report waits for the council instead of being refused; bee validate
+    judges reports/ on main as strictly as the gate; no one decides a report they filed, under any of their accounts."""
     NATURE = "report"  # the gate's nature (report), where a test also runs the command signalement (decide-report): ruche-0153
 
     def to_the_council(self, who_is, a, b):
-        """bee report past the cap: accepted by the gate, never merged automatically ; the council merges it."""
+        """bee report past the cap: accepted by the gate, never merged automatically; the council merges it."""
         self.branch("report")
         text = self.ok("report", "--user", who_is, "--accounts", a, b, "--reason", "cross_votes")
         self.assertIn("this one waits for the council, who merges it itself", text)
@@ -21203,14 +21203,14 @@ class TestReportsRuche0137(ReportTools):
     def test_beyond_the_naming_cap_the_report_awaits_the_council(self):
         self.a("2026-10-30T10:00:00Z")
         self.register("dora")
-        # Three reports name alice (possibly worthless) : the cap no longer shields her from the report of the true pair.
+        # Three reports name alice (possibly worthless): the cap no longer shields her from the report of the true pair.
         self.report("gaspard", "alice", "farid")
         self.report("farid", "alice", "gaspard")
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
         self.valid_one()
         self.assertIn("S-0004: alice and bruno (cross_votes), reported by chloe", self.ok("swarm"))
-        # The council decides it like any other : it links...
+        # The council decides it like any other: it links...
         self.decider("S-0004", "--link", "alice")
         self.assertTrue(bee.Registry(self.dir).identities.same_one("alice", "bruno"))
         # ... or dismisses (alice is still named in three open reports).
@@ -21218,7 +21218,7 @@ class TestReportsRuche0137(ReportTools):
         self.decider("S-0005", "--dismiss", "no_evidence")
         self.assertEqual(self.read("reports/S-0005.yaml")["decision"]["outcome"], "no_evidence")
         self.valid_one()
-        # Past the cap, every other check still refuses : not in one's own name, nor a pair already open.
+        # Past the cap, every other check still refuses: not in one's own name, nor a pair already open.
         self.refused_by_hand("farid", "S-0006", "by: a member reports in their own name (chloe)", author="chloe", accounts=["dora", "alice"])
         self.refused_by_hand("dora", "S-0006", "S-0001 already reports these two persons, and is open", accounts=["farid", "alice"])
         self.ko("S-0001 already reports these two persons", "report", "--user", "dora", "--accounts", "alice", "farid", "--reason", "cross_votes")
@@ -21237,7 +21237,7 @@ class TestReportsRuche0137(ReportTools):
                 self.by_hand("S-0001", **fields)
                 self.ko(f"reports/S-0001.yaml: {chunk}", "validate")
                 (self.dir / "reports/S-0001.yaml").unlink()
-        # Honest, on main : filed and decided through bee ; a link written later, or a rename, never makes it invalid (by account).
+        # Honest, on main: filed and decided through bee; a link written later, or a rename, never makes it invalid (by account).
         self.report("gaspard", "alice", "bruno")
         self.decider("S-0001", "--dismiss", "no_evidence")
         self.report("chloe", "farid", "bruno")
@@ -21275,7 +21275,7 @@ class TestReportsRuche0137(ReportTools):
                     self.commit()
                     self.refused(author, f"reports/{name}.yaml: {his}")
                     self.abandon("decision")
-        # A guardian in office decides a report a council member filed, never another ; it links as the council does.
+        # A guardian in office decides a report a council member filed, never another; it links as the council does.
         self.report("gaspard", "dora", "chloe")  # S-0004
         self.ko("S-0004: the council alone decides an open report", "decide-report", "S-0004", "--user", "gina", "--dismiss", "no_evidence")
         self.branch("decision")
@@ -21315,7 +21315,7 @@ class TestReportsRuche0137(ReportTools):
         self.report("farid", "alice", "gaspard")
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
-        # Past the cap, one more per 24 h waits for the council ; a second is refused, by bee and by the gate.
+        # Past the cap, one more per 24 h waits for the council; a second is refused, by bee and by the gate.
         day = "alice is already named in reports_naming_max open reports: past it, at most 1 over 24 h wait for the council"
         self.ko(day, "report", "--user", "chloe", "--accounts", "alice", "dora", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0005", day, accounts=["alice", "dora"])
@@ -21323,7 +21323,7 @@ class TestReportsRuche0137(ReportTools):
         self.assertEqual(self.to_the_council("chloe", "alice", "dora"), "S-0005")
         self.a("2026-11-01T10:02:00Z")
         self.assertEqual(self.to_the_council("bruno", "alice", "emile"), "S-0006")
-        # bee essaim lists them apart, newest first, so that a flood never hides the others.
+        # bee swarm lists them apart, newest first, so that a flood never hides the others.
         swarm = self.ok("swarm")
         self.assertIn("Open reports, for the council: 3 (", swarm)
         self.assertIn("Reports past the cap naming a person: 3 (", swarm)
@@ -21331,7 +21331,7 @@ class TestReportsRuche0137(ReportTools):
         self.assertLess(swarm.index("S-0005: alice and dora"), swarm.index("S-0004: alice and bruno"))
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual([x["id"] for x in table_of["reports_at_cap"]], ["S-0006", "S-0005", "S-0004"])
-        # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.
+        # The value is the council's (bee.yaml): at 2, a second one the same day waits for the council too.
         config = self.dir / "bee.yaml"
         text = re.sub(r"(?m)^  reports_at_cap_per_24h: *1\b", "  reports_at_cap_per_24h: 2", config.read_text(encoding="utf-8"))
         self.assertIn("  reports_at_cap_per_24h: 2", text)  # ruche-0144: the key is written in bee.yaml, with its value 1
@@ -21377,7 +21377,7 @@ class TestReportsRuche0137(ReportTools):
         self.commit("bidji29 quitte le conseil")
         self.assertNotIn("bidji29", bee.Registry(self.dir).council)
         self.valid_one()
-        # Written by hand on main, signed by the reporter : refused.
+        # Written by hand on main, signed by the reporter: refused.
         s = self.read("reports/S-0001.yaml")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {**s["decision"], "by": "bidji29"}})
         self.ko("reports/S-0001.yaml: decision/by: neither the reporter nor one of the two accounts", "validate")
@@ -21405,7 +21405,7 @@ class TestReportsRuche0137(ReportTools):
 
     def test_linking_an_already_linked_account_says_what_the_gate_says(self):
         """Optional detail of the brief: farid already linked to gaspard, --link farid on alice and farid links alice to gaspard,
-        the person, as a decision written by hand passes the gate ; --link alice is refused by both."""
+        the person, as a decision written by hand passes the gate; --link alice is refused by both."""
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
         self.report("chloe", "alice", "farid")
@@ -21543,8 +21543,8 @@ class TestCLoaderRuche0130(unittest.TestCase):
             self.assertEqual(len({repr(v) for v in read_items.values()}), 1, read_items)
         value = reader(self.HONEST_ONES[1])[1]
         self.assertEqual((value["reservation"]["since"], value["files"]), ("2026-10-27T12:00:00Z", ["tools/bee.py", "docs/a.md"]))
-        self.assertEqual(reader(self.HONEST_ONES[2])[1]["at"], "2026-11-02")  # dates stay text, as with ChargeurBee
-        # Nested PROFONDEUR_C_MAX deep, libyaml reads; one more, the pure loader does (it alone refuses what is too deep).
+        self.assertEqual(reader(self.HONEST_ONES[2])[1]["at"], "2026-11-02")  # dates stay text, as with BeeLoader
+        # Nested C_DEPTH_MAX deep, libyaml reads; one more, the pure loader does (it alone refuses what is too deep).
         for depth, reader_name in ((bee.C_DEPTH_MAX, "_BeeLoaderC"), (bee.C_DEPTH_MAX + 1, "BeeLoader")):
             with self.subTest(depth=depth), loaders_used() as seen_items:
                 read_value = reader("a: " + "[" * (depth - 1) + "]" * (depth - 1) + "\n")
@@ -21605,7 +21605,7 @@ class TestBulkPrReads(BaseParallel):
     step, calls_of = TestAdversarialReview.step, staticmethod(TestAdversarialReview.calls_of)
     init_git, commit, reviewed_race = TestAdversarialReview.init_git, TestAdversarialReview.commit, TestAdversarialReview.reviewed_race
     ACTS_FOR = 'person=$(python3 tools/bee.py acts-for -- "$pr_author" < /dev/null) || person=""\n'
-    # (the pass today, at 1f2e749 : its lines, put back in place of the bulk read's)
+    # (the pass today, at 1f2e749: its lines, put back in place of the bulk read's)
     BEFORE = {"verdicts.yml": [
         ("          python3 tools/bee.py pending --pr-states \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"verdict_sha\") or \"-\", c.get(\"verdict_ci\") or \"-\", c.get(\"author\") or \"-\", c.get(\"awaiting_sha\") or \"-\", "
@@ -21657,7 +21657,7 @@ class TestBulkPrReads(BaseParallel):
     def test_criterion_2_integrations_and_closures_as_today(self):
         """Honest PRs, a PR another opened, a closed one, a new head, a workflow touched, unreadable files, a changed base, a
         merge by hand, a PR GitHub does not know: the same merges, closures, records and log as today's per-PR pass."""
-        c1, c2 = self.reviewed_race()  # c2 (alice, 99102) ranked first, c1 (bruno, 99101); both integrable from 31/10 14 h + 24 h
+        c1, c2 = self.reviewed_race()  # c2 (alice, 99102) ranked first, c1 (bruno, 99101); both integrable from 31 Oct 14:00 + 24 h
         self.init_git()
         self.a("2026-11-02T00:00:00Z")
         p1, p2 = PR_MINIZ + "99101", PR_MINIZ + "99102"
@@ -21980,7 +21980,7 @@ class TestRehearsalKitRuche0157(unittest.TestCase):
         self.assertIn("state/ (base, end, prs.tsv, pr_authors.tsv)", doc)
 
 
-# --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
+# --- ruche-0104: reserved pseudonyms (bee.yaml reserved_logins), refused in bee register and the gate, reported by bee validate ---
 
 class TestReservedPseudonyms(BaseTest):
     REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
@@ -22013,7 +22013,7 @@ class TestReservedPseudonyms(BaseTest):
         return self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", login, "--account-created-on", "2021-05-05")
 
     def test_the_real_list_names_the_council_robots_roles_and_hive_accounts(self):
-        config = bee.read_yaml(ROOT / "bee.yaml")  # ruche-0144: the list with the robots, both required by reserved_pseudo
+        config = bee.read_yaml(ROOT / "bee.yaml")  # ruche-0144: the list with the robots, both required by reserved_login
         for name in ("conseil", "bee", "github-actions[bot]", "mesurer", "relire", "optimiser", "proposer", "gardien", "laruche-architect"):
             self.assertIn("is a reserved pseudonym", bee.reserved_login(config, name.upper()), name)
         self.assertIsNone(bee.reserved_login(config, "bidji29"), "a council member's own login is a person")
@@ -22160,7 +22160,7 @@ class TestSettingsRuche0144(BaseTest):
                                                                 TestRegistry.set_common_judge_min)
 
     def set_one(self, path, *value):
-        """The fixture's bee.yaml as read, the setting at `chemin` removed, or set to `valeur`."""
+        """The fixture's bee.yaml as read, the setting at `path` removed, or set to `value`."""
         config = bee.read_yaml(self.dir / "bee.yaml")
         section, _, key = path.rpartition(".")
         place_of = config[section] if section else config
@@ -22168,15 +22168,15 @@ class TestSettingsRuche0144(BaseTest):
         return config
 
     def line_text(self, key, line_text):
-        """bee.yaml with its top-level `cle` line removed, then `ligne` (if any) written at the end."""
+        """bee.yaml with its top-level `key` line removed, then `line_text` (if any) written at the end."""
         path = self.dir / "bee.yaml"
         text = re.sub(rf"(?m)^{key}:.*\n", "", path.read_text(encoding="utf-8"))
         self.assertNotIn(f"\n{key}:", text)
         path.write_text(text + line_text, encoding="utf-8")
 
     def closed_one(self, path, malformed_one, reader):
-        """With the live setting, `lecture` reads it; missing, then malformed (`mal_forme`: a value that used to switch a check off, raise a
-        cap or lower a threshold), it refuses with ErreurBee naming the setting, as bee validate does: never a default, never the permissive."""
+        """With the live setting, `reader` reads it; missing, then malformed (`malformed_one`: a value that used to switch a check off, raise a
+        cap or lower a threshold), it refuses with BeeError naming the setting, as bee validate does: never a default, never the permissive."""
         reg = bee.Registry(self.dir)
         reader(reg)
         for config in (self.set_one(path), self.set_one(path, malformed_one)):
@@ -22186,7 +22186,7 @@ class TestSettingsRuche0144(BaseTest):
                     reader(reg)
                 self.assertTrue([p for p in bee.settings_problems(config) if p.startswith(f"bee.yaml: {path}")], config)
 
-    # --- bee valider: one list, every key required and well formed, no other ---
+    # --- bee validate: one list, every key required and well formed, no other ---
 
     def test_the_live_bee_yaml_has_every_setting_and_no_other(self):
         self.assertEqual(bee.settings_problems(bee.read_yaml(ROOT / "bee.yaml")), [])
@@ -22261,7 +22261,7 @@ class TestSettingsRuche0144(BaseTest):
         self.set_gate("if_judge_incomplete")
         self.set_common_judge_min(2)
         self.contributors("bruno", "chloe")
-        cid = self.judged_contribution(extra_judge={"version": 3, "common": "juge-v1"})  # under juge_commun_min: a guardian reviews
+        cid = self.judged_contribution(extra_judge={"version": 3, "common": "juge-v1"})  # under common_judge_min: a guardian reviews
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
@@ -22276,7 +22276,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.assertIn("bee.yaml: guardian_review_required: true, if_judge_incomplete or false expected", text)
 
     def test_bootstrap_missing_or_malformed(self):
-        # A string ('false') was truthy: the bootstrap on, level checks off ; missing, robots decided and a Confirmé created open tasks.
+        # A string ('false') was truthy: the bootstrap on, level checks off; missing, robots decided and a Confirmed member created open tasks.
         task = self.dir / "tasks/miniz/miniz-9003.yaml"
         task.write_text(OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9003").replace("size: S", "size: L"), encoding="utf-8")
         for line_text in ("", "bootstrap: 'false'\n", "bootstrap: 1\n"):
@@ -22288,10 +22288,10 @@ class TestSettingsRuche0144(BaseTest):
                 self.assertEqual(bee.read_yaml(task)["status"], "open")
         self.line_text("bootstrap", "bootstrap: true\n")
         self.closed_one("bootstrap", "false", lambda reg: bee.r3_summary(reg, {"required_ones": 0, "target": 2}))
-        self.assertEqual(self.bee("take", "miniz-9003", "--user", "alice")[0], 0)  # the witness: in the bootstrap, a Nouveau takes L
+        self.assertEqual(self.bee("take", "miniz-9003", "--user", "alice")[0], 0)  # the witness: in the bootstrap, a New member takes L
 
     def test_min_account_age_days_missing_or_malformed(self):
-        # false or '0' read as 0 days: an account created the same day passed bee inscrire and the gate.
+        # false or '0' read as 0 days: an account created the same day passed bee register and the gate.
         for line_text in ("", "min_account_age_days: false\n", "min_account_age_days: '0'\n"):
             with self.subTest(line_text=line_text):
                 self.line_text("min_account_age_days", line_text)
@@ -22310,7 +22310,7 @@ class TestSettingsRuche0144(BaseTest):
         cid = self.r3()
         self.closed_one("min_gain", False, lambda reg: bee.r3_causes(reg, cid))
 
-    def test_max_other_degradation(self):  # true read as 1.0: any other metric could lose 100 % (R5)
+    def test_max_other_degradation(self):  # true read as 1.0: any other metric could lose 100% (R5)
         cid = self.r3()
         self.closed_one("max_other_degradation", True, lambda reg: bee.r3_causes(reg, cid))
 
@@ -22403,8 +22403,8 @@ class TestSettingsRuche0144(BaseTest):
         self.assertTrue((self.dir / "members/alice.yaml").exists())
 
     def test_huge_or_non_finite_numbers_are_malformed(self):
-        # Before: 10**23 or 10**400 hours passed bee valider, then timedelta or float raised OverflowError (a traceback) ; .inf passed
-        # for reprise_apres_liberation_heures and for cap.poids_max_par_utilisateur_et_jour (the weight cap off).
+        # Before: 10**23 or 10**400 hours passed bee validate, then timedelta or float raised OverflowError (a traceback); .inf passed
+        # for retake_after_release_hours and for balance.max_weight_per_user_per_day (the weight cap off).
         bound = bee._BOUND
         for path, value in (("reservation_max_hours", 10 ** 23), ("reservation_max_hours", 10 ** 400), ("acceptance_window_hours", 10 ** 23),
                                ("retake_after_release_hours", math.inf), ("retake_after_release_hours", math.nan),
