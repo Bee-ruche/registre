@@ -32,7 +32,8 @@ depends_on:
 - ruche-0055
 - ruche-0145
 node: projects/ruche/ruche
-status: open
+status: in_review
+contribution: ruche-0072-c1
 created_by: council
 created_on: '2026-10-31'
 notes:
@@ -42,3 +43,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-11T09:47:48Z"
     text: "Council, 11 Nov 2026 (end of the English migration, wave 0): the switch renamed the keys and values of the task files; the clauses saying ruche-0069 and ruche-0070 change them, or that keys are renamed by script, no longer apply. Translate the prose (title, context, acceptance criteria, out of scope, notes' texts stay as written: they are history), give every cited command, folder, file and key its post-switch English name (tools/migration/names.yaml), and name planned files in English."
+  - by: "bidji29"
+    at: "2026-11-11T13:15:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 1): libyaml-0018's verdict criterion keeps the English key names and says that, while libyamlBee's verdict.json is French (until libyaml-0021), the French keys are the ones to write: bee refuses a verdict that mixes the two vocabularies, and reads the French ones only before 2027-01-01. The planned bee/juge/ files of libyaml-0013 to 0017 keep their names: juge-v3's plugin contract reads that folder; English names come with judge-v4 (ruche-0148)."

@@ -4,30 +4,30 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "Les états d'une branche dans bee : en germe, active, dormante, et les liens entre branches"
+title: "A branch's states in bee: seed, active, dormant, and the links between branches"
 context: >
-  Décision du 30/10 sur une idée du fondateur (commandement 13 complété, R13 « par branches »,
-  docs/croissance.md) : la maturité se juge branche par branche ; une branche (projet, domaine) s'ouvre à
-  tout moment, quelle que soit la maturité des autres, naît en germe (rien n'y est intégré
-  automatiquement avant que son juge ait tenu), devient active, et dort après 30 jours sans activité
-  (bee.yaml, croissance.branche_dormante_jours). Aujourd'hui, un projet n'a que les statuts actif, a_venir
-  et archive (schemas/projet.schema.json), et son ouverture suit une phase globale (phase_ouverture :
-  bzip2 et giflib à la phase 3) ; rien ne dit qu'une tâche ou un juge sert plusieurs branches. À
-  construire : (1) un statut germe (et dormante) pour un projet, que bee valider accepte, avec les tâches
-  d'amorçage permises en germe ; (2) bee verifier-acceptation et integration-auto n'intègrent jamais
-  automatiquement une contribution d'un projet en germe ; (3) bee essaim, bee cap et le site montrent
-  l'état de chaque branche, et la date de sa dernière activité (dormante au-delà du seuil) ; (4) un champ
-  liens facultatif sur une tâche (d'autres projets ou tâches qu'elle sert), contrôlé (identifiants qui
-  existent), montré par bee voir et bee contexte.
+  Decision of 30 Oct on an idea of the founder (commandment 13 completed, R13 "by branches",
+  docs/growth.md): maturity is judged branch by branch; a branch (project, field) opens at any time,
+  whatever the maturity of the others, is born as a seed (nothing is integrated in it automatically
+  before its judge has held up), becomes active, and sleeps after 30 days without activity
+  (bee.yaml, growth.dormant_branch_days). Today, a project has only the statuses active, upcoming
+  and archived (schemas/project.schema.json), and its opening follows a global phase (opening_phase:
+  bzip2 and giflib at phase 3); nothing says that a task or a judge serves several branches. To
+  build: (1) a seed status (and a dormant one) for a project, which bee validate accepts, with the
+  bootstrap tasks allowed in the seed state; (2) bee check-acceptance and auto-integration never
+  automatically integrate a contribution of a seed project; (3) bee swarm, bee balance and the site
+  show the state of each branch, and the date of its last activity (dormant beyond the threshold);
+  (4) an optional links field on a task (other projects or tasks it serves), checked (identifiers
+  that exist), shown by bee show and bee context.
 files: [tools/bee.py, tools/test_bee.py, schemas/, docs/new-project.md, docs/growth.md, tools/site_bee.py]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "test : une contribution d'un projet en germe n'est jamais intégrable automatiquement (verifier-acceptation code 1, raison dite)"
-  - "test : un projet sans activité depuis le seuil est montré dormant ; une tâche le réveille"
-  - "test : un lien vers un projet ou une tâche inexistante est refusé par bee valider"
-  - "revue adverse indépendante jointe (intégration automatique)"
-out_of_scope: [COMMANDMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
+  - "test: a contribution of a seed project is never automatically integrable (check-acceptance code 1, reason stated)"
+  - "test: a project without activity since the threshold is shown as dormant; a task wakes it up"
+  - "test: a link to a project or a task that does not exist is refused by bee validate"
+  - "independent adversarial review attached (automatic integration)"
+out_of_scope: [COMMANDMENTS.md, "the actual opening of a project (bzip2, giflib)", daughter hives]
 depends_on: []
 node: projects/ruche
 status: open

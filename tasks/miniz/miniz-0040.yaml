@@ -3,36 +3,36 @@ project: miniz
 category: lossless-compression
 type: optimization
 size: S
-title: "mz_adler32 : reprendre pour la compression le calcul par blocs de tinfl"
+title: "mz_adler32: reuse tinfl's block-wise computation for compression"
 context: >
-  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
-  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
-  La compression zlib calcule l'Adler-32 de l'entrée avec mz_adler32 (miniz.c l. 40-66 à a2f939a),
-  restée à la boucle d'origine déroulée par 8 octets : miniz-0016 n'a changé que la copie de
-  tinfl_decompress. mz_adler32 pèse 4,38 % du décompte d'instructions du juge au niveau 1, 2,24 % au
-  niveau 6 et 1,55 % au niveau 9 (juge_parts.py). Elle coûte 3,38 instructions par octet
-  (7 510 775 pour 2 221 670 octets), contre 2,64 pour la version de tinfl (2,51 dans la zone, plus
-  ses lectures par memcpy). Plafond connu : 4,38 % de instructions_n1, au-dessus du seuil de 2 % de
-  R4 ; mais recopier la version actuelle de tinfl ne retirerait que 0,74 instruction par octet,
-  environ 0,97 % de instructions_n1 : sous le seuil. Pour atteindre 2 %, il faut descendre sous
-  1,8 instruction par octet, d'où la dépendance à miniz-0039 (Adler-32 de tinfl, objectif 1,5) :
-  reprendre ici sa méthode une fois intégrée. miniz_tinfl.c doit rester compilable seul, sans
-  miniz.c : la routine est dupliquée, pas partagée. Invariants : mêmes valeurs pour tout découpage
-  en appels (adler initial quelconque, ptr nul renvoie MZ_ADLER32_INIT), réduction modulo 65521 au
-  plus tous les 5552 octets ; les contrôles « sommes » de bee/tests (mz_adler32 contre zlib, en une
-  fois et par morceaux) et l'API (bee/tests/api.c) la vérifient. Au niveau 1, le temps suit les
-  instructions (0,117 ns par instruction, TABLEAUX.md section 4).
+  Source: miniz-0029's report (bee/resultats/miniz-0029/RAPPORT.md and TABLEAUX.md in the fork,
+  branch tache/miniz-0029, PR #18; sources of master a2f939a; Cachegrind, first 128 KiB of each
+  file). The zlib compression computes the Adler-32 of the input with mz_adler32 (miniz.c l. 40-66
+  at a2f939a), which has kept the original loop unrolled by 8 bytes: miniz-0016 changed only the
+  copy in tinfl_decompress. mz_adler32 accounts for 4.38% of the judge's instruction count at level
+  1, 2.24% at level 6 and 1.55% at level 9 (juge_parts.py). It costs 3.38 instructions per byte
+  (7,510,775 for 2,221,670 bytes), against 2.64 for tinfl's version (2.51 in the region itself, plus
+  its reads through memcpy). Known ceiling: 4.38% of instructions_n1, above R4's 2% threshold; but
+  copying tinfl's current version would remove only 0.74 instructions per byte, about 0.97% of
+  instructions_n1: below the threshold. To reach 2%, it must go below 1.8 instructions per byte,
+  hence the dependency on miniz-0039 (tinfl's Adler-32, target 1.5): reuse its method here once it
+  is integrated. miniz_tinfl.c must stay compilable on its own, without miniz.c: the routine is
+  duplicated, not shared. Invariants: the same values for any split into calls (any initial adler, a
+  null ptr returns MZ_ADLER32_INIT), reduction modulo 65521 at most every 5552 bytes; the « sommes »
+  checks of bee/tests (mz_adler32 against zlib, in one go and in pieces) and the API tests
+  (bee/tests/api.c) verify it. At level 1, time follows instructions (0.117 ns per instruction,
+  TABLEAUX.md section 4).
 files: [miniz.c]
 reach: 1.0
 metric: debit_compression_n1
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-  - "contrôles « sommes » de bee/tests/lancer.sh et tests d'API sans écart ; empreintes identiques"
-  - "manifeste : instructions par octet de mz_adler32 avant et après"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, mz_crc32, miniz_tinfl.c]
+  - "green CI (R2), x86-64 and ARM64 (R6)"
+  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5)"
+  - "the « sommes » checks of bee/tests/lancer.sh and the API tests without a discrepancy; identical fingerprints"
+  - "manifest: instructions per byte of mz_adler32 before and after"
+out_of_scope: [output format, public API, new dependency, mz_crc32, miniz_tinfl.c]
 depends_on: [miniz-0001, miniz-0039]
 node: projects/lossless-compression/miniz/api
 status: open

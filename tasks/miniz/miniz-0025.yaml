@@ -3,27 +3,27 @@ project: miniz
 category: lossless-compression
 type: test
 size: M
-title: "Fuzzing de l'état de flux : changer de vidage et de tampons en cours de compression"
+title: "Fuzzing the stream state: changing the flush and the buffers during compression"
 context: >
-  Le harnais bee/fuzz/fuzz_compression.c garde la même taille de tampon et la même politique de
-  vidage pour toute une entrée. Or l'état de tdefl (m_output_flush_remaining, m_lookahead_size,
-  m_saved_match_len ; miniz_tdef.c l. 1370-1436, tdefl_compress, et l. 1289-1326, correspondance en
-  attente de tdefl_compress_normal, à 9977da4 du fork) dépend de la suite exacte des appels.
-  Écrire un troisième harnais, bee/fuzz/fuzz_flux.c : les octets de l'entrée pilotent une suite
-  d'appels mz_deflate (taille d'entrée, taille de sortie au moins 8 octets avec MZ_SYNC_FLUSH,
-  comme l'exige le manuel de zlib, choix entre MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FULL_FLUSH et
-  MZ_FINISH), puis vérifient que zlib décompresse le tout en la donnée d'origine, et que la sortie
-  sans vidage est identique à mz_compress2. L'ajouter à bee/fuzz/lancer.sh et au Makefile (cibles
-  fuzz-libfuzzer et fuzz-gcc). Le harnais doit tourner 60 s sans faux positif sur la base.
+  The harness bee/fuzz/fuzz_compression.c keeps the same buffer size and the same flush policy for a
+  whole input. Yet tdefl's state (m_output_flush_remaining, m_lookahead_size, m_saved_match_len;
+  miniz_tdef.c l. 1370-1436, tdefl_compress, and l. 1289-1326, the pending match of
+  tdefl_compress_normal, at the fork's 9977da4) depends on the exact sequence of calls. Write a
+  third harness, bee/fuzz/fuzz_flux.c: the bytes of the input drive a sequence of mz_deflate calls
+  (input size, output size of at least 8 bytes with MZ_SYNC_FLUSH, as zlib's manual requires, choice
+  among MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FULL_FLUSH and MZ_FINISH), then check that zlib decompresses
+  the whole into the original data, and that the output without flush is identical to mz_compress2.
+  Add it to bee/fuzz/lancer.sh and to the Makefile (targets fuzz-libfuzzer and fuzz-gcc). The
+  harness must run 60 s without a false positive on the base.
 files: [bee/fuzz/fuzz_flux.c, bee/fuzz/lancer.sh, bee/Makefile]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "CI verte (R2), fuzzing compris, sur la base et sur cette contribution"
-  - "le nouveau harnais tourne 60 s sur la base sans écart (journal joint)"
-  - "une mutation de tdefl_flush_output_buffer (par exemple un octet perdu) est détectée en moins de 60 s"
-  - "aucune entrée fautive publiée (procédure de docs/securite.md du registre en cas de défaut)"
-out_of_scope: [code de miniz, harnais existants, nouvelle dépendance]
+  - "green CI (R2), fuzzing included, on the base and on this contribution"
+  - "the new harness runs 60 s on the base without a discrepancy (log attached)"
+  - "a mutation of tdefl_flush_output_buffer (for example a lost byte) is detected in less than 60 s"
+  - "no faulty input published (the registry's docs/security.md procedure in case of a defect)"
+out_of_scope: [miniz's code, existing harnesses, new dependency]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/api
 status: open

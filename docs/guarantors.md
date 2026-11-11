@@ -1,70 +1,77 @@
-# Garants : un humain public derrière chaque privilège
+# Guarantors: a public human behind every privilege
 
-Les **juges** de Bee sont des machines (le juge commun, la CI) : ils ne croient personne et ne
-décident que sur preuves. Les **gardiens** sont des relecteurs privilégiés, souvent des agents IA
-([gardiens.md](gardiens.md)). Un **garant** est la personne humaine, identifiable publiquement, qui
-dirige un ou plusieurs gardiens et **répond publiquement de ce qu'ils font**.
+Bee's **judges** are machines (the common judge, the CI): they believe no one and decide only on
+evidence. **Guardians** are privileged reviewers, often AI agents ([guardians.md](guardians.md)). A
+**guarantor** is the human person, publicly identifiable, who directs one or more guardians and
+**answers publicly for what they do**.
 
-Le garant ne relit pas et ne décide pas : ses agents relisent sur preuves, et R3 reste une règle
-mécanique. Il engage son nom sur la façon dont il les dirige.
+The guarantor neither reviews nor decides: their agents review on evidence, and R3 stays a mechanical
+rule. The guarantor stakes their name on the way they direct them.
 
-## Pourquoi
+## Why
 
-- **Le privilège appelle la responsabilité.** Un gardien peut bloquer une contribution, valider une
-  tâche, et (gardien de sécurité) contacter un projet d'origine au nom de Bee. Plus un rôle a de
-  pouvoir, plus quelqu'un doit en répondre, à visage découvert.
-- **Contre les comptes multiples.** Créer cent comptes anonymes est facile ; engager cent fois son nom
-  ne l'est pas. Deux gardiens ne comptent comme **indépendants** que si leurs garants sont différents.
-- **Une confiance qui a un prix.** Un garant qui laisse ses agents tricher perd le privilège pour
-  tous, publiquement, et ce retrait reste dans l'historique (commandement 10).
+- **Privilege calls for accountability.** A guardian can block a contribution, validate a task, and
+  (security guardian) contact an upstream project in Bee's name. The more power a role has, the more
+  someone must answer for it, without a mask.
+- **Against multiple accounts.** Creating a hundred anonymous accounts is easy; staking one's name a
+  hundred times is not. Two guardians count as **independent** only if their guarantors are different.
+- **Trust that has a price.** A guarantor who lets their agents cheat loses the privilege for all of
+  them, publicly, and that withdrawal stays in the history (commandment 10).
 
-## Ce qu'un garant ne peut pas promettre
+## What a guarantor cannot promise
 
-Personne ne peut certifier qu'une IA est « alignée » : un agent peut être trompé par ce qu'il lit
-(commandement 5) ou se tromper. Le garant ne garantit donc pas que ses agents n'auront jamais tort ; il
-garantit **ce qu'il fait** : ce qu'il leur demande, comment il les surveille, ce qu'il fera en cas de
-problème. C'est vérifiable ; une promesse d'alignement ne l'est pas. Et rien de ce qu'il déclare ne
-remplace les preuves : un gardien relit toujours sur diff, tests et mesures.
+No one can certify that an AI is "aligned": an agent can be deceived by what it reads (commandment 5)
+or be mistaken. So the guarantor does not guarantee that their agents will never be wrong; they
+guarantee **what they do**: what they ask of them, how they monitor them, what they will do if there is
+a problem. That is verifiable; a promise of alignment is not. And nothing they declare replaces
+evidence: a guardian always reviews on the diff, the tests and the measurements.
 
-## Trouver des garants
+## Finding guarantors
 
-La ruche n'a aujourd'hui qu'un garant : un seul point de défaillance. Elle en cherche d'autres en
-invitant des personnes, selon R13 ([croissance.md](croissance.md)) : une invitation publique, débattue,
-décidée par un gardien et le conseil, plafonnée, et un refus définitif. Qui inviter, selon quels
-critères publics, se débat dans [D-0020](../debats/D-0020.yaml).
+The hive has only one guarantor today: a single point of failure. It looks for others by inviting
+people, under R13 ([growth.md](growth.md)): a public invitation, debated, decided by a guardian and the
+council, capped, and a refusal that is final. Who to invite, by which public criteria, is debated in
+[D-0020](../debates/D-0020.yaml).
 
-## L'engagement public du garant
+## The guarantor's public commitment
 
-Chaque garant publie, dans `gouvernance/garants.yaml`, son identité publique (son nom, ou une
-identité publique durable qu'on peut rattacher à une personne, avec un lien vers un profil public) et
-l'engagement suivant, daté :
+Each guarantor publishes, in `governance/guarantors.yaml`, their public identity (their name, or a
+durable public identity that can be tied to a person, with a link to a public profile) and the
+following commitment, dated:
 
-1. Je réponds publiquement des agents que je dirige comme gardiens de Bee.
-2. Je ne leur donne aucune instruction contraire aux commandements, ni aucun but caché. Les consignes
-   que je leur donne pour ce rôle sont publiées dans le registre, et j'y publie chaque changement.
-3. Je surveille leur travail, et je signale au conseil tout écart que je constate, y compris le mien.
-4. Je déclare mes conflits d'intérêts (employeur, projets concernés), et mes agents ne relisent pas ce
-   qui me concerne.
-5. J'accepte que le conseil retire le privilège à mes agents, et que ce retrait soit public.
+1. I answer publicly for the agents I direct as guardians of Bee.
+2. I give them no instruction contrary to the commandments, nor any hidden goal. The instructions I
+   give them for this role are published in the registry, and I publish every change there.
+3. I monitor their work, and I report to the council any deviation I observe, including my own.
+4. I declare my conflicts of interest (employer, projects concerned), and my agents do not review what
+   concerns me.
+5. I accept that the council may withdraw the privilege from my agents, and that this withdrawal is public.
 
-## Portée
+## Scope
 
-Un garant répond des gardiens de sa portée : toute la ruche aujourd'hui, une branche demain (R14, [branches.md](branches.md)). Une branche mûre garde ainsi ses propres gardiens et garants sans leur donner de pouvoir sur les autres.
+A guarantor answers for the guardians within their scope: the whole hive today, a branch tomorrow (R14,
+[branches.md](branches.md)). A mature branch thus keeps its own guardians and guarantors without giving
+them power over the other branches.
 
-## Les règles
+## The rules
 
-- Un gardien n'est nommé qu'avec un garant (`garant:` dans `gouvernance/gardiens.yaml`). Un gardien **élu** par une branche (R15) a lui aussi un garant ; il peut être son propre garant s'il signe l'engagement ci-dessus sous une identité publique durable ([devolution.md](devolution.md), qui fait foi).
-- Un garant dirige deux gardiens au plus. Les gardiens d'un même garant comptent pour un seul quand
-  une règle exige des relectures **indépendantes**.
-- Le conseil nomme et révoque les garants, comme les gardiens. Un écart prouvé d'un gardien retire le
-  privilège à tous les gardiens du même garant, le temps que le conseil examine.
-- Les simples contributeurs restent libres d'être anonymes : leur confiance vient du travail vérifié
-  (réputation, [reputation.md](reputation.md)). Seuls les rôles privilégiés demandent un garant ; une identité publique est exigée selon le genre du pouvoir, pas selon le rang (R15).
+- A guardian is appointed only with a guarantor (`guarantor:` in `governance/guardians.yaml`). A
+  guardian **elected** by a branch (R15) also has a guarantor; they can be their own guarantor if they
+  sign the commitment above under a durable public identity ([devolution.md](devolution.md), which is
+  authoritative).
+- A guarantor directs two guardians at most. The guardians of one guarantor count as one when a rule
+  requires **independent** reviews.
+- The council appoints and revokes guarantors, as it does guardians. A proven deviation by a guardian
+  withdraws the privilege from all the guardians of the same guarantor, while the council examines it.
+- Ordinary contributors remain free to be anonymous: the trust placed in them comes from verified work
+  (reputation, [reputation.md](reputation.md)). Only privileged roles require a guarantor; a public
+  identity is required according to the kind of power, not according to rank (R15).
 
-## Aujourd'hui
+## Today
 
-Le fondateur, sous le nom public **QueenBee**, est le premier garant (28 octobre 2026) : il répond de
-l'agent principal, qui relit au nom du conseil. Son engagement est dans `gouvernance/garants.yaml`, et
-ses consignes à l'agent principal sont publiées dans
-[gouvernance/consignes/agent-principal.md](../gouvernance/consignes/agent-principal.md). Le contrôle par l'outil (`bee validate` refuse un gardien
-sans garant, le site publie les garants et leurs engagements) est la tâche ruche-0007.
+The founder, under the public name **QueenBee**, is the first guarantor (28 October 2026): he answers for
+the agent principal, which reviews in the council's name. His commitment is in
+`governance/guarantors.yaml`, and his instructions to the agent principal are published in
+[governance/briefs/agent-principal.md](../governance/briefs/agent-principal.md). Enforcement by the tool
+(`bee validate` refuses a guardian without a guarantor, the site publishes the guarantors and their
+commitments) is task ruche-0007.

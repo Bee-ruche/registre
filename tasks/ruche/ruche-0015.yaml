@@ -4,25 +4,24 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: 'L''arbre de libyaml : écrire les nœuds de ses zones (lecture, scanner, parser, chargeur, émetteur)'
-context: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégories et des projets de l''arbre
-  du sens ; le nœud de libyaml (arbre/projets/parsing-serialisation/libyaml/SENS.md) nomme ses zones sans
-  les décrire. Faits : sur les 9 tâches libyaml, 7 construisent l''outillage du fork (oracle, aller-retour,
-  fuzzing, juge isolé) et 2 visent le code, toutes deux bloquées par l''outillage : libyaml-0010 (src/reader.c,
-  yaml_parser_update_buffer, décodage UTF-8) et libyaml-0011 (src/scanner.c, yaml_parser_scan_plain_scalar).
-  Le bee/README.md du fork (l. 60) note que l''analyse est limitée par le processeur : une baisse d''instructions
-  s''y voit au chronomètre (le nœud de miniz dit l''inverse pour sa décompression, qui bute sur la mémoire).
-  À faire : un nœud par zone sous arbre/projets/parsing-serialisation/libyaml/ (lecture et décodage, scanner,
-  parser, chargeur, émetteur), au format de docs/arbre.md (40 lignes au plus) : pourquoi la zone existe
-  ; ce qui y compte (fonctions chaudes et leur part des instructions d''après un profil callgrind du banc,
-  cité avec sa commande (le fork n''a pas de profileur comme bee/bench/profil.py de minizBee ; libyaml-0010
-  et libyaml-0011 citent 16,6 % et 24,4 %), ce que l''oracle vérifie dans cette zone, états et invariants
-  que les optimisations touchent, pièges connus) ; ce qu''on peut y ignorer. Puis lister les zones dans
-  le nœud de libyaml et y rattacher les tâches libyaml ouvertes (champ noeud) ; src/writer.c et src/dumper.c
-  vont avec l''émetteur. Garde-fou de taille (docs/arbre.md, test test_chemins_livres_tiennent_dans_un_budget_court,
-  qui lit le vrai registre) : sans la tâche, le chemin d''un rôle et d''un projet tient en 1 900 jetons,
-  et, zone comprise, celui de chaque tâche vivante en 2 600 ; une zone reste donc courte. Le test ne se
-  change pas dans cette tâche (commandement 3).
+title: 'libyaml''s tree: write the nodes of its areas (reading, scanner, parser, loader, emitter)'
+context: 'ruche-0010 wrote the root and the levels of the roles, categories and projects of the tree of
+  meaning; libyaml''s node (tree/projects/parsing-serialization/libyaml/MEANING.md) names its areas without
+  describing them. Facts: of the 9 libyaml tasks, 7 build the fork''s tooling (oracle, round trip, fuzzing,
+  isolated judge) and 2 target the code, both blocked by the tooling: libyaml-0010 (src/reader.c, yaml_parser_update_buffer,
+  UTF-8 decoding) and libyaml-0011 (src/scanner.c, yaml_parser_scan_plain_scalar). The fork''s bee/README.md
+  (line 60) notes that parsing is CPU-bound: a drop in instructions shows on the stopwatch (miniz''s node
+  says the opposite for its decompression, which is memory-bound). To do: one node per area under tree/projects/parsing-serialization/libyaml/
+  (reading and decoding, scanner, parser, loader, emitter), in the format of docs/tree.md (40 lines at
+  most): why the area exists; what matters there (hot functions and their share of the instructions according
+  to a callgrind profile of the bench, cited with its command (the fork has no profiler like minizBee''s
+  bee/bench/profil.py; libyaml-0010 and libyaml-0011 cite 16.6% and 24.4%), what the oracle checks in
+  this area, states and invariants that the optimizations touch, known pitfalls); what can be ignored
+  there. Then list the areas in libyaml''s node and attach the open libyaml tasks to them (node field);
+  src/writer.c and src/dumper.c go with the emitter. Size guard (docs/tree.md, test test_delivered_paths_fit_in_a_short_budget,
+  which reads the real registry): without the task, the path of a role and a project fits in 1,900 tokens,
+  and, area included, that of each task still alive in 2,600; an area therefore stays short. The test
+  is not changed in this task (commandment 3).
 
   '
 files:
@@ -31,16 +30,15 @@ files:
 reach: 0.8
 metric: null
 acceptance_criteria:
-- 'bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud de libyaml
-  le liste'
-- chaque fait chiffré d'un nœud cite sa source (tâche, profil callgrind avec sa commande, bee/README.md
-  du fork)
-- libyaml-0010 et libyaml-0011 sont rattachées à leur zone
-- vérifié par un agent sans mémoire qui ne lit que bee contexte libyaml-0011 (rapport joint)
-- python3 -m unittest outils.test_bee passe sans modification, garde-fou de taille compris
+- 'bee validate passes: each node fits in its budget, with its four sections, and libyaml''s node lists
+  it'
+- each figure in a node cites its source (task, callgrind profile with its command, the fork's bee/README.md)
+- libyaml-0010 and libyaml-0011 are attached to their area
+- checked by an agent without memory who reads only bee context libyaml-0011 (report attached)
+- python3 -m unittest tools.test_bee passes without modification, size guard included
 out_of_scope:
-- le code de libyamlBee
-- les autres branches de l'arbre
+- libyamlBee's code
+- the other branches of the tree
 - tools/
 depends_on:
 - ruche-0010

@@ -1394,7 +1394,7 @@ class BaseTest(unittest.TestCase):
                                   .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
                                   .replace("compressed_output: identical\n", ""), encoding="utf-8")
         questions = self.dir / "docs" / "open-questions.md"
-        questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debates --show D-\d{4}`\)\.\n", "",
+        questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debates/D-\d{4}\.yaml\) \(`bee debates --show D-\d{4}`\)\.\n", "",
                                     questions.read_text(encoding="utf-8")), encoding="utf-8")
         # Ni de la valeur courante de la porte de relecture (R3) : les tests partent de la porte fermée (« true ») et
         # la règlent eux-mêmes (regler_porte, regler_porte_humaine).
@@ -7950,13 +7950,13 @@ class TestAgora(BaseAgora):
         reg = bee.Registry(self.dir)
         self.assertEqual(sorted(reg.debates), [f"D-{i:04d}" for i in range(1, expected_ones + 1)])
         first = reg.debates["D-0001"][1]
-        self.assertTrue(first["question"].startswith("Si le conseil disparaît. Le fondateur est aujourd'hui le seul humain"))
-        self.assertIn("« Se gouverner », question 1", first["question"])
+        self.assertTrue(first["question"].startswith("If the council disappears. The founder is currently the only human"))
+        self.assertIn("« Self-governance », question 1", first["question"])
         self.assertEqual((first["opened_by"], first["arguments"]), ("bidji29", []))
         self.assertNotIn("rapporteur", first, "un débat importé naît sans rapporteur : le premier qui argumente le devient")
         doc = (self.dir / "docs/open-questions.md").read_text(encoding="utf-8")
         self.assertEqual(doc.count("Debate: [D-"), expected_ones)
-        self.assertIn("absence longue ?\n   Debate: [D-0001](../debates/D-0001.yaml)", doc)
+        self.assertIn("long absence?\n   Debate: [D-0001](../debates/D-0001.yaml)", doc)
         self.assertIn("\n    Debate: [D-0010](../debates/D-0010.yaml)", doc, "retrait aligné sur l'item « 10. »")
         self.valid_one()
         text = self.ok("debate", "import-questions", "--user", "bidji29")
@@ -11821,9 +11821,9 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.assertIn(english_form, (ROOT / "COMMANDMENTS.md").read_text(encoding="utf-8"))
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
         growth = (ROOT / "docs/growth.md").read_text(encoding="utf-8")
-        for text in (r13, growth):
-            self.assertIn("ne sont pas du commun", text)
-            self.assertIn("empreintes", text)
+        for text, commons, hashes in ((r13, "is not part of the commons", "hashes"), (growth, "ne sont pas du commun", "empreintes")):
+            self.assertIn(commons, text)
+            self.assertIn(hashes, text)
         for limit_value in ("recherche obstinée", "effacement de l'historique"):
             self.assertIn(limit_value, growth)
 
@@ -11993,8 +11993,9 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
     def test_3_written_rule(self):
         r12, r13 = (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith(f"| {r} |"))
                     for r in ("R12", "R13"))
-        self.assertIn("le conseil caviarde", r12)
-        for text in (r13, (ROOT / "docs/growth.md").read_text(encoding="utf-8"),
+        self.assertIn("the council redacts", r12)
+        self.assertIn("by its number", r13)
+        for text in ((ROOT / "docs/growth.md").read_text(encoding="utf-8"),
                       (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
             self.assertIn("par son numéro", text)
 
@@ -12182,9 +12183,10 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         # Trente jours plus tard, ils ne comptent plus.
         self.a("2026-12-01T10:00:00Z")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 0)
-        for text in ((ROOT / "docs/growth.md").read_text(encoding="utf-8"),
-                      next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))):
-            self.assertIn("une inscription seule ne compte pas", text.lower())
+        for text, sentence in (((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "une inscription seule ne compte pas"),
+                               (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines()
+                                     if l.startswith("| R13 |")), "a registration alone does not count")):
+            self.assertIn(sentence, text.lower())
 
     # --- 11. Un fichier d'invitation scalaire ---
 
@@ -12922,8 +12924,8 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.valid_one()
         text = " ".join(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R12 |"))
         # What R12 must say: the council redacts, for an invitation it names (commandment 10). The key bee writes is redacted_for,
-        # asserted on the debate above; RULES.md quotes the pre-switch key name until its own translation, which no test pins.
-        self.assertIn("le conseil caviarde, pour une invitation refusée ou retirée qu'il nomme", text)
+        # asserted on the debate above; RULES.md cites it since its translation (ruche-0058).
+        self.assertIn("the council redacts, for a refused or withdrawn invitation that it names", text)
         self.assertIn("rien ne se caviarde", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
 
     # --- D1b : la question et la synthèse ---
@@ -13036,8 +13038,8 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.active("alice", "bruno")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 2)
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
-        for text in (r13, (ROOT / "docs/growth.md").read_text(encoding="utf-8")):
-            self.assertIn("ni un argument", text)
+        for text, sentence in ((r13, "nor does an argument"), ((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "ni un argument")):
+            self.assertIn(sentence, text)
 
     # --- Ligne du commandement 10 ---
 

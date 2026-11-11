@@ -3,44 +3,41 @@ project: miniz
 category: lossless-compression
 type: optimization
 size: S
-title: "tinfl_decompress : construire les tables de Huffman avec moins de remises à zéro"
+title: "tinfl_decompress: build the Huffman tables with less zeroing"
 context: >
-  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
-  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). La construction des tables de décodage de
-  chaque bloc dynamique (miniz_tinfl.c l. 327-392) coûte 4,1 % des instructions de la
-  décompression. À chaque bloc, elle remet à zéro les 1024 entrées de m_look_up (TINFL_MEMSET l.
-  338, 2 Kio) et l'arbre (tinfl_clear_tree l. 177-185), renverse les codes bit à bit (l. 359-360)
-  et remplit la table par pas de 1 << code_size (l. 364-368). Pistes : renverser les codes par une
-  table de 256 ou 1024 entrées ; ne remettre à zéro que les entrées utilisées ; éviter le memset
-  complet quand tous les codes tiennent dans TINFL_FAST_LOOKUP_BITS. Les tables produites doivent
-  rester identiques, et les contrôles de validité (l. 349-352) intacts.
-  Un essai est mesuré (note du 28/10 ci-dessous ; manifeste de la branche
-  essai/miniz-0022-doublement du fork, candidat af45a86 contre la base 1c625c3, Xeon 2,1 GHz
-  virtualisé, 2 cœurs, gcc 13.3) : instructions_decompression −2,80 % (−1,06 % sur le corpus
-  complet, qui n'a que 84 blocs Huffman) ; debit_decompression sur le corpus complet +0,63 %
-  en 300 tours entrelacés, mais une copie identique de la base y gagne autant (+0,60 %), donc rien
-  de distinct du placement du code ; +44,6 % au chronomètre sur les 1 024 premiers octets de chaque
-  fichier (30 tours sur 30, copie de la base +0,28 %). Coût : pile de tinfl_decompress de 448 à
-  1 120 octets (gcc 13.3 -O3, -fstack-usage) et 800 octets de code, gênants pour les cibles
-  embarquées de miniz.
-  Sous R4, la tâche paraît hors d'atteinte sur debit_decompression : la construction des tables
-  pèse environ 1 % du temps sur le corpus complet (manifeste de l'essai), et le bruit du juge
-  isolé est d'environ ±0,4 % (note de miniz-0018). La configuration qui verrait le gain est la
-  décompression de petits flux : préfixe de 1 Kio par fichier, ou famille petits/ du corpus (35
-  fichiers de moins de 1 Kio, bee/README.md), que miniz-0027 propose d'ajouter au banc ; tant
-  qu'aucune métrique ne la mesure, un essai qui ne gagne que là se conclut par une note, pas par
-  une soumission (roles/optimiser, étape 7).
+  Callgrind profile of the base 2948eeb (python3 bee/bench/profil.py: measured passes only, first
+  128 KiB of each file of the corpus, 2.2 MB). Building the decoding tables of each dynamic block
+  (miniz_tinfl.c l. 327-392) costs 4.1% of the decompression's instructions. At each block, it
+  zeroes the 1024 entries of m_look_up (TINFL_MEMSET l. 338, 2 KiB) and the tree (tinfl_clear_tree
+  l. 177-185), reverses the codes bit by bit (l. 359-360) and fills the table in steps of
+  1 << code_size (l. 364-368). Leads: reverse the codes with a table of 256 or 1024 entries; zero
+  only the entries used; avoid the full memset when every code fits in TINFL_FAST_LOOKUP_BITS. The
+  tables produced must stay identical, and the validity checks (l. 349-352) intact. A trial is
+  measured (note of 28 Oct below; manifest of the fork's branch essai/miniz-0022-doublement,
+  candidate af45a86 against the base 1c625c3, virtualized 2.1 GHz Xeon, 2 cores, gcc 13.3):
+  instructions_decompression −2.80% (−1.06% on the full corpus, which has only 84 Huffman blocks);
+  debit_decompression on the full corpus +0.63% in 300 interleaved rounds, but an identical copy of
+  the base gains as much there (+0.60%), so nothing distinct from code placement; +44.6% on the
+  stopwatch on the first 1,024 bytes of each file (30 rounds out of 30, copy of the base +0.28%).
+  Cost: tinfl_decompress's stack from 448 to 1,120 bytes (gcc 13.3 -O3, -fstack-usage) and 800 bytes
+  of code, a drawback for miniz's embedded targets. Under R4, the task seems out of reach on
+  debit_decompression: building the tables weighs about 1% of the time on the full corpus (the
+  trial's manifest), and the isolated judge's noise is about ±0.4% (miniz-0018's note). The
+  configuration that would see the gain is the decompression of small streams: a 1 KiB prefix per
+  file, or the corpus's petits/ family (35 files under 1 KiB, bee/README.md), which miniz-0027
+  proposes to add to the bench; as long as no metric measures it, a trial that gains only there ends
+  with a note, not a submission (roles/optimize, step 7).
 files: [miniz_tinfl.c]
 reach: 0.6
 metric: debit_decompression
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "R4 : au moins 2 % d'instructions en moins sur debit_decompression (instructions_decompression), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
-  - "pile de tinfl_decompress (gcc -O3, -fstack-usage) et taille du code de miniz_tinfl.o (size), avant et après, déclarées dans le manifeste"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, contrôles de validité des tables]
+  - "green CI (R2), x86-64 and ARM64 (R6)"
+  - "R4: at least 2% fewer instructions on debit_decompression (instructions_decompression), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5)"
+  - "inflate fuzzing (fuzz_inflate) for 10 minutes without a discrepancy"
+  - "tinfl_decompress's stack (gcc -O3, -fstack-usage) and the code size of miniz_tinfl.o (size), before and after, declared in the manifest"
+out_of_scope: [output format, public API, new dependency, validity checks of the tables]
 depends_on: [miniz-0001, miniz-0027]
 node: projects/lossless-compression/miniz/inflate
 status: open
