@@ -38,22 +38,22 @@ def sign_test(values_a, values_b, direction):
     a_wins = sum(1 for a, b in pairs if best_one(b, a))
     n_useful = a_wins + b_wins
     k = sign_threshold(n_useful) if n_useful else None
-    return {
-        "paires": len(pairs), "paires_utiles": n_useful,
-        "victoires_B": b_wins, "victoires_A": a_wins, "egalites": len(pairs) - n_useful,
-        "seuil_k": k,
-        "p_amelioration": one_sided_p(n_useful, b_wins) if n_useful else None,
+    return {  # keys in English from judge-v4 on (ruche-0148), as bee record-measurement reads an ab.py report
+        "pairs": len(pairs), "useful_pairs": n_useful,
+        "b_wins": b_wins, "a_wins": a_wins, "ties": len(pairs) - n_useful,
+        "threshold_k": k,
+        "p_improvement": one_sided_p(n_useful, b_wins) if n_useful else None,
         "p_degradation": one_sided_p(n_useful, a_wins) if n_useful else None,
-        "au_dela_du_bruit": k is not None and b_wins >= k,
-        "degradation_au_dela_du_bruit": k is not None and a_wins >= k,
+        "beyond_noise": k is not None and b_wins >= k,
+        "degradation_beyond_noise": k is not None and a_wins >= k,
     }
 
 
 def summary(values_of):
     values_of = [v for v in values_of if v is not None]
     if not values_of:
-        return {"mediane": None, "min": None, "max": None, "valeurs": []}
-    return {"mediane": statistics.median(values_of), "min": min(values_of), "max": max(values_of), "valeurs": values_of}
+        return {"median": None, "min": None, "max": None, "values": []}
+    return {"median": statistics.median(values_of), "min": min(values_of), "max": max(values_of), "values": values_of}
 
 
 def relative_gain(a, b, direction):
@@ -77,30 +77,30 @@ def description_machine():
         version = subprocess.run([compiler, "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     except (OSError, IndexError):
         version = compiler
-    return {"processeur": model, "architecture": platform.machine(), "coeurs": os.cpu_count(),
-            "systeme": platform.platform(), "compilateur": version}
+    return {"processor": model, "architecture": platform.machine(), "cores": os.cpu_count(),
+            "system": platform.platform(), "compiler": version}
 
 
 def show_table(report):
     lines = [f"{'métrique':26s} {'médiane A':>12s} {'médiane B':>12s} {'gain':>8s}  {'B gagne':>8s}  verdict"]
-    for nom, m in report["metriques"].items():
+    for nom, m in report["metrics"].items():
         a, b = m["A"], m["B"]
-        if a["mediane"] is None:
+        if a["median"] is None:
             continue
-        s = m["test_du_signe"]
+        s = m["sign_test"]
         gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.2f} %"
-        if m["au_dela_du_bruit"]:
+        if m["beyond_noise"]:
             verdict = "amélioration au-delà du bruit"
-        elif m["degradation_au_dela_du_bruit"]:
+        elif m["degradation_beyond_noise"]:
             verdict = "DÉGRADATION au-delà du bruit"
         else:
             verdict = "dans le bruit"
-        lines.append(f"{nom:26s} {a['mediane']:12.3f} {b['mediane']:12.3f} {gain:>8s}  "
-                      f"{s['victoires_B']:>3d}/{s['paires_utiles']:<4d}  {verdict}"
-                      + (f" ({s['egalites']} égalités écartées)" if s["egalites"] else ""))
+        lines.append(f"{nom:26s} {a['median']:12.3f} {b['median']:12.3f} {gain:>8s}  "
+                      f"{s['b_wins']:>3d}/{s['useful_pairs']:<4d}  {verdict}"
+                      + (f" ({s['ties']} égalités écartées)" if s["ties"] else ""))
     for nom, m in (report.get("instructions") or {}).items():
         gain = "-" if m["gain"] is None else f"{100 * m['gain']:+.3f} %"
-        if not m["au_dela_du_bruit"]:
+        if not m["beyond_noise"]:
             verdict = "dans le bruit"
         else:
             verdict = "moins d'instructions" if m["gain"] > 0 else "PLUS d'instructions"

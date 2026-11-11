@@ -24,8 +24,9 @@ acceptance_window_hours: 24   # R3: time open before automatic integration (the 
 guardian_review_required: if_judge_incomplete  # R3: TEMPORARY review gate — a favorable review by a guardian or the council is
                                  # required for any other author, as long as the CI's judge is not safe. Values: true,
                                  # if_judge_incomplete (only if the fork's isolated judge has not judged everything), false
-common_judge_min: 2               # R3 (ruche-0086, docs/common-judge.md): with if_judge_incomplete, a verdict from an older common judge than juge-v<min>,
-                                 # or from none, is not entirely judged (a guardian reviews). The council raises it once the new juge-vN tag exists and
+common_judge_min: 2               # R3 (ruche-0086, docs/common-judge.md): with if_judge_incomplete, a verdict from an older common judge than tag <min>,
+                                 # juge-v1 to juge-v3 then judge-v4 on (ruche-0148; any other label is none), or from none, is not entirely judged
+                                 # (a guardian reviews). The council raises it once the new tag exists and
                                  # every fork is pinned to it. Missing or malformed (not an int from 1 to 9999): no verdict is complete,
                                  # and bee validate refuses the registry (ruche-0144).
 vote_duration_days: 7              # R10
