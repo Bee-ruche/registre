@@ -29,6 +29,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-10T15:04:51Z"
     text: "Council, 10 Nov 2026, after the switch (#238): what this task removes after date D, as merged: the refusal table of the 62 old command names (tools/bee.py), the French reading of fork documents and the fetch of manifestes/ and CONTRIBUTION.yaml in verdicts.yml; the retired-names guard and the old names in AUTHORITY_FILES stay for good."
+  - by: "bidji29"
+    at: "2026-11-11T05:47:05Z"
+    text: "Council, 11 Nov 2026, after ruche-0146 and ruche-0147 (bee's messages, help, site, comments and docstrings in English): French left in tools/bee.py on purpose, to settle when the bridges go: the sources value « retiré » that a redaction writes into debate files (data: rename it with a migration of the existing files), gate_mode's « toujours » and FUSION_AUTO=oui/non (machine-shaped), the example « PR fermée sans fusion » that auto-integration.yml passes to bee close, tools/marker_inventory.py's French entries (now unused) and its --names check (pre-switch: it fails on main), and tools/migration/check_messages.py itself once no message PR is left."
 status: open
 created_by: council
 created_on: '2026-11-08'

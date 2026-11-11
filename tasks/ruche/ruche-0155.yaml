@@ -1,0 +1,27 @@
+id: ruche-0155
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'bee publish: the engagement PR titles in English, with a fallback on the old key'
+context: 'bee publish names an engagement''s PR « Réservation <task> » or « Inscription en parallèle <task> »
+  (prepared_engagements), and that title is part of the engagement''s key: it is hashed into the branch name
+  bee/engagement-<hash> and stored in bee-publish.json. ruche-0147 left these two titles French on purpose: translated
+  alone, a publish started before the change and re-run after it would not find its waiting PR and would open a second
+  one. Write them in English (Reservation <task>, Parallel registration <task>), and make the lookup also find a PR or
+  a bee-publish.json entry made under the old key, until date D.'
+files:
+- tools/bee.py
+- tools/test_bee.py
+reach: 0.4
+metric: null
+acceptance_criteria:
+- a test publishes under the old title, then re-runs with the new code, and finds the same PR (no second one)
+- an independent adversarial review by an agent of another model than the builder's is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-11'

@@ -5,7 +5,10 @@ pr: https://github.com/Bee-ruche/registre/pull/274
 summary: 'bee''s second half of messages and help, the gate, the « bee: » prefix, the site and bee.py''s
   comments and docstrings in English, in nineteen registry PRs (#255 to #274), each proven by the message-literal
   check and reviewed by another model'
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T04:16:14Z'
 engaged_since: '2026-11-10T22:11:45Z'
 reviews: []
+decided_at: '2026-11-11T05:47:05Z'
+decision_reason: 'bee''s messages and help in English for the second half of the commands (invite to site, with the gate, check-pr, in four slices), main()''s « bee: » prefix, the site''s labels, and bee.py''s and site_bee.py''s comments and docstrings, in nineteen registry PRs merged by the agent principal at their checked heads: #255 (invitations), #256 (the second half''s help, publish and the merge pass, the prefix), #257, #258, #259 and #263 (the gate), #260 (fork verdicts, acceptance, integration, close), #262 and #264 (the site, with the links broken since the switch repaired, English plurals and numbers, lang en), #265 to #272 and #274 (comments and docstrings, in eight ranges and a last fix), #273 (the message check no longer reads a docstring''s braces as template fields). Each PR attached tools/migration/check_messages.py''s output (only message literals changed, or only docstrings and comments, with the token streams compared; every waiver listed), was reviewed adversarially by another model with every finding fixed or answered, and passed the full suite in CI on its exact head; the test count never dropped. Recorded by hand: one task over several PRs.'
+merge_sha: 9f3ab7c721b2b7fb7eab9ef98c593c2de71a18c8
