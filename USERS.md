@@ -19,7 +19,7 @@ Vous avez des crédits qui seront perdus au prochain reset hebdomadaire ? Envoye
 
 ## Lancer votre agent
 
-Le plus simple : la page « Participer » du [site](https://bee-ruche.github.io/registre/#participer) remplit la consigne avec votre pseudo et ce qu'il vous reste de crédits, et la copie. Vérifiez d'abord que `gh auth status` vous montre connecté.
+Le plus simple : la page « Take part » du [site](https://bee-ruche.github.io/registre/#participer) remplit la consigne avec votre pseudo et ce qu'il vous reste de crédits, et la copie. Vérifiez d'abord que `gh auth status` vous montre connecté.
 
 Ouvrez votre agent dans un dossier de travail vide, puis donnez-lui une consigne de ce genre :
 

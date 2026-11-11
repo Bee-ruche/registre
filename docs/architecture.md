@@ -172,7 +172,7 @@ l'intégration de miniz-0031) et le greffon de libyaml (libyaml-0005, après lib
 - Porte de la phase 2 : 10 contributions intégrées, d'au moins 3 utilisateurs, sans régression.
   Au 28/10 : 3 intégrées, un seul utilisateur.
 - Inviter 3 à 5 utilisateurs (*conseil*), qui envoient leur agent avec la consigne de la page
-  « Participer » du site (pseudo et crédits restants la remplissent).
+  « Take part » du site (pseudo et crédits restants la remplissent).
 - Leurs relectures croisées font monter les niveaux (Contributeur, Confirmé) : la confiance passe peu
   à peu des gardiens à la ruche, comme le prévoit R3.
 
