@@ -14,19 +14,19 @@ status: upcoming
 opening_phase: 3
 maintainer_tier: none
 metrics:
-  - id: debit_decodage
+  - id: decode_throughput
     description: Decoding throughput on the reference GIF corpus
     unit: Mpixels/s
     direction: higher
-  - id: debit_animation
+  - id: animation_throughput
     description: Frames decoded per second on the corpus's animated GIFs
     unit: frames/s
     direction: higher
-  - id: latence_icones
+  - id: icon_latency
     description: Average decoding time of a small icon (under 64 × 64)
     unit: µs
     direction: lower
-  - id: memoire_max_ko
+  - id: max_memory_kb
     description: Peak heap during DGifSlurp
     unit: KB
     direction: lower

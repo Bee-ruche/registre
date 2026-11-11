@@ -29,7 +29,7 @@ context: >
   La même routine profitera ensuite à mz_adler32 (miniz-0040).
 files: [miniz_tinfl.c]
 reach: 1.0
-metric: debit_decompression
+metric: decompression_throughput
 compressed_output: identical
 acceptance_criteria:
   - "CI verte (R2), x86-64 et ARM64 (R6)"

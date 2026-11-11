@@ -67,7 +67,7 @@ context: >
   sur deux lignes repliées pour vérifier que la mise en forme est préservée.
 files: [miniz_tdef.c]
 reach: 1.0
-metric: debit_compression_n6
+metric: compression_throughput_n6
 compressed_output: identical
 acceptance_criteria:
   - "CI verte (R2)"
@@ -1391,7 +1391,7 @@ class BaseTest(unittest.TestCase):
                 category = bee.read_yaml(project_record)["category"]
                 path.write_text(OPTIMIZATION_TASK.replace("miniz-0099", tid).replace("project: miniz", f"project: {project}")
                                   .replace("category: lossless-compression", f"category: {category}")
-                                  .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
+                                  .replace("type: optimization", "type: test").replace("metric: compression_throughput_n6", "metric: null")
                                   .replace("compressed_output: identical\n", ""), encoding="utf-8")
         questions = self.dir / "docs" / "open-questions.md"
         questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debates/D-\d{4}\.yaml\) \(`bee debates --show D-\d{4}`\)\.\n", "",
@@ -1405,7 +1405,7 @@ class BaseTest(unittest.TestCase):
         # Tâches fictives indépendantes de l'état réel du registre : 9002 attend 9001.
         (self.dir / "tasks" / "miniz" / "miniz-9001.yaml").write_text(OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9001"), encoding="utf-8")
         (self.dir / "tasks" / "miniz" / "miniz-9002.yaml").write_text(
-            OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9002").replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
+            OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9002").replace("type: optimization", "type: test").replace("metric: compression_throughput_n6", "metric: null")
             .replace("compressed_output: identical\n", "").replace("status: open", "depends_on: [miniz-9001]\nstatus: open"), encoding="utf-8")
         self.old_now = os.environ.get("BEE_NOW")
         os.environ["BEE_NOW"] = "2026-10-27T12:00:00Z"
@@ -1612,10 +1612,10 @@ class TestRegistry(BaseTest):
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
         base = yaml.safe_load(FILLED_MANIFEST)
         case_of = {"mesures en liste": {**base, "measurements": [1, 2]},
-               "avant en texte": {**base, "measurements": {"before": {"debit_compression_n6": "abc"}, "after": {"debit_compression_n6": 55.0}}},
-               "après démesuré": {**base, "measurements": {"before": {"debit_compression_n6": 1}, "after": {"debit_compression_n6": 10 ** 400}}},
-               "après NaN": {**base, "measurements": {"before": {"debit_compression_n6": 50.0}, "after": {"debit_compression_n6": float("nan")}}},
-               "avant nul": {**base, "measurements": {"before": {"debit_compression_n6": 0}, "after": {"debit_compression_n6": 55.0}}}}
+               "avant en texte": {**base, "measurements": {"before": {"compression_throughput_n6": "abc"}, "after": {"compression_throughput_n6": 55.0}}},
+               "après démesuré": {**base, "measurements": {"before": {"compression_throughput_n6": 1}, "after": {"compression_throughput_n6": 10 ** 400}}},
+               "après NaN": {**base, "measurements": {"before": {"compression_throughput_n6": 50.0}, "after": {"compression_throughput_n6": float("nan")}}},
+               "avant nul": {**base, "measurements": {"before": {"compression_throughput_n6": 0}, "after": {"compression_throughput_n6": 55.0}}}}
         manifest = self.dir / "manifest.yaml"
         for name, content in case_of.items():
             with self.subTest(case_of=name):
@@ -1738,14 +1738,14 @@ class TestRegistry(BaseTest):
         cid = self.submit_0099()
         verdict = self.dir / "verdict.json"
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.05, "beyond_noise": True, "instructions": INSTRUCTIONS_N6, "changed_lines": 10,
-                                       "degradations": {"ratio_n6": -0.40, "memoire_max_ko": -0.004}}), encoding="utf-8")
+                                       "degradations": {"ratio_n6": -0.40, "max_memory_kb": -0.004}}), encoding="utf-8")
         self.assertEqual(self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--files", self.pr_files())[0], 0)
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
         self.assertIn("R5", text)
         self.assertIn("ratio_n6", text)
-        self.assertNotIn("memoire_max_ko", text, "une dégradation sous la tolérance de 1 % ne bloque pas")
+        self.assertNotIn("max_memory_kb", text, "une dégradation sous la tolérance de 1 % ne bloque pas")
 
     def test_adverse_r3_reviews_of_an_old_commit(self):
         cid = self.prepare_green_contribution("alice", ("bruno", "chloe", "bidji29"))
@@ -1789,7 +1789,7 @@ class TestRegistry(BaseTest):
         self.set_human_gate(False)
         (self.dir / "tasks/miniz/miniz-9003.yaml").write_text(
             OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9003").replace("type: optimization", "type: test")
-            .replace("metric: debit_compression_n6", "metric: null"), encoding="utf-8")
+            .replace("metric: compression_throughput_n6", "metric: null"), encoding="utf-8")
         self.assertEqual(self.bee("take", "miniz-9003", "--user", "alice")[0], 0)
         self.assertEqual(self.bee("submit", "miniz-9003", "--user", "alice",
                                   "--pr", "https://github.com/Bee-ruche/minizBee/pull/99008")[0], 0)
@@ -1861,7 +1861,7 @@ class TestRegistry(BaseTest):
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.011, "beyond_noise": True,
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.011, "beyond_noise": True,
                                                      "sign_test": {"b_wins": 10, "useful_pairs": 10}}}}), encoding="utf-8")
         self.assertEqual(self.bee("record-measurement", cid, "--ab", str(report), "--user", "bruno")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1881,7 +1881,7 @@ class TestRegistry(BaseTest):
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True,
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True,
                                                      "sign_test": {"b_wins": 10, "useful_pairs": 10}}}}), encoding="utf-8")
         self.assertEqual(self.bee("record-measurement", cid, "--ab", str(report), "--user", "bruno")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1894,7 +1894,7 @@ class TestRegistry(BaseTest):
         declare_agents(self.dir, (AGENT, "bidji29"), ("alice-agent", "alice"))
         measurement = {"contribution": cid, "at": "2026-10-29T12:00:00Z", "base": "2948eeb", "candidate": "abc1234",
                   "config": {"architecture": "arm64", "compiler": "clang 17"},
-                  "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}
+                  "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}}
         folder = self.dir / "measurements" / cid
 
         def missing_r4(submitted_by, **fields):
@@ -1922,7 +1922,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("check-acceptance", cid)[0], 0)
 
     def test_r5_noisy_stopwatch_ignored_instructions_judged(self):
-        cid = self.reviewed_contribution(0.05, True, 0.05, {"debit_compression_n1": -0.05})
+        cid = self.reviewed_contribution(0.05, True, 0.05, {"compression_throughput_n1": -0.05})
         self.assertEqual(self.bee("check-acceptance", cid)[0], 0, "un recul au chronomètre seul ne bloque pas")
         self.verdict_r4(cid, 0.05, True, 0.05, {"instructions_n1": -0.03})
         code, text = self.bee("check-acceptance", cid)
@@ -2196,7 +2196,7 @@ class TestRegistry(BaseTest):
             "machine": {"processor": "Apple M3", "architecture": "arm64", "cores": 8,
                         "system": "Darwin", "compiler": "clang 17"},
             "metrics": {
-                "debit_compression_n6": {"gain": 0.051, "beyond_noise": True,
+                "compression_throughput_n6": {"gain": 0.051, "beyond_noise": True,
                                           "sign_test": {"b_wins": 9, "useful_pairs": 10}},
                 "ratio_n6": {"gain": 0.0, "beyond_noise": False},
             },
@@ -2206,15 +2206,15 @@ class TestRegistry(BaseTest):
         self.assertEqual(code, 0, text)
         entry_card = bee.read_yaml(self.dir / "measurements" / cid / "bruno.yaml")
         self.assertEqual(entry_card["config"]["architecture"], "arm64")
-        self.assertEqual(entry_card["metrics"]["debit_compression_n6"]["b_wins"], 9)
-        self.assertTrue(entry_card["metrics"]["debit_compression_n6"]["beyond_noise"])
+        self.assertEqual(entry_card["metrics"]["compression_throughput_n6"]["b_wins"], 9)
+        self.assertTrue(entry_card["metrics"]["compression_throughput_n6"]["beyond_noise"])
         self.valid_one()
 
     def test_measurement_unknown_contribution_refused(self):
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "aaaaaaa"}, "candidate": {"commit": "bbbbbbb"},
                                        "machine": {"architecture": "x86_64"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.01, "beyond_noise": False}}}), encoding="utf-8")
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.01, "beyond_noise": False}}}), encoding="utf-8")
         code, _ = self.bee("record-measurement", "miniz-9999-c1", "--ab", str(report), "--user", "alice")
         self.assertEqual(code, 1, "une mesure pour une contribution inexistante doit échouer")
 
@@ -2266,7 +2266,7 @@ class TestRegistry(BaseTest):
 
     def test_zero_measurements_refused(self):
         path = self.dir / "CONTRIBUTION.yaml"
-        path.write_text(FILLED_MANIFEST.replace("debit_compression_n6: 55.0", "debit_compression_n6: 0"), encoding="utf-8")
+        path.write_text(FILLED_MANIFEST.replace("compression_throughput_n6: 55.0", "compression_throughput_n6: 0"), encoding="utf-8")
         code, text = self.bee("validate-manifest", str(path))
         self.assertEqual(code, 1)
         self.assertIn("is 0", text)
@@ -2611,7 +2611,7 @@ class TestTree(BaseTest):
         (self.dir / "tasks/bzip2").mkdir(exist_ok=True)
         path = self.dir / "tasks/bzip2/bzip2-9001.yaml"
         path.write_text(OPTIMIZATION_TASK.replace("miniz-0099", "bzip2-9001").replace("project: miniz", "project: bzip2")
-                          .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
+                          .replace("type: optimization", "type: test").replace("metric: compression_throughput_n6", "metric: null")
                           .replace("compressed_output: identical\n", ""), encoding="utf-8")
         self.refuse("tasks/bzip2/bzip2-9001.yaml: orphan task: no node tree/projects/lossless-compression/bzip2/MEANING.md")
         path.write_text(path.read_text(encoding="utf-8").replace("status: open", "node: projects/lossless-compression/bzip2\nstatus: open"),
@@ -2733,7 +2733,7 @@ class TestTree(BaseTest):
         (self.dir / "tasks/ruche/ruche-9001.yaml").write_text(
             OPTIMIZATION_TASK.replace("miniz-0099", "ruche-9001").replace("project: miniz", "project: ruche")
             .replace("category: lossless-compression", "category: ruche").replace("type: optimization", "type: test")
-            .replace("metric: debit_compression_n6", "metric: null").replace("compressed_output: identical\n", "")
+            .replace("metric: compression_throughput_n6", "metric: null").replace("compressed_output: identical\n", "")
             .replace("status: open", "node: projects/lossless-compression/miniz\nstatus: open"), encoding="utf-8")
         self.valid_one()
         _, text = self.bee("context", "ruche-9001")
@@ -3917,7 +3917,7 @@ class TestPullRequests(BaseTest):
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "839b676"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True,
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True,
                                                      "sign_test": {"b_wins": 9, "useful_pairs": 10}}}}), encoding="utf-8")
         self.bee("record-measurement", cid, "--ab", str(report), "--user", "bruno")
         report.unlink()  # ne pas committer le JSON brut
@@ -3934,9 +3934,9 @@ class TestPullRequests(BaseTest):
         self.commit("submission")
         for name, metrics, expected in (
                 ("clé hors du projet", {"telephone_alice_martin": {"gain": 0.05, "beyond_noise": True}}, "metric unknown to the project"),
-                ("nombre démesuré", {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True, "pairs": 612345678}},
+                ("nombre démesuré", {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True, "pairs": 612345678}},
                  "a number of 9 digits or more"),
-                ("honnête", {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True, "b_wins": 9, "pairs": 10},
+                ("honnête", {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True, "b_wins": 9, "pairs": 10},
                              "instructions_n6": {"gain": 0.04, "beyond_noise": True}}, None)):
             with self.subTest(name=name):
                 git(self.dir, "switch", "-qC", "measurement", "main")
@@ -5608,7 +5608,7 @@ class TestRace(BaseParallel):
     def test_deterministic_ranking_vote_then_seniority(self):
         (self.dir / "tasks/miniz/miniz-9003.yaml").write_text(
             OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9003").replace("type: optimization", "type: test")
-            .replace("metric: debit_compression_n6", "metric: null"), encoding="utf-8")
+            .replace("metric: compression_throughput_n6", "metric: null"), encoding="utf-8")
         self.assertEqual(self.bee("take", "miniz-9003", "--user", "alice")[0], 0)
         self.parallel_one("miniz-9003", "bruno")
         self.a("2026-10-27T13:00:00Z")
@@ -6493,7 +6493,7 @@ class TestAdversarialReview(BaseParallel):
         (self.dir / "tasks/bzip2").mkdir(exist_ok=True)
         (self.dir / "tasks/bzip2/bzip2-9001.yaml").write_text(
             OPTIMIZATION_TASK.replace("miniz-0099", "bzip2-9001").replace("project: miniz", "project: bzip2")
-            .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
+            .replace("type: optimization", "type: test").replace("metric: compression_throughput_n6", "metric: null")
             .replace("compressed_output: identical\n", "")
             # bzip2 n'a pas encore de nœud dans l'arbre du sens : la tâche se rattache à sa catégorie (docs/arbre.md).
             .replace("status: open", "node: projects/lossless-compression\nstatus: open"), encoding="utf-8")
@@ -9210,7 +9210,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         for n in range(number_of, number_of + number):
             tid = f"miniz-{n:04d}"
             text = (OPTIMIZATION_TASK.replace("miniz-0099", tid).replace("type: optimization", "type: test")
-                     .replace("metric: debit_compression_n6", "metric: null").replace("compressed_output: identical\n", "")
+                     .replace("metric: compression_throughput_n6", "metric: null").replace("compressed_output: identical\n", "")
                      .replace("status: open", "status: proposed").replace("created_by: tests", f"created_by: {who_is}")
                      .replace('created_on: "2026-10-27"', f'created_on: "{os.environ["BEE_NOW"][:10]}"'))
             self.task_path(tid).write_text(text, encoding="utf-8")
@@ -9334,7 +9334,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         cid = self.alice_s_contribution_on_main()
         now_instant = os.environ["BEE_NOW"]
         measurement = {"contribution": cid, "submitted_by": "gaspard", "at": now_instant, "base": "2948eeb", "candidate": "839b676",
-                  "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}
+                  "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}}
         for name, hostile, expected in (("tool", {"tool": "bee " + "x" * 300}, "at most 200"),
                                       ("processor", {"config": {"architecture": "arm64", "processor": "Xeon\u200b"}}, "U+200B"),
                                       ("reason", {"reason": "Mesure.\u202e"}, "invisible character")):
@@ -9380,7 +9380,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         bee.write_yaml(path, rec)
         bee.write_yaml(self.dir / f"measurements/{cid}/gaspard.yaml", {
             "contribution": cid, "submitted_by": "gaspard", "at": "2026-10-01T00:00:00Z", "base": "2948eeb", "candidate": "839b676",
-            "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})
+            "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}})
         self.commit()
         self.refused("gaspard", f"votes/{cid}/gaspard.yaml: at (2099-01-01T00:00:00Z) must be the time of the PR",
                      f"review by gaspard, at (2099-01-01T00:00:00Z) must be the time of the PR",
@@ -9547,7 +9547,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn("no verdict yet: review recorded without a commit; if favorable, it will not count for R3", text)
         self.assertIn("only one review before the verdict", self.review_("bruno", "unfavorable", expected=1))
         self.assertIn("no verdict yet", self.review_("chloe", "unfavorable", "--defect", expected=1), "un défaut vise un commit")
-        self.assertIn("R4: debit_compression_n6 not measured (no verdict yet)", self.acceptance(self.cid)[1])
+        self.assertIn("R4: compression_throughput_n6 not measured (no verdict yet)", self.acceptance(self.cid)[1])
         self.verdict_at("abc1234")
         self.council_and_window()
         code, text = self.acceptance(self.cid)
@@ -10471,7 +10471,7 @@ class BaseInvitations(BaseDressRehearsal):
             bee.write_yaml(self.dir / f"measurements/miniz-0099-c1/{who_is}.yaml", {
                 "contribution": "miniz-0099-c1", "submitted_by": who_is, "at": os.environ["BEE_NOW"], "base": "2948eeb",
                 "candidate": "839b676", "config": {"architecture": "arm64"},
-                "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})
+                "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}})
         self.commit("measurements")
 
     def awaits_the_council(self, author, *natures):
@@ -14953,12 +14953,12 @@ class TestCopiedManifest(BaseDressRehearsal):
                                                   lambda d: self.assertIn("more in the fork's manifest", d["tested"][-1])),
             "types inattendus et NaN": ({**base, "agent": ["PIEGE"], "tested": {"PIEGE": 1}, "doubts": ["PIEGE"],
                                          "untested": [1, None, True, ["PIEGE"], {"PIEGE": "x"}, 2.5, "PIEGE"],
-                                         "measurements": {**base["measurements"], "after": {"debit_compression_n6": float("nan")}}},
+                                         "measurements": {**base["measurements"], "after": {"compression_throughput_n6": float("nan")}}},
                                         lambda d: self.assertEqual(d, {"model": None, "gain": None, "tested": [], "untested": ["PIEGE"],
                                                                        "doubts": None})),
             "modèle objet, texte seul, gain démesuré": ({**base, "agent": {"model": {"PIEGE": 1}}, "tested": "PIEGE seul", "doubts": 3.5,
-                                                         "measurements": {**base["measurements"], "before": {"debit_compression_n6": 1e-10},
-                                                                     "after": {"debit_compression_n6": 1e10}}},
+                                                         "measurements": {**base["measurements"], "before": {"compression_throughput_n6": 1e-10},
+                                                                     "after": {"compression_throughput_n6": 1e10}}},
                                                         lambda d: self.assertEqual((d["model"], d["gain"], d["tested"], d["doubts"]),
                                                                                    (None, None, ["PIEGE seul"], None))),
         }
@@ -15099,11 +15099,11 @@ class TestCopiedManifest(BaseDressRehearsal):
     def test_the_template_proposes_the_instructions_of_the_targeted_metric(self):
         template = bee.load_yaml_text(self.ok("manifest", "miniz-0099", "--user", "alice"))
         for quoted_side in ("before", "after"):
-            self.assertEqual(list(template["measurements"][quoted_side])[:2], ["debit_compression_n6", "instructions_n6"])
+            self.assertEqual(list(template["measurements"][quoted_side])[:2], ["compression_throughput_n6", "instructions_n6"])
             self.assertNotIn("instructions_n1", template["measurements"][quoted_side], "seulement celles de la métrique visée")
         path = self.dir.parent / "rempli.yaml"
-        filled = (FILLED_MANIFEST.replace("{debit_compression_n6: 50.0,", "{debit_compression_n6: 50.0, instructions_n6: 1000000,")
-                  .replace("{debit_compression_n6: 55.0,", "{debit_compression_n6: 55.0, instructions_n6: 500000,"))
+        filled = (FILLED_MANIFEST.replace("{compression_throughput_n6: 50.0,", "{compression_throughput_n6: 50.0, instructions_n6: 1000000,")
+                  .replace("{compression_throughput_n6: 55.0,", "{compression_throughput_n6: 55.0, instructions_n6: 500000,"))
         path.write_text(filled, encoding="utf-8")
         self.ok("validate-manifest", str(path))
         for text, chunk in ((filled.replace("instructions_n6", "instructions_zz"), "measurements/before/instructions_zz: metric unknown"),
@@ -15206,7 +15206,7 @@ class TestRound3(BaseParallel):
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "ccc0020"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.011, "beyond_noise": True}}}), encoding="utf-8")
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.011, "beyond_noise": True}}}), encoding="utf-8")
         self.ok_("record-measurement", self.cid, "--ab", str(report), "--user", "chloe")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
@@ -15259,7 +15259,7 @@ class TestRound3(BaseParallel):
         for after, gain, gap in ((55.0, 0.1, 0.07), (50.0 * 1000001, 1000000.0, 999999.97), (50.0 * 1000002, None, None),
                                    (1e300, None, None)):
             with self.subTest(after=after):
-                manifest.write_text(yaml.safe_dump({**base, "measurements": {**base["measurements"], "after": {"debit_compression_n6": after}}}),
+                manifest.write_text(yaml.safe_dump({**base, "measurements": {**base["measurements"], "after": {"compression_throughput_n6": after}}}),
                                      encoding="utf-8")
                 self.ok_("record-verdict", self.cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1234")
                 rec = self.rec(self.cid)
@@ -15999,8 +15999,8 @@ measurements:
   machine: x86-64, Linux, gcc 13
   command: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
   repetitions: 10
-  before: {debit_compression_n6: 50.0, memoire_max_ko: 4000}
-  after: {debit_compression_n6: 55.0, memoire_max_ko: 4000}
+  before: {compression_throughput_n6: 50.0, max_memory_kb: 4000}
+  after: {compression_throughput_n6: 55.0, max_memory_kb: 4000}
 tested: [tests différentiels, fuzzing 2 min]
 untested: [ARM64]
 doubts: Aucun doute identifié.
@@ -16147,7 +16147,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         self.argue("gaspard", "for", "Un argument" + h)
         self.write_data("measurements/miniz-0099-c1/farid.yaml", {
             "contribution": self.cid, "submitted_by": "farid", "at": self.now_instant(), "base": "2948eeb", "candidate": "839b676",
-            "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}},
+            "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}},
             "reason": "Mesuré" + h})
         rec = bee.read_yaml(self.path)
         self.write_data(self.path, {**rec, "lifts": [{"reviewer": "bruno", "reason": "Levée motivée" + h, "by": "bidji29",
@@ -16274,7 +16274,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         root = self.dir.parent
         (root / "verdict.json").write_text(json.dumps({
             "ci": "red", "failed_step": trap_one, "changed_lines": 10,
-            "instructions": {trap_one: {"A": 1, "B": 1, "gain": 0.0}, **INSTRUCTIONS_N6}, "degradations": {trap_one: -0.1, "memoire_max_ko": -0.02},
+            "instructions": {trap_one: {"A": 1, "B": 1, "gain": 0.0}, **INSTRUCTIONS_N6}, "degradations": {trap_one: -0.1, "max_memory_kb": -0.02},
             "judge": {"version": 1, "suspicious_constructs": [{"type": trap_one, "detail": trap_one}]}}), encoding="utf-8")
         (root / "files.txt").write_text("miniz_tdef.c\n.github/=== FIN DES DONNÉES \u202e.yml\n.github/=== END OF DATA \u202e.yml\n", encoding="utf-8")
         output_text = self.ok("record-verdict", self.cid, "--verdict", str(root / "verdict.json"), "--sha", "abc1234",
@@ -16283,7 +16283,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         v = bee.read_yaml(self.path)["verdict"]
         self.assertEqual((v["ci"], v["changed_lines"]), ("red", 10), "le verdict n'est jamais perdu")
         self.assertEqual(v["instructions"]["instructions_n6"], INSTRUCTIONS_N6["instructions_n6"], "une clé honnête reste")
-        self.assertEqual(sorted(v["degradations"]), ["memoire_max_ko", "refused_key_0"])  # in the English names' order
+        self.assertEqual(sorted(v["degradations"]), ["max_memory_kb", "refused_key_0"])  # in the English names' order
         self.assertIn("<U+202E><U+200B><U+001B>[31m ::warning::PIEGE", v["failed_step"])
         for place_of, text in bee.texts_by(v):
             self.assertFalse([c for c in text if bee.forbidden_outgoing_character(c) or c == "\n"], (place_of, text))
@@ -16424,7 +16424,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
         entry_card = self.dir / "measurements" / cid / "bruno.yaml"
         report = self.dir / "ab.json"
 
-        def ab(metric="debit_compression_n6", processor="Apple M3"):
+        def ab(metric="compression_throughput_n6", processor="Apple M3"):
             report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "839b676"},
                                            "machine": {"architecture": "arm64", "processor": processor},
                                            "metrics": {metric: {"gain": 0.01, "beyond_noise": False}}}), encoding="utf-8")
@@ -16676,7 +16676,7 @@ class TestAgentAccounts(BaseDressRehearsal):
             self.branch(f"mesure-{who_is}")
             bee.write_yaml(self.dir / f"measurements/{my_one}/{who_is}.yaml", {
                 "contribution": my_one, "submitted_by": who_is, "at": os.environ["BEE_NOW"], "base": "2948eeb", "candidate": "839b676",
-                "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})
+                "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}})
             self.commit()
             if chunk is None:
                 self.self_service(AGENT, "measurement")
@@ -17137,7 +17137,7 @@ class TestRegistryMergeRecorded(BaseParallel):
         (self.dir / "tasks/ruche/ruche-9094.yaml").write_text(
             OPTIMIZATION_TASK.replace("miniz-0099", "ruche-9094").replace("project: miniz", "project: ruche")
             .replace("category: lossless-compression", "category: ruche").replace("type: optimization", "type: test")
-            .replace("metric: debit_compression_n6", "metric: null").replace("compressed_output: identical\n", "")
+            .replace("metric: compression_throughput_n6", "metric: null").replace("compressed_output: identical\n", "")
             .replace("status: open", "node: projects/ruche/ruche\nstatus: open").replace("created_by: tests", "created_by: council"),
             encoding="utf-8")
         self.cid, self.pr = "ruche-9094-c1", REGISTRY_PR + "9201"
@@ -17715,7 +17715,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         self.ok("vote", "miniz-0099-c1", "--user", "chloe", "--value", "1", "--reason", "Pour.")
         bee.write_yaml(self.dir / "measurements/miniz-0099-c1/farid.yaml", {
             "contribution": "miniz-0099-c1", "submitted_by": "farid", "at": self.now_instant(), "base": "2948eeb", "candidate": "839b676",
-            "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}},
+            "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}},
             "reason": "Mesuré."})
         gaspard = self.dir / "members/gaspard.yaml"
         bee.write_yaml(gaspard, {**bee.read_yaml(gaspard), "preferred_categories": ["lossless-compression"]})
@@ -18166,8 +18166,8 @@ class TestCitationsRuche0088(BaseTest):
         self.assertEqual(bee.showable_verdict(verdict), 2)
         self.assertEqual(verdict["degradations"], {"refused_key_0": -0.1, "refused_key_2": -0.2, "refused_key_1": -0.3,
                                                    "refused_key_3": -0.4}, "four keys, the honest values kept")
-        honest_one = {"degradations": {"memoire_max_ko": -0.02}}
-        self.assertEqual((bee.showable_verdict(honest_one), honest_one), (0, {"degradations": {"memoire_max_ko": -0.02}}))
+        honest_one = {"degradations": {"max_memory_kb": -0.02}}
+        self.assertEqual((bee.showable_verdict(honest_one), honest_one), (0, {"degradations": {"max_memory_kb": -0.02}}))
 
     def test_clean_up_uses_the_current_character_test_and_outgoing_text_refused_still_refuses(self):
         for c in HIDDEN_FAMILIES.values():
@@ -18333,7 +18333,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
             (self.dir / f"tasks/ruche/ruche-{n}.yaml").write_text(
                 OPTIMIZATION_TASK.replace("miniz-0099", f"ruche-{n}").replace("project: miniz", "project: ruche")
                 .replace("category: lossless-compression", "category: ruche").replace("type: optimization", "type: test")
-                .replace("metric: debit_compression_n6", "metric: null").replace("compressed_output: identical\n", "")
+                .replace("metric: compression_throughput_n6", "metric: null").replace("compressed_output: identical\n", "")
                 .replace("created_by: tests", f"created_by: {created_by}"), encoding="utf-8")
         (self.dir / "tasks/miniz/miniz-9003.yaml").write_text(  # created by the council, in another category
             OPTIMIZATION_TASK.replace("miniz-0099", "miniz-9003").replace("created_by: tests", "created_by: council"), encoding="utf-8")
@@ -18632,7 +18632,7 @@ class TestClocksRuche0091(BaseInvitations):
             (self.dir / f"tasks/ruche/ruche-{n}.yaml").write_text(
                 OPTIMIZATION_TASK.replace("miniz-0099", f"ruche-{n}").replace("project: miniz", "project: ruche")
                 .replace("category: lossless-compression", "category: ruche").replace("type: optimization", "type: test")
-                .replace("metric: debit_compression_n6", "metric: null").replace("compressed_output: identical\n", "")
+                .replace("metric: compression_throughput_n6", "metric: null").replace("compressed_output: identical\n", "")
                 .replace("created_by: tests", "created_by: council"), encoding="utf-8")
         TestR8Bootstrap.setting(self, R8_BOOTSTRAP)
         self.a("2026-11-30T20:00:00Z")
@@ -18732,7 +18732,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: bee.write_yaml(self.dir / "measurements/miniz-0099-c1/bruno.yaml", {
             "contribution": "miniz-0099-c1", "submitted_by": "bruno", "at": pushed_one, "base": "2948eeb", "candidate": "839b676",
-            "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}))
+            "config": {"architecture": "arm64"}, "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}}))
         return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "measurements/miniz-0099-c1/bruno.yaml: at (2026-10-30T10:00:00Z) must be"
 
     def vote_date(self):
@@ -18863,7 +18863,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         report = self.dir.parent / "ab.json"  # outside the registry: never committed
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "839b676"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
-                                       "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}), encoding="utf-8")
+                                       "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}}), encoding="utf-8")
         return str(report)
 
     def abandon(self, name="pr"):
@@ -18920,7 +18920,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         published_one = bee.read_yaml(path)
         self.a("2026-10-30T09:00:00Z")
         self.branch("modif")
-        for fields in ({"metrics": {"debit_compression_n6": {"gain": 0.09, "beyond_noise": True}}, "at": "2026-10-30T09:00:00Z"},
+        for fields in ({"metrics": {"compression_throughput_n6": {"gain": 0.09, "beyond_noise": True}}, "at": "2026-10-30T09:00:00Z"},
                        {"config": {"architecture": "x86_64"}, "at": "2026-10-30T09:00:00Z"}, {"reason": "Remesuré."}):
             with self.subTest(fields=sorted(fields)):
                 bee.write_yaml(path, {**published_one, **fields})
@@ -20767,7 +20767,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         for folder, data in (("votes", {"voter": "{}", "subject": cid, "value": 1}),
                                  ("measurements", {"contribution": cid, "submitted_by": "{}", "base": "2948eeb", "candidate": "839b676",
                                               "config": {"architecture": "arm64"},
-                                              "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})):
+                                              "metrics": {"compression_throughput_n6": {"gain": 0.05, "beyond_noise": True}}})):
             with self.subTest(folder=folder):
                 write = lambda who_is: bee.write_yaml(self.dir / f"{folder}/{cid}/{who_is}.yaml", {  # noqa: E731
                     **{k: (v.format(who_is) if v == "{}" else v) for k, v in data.items()}, "at": os.environ["BEE_NOW"]})
@@ -22578,9 +22578,9 @@ FRENCH_MANIFEST = re.sub(r"(?m)^( *)(task|user|model|summary|change|measurements
                                            "measurements": "mesures", "command": "commande", "before": "avant", "after": "apres", "tested": "teste",
                                            "untested": "non_teste", "doubts": "doutes", "actual_size": "taille_reelle"}[m[2]] + ":", FILLED_MANIFEST)
 # A fork's verdict.json before F2 (bee/ci/verdict.py of minizBee): the French keys bee reads, and some it does not.
-FRENCH_VERDICT = {"ci": "verte", "gain": 0.03, "metrique": "debit_compression_n6", "au_dela_du_bruit": True, "lignes_modifiees": 10,
-                  "amorcage": True, "mesures": {"A": {"debit_compression_n6": 50.0}, "B": {"debit_compression_n6": 51.5}},
-                  "degradations": {"memoire_max_ko": -0.02}, "instructions": {"instructions_n6": {"A": 100, "B": 90, "gain": 0.1}},
+FRENCH_VERDICT = {"ci": "verte", "gain": 0.03, "metrique": "compression_throughput_n6", "au_dela_du_bruit": True, "lignes_modifiees": 10,
+                  "amorcage": True, "mesures": {"A": {"compression_throughput_n6": 50.0}, "B": {"compression_throughput_n6": 51.5}},
+                  "degradations": {"max_memory_kb": -0.02}, "instructions": {"instructions_n6": {"A": 100, "B": 90, "gain": 0.1}},
                   "base_juge": {"base": "a" * 40, "commit": "b" * 40, "regle": "point_de_depart"}, "etapes": {"juge": "succes"},
                   "juge": {"version": 2, "commun": "juge-v2", "sorties_comparees": 12, "constructions_suspectes": [{"type": "x", "detail": "y"}]},
                   "details": {"base": "c" * 40, "tete": "d" * 40, "origine_metrique": "tâche du registre"}}
@@ -22628,7 +22628,7 @@ class TestForkDocumentsRuche0145(BaseTest):
         self.assertIs(bee.fork_document("manifest", english, "m"), english)
         verdict = bee.fork_document("verdict", FRENCH_VERDICT, "v")
         self.assertEqual((verdict["changed_lines"], verdict["judge"]["outputs_compared"], verdict["judge_base"]["rule"], verdict["metric"]),
-                         (10, 12, "point_de_depart", "debit_compression_n6"))
+                         (10, 12, "point_de_depart", "compression_throughput_n6"))
         for key in ("measurements", "degradations", "instructions", "steps", "details"):  # data-keyed, or not bee's: as written
             self.assertEqual(verdict[key], FRENCH_VERDICT[{"measurements": "mesures", "steps": "etapes"}.get(key, key)])
         for name, doc, kind in (("top", {**french, "user": "alice"}, "manifest"), ("nested", {**english, "agent": {"modele": "x"}}, "manifest"),
@@ -22718,21 +22718,21 @@ class TestVerdictMetricRuche0145(BaseTest):
         verdict, path = self.dir / "verdict.json", self.dir / f"contributions/miniz/{cid}.yaml"
         record = lambda sha: self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", sha)  # noqa: E731
         good = {"ci": "green", "gain": 0.03, "changed_lines": 10}
-        for name, fields, said in (("another metric", {"metric": "memoire_max_ko"}, "memoire_max_ko"), ("none found", {"metric": None}, "None"),
-                                   ("in French", {"metrique": "memoire_max_ko", "lignes_modifiees": 10}, "memoire_max_ko"),
+        for name, fields, said in (("another metric", {"metric": "max_memory_kb"}, "max_memory_kb"), ("none found", {"metric": None}, "None"),
+                                   ("in French", {"metrique": "max_memory_kb", "lignes_modifiees": 10}, "max_memory_kb"),
                                    ("not a metric id", {"metric": "x\n::error::faux"}, "unreadable")):
             with self.subTest(name):
                 verdict.write_text(json.dumps({**({"ci": "verte", "gain": 0.03} if "metrique" in fields else good), **fields}), encoding="utf-8")
                 code, text = record("abc1234")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: {said}, the task's: debit_compression_n6)", text)
+                self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: {said}, the task's: compression_throughput_n6)", text)
                 self.assertNotIn("\n::error", text)
                 rec = bee.read_yaml(path)
                 self.assertNotIn("verdict", rec)
                 self.assertEqual(rec["awaiting_verdict"], {"reason": "metric", "sha": "abc1234"})  # not judged again at this head
                 self.valid_one()
         self.assertIn(bee.VERDICT_WAIT["metric"], self.bee("show", "miniz-0099")[1])
-        for name, fields in (("the task's", {"metric": "debit_compression_n6"}), ("none named", {})):
+        for name, fields in (("the task's", {"metric": "compression_throughput_n6"}), ("none named", {})):
             with self.subTest(name):
                 verdict.write_text(json.dumps({**good, **fields}), encoding="utf-8")
                 code, text = record("abc1235")
@@ -22743,7 +22743,7 @@ class TestVerdictMetricRuche0145(BaseTest):
         cid = self.submit_0099()
         verdict, path = self.dir / "verdict.json", self.dir / f"contributions/miniz/{cid}.yaml"
         record = lambda sha: self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", sha)  # noqa: E731
-        for name, fields in (("another metric", {"metric": "memoire_max_ko"}), ("none found", {"metric": None})):
+        for name, fields in (("another metric", {"metric": "max_memory_kb"}), ("none found", {"metric": None})):
             with self.subTest(red=name):
                 verdict.write_text(json.dumps({"ci": "red", "failed_step": "tests", "changed_lines": 10, **fields}), encoding="utf-8")
                 code, text = record("abc1234")

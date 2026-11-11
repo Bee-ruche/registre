@@ -28,11 +28,11 @@ context: >
   in the same function: the same register pressure.
 files: [miniz_tdef.c]
 reach: 1.0
-metric: debit_compression_n1
+metric: compression_throughput_n1
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on compression_throughput_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5), instructions_n6 and instructions_n9 included"
   - "identical fingerprints, levels 1, 6, 9, 10 and flushes included"
   - "manifest: instructions per call at the entry of tdefl_find_match before and after (Cachegrind or disassembly)"
