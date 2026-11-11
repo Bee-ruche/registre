@@ -66,7 +66,14 @@ COMMON_VERSION = 3   # étiquette juge-v3 du registre
 JUDGE_VERSION = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
 ISSUES = {0: "juste", 1: "refus", 2: "erreur_environnement"}  # juge.json's juge.issue for each exit code (ruche-0136)
 FAILURE = {}  # what juge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main
-PLUGIN_PATH = os.path.join("bee", "juge", "projet.py")
+# ruche-0148 (J2): a base holds one plugin, in English (bee/judge/project.py, judge-v4 on) or in French (bee/juge/projet.py, read
+# until judge-v5). PLUGIN_NAMES gives the English name of each name of the French contract that has another one (identifiers.yaml,
+# judge: plugin); the judge reads an English plugin under the French names (EnglishPlugin), its directions as DIRECTIONS says.
+PLUGIN_PATH, FRENCH_PLUGIN_PATH = os.path.join("bee", "judge", "project.py"), os.path.join("bee", "juge", "projet.py")
+PLUGIN_NAMES = {"Projet": "Project", "NOM": "NAME", "SOURCES_REQUISES": "REQUIRED_SOURCES", "OUTILLAGE": "TOOLING",
+                "EN_TETES_BASE": "BASE_HEADERS", "CONSTRUIRE": "BUILD", "COTES": "SIDES", "METRIQUES": "METRICS", "PAQUETS": "PACKAGES",
+                "PERMIS": "ALLOWED", "METHODE": "METHOD", "verifier": "verify", "fixes": "fixed"}
+DIRECTIONS = {"plus_haut": "higher", "plus_bas": "lower"}  # a metric's direction, French (the judge's) -> English
 REQUIRED_ATTRIBUTES = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
                     "PREFIXES", "COTES", "SCENARIOS", "INSTRUCTIONS", "METRIQUES")
 REQUIRED_METHODS = ("corpus", "verification", "verifier", "fixes", "repetition", "instructions", "scenario")
@@ -86,25 +93,63 @@ VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=
 COMMIT, HISTORY_MAX, REPO = re.compile(r"[0-9a-f]{40}"), 16, re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")
 
 
+def common_tag(version=COMMON_VERSION):
+    """The registry's tag of this judge: juge-v1 to juge-v3, then judge-v4 on (ruche-0148); bee reads no other name of a number."""
+    return f"{'juge' if version <= 3 else 'judge'}-v{version}"
+
+
 # ------------------------------------------------------------------ greffon
 
+class EnglishPlugin:
+    """ruche-0148 (J2): an English plugin read under the French contract's names (PLUGIN_NAMES), its METRICS with the French
+    directions (higher -> plus_haut, lower -> plus_bas; any other: None, which load_plugin refuses)."""
+
+    def __init__(self, plugin):
+        self._plugin = plugin
+
+    def __getattr__(self, name):
+        value = getattr(self._plugin, PLUGIN_NAMES.get(name, name))
+        french = {e: f for f, e in DIRECTIONS.items()}
+        return [(m[0], french.get(m[1]) if isinstance(m[1], str) else None, m[2]) if isinstance(m, (tuple, list)) and len(m) == 3 else m
+                for m in value] if name == "METRIQUES" else value
+
+
 def load_plugin(tooling, options):
-    """Charge bee/juge/projet.py de l'outillage (la BASE) et vérifie qu'il respecte le contrat."""
-    path = os.path.join(tooling, PLUGIN_PATH)
-    if not os.path.isfile(path) or os.path.islink(path):
-        raise Erreur(f"greffon introuvable : {PLUGIN_PATH} dans {tooling}")
+    """Charge le greffon de l'outillage (la BASE) et vérifie qu'il respecte le contrat : bee/judge/project.py, en anglais, ou
+    bee/juge/projet.py, en français (ruche-0148), jamais les deux."""
+    found = [p for p in (PLUGIN_PATH, FRENCH_PLUGIN_PATH) if os.path.lexists(os.path.join(tooling, p))]
+    if len(found) == 2:
+        raise Erreur(f"two plugins in {tooling}, {PLUGIN_PATH} (English) and {FRENCH_PLUGIN_PATH} (French): a base holds one")
+    relative = (found or [PLUGIN_PATH])[0]
+    english, path, parts = relative == PLUGIN_PATH, os.path.join(tooling, relative), relative.split(os.sep)
+    if not os.path.isfile(path):
+        raise Erreur(f"greffon introuvable : {' ou '.join(found or (PLUGIN_PATH, FRENCH_PLUGIN_PATH))} dans {tooling}")
+    if any(os.path.islink(os.path.join(tooling, *parts[:i + 1])) for i in range(len(parts))):
+        raise Erreur(f"plugin {relative}: every component of its path must be a real folder or file, not a link")
     with open(path, "rb") as f:
         fingerprint = hashlib.sha256(f.read()).hexdigest()
     spec = importlib.util.spec_from_file_location("bee_greffon_projet", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    if not hasattr(module, "Projet"):
-        raise Erreur("le greffon ne définit pas de classe Projet")
-    projet = module.Projet(dict(options))
-    missing_items = [a for a in REQUIRED_ATTRIBUTES if not hasattr(projet, a)] + \
-                [m for m in REQUIRED_METHODS if not callable(getattr(projet, m, None))]
+    names = PLUGIN_NAMES if english else {}
+    if not hasattr(module, names.get("Projet", "Projet")):
+        raise Erreur(f"le greffon ne définit pas de classe {names.get('Projet', 'Projet')}")
+    cls = getattr(module, names.get("Projet", "Projet"))
+    plugin = cls(dict(options))
+    # Names of the other contract defined in the module or in the class body (not those an instance or __getattr__ answers).
+    other = [n for n in (PLUGIN_NAMES if english else PLUGIN_NAMES.values())
+             if n in (vars(module) if n in ("Projet", "Project") else getattr(cls, "__dict__", {}))]
+    if other:
+        raise Erreur(f"plugin {relative}: names of the {'French' if english else 'English'} contract "
+                     f"({', '.join(other)}): one contract per plugin")
+    projet = EnglishPlugin(plugin) if english else plugin
+    missing_items = [names.get(a, a) for a in REQUIRED_ATTRIBUTES if not hasattr(projet, a)] + \
+                [names.get(m, m) for m in REQUIRED_METHODS if not callable(getattr(projet, m, None))]
     if missing_items:
         raise Erreur("greffon incomplet : " + ", ".join(missing_items))
+    if any(not (isinstance(m, (tuple, list)) and len(m) == 3 and m[1] in tuple(DIRECTIONS)) for m in projet.METRIQUES):
+        raise Erreur(f"plugin's {names.get('METRIQUES', 'METRIQUES')}: (name, direction, unit) each, the direction "
+                     + ("higher or lower" if english else "plus_haut or plus_bas"))
     sides_of = tuple(projet.COTES)
     if not sides_of or any(not inputs_module.COTE_PERMIS.fullmatch(c) for c in sides_of) or len(set(sides_of)) != len(sides_of):
         raise Erreur("COTES du greffon invalides")
@@ -471,7 +516,7 @@ def main(argv=None):
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
     # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
     token = os.environ.pop("GH_TOKEN", None)
-    FAILURE.update(json=args.json, juge={"version": JUDGE_VERSION, "commun": f"juge-v{COMMON_VERSION}", "source": args.judge_source,
+    FAILURE.update(json=args.json, juge={"version": JUDGE_VERSION, "commun": common_tag(), "source": args.judge_source,
                                        "base": args.base, "tete": args.head})
     if args.history_only:
         print(" ".join(fetch_history(os.path.abspath(args.tooling), args.history, token)))
@@ -665,7 +710,7 @@ def main(argv=None):
         verification.update(getattr(projet, "VERIFICATION", {}))
         report["juge"] = {
             "version": JUDGE_VERSION,
-            "commun": f"juge-v{COMMON_VERSION}",
+            "commun": common_tag(),
             "source": args.judge_source,
             "base": args.base, "tete": args.head,
             "projet": projet.NOM,

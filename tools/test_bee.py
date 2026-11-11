@@ -1985,6 +1985,36 @@ class TestRegistry(BaseTest):
         self.assertEqual((judge["version"], judge["common"]), (3, "juge-v1"))
         self.valid_one()
 
+    def judged_with_tag(self, common, full_one):
+        """ruche-0148: a verdict under the label `common`, recorded as written; with common_judge_min 2, complete or a guardian reviews."""
+        self.set_gate("if_judge_incomplete")
+        self.set_common_judge_min(2)
+        self.contributors("bruno", "chloe")
+        cid = self.judged_contribution(extra_judge={"version": 3, "common": common})
+        self.assertEqual(bee.Registry(self.dir).record(cid)[1]["verdict"]["judge"]["common"], common)
+        self.valid_one()
+        self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
+        code, text = self.bee("check-acceptance", cid)
+        self.assertEqual(code, 0 if full_one else 1, text)
+        if not full_one:
+            self.assertIn("common judge missing or below common_judge_min", text)
+
+    def test_judge_v4_tag_recorded_and_sufficient(self):
+        # ruche-0148: judge-v4 is a common judge's; so is the label judge.py writes (common_tag), whatever its COMMON_VERSION.
+        judge = common_judge_module("judge")
+        self.assertEqual((ROOT / "tools/judge/judge.py").read_text(encoding="utf-8").count('"commun": common_tag(),'), 2)
+        for number in [*range(1, 10), 10, 99, 9999]:
+            with self.subTest(number=number):
+                self.assertEqual(bee.common_judge_number(judge.common_tag(number)), number)
+        self.assertEqual(bee.common_judge_number(judge.common_tag()), judge.COMMON_VERSION)
+        self.judged_with_tag("judge-v4", True)
+
+    def test_juge_v4_tag_refused(self):
+        self.judged_with_tag("juge-v4", False)  # ruche-0148: 4 on is judge-vN
+
+    def test_judge_v2_tag_refused(self):
+        self.judged_with_tag("judge-v2", False)  # ruche-0148: 1 to 3 are juge-vN
+
     def test_common_judge_invalid_tag_ignored(self):
         cid = self.judged_contribution(extra_judge={"common": "juge-v1; rm -rf /"})
         self.assertIsNone(bee.Registry(self.dir).record(cid)[1]["verdict"]["judge"]["common"])
@@ -2052,9 +2082,13 @@ class TestRegistry(BaseTest):
 
     def test_common_judge_tag_read_strictly(self):
         # ruche-0086 : seul « juge-vN » exact (chiffres ASCII, sans zéro de tête) compte ; tout autre libellé est incomplet.
+        # ruche-0148: juge-v1 to juge-v3, then judge-v4 on; juge-v4 on and judge-v1 to judge-v3 are no tag.
         self.set_common_judge_min(2)
         reg = bee.Registry(self.dir)
-        for common, full_one in (("juge-v2", True), ("juge-v3", True), ("juge-v10", True), ("juge-v9999", True), ("juge-v1", False),
+        for common, full_one in (("juge-v2", True), ("juge-v3", True), ("judge-v4", True), ("judge-v10", True), ("judge-v9999", True),
+                                ("juge-v1", False), ("juge-v4", False), ("juge-v10", False), ("juge-v9999", False), ("judge-v1", False),
+                                ("judge-v2", False), ("judge-v3", False), ("judge-v0", False), ("judge-v04", False), ("judge-v10000", False),
+                                ("judge-v4\n", False), ("Judge-v4", False), ("judge-v٤", False), ("jugde-v4", False), ("judge-v", False),
                                 ("juge-v0", False), ("juge-v02", False), ("juge-v2\n", False), ("juge-v", False), ("JUGE-V2", False),
                                 ("juge-v2.1", False), (" juge-v2", False), ("juge-v٢", False), ("juge-v10000", False),
                                 ("juge-v-2", False), (None, False), (2, False), (["juge-v2"], False)):
@@ -22892,6 +22926,52 @@ def f(n, path):
         self.assertEqual((problems, counts["docstrings"]), ([], 1))
         (self.repo / "m.py").write_text(base.replace('"{x}"', '"{y}"'), encoding="utf-8")
         self.assertIn("fields changed", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])  # a template still may not
+
+
+# --- ruche-0148 (J2): judge-v4's English contracts beside the French ones (the plugin, juge.yml's inputs) ---
+
+def common_judge_module(name):
+    """A module of tools/judge/, loaded with its folder first on the path, as the judge loads its own."""
+    sys.path.insert(0, str(ROOT / "tools" / "judge"))
+    try:
+        spec = importlib.util.spec_from_file_location(f"bee_test_{name}", ROOT / "tools" / "judge" / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(str(ROOT / "tools" / "judge"))
+
+
+class TestJudgeContractsRuche0148(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.ids = yaml.safe_load((ROOT / "tools/migration/identifiers.yaml").read_text(encoding="utf-8"))
+        cls.names = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))
+        cls.judge = common_judge_module("judge")
+        workflow = yaml.safe_load((ROOT / ".github/workflows/juge.yml").read_text(encoding="utf-8"))
+        cls.call = workflow[True]["workflow_call"]  # YAML 1.1: the key « on » reads as true
+
+    def test_the_plugin_names_are_the_map(self):
+        """Every name the judge reads on a plugin is in identifiers.yaml's judge: plugin, and PLUGIN_NAMES is that map less the names
+        that stay; where the code map knows a name, they agree but for the three the map's why gives."""
+        plugin = self.ids["judge"]["plugin"]["names"]
+        self.assertEqual(self.judge.PLUGIN_NAMES, {k: v for k, v in plugin.items() if k != v})
+        self.assertEqual(set(plugin), {"Projet", "PAQUETS", "PERMIS", "METHODE", "VERIFICATION", "DIFF", *self.judge.REQUIRED_ATTRIBUTES,
+                                       *self.judge.REQUIRED_METHODS})
+        self.assertEqual(sorted(k for k, v in plugin.items() if self.ids["identifiers"].get(k, v) != v), ["VERIFICATION", "repetition"])
+        self.assertNotIn("fixes", self.ids["identifiers"])
+        self.assertEqual(self.judge.DIRECTIONS, self.names["domains"]["direction"])
+
+    def test_each_french_input_has_its_english_twin(self):
+        """juge.yml takes each French input (tete_sha, historique, sans_instructions) and its English name in names.yaml (workflows: io),
+        of the same type, neither required."""
+        io, inputs = self.names["workflows"]["io"], self.call["inputs"]
+        french = [k for k in inputs if k in io]
+        self.assertEqual(sorted(french), ["historique", "sans_instructions", "tete_sha"])
+        for k in french:
+            self.assertEqual((inputs[io[k]]["type"], inputs[io[k]].get("required", False), inputs[k].get("required", False)),
+                             (inputs[k]["type"], False, False), k)
+        self.assertEqual(set(inputs) - set(french) - {io[k] for k in french}, {"base_sha", "options", "repetitions"})
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

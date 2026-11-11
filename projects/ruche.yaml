@@ -26,6 +26,7 @@ paths_not_counted:
   - "tools/test_bee.py"
   - "tools/judge/test_judge.py"
   - "tools/judge/jouet/**"
+  - "tools/judge/toy/**"
   - "tools/tests/registry/**"
 judge_paths:
   - "tools/**"

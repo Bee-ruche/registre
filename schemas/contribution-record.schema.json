@@ -42,7 +42,7 @@
           "additionalProperties": false,
           "properties": {
             "version": {"type": ["integer", "null"]},
-            "common": {"type": ["string", "null"], "pattern": "^juge-v[0-9]{1,4}$"},
+            "common": {"type": ["string", "null"], "pattern": "^(juge|judge)-v[0-9]{1,4}$"},
             "outputs_compared": {"type": ["integer", "null"]},
             "suspicious_constructs": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false,
               "required": ["type", "detail"], "properties": {"type": {"type": "string"}, "detail": {"type": "string"}}}}
