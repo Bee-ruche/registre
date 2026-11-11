@@ -10346,9 +10346,20 @@ def prepared_engagements(repo, changes):
                 (t.get("reservation") or {}).get("user"), *(p.get("user") for p in parallels_of(t))]:
             continue  # already engaged on HEAD: a single PR
         engagement = {"user": u, "since": since}
-        prepared[task] = ((f"Réservation {tid}", {"status": "reserved", "reservation": engagement}) if t["status"] == "open"
-                           else (f"Inscription en parallèle {tid}", {"parallel": parallels_of(t) + [engagement]}))
+        prepared[task] = ((f"Reservation {tid}", {"status": "reserved", "reservation": engagement}) if t["status"] == "open"
+                           else (f"Parallel registration {tid}", {"parallel": parallels_of(t) + [engagement]}))
     return prepared
+
+
+# ruche-0155: an engagement's title is part of its key (bee-publish.json, the branch bee/engagement-<hash>), and was French
+# until this change: until DATE_D, a PR or a state file made under the former title is still found.
+FORMER_ENGAGEMENT_TITLES = {"Reservation": "Réservation", "Parallel registration": "Inscription en parallèle"}
+
+
+def former_engagement_keys(prepared_json):
+    """ruche-0155: {task path: [its former title, replay]} for each prepared engagement, until DATE_D; {} from DATE_D on."""
+    return {c: [f"{FORMER_ENGAGEMENT_TITLES[nature]} {tid}", r] for c, (t, r) in prepared_json.items()
+            for nature, _, tid in [t.rpartition(" ")]} if before_date_d() else {}
 
 
 def caps_per_pr(reg, repo, changes):
@@ -10440,14 +10451,15 @@ def cmd_publish(args):
                         "publish again: it finds on GitHub the engagement PR that waits, by its branch.") from None
     # Run again while the engagement's PR waits: it follows it; an engagement prepared since then leaves after, in its PR.
     prepared_json = json.loads(json.dumps(prepared, sort_keys=True))
-    retake = bool(expected_items) and all(prepared_json.get(c) == v for c, v in expected_items.items())
+    former = former_engagement_keys(prepared_json)  # ruche-0155: or under its former title, until DATE_D
+    retake = bool(expected_items) and all(prepared_json.get(c) == v or c in former and former[c] == v for c, v in expected_items.items())
     # ruche-0138: one PR, one branch per engagement (its fingerprint, before any redating); without a state file, each
     # is looked for on GitHub, one by one
     branch_of = lambda c, v: f"bee/engagement-{hashlib.sha256(json.dumps({c: v}, sort_keys=True).encode()).hexdigest()[:16]}"
     if search_for := prepared and not (retake or args.dry_run):
         owner = repo_owner(execute(["git", "remote", "get-url", "origin"], repo).stdout.strip())[0]
         of_upstream = repo_owner(f"https://github.com/{upstream}")[0]
-    for c, v in (sorted(prepared_json.items()) if search_for else []):
+    for c, v in (sorted(prepared_json.items()) + sorted(former.items()) if search_for else []):
         if open_ones := json.loads(execute(["gh", "api", f"repos/{upstream}/pulls?state=open&head={owner or of_upstream}:"
                                             f"{branch_of(c, v)}"], repo).stdout or "[]"):
             retake, expected_items = True, {c: v}
@@ -10473,7 +10485,7 @@ def cmd_publish(args):
         print(f"  Redated to {en_iso(now_instant())}: {', '.join(sorted({v for _, v in dates}))}")
         prepared = prepared_engagements(repo, changes)
     engagements = {c: v for c, v in prepared.items() if c in expected_items} if retake else dict(sorted(prepared.items())[:1])
-    before = ", ".join(title for title, _ in engagements.values())
+    before = ", ".join(expected_items[c][0] if retake else title for c, (title, _) in engagements.items())  # the waiting PR's title
     if args.dry_run:
         print("✓ dry run: the files are self-service and the registry stays valid. Nothing was written or pushed.")
         print(f"  Repository: {upstream} — PR « {args.title} »")
