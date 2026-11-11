@@ -14,9 +14,9 @@ exec 9>"$SIM/state/verrou"; flock 9
 conf="$SIM/trust"
 git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n" 2>/dev/null || { echo "unknown PR $n" >&2; exit 1; }
 git -C "$conf" fetch -q origin && git -C "$conf" checkout -q --detach origin/main
-# The council decides only on the PRs that main's tool judged valid and reserved to the council (state « council »).
+# The council decides only on the PRs that main's tool judged valid and reserved to the council (state "council").
 last=$(awk -F'\t' -v n="$n" '$2==n {e=$5} END {print e}' "$SIM/state/prs.tsv")
-[ "$last" = council ] || { echo "PR $n: state « ${last:-unknown} », not waiting for the council; nothing to decide." >&2; exit 1; }
+[ "$last" = council ] || { echo "PR $n: state \"${last:-unknown}\", not waiting for the council; nothing to decide." >&2; exit 1; }
 if [ "$decision" = refuse ]; then
   printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_NOW" "$n" "council" "decision: $reason" "refusee_conseil" >> "$SIM/state/prs.tsv"
   echo "PR $n refused by the council."; exit 0

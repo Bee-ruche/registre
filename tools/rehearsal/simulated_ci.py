@@ -60,7 +60,7 @@ def main():
         rank = sum(1 for l in runs.read_text(encoding="utf-8").splitlines() if l == sha) if runs.exists() else 0
         with runs.open("a", encoding="utf-8") as f:
             f.write(sha + "\n")
-        # The commit's « code » is its description: the manifest is part of the tree, but correcting it does not change
+        # The commit's "code" is its description: the manifest is part of the tree, but correcting it does not change
         # what the CI measures.
         randomness = random.Random(f"code:{code}")
         stopwatch_randomness = random.Random(f"run:{sha}:{rank}")
