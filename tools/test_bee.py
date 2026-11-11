@@ -12182,7 +12182,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         # Trente jours plus tard, ils ne comptent plus.
         self.a("2026-12-01T10:00:00Z")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 0)
-        for text, sentence in (((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "une inscription seule ne compte pas"),
+        for text, sentence in (((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "a registration alone does not count"),
                                (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines()
                                      if l.startswith("| R13 |")), "a registration alone does not count")):
             self.assertIn(sentence, text.lower())
@@ -13037,7 +13037,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.active("alice", "bruno")
         self.assertEqual(bee.brake_state(bee.Registry(self.dir))["active_members"], 2)
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
-        for text, sentence in ((r13, "nor does an argument"), ((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "ni un argument")):
+        for text, sentence in ((r13, "nor does an argument"), ((ROOT / "docs/growth.md").read_text(encoding="utf-8"), "nor does an argument")):
             self.assertIn(sentence, text)
 
     # --- Ligne du commandement 10 ---
