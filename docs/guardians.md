@@ -51,8 +51,8 @@ produced themselves**, not on what the manifest says.
    judge catches seeded regressions (shown in the PR or replayed), and that no test was weakened.
 6. **Decide and give the reason.** `bee review <contribution> --user <login> --commit <sha read> --opinion favorable|unfavorable|abstention
    --reason "…"` then `bee publish` (`--commit`: the commit reviewed; refused if the author has pushed since). The reason cites what was replayed and the figures (« lancer.sh OK, fuzz
-   600 s with no discrepancy, instructions_n6 −4.1% replayed »). An AI guardian writes in it: « reviewed by a guardian
-   agent (model …) ». Unfavorable as soon as one point is not proven; a reproducible defect is reported with
+   600 s with no discrepancy, instructions_n6 −4.1% replayed »). An AI guardian writes in it:
+   « reviewed by a guardian agent (model …) ». Unfavorable as soon as one point is not proven; a reproducible defect is reported with
    `--defect` and a way to reproduce it **that does not publish a faulty input** (docs/security.md).
 
 When in doubt, the opinion is unfavorable, with what it would take to remove the doubt. Without access to the diff, or
