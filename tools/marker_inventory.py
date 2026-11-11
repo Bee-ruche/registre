@@ -63,6 +63,7 @@ BY_TEXT = {
 BY_CONSTANT = {
     "MENTION_INVITATION": "already", "REQUEST_SENTENCE": "already", "FR_STREETS": "already", "EN_STREETS": "already",
     "REMOVED": "data", "VOTE_WEIGHT": "data", "SIZES_BY_LEVEL": "data",
+    "FORMER_ENGAGEMENT_TITLES": "data",  # ruche-0155: titles bee wrote itself (bee-publish.json, branch hash), read until DATE_D
     "TYPES_JSON": "message", "SELF_SERVICE_FILES": "message", "SUITE_INVITATION": "message", "VERDICT_WAIT": "message",
     "MNEMONIQUES_SUSPECTS": "message", "MOTS_SOURCE": "message", "STATES": "message", "CONTRIBUTION_STATUSES": "message",
     "DEBATE_POSITIONS": "message", "DEBATE_OUTCOMES": "message", "SHORT_SECTIONS": "message", "MONTHS": "message",
