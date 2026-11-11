@@ -2,45 +2,45 @@ id: bzip2
 name: bzip2
 category: lossless-compression
 upstream_repo: https://sourceware.org/git/bzip2.git
-license: BSD (licence propre à bzip2)
-fork: null                       # https://github.com/Bee-ruche/bzip2Bee (import depuis sourceware, pas depuis le miroir GitLab figé)
-reference: sortie de la version d'origine, octet pour octet (algorithme déterministe) ; corpus bzip2-tests (empreintes et fichiers corrompus) ; décodeurs indépendants (Wuffs, libbzip2-rs)
+license: BSD (bzip2's own license)
+fork: null                       # https://github.com/Bee-ruche/bzip2Bee (import from sourceware, not from the frozen GitLab mirror)
+reference: output of the original version, byte for byte (deterministic algorithm); bzip2-tests corpus (checksums and corrupted files); independent decoders (Wuffs, libbzip2-rs)
 scope:
-  - Compression (tri de blocs, codage de Huffman)
-  - Décompression
-  - API libbzip2
+  - Compression (block sorting, Huffman coding)
+  - Decompression
+  - libbzip2 API
 out_of_scope:
-  - Outils bzip2recover et bzgrep
-  - Format de sortie
+  - The bzip2recover and bzgrep tools
+  - Output format
 status: upcoming
 opening_phase: 3
 maintainer_tier: none
 metrics:
   - id: debit_compression_n1
-    description: Débit de compression au niveau -1 sur le corpus de référence
+    description: Compression throughput at level -1 on the reference corpus
     unit: MB/s
     direction: higher
   - id: debit_compression_n9
-    description: Débit de compression au niveau -9 sur le corpus de référence
+    description: Compression throughput at level -9 on the reference corpus
     unit: MB/s
     direction: higher
   - id: debit_decompression
-    description: Débit de décompression (octets produits) sur le corpus de référence
+    description: Decompression throughput (bytes produced) on the reference corpus
     unit: MB/s
     direction: higher
   - id: pire_cas_tri
-    description: Temps de compression des entrées très répétitives (pire cas du tri de blocs)
+    description: Compression time of highly repetitive inputs (the block sort's worst case)
     unit: s
     direction: lower
   - id: memoire_max_ko
-    description: Pic mémoire mesuré par les crochets bzalloc et bzfree
+    description: Peak memory measured by the bzalloc and bzfree hooks
     unit: KB
     direction: lower
 paths_not_counted:
   - "bee/**"
   - "tests/**"
-# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
-# Tout bee/ en fait partie : corpus, tests, fuzzing, banc, scripts de CI, code commun, Makefile.
+# Paths that judge the contributions: an optimization task cannot change them (commandment 3).
+# All of bee/ is among them: corpus, tests, fuzzing, bench, CI scripts, common code, Makefile.
 judge_paths:
   - "bee/**"
   - "tests/**"
