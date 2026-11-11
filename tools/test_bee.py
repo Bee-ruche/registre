@@ -1394,7 +1394,7 @@ class BaseTest(unittest.TestCase):
                                   .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
                                   .replace("compressed_output: identical\n", ""), encoding="utf-8")
         questions = self.dir / "docs" / "open-questions.md"
-        questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debates --show D-\d{4}`\)\.\n", "",
+        questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debates/D-\d{4}\.yaml\) \(`bee debates --show D-\d{4}`\)\.\n", "",
                                     questions.read_text(encoding="utf-8")), encoding="utf-8")
         # Ni de la valeur courante de la porte de relecture (R3) : les tests partent de la porte fermée (« true ») et
         # la règlent eux-mêmes (regler_porte, regler_porte_humaine).
@@ -7950,13 +7950,13 @@ class TestAgora(BaseAgora):
         reg = bee.Registry(self.dir)
         self.assertEqual(sorted(reg.debates), [f"D-{i:04d}" for i in range(1, expected_ones + 1)])
         first = reg.debates["D-0001"][1]
-        self.assertTrue(first["question"].startswith("Si le conseil disparaît. Le fondateur est aujourd'hui le seul humain"))
-        self.assertIn("« Se gouverner », question 1", first["question"])
+        self.assertTrue(first["question"].startswith("If the council disappears. The founder is currently the only human"))
+        self.assertIn("« Self-governance », question 1", first["question"])
         self.assertEqual((first["opened_by"], first["arguments"]), ("bidji29", []))
         self.assertNotIn("rapporteur", first, "un débat importé naît sans rapporteur : le premier qui argumente le devient")
         doc = (self.dir / "docs/open-questions.md").read_text(encoding="utf-8")
         self.assertEqual(doc.count("Debate: [D-"), expected_ones)
-        self.assertIn("absence longue ?\n   Debate: [D-0001](../debates/D-0001.yaml)", doc)
+        self.assertIn("long absence?\n   Debate: [D-0001](../debates/D-0001.yaml)", doc)
         self.assertIn("\n    Debate: [D-0010](../debates/D-0010.yaml)", doc, "retrait aligné sur l'item « 10. »")
         self.valid_one()
         text = self.ok("debate", "import-questions", "--user", "bidji29")
