@@ -748,7 +748,7 @@ class Registry:
 # each may submit their own contribution <task>-cN. The contributions of one task in review
 # are in a race: R3 integrates only the best (race_causes) and sets the others aside.
 #
-# The task's status follows the holder (docs/contributions.md, « Travail en parallèle »):
+# The task's status follows the holder (docs/contributions.md, « Parallel work and competing contributions »):
 #   reserved      a holder is working; contributions of parallel registrants may already be in
 #                 review: the holder's reservation and R7 deadline are not affected;
 #   in_review     no one holds the reservation and at least one contribution is in review;

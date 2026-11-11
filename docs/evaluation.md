@@ -36,7 +36,7 @@ S = G × P × C / (1 + L/100) × V
 | --- | --- | --- |
 | G | Gain relatif mesuré par la CI (0,03 pour 3 %) | `verdict.gain` |
 | P | Portée : 1 pour le chemin principal, 0,3 pour une option rare | `portee` de la tâche |
-| C | Confiance : relectures favorables qui comptent pour R3 (la plus récente de chaque relecteur, sur le commit jugé, ni Nouveau ni abstention) ÷ 3, plafonnée à 1 ([contributions.md](contributions.md#relire-par-commit)) | `relectures` |
+| C | Confiance : relectures favorables qui comptent pour R3 (la plus récente de chaque relecteur, sur le commit jugé, ni Nouveau ni abstention) ÷ 3, plafonnée à 1 ([contributions.md](contributions.md#review-by-commit)) | `relectures` |
 | L | Lignes modifiées, hors tests et bancs | `verdict.lignes_modifiees` |
 | V | Vote : 1 + 0,5 × moyenne pondérée des votes (−1, 0, +1), donc entre 0,5 et 1,5 ; 1 sans vote | `votes/<contribution>/` |
 
@@ -44,4 +44,4 @@ S = G × P × C / (1 + L/100) × V
 
 Le score n'existe qu'une fois la CI verte et le gain mesuré. Pour le voir : `bee ranking`.
 
-**Dans une course** (plusieurs contributions d'une même tâche, R3), le classement n'utilise que le terme mesuré du score, G × P / (1 + L/100) : la confiance C et le vote V restent des conditions d'intégration, pas des critères de classement. Sans gain mesurable (tests, mesures, ruche), le vote net départage. Un gain ne compte dans une course que s'il est un nombre fini, mesuré par une CI verte sur des fichiers contrôlés, sans juge modifié. Voir [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).
+**Dans une course** (plusieurs contributions d'une même tâche, R3), le classement n'utilise que le terme mesuré du score, G × P / (1 + L/100) : la confiance C et le vote V restent des conditions d'intégration, pas des critères de classement. Sans gain mesurable (tests, mesures, ruche), le vote net départage. Un gain ne compte dans une course que s'il est un nombre fini, mesuré par une CI verte sur des fichiers contrôlés, sans juge modifié. Voir [contributions.md](contributions.md#parallel-work-and-competing-contributions).
