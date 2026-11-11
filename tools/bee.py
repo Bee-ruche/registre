@@ -920,7 +920,7 @@ RETIRED_NAMES = ("AGENTS.en.md", "COMMANDEMENTS.md", "MAINTENEURS.md", "REGLES.m
 def retired_name(path):
     """The gate's refusal of a path retired by the switch to English (RETIRED_NAMES; case as written), or None."""
     if any(path == r or r.endswith("/") and path.startswith(r) for r in RETIRED_NAMES):
-        return f"{path} : a name retired by the switch to English (ruche-0145) : nothing reads it any more ; write the file under its English name"
+        return f"{path}: a name retired by the switch to English (ruche-0145): nothing reads it any more; write the file under its English name"
     return None
 
 
@@ -961,13 +961,13 @@ def check_agent_accounts(reg, add_to):
     """bee validate: each agent account acts for a known person and is no one else; no chain, no duplicate, no case variant."""
     inputs = reg.agent_cards.get("accounts") if isinstance(reg.agent_cards, dict) else None
     if reg.agent_cards is not None and not isinstance(inputs, list):
-        add_to(f"{AGENT_ACCOUNTS} : accounts must list the agent accounts (account, acts_for, declared_on, purpose)")
+        add_to(f"{AGENT_ACCOUNTS}: accounts must list the agent accounts (account, acts_for, declared_on, purpose)")
     seen_items = set()
     for i, e in enumerate(inputs if isinstance(inputs, list) else []):
-        place_of = f"{AGENT_ACCOUNTS} : accounts/{i}"
+        place_of = f"{AGENT_ACCOUNTS}: accounts/{i}"
         if not (isinstance(e, dict) and set(e) - {"github_id"} == {"account", "acts_for", "declared_on", "purpose"}
                 and all(isinstance(v, str) for k, v in e.items() if k != "github_id") and type(e.get("github_id", 1)) is int):
-            add_to(f"{place_of} : an entry has exactly account, acts_for, declared_on and purpose, each a text (and may have github_id)")
+            add_to(f"{place_of}: an entry has exactly account, acts_for, declared_on and purpose, each a text (and may have github_id)")
             continue
         account, person = e["account"], e["acts_for"]
         roles = [name for name, who_is in (("a member", Logins(reg.members, reg.identities)), ("a council member", reg.council), ("a guardian", reg.guardians),
@@ -975,16 +975,16 @@ def check_agent_accounts(reg, add_to):
         for condition, problem_text in (
                 (not re.fullmatch(LOGIN_PATTERN, account), f"account « {account} » is not a GitHub login"),
                 (account.casefold() in seen_items, f"{account} is declared twice (a login does not depend on case)"),
-                (roles, f"{account} is also {' and '.join(roles)} : an agent account is no one else"),
-                (person in reg.agents, f"acts_for « {person} » is an agent account : an agent acts for a person, never through another"),
+                (roles, f"{account} is also {' and '.join(roles)}: an agent account is no one else"),
+                (person in reg.agents, f"acts_for « {person} » is an agent account: an agent acts for a person, never through another"),
                 (person not in reg.members and person not in reg.council, f"acts_for « {person} » is not a known person (a member or the council)"),
                 (good := other_spelling(reg, person), f"acts_for « {person} » is written {good} (its file)"),
                 (but := admissible_text(e["purpose"], "purpose", 300), but)):
             if condition:
-                add_to(f"{place_of} : {problem_text}")
+                add_to(f"{place_of}: {problem_text}")
         seen_items.add(account.casefold())
         try:
-            read_date(e["declared_on"], f"{place_of} : declared_on")
+            read_date(e["declared_on"], f"{place_of}: declared_on")
         except BeeError as ex:
             add_to(str(ex))
 
@@ -1295,14 +1295,14 @@ def git_fields(output_text, arguments, replace_with=False):
     the path shown escaped; with `remplacer` (the readers of main's tree and history, which a refusal would block for good),
     it is read with each undecodable byte written \\xNN instead, so that it equals no path written by bee."""
     if output_text and not output_text.endswith(b"\0"):
-        raise BeeError(f"git {' '.join(arguments)} : not a -z listing")
+        raise BeeError(f"git {' '.join(arguments)}: not a -z listing")
     try:
         return output_text.decode("utf-8").split("\0")[:-1]
     except UnicodeDecodeError as e:
         if replace_with:
             return output_text.decode("utf-8", "backslashreplace").split("\0")[:-1]
         unreadable_one = output_text[output_text.rfind(b"\0", 0, e.start) + 1:output_text.find(b"\0", e.start)].decode("utf-8", "backslashreplace")
-        raise BeeError(f"git {' '.join(arguments)} : the path {unreadable_one!r} is not UTF-8 text: refused (rename it)") from None
+        raise BeeError(f"git {' '.join(arguments)}: the path {unreadable_one!r} is not UTF-8 text: refused (rename it)") from None
 
 
 def history_available(root):
@@ -2200,7 +2200,7 @@ def check_accounts(reg):
                     "count): one member file per account")
         seen_logins.setdefault(stem.casefold(), stem)
         if readable_reserved and (refusal := reserved_login(reg.config, stem)):  # ruche-0104: the council renames it, or leaves the name off the list
-            add_to(f"{reg.rel(path)} : {refusal}")
+            add_to(f"{reg.rel(path)}: {refusal}")
         for login in logins_of(member) if isinstance(member, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
                 add_to(f"{reg.rel(path)}: the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
@@ -2405,7 +2405,7 @@ def check_accounts(reg):
             if x:
                 valid_instant(path, x["at"], what_it)
         for refusal in report_refusal_on_main(reg, s) if form_text else ():  # ruche-0137
-            add_to(f"{reg.rel(path)} : {refusal}")
+            add_to(f"{reg.rel(path)}: {refusal}")
 
     # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
     # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
@@ -2489,7 +2489,7 @@ def git(repo, *arguments, replace_with=False):
     any other status is refused, never paired blindly."""
     result = subprocess.run(["git", "-C", str(repo), *arguments], capture_output=True)
     if result.returncode != 0:
-        raise BeeError(f"git {' '.join(arguments)} : {os.fsdecode(result.stderr).strip()}")
+        raise BeeError(f"git {' '.join(arguments)}: {os.fsdecode(result.stderr).strip()}")
     fields = git_fields(result.stdout, arguments, replace_with)
     if not {"--name-status", "--raw"} & set(arguments):
         return fields
@@ -2499,7 +2499,7 @@ def git(repo, *arguments, replace_with=False):
         number = 1 if status in ("A", "M", "D", "T") else 2 if status[:1] in ("R", "C") and status[1:].isdigit() else 0
         paths = [next(suite, None) for _ in range(number)]
         if not number or None in paths:
-            raise BeeError(f"git {' '.join(arguments)} : unexpected entry {head!r}: refused")
+            raise BeeError(f"git {' '.join(arguments)}: unexpected entry {head!r}: refused")
         inputs.append((head, *paths))
     return inputs
 
@@ -6650,9 +6650,9 @@ def fork_document(kind, data, where):
     keys = {k for k in data} | {k for x, v in data.items() if table.get(x, x) in nested and isinstance(v, dict) for k in v}
     french, english = sorted(k for k in keys if k in table), sorted(k for k in keys if k in set(table.values()))
     if french and english:
-        raise BeeError(f"{where} : French keys ({', '.join(french[:3])}) and English keys ({', '.join(english[:3])}) : one vocabulary per document")
+        raise BeeError(f"{where}: French keys ({', '.join(french[:3])}) and English keys ({', '.join(english[:3])}): one vocabulary per document")
     if french and not before_date_d():
-        raise BeeError(f"{where} : French keys ({', '.join(french[:3])}) : read until {DATE_D} only (the switch to English, ruche-0145) ; "
+        raise BeeError(f"{where}: French keys ({', '.join(french[:3])}): read until {DATE_D} only (the switch to English, ruche-0145); "
                        "write it again in English (bee manifest writes English)")
     return {table.get(k, k): {table.get(x, x): y for x, y in v.items()} if table.get(k, k) in nested and isinstance(v, dict) else v
             for k, v in data.items()} if french else data
@@ -7071,12 +7071,12 @@ def rename_refusal(reg, entry_card, new, agents, instant):
     """ruche-0022: why a member file may not move to `nouveau` (None if it may): governance/, work in flight, 30 days, 5 logins."""
     old = entry_card.get("login")
     if any(x in s for x in (old, new) for s in (reg.council, reg.guardians, reg.guarantors, Logins(agents.values(), reg.identities))):
-        return f"{old} or {new} is named in governance/ : the council renames it, the list and the member file in one PR"
+        return f"{old} or {new} is named in governance/: the council renames it, the list and the member file in one PR"
     if engagements_of(reg, old) or any(isinstance(e, dict) and e.get("status") == "in_review" and reg.identities.same_one(e.get("author"), old)
                                           for _, e in reg.records.values()):
-        return f"{old} holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing"
+        return f"{old} holds a reservation, a parallel registration or a contribution in review: rename when you hold nothing"
     if len(entry_card.get("former_logins") or []) >= 5 or str(entry_card.get("renamed_on") or "") > (instant - dt.timedelta(days=30)).date().isoformat():
-        return f"{old} : one rename per 30 days, and 5 former logins at most"
+        return f"{old}: one rename per 30 days, and 5 former logins at most"
     return None
 
 
@@ -7318,7 +7318,7 @@ def cmd_rename(args):
     reg = Registry(args.registry)
     path, entry_card = reg.members.get(args.old) or (None, None)
     if not re.fullmatch(LOGIN_PATTERN, args.login) or args.login == args.old or not (isinstance(entry_card, dict) and type(entry_card.get("github_id")) is int):
-        raise BeeError("--login: your new GitHub login ; --old: your member file's login, with its github_id (else the council completes it)")
+        raise BeeError("--login: your new GitHub login; --old: your member file's login, with its github_id (else the council completes it)")
     if refusal := reserved_login(reg.config, args.login) or rename_refusal(reg, entry_card, args.login, reg.agent_accounts, now_instant()):
         raise BeeError(refusal)
     if [p for p in reg.members if p != args.old and reg.identities.same_one(p, args.login)] or \
