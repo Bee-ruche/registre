@@ -8,7 +8,7 @@ line_budget: 40
 ## Why this branch exists
 miniz's Inflate: `tinfl_decompress`, a coroutine that stops and resumes at any input or output byte (TINFL_CR_RETURN),
 builds each block's Huffman tables, decodes literals, lengths and distances, copies the matches and computes the
-Adler-32. Metric: `debit_decompression`.
+Adler-32. Metric: `decompression_throughput`.
 ## What matters here
 Profile of the base 2948eeb, before miniz-0012 and miniz-0016 (redo it: `bee/bench/profil.py`): `tinfl_decompress` 99.3%
 of decompression (the fork's bee/README.md); match copy 23.0% (miniz-0012), literal loop 22.2% (miniz-0018), Adler-32

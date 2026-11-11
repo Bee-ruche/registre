@@ -22,8 +22,8 @@ measurements:                       # required for optimization and measurement
   machine: processor, system, compiler
   command: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
   repetitions: 10
-  before: {debit_compression_n6: 61.2, instructions_n6: 357355543, memoire_max_ko: 4120}
-  after: {debit_compression_n6: 64.0, instructions_n6: 343061321, memoire_max_ko: 4120}
+  before: {compression_throughput_n6: 61.2, instructions_n6: 357355543, max_memory_kb: 4120}
+  after: {compression_throughput_n6: 64.0, instructions_n6: 343061321, max_memory_kb: 4120}
 tested: [project tests, zlib differential, 10 min fuzzing]
 untested: [ARM64]
 doubts: What could go wrong, in one or two sentences.
