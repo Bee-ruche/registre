@@ -12,7 +12,7 @@ fork's `bee/README.md`.
 Judge: what miniz compresses, zlib decompresses, and the other way round. Metrics: projects/miniz.yaml. R4, for a
 throughput: at least 2% fewer instructions, which the stopwatch confirms beyond the noise (or another configuration).
 Isolated judge: the CI runs your code in a container with no network and checks each output with another zlib; locally:
-`python3 <registry>/outils/juge/juge.py --outillage . --source-a <base> --source-b <your copy>` (Docker). What it finds
+`python3 <registry>/tools/judge/judge.py --tooling . --source-a <base> --source-b <your copy>` (Docker). What it finds
 suspicious (system call, clock, replaced libc symbol…) calls for a guardian: justify what is legitimate (SIMD) in
 `change`.
 Pitfalls: unaligned reads through memcpy into a local variable, never through a pointer cast; generic path kept (R6); in

@@ -4,10 +4,10 @@ category: ruche
 upstream_repo: https://github.com/Bee-ruche/registre
 license: MIT
 fork: https://github.com/Bee-ruche/registre
-reference: tests de l'outil (python3 outils/test_bee.py), tests et méta-tests du juge commun (outils/juge/test_juge.py), validation du registre (bee valider) ; relecture d'un gardien ou du conseil
+reference: tests de l'outil (python3 outils/test_bee.py), tests et méta-tests du juge commun (tools/judge/test_judge.py), validation du registre (bee valider) ; relecture d'un gardien ou du conseil
 scope:
   - Outil bee et site (outils/)
-  - Juge commun (outils/juge/, workflow juge.yml)
+  - Juge commun (tools/judge/, workflow juge.yml)
   - Schémas, modèles et workflows du registre
   - Documentation (docs/, AGENTS.md, guides)
 out_of_scope:
@@ -24,14 +24,13 @@ maintainer_tier: none
 metrics: []
 paths_not_counted:
   - "tools/test_bee.py"
-  - "outils/juge/test_juge.py"
-  - "outils/juge/jouet/**"
+  - "tools/judge/test_judge.py"
+  - "tools/judge/jouet/**"
   - "tools/tests/registry/**"
 judge_paths:
   - "tools/**"
-  - "outils/juge/**"
   - "schemas/**"
   - ".github/**"
 commands:
-  tests: python3 tools/test_bee.py && python3 outils/juge/test_juge.py
+  tests: python3 tools/test_bee.py && python3 tools/judge/test_judge.py
   validate: python3 tools/bee.py validate

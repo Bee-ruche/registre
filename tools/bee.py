@@ -59,8 +59,7 @@ TO_FILL_IN_MARKERS = (TO_FILL_IN, TO_FILL_IN_EN)
 SELF_SERVICE_TASK_KEYS = {"status", "reservation", "parallel", "contribution", "notes"}
 # The registry's tooling (the hive's tasks): a member may change it by PR, never merged automatically.
 TOOLING_PATHS = ("tools/*", "schemas/*", "templates/*", "docs/*", ".github/*", ".claude/*", "tree/*",
-                     "AGENTS.md", "README.md", "USERS.md", "MAINTAINERS.md",
-                     "outils/juge/*")  # ruche-0153: the common judge stays outils/juge/ after the switch to English, until judge-v4
+                     "AGENTS.md", "README.md", "USERS.md", "MAINTAINERS.md")  # the common judge is tools/judge/ (ruche-0148)
 
 
 class BeeError(Exception):
@@ -906,15 +905,16 @@ AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "governance/council.ya
                    # under its old path either
                    "gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
                    "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md")
-# ruche-0145 (plan, R-q): every path the switch to English retired (tools/migration/names.yaml, « retired »); a folder ends with /.
+# ruche-0145 (plan, R-q): every path the switch to English retired (tools/migration/names.yaml, « retired »), and outils/juge/ since the
+# common judge moved to tools/judge/ (ruche-0148); a folder ends with /.
 # A path under one, or one of these files, is refused by the gate to everyone, and never read as data (no code reads it).
 RETIRED_NAMES = ("AGENTS.en.md", "COMMANDEMENTS.md", "MAINTENEURS.md", "REGLES.md", "UTILISATEURS.md", "arbre/", "debats/", "docs/arbre.md",
                  "docs/candidats.md", "docs/cap.md", "docs/capacites.md", "docs/croissance.md", "docs/garants.md", "docs/gardiens.md",
                  "docs/gouvernance.md", "docs/juge-commun.md", "docs/mesures.md", "docs/nouveau-projet.md", "docs/organisation.md",
                  "docs/outillage.md", "docs/perimetre.md", "docs/questions-ouvertes.md", "docs/securite.md", "docs/taches.md", "gouvernance/",
                  "invitations/ne-plus-contacter.yaml", "membres/", "mesures/", "modeles/", "outils/bee.py", "outils/inventaire_marqueurs.py",
-                 "outils/migration/", "outils/repetition/", "outils/requirements.txt", "outils/site_bee.py", "outils/test_bee.py", "outils/tests/",
-                 "projets/", "propositions/", "signalements/", "taches/")
+                 "outils/juge/", "outils/migration/", "outils/repetition/", "outils/requirements.txt", "outils/site_bee.py", "outils/test_bee.py",
+                 "outils/tests/", "projets/", "propositions/", "signalements/", "taches/")
 
 
 def retired_name(path):
@@ -9460,7 +9460,7 @@ def cmd_record_verdict(args):
         integer_value = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
         verdict["judge"] = {
             "version": integer_value(judge.get("version")),
-            # The registry's common judge (outils/juge/, docs/common-judge.md): the tag that rendered the verdict.
+            # The registry's common judge (tools/judge/, docs/common-judge.md): the tag that rendered the verdict.
             "common": judge.get("common") if isinstance(judge.get("common"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", judge.get("common")) else None,
             "outputs_compared": integer_value(judge.get("outputs_compared")),
             "suspicious_constructs": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
