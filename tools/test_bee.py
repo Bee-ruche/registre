@@ -2523,10 +2523,10 @@ class TestTree(BaseTest):
 
     def test_empty_section(self):
         text = self.node("projects/ruche").read_text(encoding="utf-8")
-        beginning = text.index("## Pourquoi cette branche existe\n") + len("## Pourquoi cette branche existe\n")
-        end = text.index("## Ce qui compte ici")
+        beginning = text.index("## Why this branch exists\n") + len("## Why this branch exists\n")
+        end = text.index("## What matters here")
         self.node("projects/ruche").write_text(text[:beginning] + text[end:], encoding="utf-8")
-        self.refuse("empty node: the section « Pourquoi cette branche existe » has nothing")
+        self.refuse("empty node: the section « Why this branch exists » has nothing")
 
     def test_sections_out_of_order_or_unexpected(self):
         self.replace_with("roles/review", "## Ce qui compte ici", "## Ce qui compte, en vrai")
@@ -2539,7 +2539,7 @@ class TestTree(BaseTest):
         self.refuse("ruche-9999", "a node is maintained by a task")
 
     def test_broken_link_missing_child(self):
-        self.replace_with("root", "## Enfants\n", "## Enfants\n- `roles/vote` : voter\n")
+        self.replace_with("root", "## Children\n", "## Children\n- `roles/vote`: vote\n")
         self.refuse("broken link: the child « roles/vote » is listed")
 
     def test_broken_link_declared_parent(self):
@@ -2592,8 +2592,8 @@ class TestTree(BaseTest):
 
     def test_project_without_node_makes_its_tasks_orphans(self):
         shutil.rmtree(self.node("projects/parsing-serialization/libyaml").parent)
-        self.replace_with("projects/parsing-serialization", "- `projects/parsing-serialization/libyaml` : libyaml, analyseur et émetteur YAML\n",
-                       "Aucun.\n")
+        self.replace_with("projects/parsing-serialization", "- `projects/parsing-serialization/libyaml`: libyaml, YAML parser and emitter\n",
+                       "None.\n")
         text = self.refuse("tasks/libyaml/libyaml-0010.yaml: orphan task")
         self.assertNotIn("miniz-0012", text)
 
@@ -2615,7 +2615,12 @@ class TestTree(BaseTest):
         root = text[positions[0]:positions[1]]
         self.assertIn("Yours follows; all: `bee context`.", root)
         self.assertNotIn("- `roles/review`", root)
-        self.assertNotIn("## Enfants", text[positions[1]:positions[2]], "un nœud sans enfant n'imprime pas les siens")
+        self.assertNotIn("## Children", text[positions[1]:positions[2]], "un nœud sans enfant n'imprime pas les siens")
+        # ruche-0066: every node of the path, English or French, prints its sections under their short English names.
+        for short in ("Why", "What matters", "To ignore"):
+            self.assertEqual(text.count(f"\n## {short}\n"), len(landmarks) - 1, short)
+        for short in ("Pourquoi", "Ce qui compte", "À ignorer", "Enfants"):
+            self.assertNotIn(f"\n## {short}\n", text)
         # La tâche : ce que bee calcule, puis ses données relues, encadrées, chaque ligne précédée de « | ».
         task = text[positions[4]:]
         self.assertLess(task.index("# --- computed by bee ---"), task.index("=== DATA of task miniz-0099"))
@@ -2672,7 +2677,7 @@ class TestTree(BaseTest):
             self.assertIn(command, role)
         self.assertLess(int(re.search(r"About (\d+) tokens", text).group(1)), 1900)
         self.assertLess(bee.estimate_tokens(text), 1900)
-        self.assertIn("- `roles/invite` : inviter une personne hors de la ruche (R13, docs/croissance.md)", self.bee("context")[1])
+        self.assertIn("- `roles/invite`: invite a person outside the hive (R13, docs/growth.md)", self.bee("context")[1])
         code, text = self.bee("context", "miniz-0099", "--role", "invite")
         self.assertEqual(code, 0, text)
         self.assertIn("=== node roles/invite ===", text)
@@ -2708,16 +2713,18 @@ class TestTree(BaseTest):
         def node(ident, children):
             list_of = "\n".join(f"- `{e}` : {e.rsplit('/', 1)[-1]}" for e in children)
             return {"id": ident, "title": ident, "children": children,
-                    "sections": {"Pourquoi cette branche existe": "p", "Ce qui compte ici": "c",
-                                 "Ce qu'on peut ignorer ici": "i", "Enfants": list_of}}
+                    "sections": {"Why this branch exists": "p", "What matters here": "c",
+                                 "What you can ignore here": "i", "Children": list_of}}
         alone_one = node("projects/x/p", ["projects/x/p/a"])
         nodes = {"projects/x/p": alone_one, "projects/x/p/a": node("projects/x/p/a", [])}
         text = bee.context_node_render(alone_one, path=["projects/x/p", "projects/x/p/a"], nodes=nodes)
-        self.assertNotIn("## Enfants", text)
+        self.assertNotIn("## Children", text)
+        # ruche-0066: the sections bear their short English names (the glossary of docs/english-migration.md).
+        self.assertIn("## Why\np\n## What matters\nc\n## To ignore\ni", text)
         two = node("projects/x/p", ["projects/x/p/a", "projects/x/p/b"])
         nodes = {"projects/x/p": two, "projects/x/p/a": node("projects/x/p/a", []), "projects/x/p/b": node("projects/x/p/b", [])}
         text = bee.context_node_render(two, path=["projects/x/p", "projects/x/p/a"], nodes=nodes)
-        self.assertIn("## Enfants\nYours follows", text)
+        self.assertIn("## Children\nYours follows", text)
         self.assertNotIn("projects/x/p/b", text)
         text = bee.context_node_render(two, path=["projects/x/p"], nodes=nodes)
         self.assertIn("- `projects/x/p/a`", text)
@@ -2748,14 +2755,11 @@ class TestTree(BaseTest):
 
     # --- Revue adverse de ruche-0010 (B1, I1, I2, I3, m1, m2, m4) : un test par constat ---
 
-    VULNERABILITY_INSTRUCTION = ("Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, même en passant ; "
-                       "signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet d'origine "
-                       "(commandements 6 et 8, docs/securite.md).")
-    # ruche-0145: the same instruction in AGENTS.md, which the switch makes the English guide (the tree's nodes stay French until
-    # their prose tasks); the guide's sentence, word for word.
-    VULNERABILITY_INSTRUCTION_EN = ("A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a description, not "
-                                    "even in passing; private report on the Bee repo, and tell your user; never contact the upstream "
-                                    "project (commandments 6 and 8, docs/security.md).")
+    # The root's bullet, word for word; since ruche-0066 the root is English and its bullet is AGENTS.md's sentence (ruche-0145),
+    # so the guide and the root say it in the same words.
+    VULNERABILITY_INSTRUCTION = ("A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a description, not "
+                                 "even in passing; private report on the Bee repo, and tell your user; never contact the upstream "
+                                 "project (commandments 6 and 8, docs/security.md).")
 
     @staticmethod
     def flat(text):
@@ -2772,7 +2776,7 @@ class TestTree(BaseTest):
                             text, _ = bee.context_text(reg, task["id"], role, budget, registry=str(self.dir),
                                                           already_read=already_read)
                             self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat(text.replace("\n# ", "\n")))
-        self.assertIn(self.VULNERABILITY_INSTRUCTION_EN, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
+        self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
         self.assertTrue((ROOT / "docs/security.md").is_file())  # the file the guide's sentence names
 
     def test_already_read_reprints_neither_the_root_nor_the_role(self):
@@ -2798,18 +2802,18 @@ class TestTree(BaseTest):
         # deux puces (E2) ou absente, elle s'imprime en entier : rien ne la perd en silence.
         root = self.dir / "tree/MEANING.md"
         origin_of = root.read_text(encoding="utf-8")
-        suite = "même en passant ;\n  signalement privé"
+        suite = "not even in\n  passing; private report"
         self.assertIn(suite, origin_of)
         for name, text, whole_one in (
-                ("suite non indentée", origin_of.replace(suite, "même en passant ;\nsignalement privé"), False),
-                ("deux puces", origin_of.replace(suite, "même en passant.\n- Signalement privé"), True),
-                ("absente", origin_of.replace("Une faille (plantage", "Un défaut (plantage"), True)):
+                ("suite non indentée", origin_of.replace(suite, "not even in\npassing; private report"), False),
+                ("deux puces", origin_of.replace(suite, "not even in passing.\n- Private report"), True),
+                ("absente", origin_of.replace("A vulnerability (crash", "A defect (crash"), True)):
             with self.subTest(root=name):
                 root.write_text(text, encoding="utf-8")
                 output_text = self.bee("context", "miniz-0099", "--already-read")[1]
                 self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                 if not whole_one:
-                    self.assertIn("ne contacte jamais le projet d'origine", " ".join(output_text.replace("\n# ", "\n").split()))
+                    self.assertIn("never contact the upstream project", " ".join(output_text.replace("\n# ", "\n").split()))
         root.write_text(origin_of, encoding="utf-8")
 
     def test_I1_show_and_context_print_the_data_quoted(self):
@@ -2883,8 +2887,8 @@ class TestTree(BaseTest):
                 _, text = self.bee("context", task["id"], "--budget", str(budget))
                 self.assertIn("=== node roles/measure ===", text)
                 self.assertIn("=== node root ===", text)
-                self.assertIn("privé", text)
-                self.assertIn("securite.md", text)
+                self.assertIn("private report", text)
+                self.assertIn("docs/security.md", text)
 
     def test_m1_a_vanished_node_warns_and_falls_back(self):
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -2928,6 +2932,13 @@ class TestTree(BaseTest):
         for n in ("root", "roles/review", "projects/lossless-compression/miniz"):
             self.assertIn(f"id='{n}'", page)
         self.assertIn("<code>bee context &lt;task&gt;</code>", page)
+        # ruche-0066: the tree page and the API name every node's sections in English, French nodes included.
+        english = ["Why this branch exists", "What matters here", "What you can ignore here", "Children"]
+        for n in ("root", "roles/review"):
+            node_page = page[page.index(f"id='{n}'"):]
+            node_page = node_page[:node_page.index("</section>")]
+            self.assertEqual(re.findall(r"<h3>([^<]*)</h3>", node_page), english)
+        self.assertNotIn("<h3>Enfants</h3>", page)
         task = (self.dir / "_site/tasks/miniz-0012.html").read_text(encoding="utf-8")
         self.assertIn("The path of meaning", task)
         self.assertIn("tree.html#projects/lossless-compression/miniz", task)
@@ -2935,7 +2946,9 @@ class TestTree(BaseTest):
         tree = {n["id"]: n for n in data["tree"]}
         self.assertEqual(tree["root"]["parent"], None)
         self.assertEqual(tree["projects/lossless-compression/miniz"]["parent"], "projects/lossless-compression")
-        self.assertIn("Ce qui compte ici", tree["roles/review"]["sections"])
+        self.assertEqual(list(tree["roles/review"]["sections"]), english)
+        self.assertEqual(list(tree["root"]["sections"]), english)
+        self.assertIn("never contact the upstream project", tree["root"]["sections"]["What matters here"])
         tasks = {t["id"]: t for t in data["tasks"]}
         self.assertEqual(tasks["miniz-0012"]["attached_node"], "projects/lossless-compression/miniz")
         self.assertEqual(tasks["miniz-0012"]["role"], "optimize")
@@ -4342,7 +4355,7 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T12:40:00Z")
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 0, text)
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"], "deux PR, dans l'ordre")
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"], "deux PR, dans l'ordre")
         git(self.dir, "fetch", "-q", "origin")
         bruno_s_note, reservation, submission = self.merges(base)
         branch = (self.root / "pr-1").read_text(encoding="utf-8").strip()
@@ -4365,12 +4378,13 @@ class TestPublishBySession(BasePublish):
         self.ok("take", "miniz-0099", "--user", "alice")
         base = self.on_main("alice réserve")
         self.a("2026-10-27T12:10:00Z")
-        self.ok("take", "miniz-0099", "--user", "bruno", "--parallel")
+        hint = self.ok("take", "miniz-0099", "--user", "bruno", "--parallel")
+        self.assertIn("bee publish --title 'Parallel registration miniz-0099'", hint)  # ruche-0155: bee take's hint, word for word
         self.a("2026-10-27T12:30:00Z")
         self.ok("submit", "miniz-0099", "--user", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99101",
                 "--summary", "Essai.")
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual(self.prs(), ["Inscription en parallèle miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Parallel registration miniz-0099", "Soumission miniz-0099-c1"])
         registration, submission = self.merges(base)
         self.accepted_one(registration, "bruno", "parallel_registration")
         self.accepted_one(submission, "bruno", "parallel_submission")
@@ -4385,18 +4399,18 @@ class TestPublishBySession(BasePublish):
         on_disk = lambda: ({c: (self.dir / c).read_bytes() for c in (self.SUBMISSION, self.TASK)},  # noqa: E731
                                  git(self.dir, "status", "--porcelain"))
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--dry-run")
-        self.assertIn("In two PRs, in order: first « Réservation miniz-0099 » alone (tasks/miniz/miniz-0099.yaml), then, "
+        self.assertIn("In two PRs, in order: first « Reservation miniz-0099 » alone (tasks/miniz/miniz-0099.yaml), then, "
                       "once it is merged, « Soumission miniz-0099-c1 »", text)
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--no-wait")
         self.assertEqual(code, 1, text)
-        self.assertIn("« Réservation miniz-0099 » must be merged before « Soumission miniz-0099-c1 »", text)
+        self.assertIn("« Reservation miniz-0099 » must be merged before « Soumission miniz-0099-c1 »", text)
         self.assertEqual((self.prs(), on_disk()), ([], before))
         self.mode.write_text("fermee", encoding="utf-8")
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 1, text)
         self.assertIn("the PR was refused and closed", text)
         self.assertIn("Nothing else is published: your changes are back on disk.", text)
-        self.assertEqual((self.prs(), on_disk()), (["Réservation miniz-0099"], before))
+        self.assertEqual((self.prs(), on_disk()), (["Reservation miniz-0099"], before))
         self.mode.write_text("ouverte", encoding="utf-8")
         for _ in range(2):  # run again while it waits: the same PR is followed, a second one is never opened
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
@@ -4404,14 +4418,14 @@ class TestPublishBySession(BasePublish):
             self.assertIn("nothing else is published, your changes are on disk. Run bee publish again once this PR "
                           "is merged: it follows it, without opening a second one.", text)
             self.assertNotIn("git stash", text)
-            self.assertEqual((self.prs(), on_disk()), (["Réservation miniz-0099"] * 2, before))
-        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/2)", text)
+            self.assertEqual((self.prs(), on_disk()), (["Reservation miniz-0099"] * 2, before))
+        self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/2)", text)
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
         # The reservation merges; run once more, bee publier follows it, then sends the submission alone.
         self.mode.write_text("merge", encoding="utf-8")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099"] * 2 + ["Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099"] * 2 + ["Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.accepted_one(reservation, "alice", "reservation")
         self.accepted_one(submission, "alice", "submission")
@@ -4434,17 +4448,17 @@ class TestPublishBySession(BasePublish):
         self.mode.write_text("ouverte", encoding="utf-8")
         with mock.patch("time.sleep", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
             self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual((self.prs(), self.disk_state()), (["Réservation miniz-0099"], before))
+        self.assertEqual((self.prs(), self.disk_state()), (["Reservation miniz-0099"], before))
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1): bee publish follows it, "
+        self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1): bee publish follows it, "
                       "without opening a second one.", text)
         self.assertIn(f"Put back on disk: {self.SUBMISSION}, {self.TASK}", text)
-        self.assertEqual((self.prs(), self.disk_state()), (["Réservation miniz-0099"], before))
+        self.assertEqual((self.prs(), self.disk_state()), (["Reservation miniz-0099"], before))
         self.mode.write_text("merge", encoding="utf-8")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.accepted_one(reservation, "alice", "reservation")
         self.accepted_one(submission, "alice", "submission")
@@ -4468,9 +4482,9 @@ class TestPublishBySession(BasePublish):
         before = self.disk_state(note)
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("« Réservation miniz-0099 » is merged, but « Soumission miniz-0099-c1 » no longer applies on main", text)
+        self.assertIn("« Reservation miniz-0099 » is merged, but « Soumission miniz-0099-c1 » no longer applies on main", text)
         self.assertIn(f"Put back on disk: {self.SUBMISSION}, {self.TASK}, {note}", text.rsplit("✓ PR merged", 1)[1])
-        self.assertEqual((self.prs(), self.disk_state(note)[0]), (["Réservation miniz-0099"], before[0]))
+        self.assertEqual((self.prs(), self.disk_state(note)[0]), (["Reservation miniz-0099"], before[0]))
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
         git(self.dir, "fetch", "-q", "origin")
         self.assertEqual(git(self.dir, "rev-parse", "HEAD"), git(self.dir, "rev-parse", "origin/main"))
@@ -4519,7 +4533,7 @@ class TestPublishBySession(BasePublish):
         self.assertIn("changed on disk during the wait: they stay there", text)
         self.assertIn("Ajoutée pendant l'attente.", (self.dir / note).read_text(encoding="utf-8"))
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.assertEqual(self.files(submission), [self.SUBMISSION, self.TASK, note])
         self.accepted_one(submission, "alice", "submission", "note")
@@ -4543,7 +4557,7 @@ class TestPublishBySession(BasePublish):
         base = git(self.dir, "rev-parse", "HEAD").strip()
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
         self.assertIn("Redated to 2026-10-27T14:30:00Z: 2026-10-27T12:00:00Z, 2026-10-27T12:30:00Z", text)
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.accepted_one(reservation, "alice", "reservation")
         self.accepted_one(submission, "alice", "submission")
@@ -4595,15 +4609,15 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T12:55:00Z")
         code, text = self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
+        self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
         git(self.dir, "fetch", "-q", "origin")
         self.assertEqual((self.prs(), git(self.dir, "rev-parse", f"origin/{(self.root / 'pr-1').read_text().strip()}")),
-                         (["Réservation miniz-0099"], first_one), "la PR qui attend n'a rien reçu de plus")
+                         (["Reservation miniz-0099"], first_one), "la PR qui attend n'a rien reçu de plus")
         self.mode.write_text("merge", encoding="utf-8")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         self.a("2026-10-27T13:00:00Z")
         self.ok("publish", "--title", "Session alice", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Réservation miniz-9001", "Session alice"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Reservation miniz-9001", "Session alice"])
         r1, r2, rest_of = self.merges(base)
         self.assertEqual((self.files(r1), self.files(r2)), ([self.TASK], ["tasks/miniz/miniz-9001.yaml"]))
         self.accepted_one(r1, "alice", "reservation")
@@ -4622,13 +4636,13 @@ class TestPublishBySession(BasePublish):
             self.state_file().unlink()
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
             self.assertEqual(code, 2, text)
-            self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
-            self.assertEqual(self.prs(), ["Réservation miniz-0099"])
+            self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
+            self.assertEqual(self.prs(), ["Reservation miniz-0099"])
         self.mode.write_text("merge", encoding="utf-8")
         self.state_file().unlink()
         base = git(self.dir, "rev-parse", "HEAD").strip()
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.accepted_one(reservation, "alice", "reservation")
         self.accepted_one(submission, "alice", "submission")
@@ -4639,8 +4653,11 @@ class TestPublishBySession(BasePublish):
         self.prepare_reservation_and_submission()
         before = self.disk_state()
         self.a("2026-10-27T14:31:00Z")
-        for content in ("{", "[]", '{"cle": "{}"}', '{"cle": "[1]", "pr": ["u", 1]}', '{"cle": "{}", "pr": [1, "x"]}', "\xff",
-                        '{"cle": "{}", "pr": ["u", "1"]}', '{"cle": "{}", "pr": ["u", true]}', '{"cle": "{}", "pr": ["u", 1.5]}'):
+        # Each sample has one fault: not JSON, not a mapping, no "pr", a key that is not a mapping, an address that is not a string,
+        # not UTF-8, a number that is a string, a boolean, a float, or not positive (the state file's fields are "key" and "pr").
+        for content in ("{", "[]", '{"key": "{}"}', '{"key": "[1]", "pr": ["u", 1]}', '{"key": "{}", "pr": [1, 1]}', "\xff",
+                        '{"key": "{}", "pr": ["u", "1"]}', '{"key": "{}", "pr": ["u", true]}', '{"key": "{}", "pr": ["u", 1.5]}',
+                        '{"key": "{}", "pr": ["u", 0]}'):
             with self.subTest(content=content):
                 self.state_file().write_bytes(content.encode("latin-1"))
                 code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
@@ -4652,7 +4669,7 @@ class TestPublishBySession(BasePublish):
                 self.assertNotIn("bee/", git(self.dir, "ls-remote", "--heads", "origin"))
         self.state_file().unlink()
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
 
     def test_a_foreign_file_is_never_published(self):
         """Critère 5 : un fichier que bee n'a pas écrit (une tâche retouchée à la main, un brouillon dans measurements/) n'est ni
@@ -4725,8 +4742,8 @@ class TestPublishBySession(BasePublish):
                 base = git(self.dir, "rev-parse", "HEAD").strip()
             code, text = self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")
             self.assertEqual(code, 0 if merge else 2, text)
-            self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Réservation miniz-9001", "Session alice"])
+            self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Reservation miniz-9001", "Session alice"])
         r1, r2, rest_of = self.merges(base)
         self.assertEqual((self.files(r1), self.files(r2)), ([self.TASK], ["tasks/miniz/miniz-9001.yaml"]))
         self.accepted_one(r2, "alice", "reservation")
@@ -4742,11 +4759,11 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T15:30:00Z")
         code, text = self.bee("publish", "--title", "Session alice", "--redate", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
-        self.assertEqual(self.prs(), ["Réservation miniz-0099"])
+        self.assertIn("« Reservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
+        self.assertEqual(self.prs(), ["Reservation miniz-0099"])
         self.mode.write_text("merge", encoding="utf-8")
         self.ok("publish", "--title", "Session alice", "--redate", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Session alice"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Session alice"])
 
     def test_a_touched_up_file_that_main_changes_stops_with_a_message(self):
         """Revue de ruche-0138 : l'engagement fusionné, main change aussi un fichier retouché à la main : bee publish le dit,
@@ -4772,7 +4789,7 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(((self.dir / note).read_bytes(), self.disk_state(), self.state_file().is_file()), (touched_up, before, True))
         git(self.dir, "stash", "push", "-q", "--", note)
         self.ok("publish", "--title", "Session alice", "--interval", "0")
-        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Session alice"])
+        self.assertEqual(self.prs(), ["Reservation miniz-0099", "Session alice"])
 
     def test_a_symbolic_link_is_never_followed(self):
         """Revue de ruche-0138 : un lien symbolique à un chemin que bee écrirait (un fichier de la session, un de ses dossiers, le
@@ -4864,6 +4881,96 @@ class TestPublishBySession(BasePublish):
                     self.assertIn(refusal[0], text)
                     self.assertIn(refusal[1], gate[1])
         self.assertFalse(self.log_text.exists(), "aucun appel à gh")
+
+    # --- ruche-0155: the engagement titles in English; a publish made under the former (French) title is followed until DATE_D ---
+
+    def former_code(self):
+        """bee publish as it was before ruche-0155: the same engagements, under their French titles, and no former key."""
+        real, french = bee.prepared_engagements, {"Reservation": "Réservation", "Parallel registration": "Inscription en parallèle"}
+        return mock.patch.multiple(bee, former_engagement_keys=lambda prepared_json: {}, prepared_engagements=lambda repo, changes: {
+            c: (f"{french[t.rpartition(' ')[0]]} {t.rpartition(' ')[2]}", r) for c, (t, r) in real(repo, changes).items()})
+
+    def engagement_branch(self, task, title, replay):
+        """The branch of an engagement's PR, as GitHub lists it: a hash of {task path: [title, what is replayed]}."""
+        return f"bee/engagement-{hashlib.sha256(json.dumps({task: [title, replay]}, sort_keys=True).encode()).hexdigest()[:16]}"
+
+    def test_a_fresh_engagement_leaves_under_its_english_title_and_branch(self):
+        """A reservation prepared with its submission leaves under the title bee take's hint gives, word for word, on the branch
+        hashed from it, which the state file keeps as the key."""
+        self.a("2026-10-27T12:00:00Z")
+        self.assertIn("bee publish --title 'Reservation miniz-0099'", self.ok("take", "miniz-0099", "--user", "alice"))
+        self.a("2026-10-27T12:30:00Z")
+        self.ok("submit", "miniz-0099", "--user", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007", "--summary", "Essai.")
+        self.mode.write_text("ouverte", encoding="utf-8")
+        self.assertEqual(self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")[0], 2)
+        replay = {"status": "reserved", "reservation": {"user": "alice", "since": "2026-10-27T12:00:00Z"}}
+        english = self.engagement_branch(self.TASK, "Reservation miniz-0099", replay)
+        self.assertNotEqual(english, self.engagement_branch(self.TASK, "Réservation miniz-0099", replay))
+        self.assertEqual(((self.root / "pr-1").read_text(encoding="utf-8").strip(), self.prs()), (english, ["Reservation miniz-0099"]))
+        self.assertEqual(json.loads(json.loads(self.state_file().read_text(encoding="utf-8"))["key"]),
+                         {self.TASK: ["Reservation miniz-0099", replay]})
+
+    def test_a_publish_under_the_former_title_is_followed_without_a_second_pr(self):
+        """Criterion 1: a reservation published under its former title waits; re-run with the new code, bee publish follows that
+        PR, by the state file, then, the state file lost, by its branch, and opens no second one; merged, the submission leaves
+        alone, and the gate accepts both. A parallel registration likewise, by its branch."""
+        self.prepare_reservation_and_submission()
+        self.mode.write_text("ouverte", encoding="utf-8")
+        with self.former_code():
+            self.assertEqual(self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")[0], 2)
+        replay = {"status": "reserved", "reservation": {"user": "alice", "since": "2026-10-27T12:00:00Z"}}
+        self.assertEqual(((self.root / "pr-1").read_text(encoding="utf-8").strip(), self.prs()),
+                         (self.engagement_branch(self.TASK, "Réservation miniz-0099", replay), ["Réservation miniz-0099"]))
+        for lost in (False, True):
+            with self.subTest(state_file_lost=lost):
+                if lost:
+                    self.state_file().unlink()
+                searched = len(self.log_text.read_text(encoding="utf-8"))
+                code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
+                self.assertEqual(code, 2, text)
+                self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
+                self.assertEqual(self.prs(), ["Réservation miniz-0099"])
+                # the state file suffices, without a search on GitHub; lost, the PR is found by its branch
+                self.assertEqual("pulls?state=open" in self.log_text.read_text(encoding="utf-8")[searched:], lost)
+        self.mode.write_text("merge", encoding="utf-8")
+        base = git(self.dir, "rev-parse", "HEAD").strip()
+        self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, submission = self.merges(base)
+        self.accepted_one(reservation, "alice", "reservation")
+        self.accepted_one(submission, "alice", "submission")
+        self.assertEqual((git(self.dir, "status", "--porcelain"), self.state_file().exists()), ("", False))
+        self.a("2026-10-27T12:40:00Z")  # the parallel registration: bruno on miniz-9001, which alice reserves
+        self.ok("take", "miniz-9001", "--user", "alice")
+        self.on_main("alice réserve miniz-9001")
+        self.ok("take", "miniz-9001", "--user", "bruno", "--parallel")
+        self.ok("submit", "miniz-9001", "--user", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99101", "--summary", "Essai.")
+        self.mode.write_text("ouverte", encoding="utf-8")
+        with self.former_code():
+            self.assertEqual(self.bee("publish", "--title", "Soumission miniz-9001-c1", "--timeout", "0", "--interval", "0")[0], 2)
+        self.state_file().unlink()
+        code, text = self.bee("publish", "--title", "Soumission miniz-9001-c1", "--timeout", "0", "--interval", "0")
+        self.assertEqual(code, 2, text)
+        self.assertIn("« Inscription en parallèle miniz-9001 » is already waiting (https://github.com/Bee-ruche/registre/pull/3)", text)
+        self.assertEqual(self.prs()[2:], ["Inscription en parallèle miniz-9001"])
+
+    def test_from_date_d_on_the_former_key_is_no_longer_looked_for(self):
+        """From DATE_D on, the former key is looked for neither in the state file nor on GitHub: the engagement leaves in its own
+        PR, under its English title."""
+        self.a(f"{bee.DATE_D}T12:00:00Z")
+        self.ok("take", "miniz-0099", "--user", "alice")
+        self.a(f"{bee.DATE_D}T12:30:00Z")
+        self.ok("submit", "miniz-0099", "--user", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007", "--summary", "Essai.")
+        self.mode.write_text("ouverte", encoding="utf-8")
+        with self.former_code():
+            self.assertEqual(self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")[0], 2)
+        former = (self.root / "pr-1").read_text(encoding="utf-8").strip()
+        searched = len(self.log_text.read_text(encoding="utf-8"))
+        code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
+        self.assertEqual(code, 2, text)
+        self.assertNotIn("is already waiting", text)
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Reservation miniz-0099"])
+        self.assertNotIn(former, self.log_text.read_text(encoding="utf-8")[searched:])
 
 
 class TestFork(BaseTest):
@@ -15592,8 +15699,15 @@ class TestSpelling(BaseInvitations):
 
 def english_titles(text):
     """A node's four headings rewritten in English; its text stays as it is."""
-    for fr, en in zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
+    for fr, en in zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
         text = text.replace(f"\n## {fr}\n", f"\n## {en}\n")
+    return text
+
+
+def french_titles(text):
+    """A node's four headings rewritten in French; its text stays as it is."""
+    for fr, en in zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
+        text = text.replace(f"\n## {en}\n", f"\n## {fr}\n")
     return text
 
 
@@ -15615,7 +15729,7 @@ class TestBilingualReaders(BaseAgora):
         self.assertEqual((unknown_items, missing_items), ([], []), "a French literal is unclassified, or an English form is gone")
         bilingual = {text: english_form for text, class_name, english_form, _ in lines if class_name == "bilingual"}
         self.assertEqual(bilingual, {bee.TO_FILL_IN: bee.TO_FILL_IN_EN, bee.DEBATE_LINK.pattern: "Debate:",
-                                     **dict(zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN)), "- Une faille": "- A vulnerability"})
+                                     **dict(zip(bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS)), "- Une faille": "- A vulnerability"})
         classes = {text: class_name for text, class_name, _, _ in lines}
         self.assertEqual({classes[v] for v in bee.REMOVED.values()}, {"data"}, "written by the tool itself: ruche-0070")
         self.assertIn("in_review", names)
@@ -15708,21 +15822,25 @@ class TestBilingualReaders(BaseAgora):
     # --- Node headings ---
 
     def test_english_nodes_read_like_french_ones(self):
-        """The root and a whole path in English: bee validate accepts them; children, bee context and the site read them
-        as before."""
+        """The root and a whole path with their headings in the other language (a French node in English, an English one,
+        such as the root since ruche-0066, in French): bee validate accepts them; children, bee context and the site read
+        them as before."""
         path = ("root", "roles/optimize", "projects/lossless-compression", "projects/lossless-compression/miniz")
         before = bee.load_tree(bee.Registry(self.dir))["nodes"]
         context = self.ok("context", "miniz-0099")
+        other = {"fr": "en", "en": "fr"}
         for n in path:
             file = self.dir / bee.node_file(n)
             text = file.read_text(encoding="utf-8")
-            self.assertNotEqual(english_titles(text), text)
-            file.write_text(english_titles(text), encoding="utf-8")
+            switched = english_titles(text) if before[n]["languages"] == ["fr"] else french_titles(text)
+            self.assertNotEqual(switched, text)
+            file.write_text(switched, encoding="utf-8")
         self.valid_one()
         after = bee.load_tree(bee.Registry(self.dir))["nodes"]
         for n in path:
             with self.subTest(node=n):
-                self.assertEqual((after[n]["languages"], before[n]["languages"]), (["en"], ["fr"]))
+                self.assertIn(before[n]["languages"], (["fr"], ["en"]))
+                self.assertEqual(after[n]["languages"], [other[before[n]["languages"][0]]])
                 self.assertEqual([after[n][k] for k in ("sections", "order", "children")],
                                  [before[n][k] for k in ("sections", "order", "children")])
         self.assertTrue(after["root"]["children"])
@@ -15753,16 +15871,16 @@ class TestBilingualReaders(BaseAgora):
         }
         for name, change in case_of.items():
             results = []
-            for titles in (bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
-                text = ZONE_NODE if titles == bee.NODE_SECTIONS else english_titles(ZONE_NODE)
+            for titles in (bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS):
+                text = ZONE_NODE if titles == bee.NODE_SECTIONS_FR else english_titles(ZONE_NODE)
                 self.write_zone(change(text, titles))
                 problems_found = raw = self.tree_problems()
                 with self.subTest(case_of=name, titles=titles[0]):  # headings are named in the node's own language
-                    other = bee.NODE_SECTIONS_EN if titles == bee.NODE_SECTIONS else bee.NODE_SECTIONS
+                    other = bee.NODE_SECTIONS if titles == bee.NODE_SECTIONS_FR else bee.NODE_SECTIONS_FR
                     self.assertEqual([p for p in raw if any(a in p for a in other)], [])
                     if name == "missing":
                         self.assertIn(f"{self.ZONE}: missing section: « ## {titles[2]} »", raw)
-                for fr, clean_one in zip(bee.NODE_SECTIONS, titles):
+                for fr, clean_one in zip(bee.NODE_SECTIONS_FR, titles):
                     problems_found = [p.replace(clean_one, fr) for p in problems_found]
                 results.append(problems_found)
             with self.subTest(case_of=name):
@@ -15771,7 +15889,7 @@ class TestBilingualReaders(BaseAgora):
 
     def test_a_node_does_not_mix_the_languages(self):
         """One language per node: a half-translated node is refused, even when each heading is known in one language."""
-        fr, en = bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN
+        fr, en = bee.NODE_SECTIONS_FR, bee.NODE_SECTIONS
         english_form = english_titles(ZONE_NODE)
         for name, text, alone_one in (("one French heading", english_form.replace(f"## {en[3]}\n", f"## {fr[3]}\n"), True),
                                  ("one English heading", ZONE_NODE.replace(f"## {fr[1]}\n", f"## {en[1]}\n"), True),
@@ -15787,26 +15905,27 @@ class TestBilingualReaders(BaseAgora):
         self.valid_one()
 
     def test_vulnerability_instruction_in_english(self):
-        """--already-read keeps the vulnerability bullet of an English root as it keeps the French one; cut in two or reworded,
-        the root is printed whole, in both languages."""
+        """--already-read keeps the vulnerability bullet of the English root (ruche-0066) as it keeps a French one; cut in two,
+        reworded, or citing the retired name docs/securite.md, the root is printed whole, in both languages."""
         root = self.dir / "tree/MEANING.md"
-        origin_of = root.read_text(encoding="utf-8")
-        beginning = origin_of.index("- Une faille")
-        end = origin_of.index("docs/securite.md).", beginning) + len("docs/securite.md).")
-        english_one = english_titles(
-            origin_of[:beginning] + "- A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a "
-            "description,\n  not even in passing; private report on the Bee repo, and tell your user; never contact the\n"
-            "  upstream project (commandments 6 and 8, docs/securite.md)." + origin_of[end:])
-        root.write_text(english_one, encoding="utf-8")
+        english_one = root.read_text(encoding="utf-8")
+        beginning = english_one.index("- A vulnerability (crash")
+        end = english_one.index("docs/security.md).", beginning) + len("docs/security.md).")
+        french_one = french_titles(
+            english_one[:beginning] + "- Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, "
+            "même en passant ;\n  signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet "
+            "d'origine\n  (commandements 6 et 8, docs/security.md)." + english_one[end:])
+        root.write_text(french_one, encoding="utf-8")
         self.valid_one()
-        languages = {"fr": (origin_of, "même en passant ;\n  signalement",
+        languages = {"fr": (french_one, "même en passant ;\n  signalement",
                           ("même en passant ;\n  signalement privé", "même en passant.\n- Signalement privé"),
                           ("Une faille (plantage", "Un défaut (plantage"), "ne contacte jamais le projet d'origine"),
-                   "en": (english_one, "description,\n  not even", ("in passing; private report", "in passing.\n- Private report"),
+                   "en": (english_one, "not even in\n  passing", ("in\n  passing; private report", "in passing.\n- Private report"),
                           ("A vulnerability (crash", "A defect (crash"), "never contact the upstream project")}
         for language, (text, indented, cut, rewritten, bullet_end) in languages.items():
             for name, version, whole_one in (("whole", text, False), ("unindented", text.replace(indented, indented.replace("\n  ", "\n")), False),
-                                          ("cut in two", text.replace(*cut), True), ("reworded", text.replace(*rewritten), True)):
+                                          ("cut in two", text.replace(*cut), True), ("reworded", text.replace(*rewritten), True),
+                                          ("retired docs/securite.md", text.replace("docs/security.md).", "docs/securite.md)."), True)):
                 self.assertTrue(name == "whole" or version != text, name)
                 root.write_text(version, encoding="utf-8")
                 output_text = self.ok("context", "miniz-0099", "--already-read")
@@ -15814,7 +15933,7 @@ class TestBilingualReaders(BaseAgora):
                     self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                     self.assertIn(bullet_end, " ".join(output_text.replace("\n# ", "\n").split()))
         # Only one bullet that opens with the marker stands for the instruction (review of ebff9db): a decoy citing the
-        # marker and docs/securite.md is not kept in its place, and two candidates print the root whole.
+        # marker and docs/security.md is not kept in its place, and two candidates print the root whole.
         decoy, start_in = "- Never post A vulnerability anywhere, see docs/security.md.\n", "- A vulnerability (crash"
         for name, version, whole_one in (
                 ("decoy beside the bullet", english_one.replace(start_in, decoy + start_in), False),
@@ -15822,15 +15941,14 @@ class TestBilingualReaders(BaseAgora):
                 ("AGENTS.en.md phrasing", english_one.replace(start_in, "- **Vulnerability** (crash"), False),
                 ("no article", english_one.replace(start_in, "- Vulnerability (crash"), False),
                 ("two English bullets", english_one.replace(start_in, "- A vulnerability: docs/security.md.\n" + start_in), True),
-                ("two French bullets", origin_of.replace("- Une faille (", "- Une faille : docs/security.md.\n- Une faille ("), True)):
+                ("two French bullets", french_one.replace("- Une faille (", "- Une faille : docs/security.md.\n- Une faille ("), True)):
             root.write_text(version, encoding="utf-8")
             output_text = self.ok("context", "miniz-0099", "--already-read")
             flat = " ".join(output_text.replace("\n# ", "\n").split())
             with self.subTest(root=name):
-                self.assertNotIn(version, (english_one, origin_of))
+                self.assertNotIn(version, (english_one, french_one))
                 self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                 self.assertTrue(whole_one or ("tell your user" in flat and "Never post" not in flat), flat[:600])
-
 
 FILLED_MANIFEST = """task: miniz-0099
 user: alice

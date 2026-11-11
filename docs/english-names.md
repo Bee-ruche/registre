@@ -1024,7 +1024,7 @@ No code parses a commit subject, PR title or PR body: push-scope classifies comm
 | label proposition-tache (issue template) | task-proposal | rename the GitHub label (gh label edit) with the template |
 | git tags juge-v1 (821647d), juge-v2 (dab13a6), juge-v3 (3b21e97) | unchanged; next tag judge-v4 | immutable; minizBee pins juge-v2 by SHA; extend any juge-v* tag protection to judge-v* |
 | ruleset: required check « valider » | « validate » | admin step |
-| branch names written by bee publier: bee/engagement-<hash>, bee/<slug>-<date> | unchanged pattern | the hash covers the task path and keys: a waiting PR from before the switch is not found again |
+| branch names written by bee publier: bee/engagement-<hash>, bee/<slug>-<date> | unchanged pattern | the hash covers the task path, the PR's title and keys: a waiting PR from before the switch is not found again; ruche-0155: one waiting under the French title kept until then (« Réservation <t> », « Inscription en parallèle <t> ») is found again, by bee-publish.json or by its branch, until date D (`DATE_D` in bee.py), and not after |
 | fork branches tache/<task> (AGENTS.md convention) | task/<task> | fork convention; nothing in the registry parses it |
 
 ### 5.8 Markers bee parses in human-written markdown (bilingual since ruche-0055)
