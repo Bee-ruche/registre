@@ -21884,6 +21884,57 @@ class TestLoadTestInTheSuite(unittest.TestCase):
         self.assertRegex(r.stderr, rf"\nRan {len(tests)} tests in [0-9.]+s\n\nOK\n$")  # not « OK (skipped=…) »
 
 
+class TestRehearsalKitRuche0157(unittest.TestCase):
+    """ruche-0157: the README that setup.sh generates names what the kit has. Its template said $BEE_SIMU, which setup.sh's
+    sed (it replaces $BEE_SIM) turned into paths ending in U/etat/..., and commands the switch had renamed. The usages and
+    messages say what the code reads (--rerun, merge|refuse, a manifest's task field)."""
+
+    KIT = ROOT / "tools/rehearsal"
+
+    def test_the_readme_template_says_bee_sim_whole(self):
+        template = (self.KIT / "README-template.md").read_text(encoding="utf-8")
+        self.assertNotRegex(template, r"\$BEE_SIM\w")  # each $BEE_SIM is replaced whole: no $BEE_SIMU
+        self.assertIn("export BEE_SIM=$BEE_SIM PATH=$BEE_SIM/tools:$PATH", template)
+        self.assertIn('sed -e "s#\\$BEE_SIM#$S#g"', (self.KIT / "setup.sh").read_text(encoding="utf-8"))
+
+    def test_the_usages_say_what_the_code_reads(self):
+        text = {n: (self.KIT / n).read_text(encoding="utf-8") for n in ("simulated-ci", "simulated_ci.py", "council-decide", "push-fork-pr")}
+        self.assertIn('"$url" --rerun\n', text["simulated-ci"])
+        self.assertIn("Usage: python3 simulated_ci.py <fork_pr_url> [--rerun]\n", text["simulated_ci.py"])
+        self.assertIn("echo 'usage: council-decide <number> merge|refuse \"<reason>\"'", text["council-decide"])
+        self.assertIn('case "$decision" in merge|refuse) ;;', text["council-decide"])
+        self.assertIn('isinstance(m.get("task"), str)', text["push-fork-pr"])
+        self.assertIn("manifest refused: a YAML file with at least a task field", text["push-fork-pr"])
+        for name, old in (("simulated-ci", "--relance"), ("simulated_ci.py", "--relance"), ("council-decide", "fusionner"),
+                          ("push-fork-pr", "champ tache")):
+            self.assertNotIn(old, text[name], name)
+
+    def test_the_readme_template_names_the_kits_paths_and_commands(self):
+        kit = self.KIT
+        template, setup = (kit / "README-template.md").read_text(encoding="utf-8"), (kit / "setup.sh").read_text(encoding="utf-8")
+        self.assertIn('> "$S/README.md"', setup)
+        paths = set(re.findall(r"\$BEE_SIM/([\w./-]*)", template))
+        self.assertLessEqual({"state/clock", "state/announcements.md", "bees/", "state/journals/", "tools"}, paths)
+        for path in paths:  # setup.sh creates each one
+            self.assertRegex(setup, rf'"\$S/{re.escape(path.rstrip("/"))}[/"]', path)
+        commands = set(re.findall(r"`([a-z-]+) <", template))
+        self.assertEqual(commands, {"publish", "open-fork-pr", "push-fork-pr", "simulated-ci"})
+        copied = re.search(r"\nfor f in ([^;]+); do\n", setup)[1].split()
+        for command in commands | {"council-decide"}:
+            self.assertIn(command, copied)
+            self.assertTrue((kit / command).is_file(), command)
+        for name in ("bee", "gh", "setup.sh"):  # their messages send members to the generated README
+            text = (kit / name).read_text(encoding="utf-8")
+            self.assertIn("README.md", text, name)
+            self.assertNotIn("LISEZMOI", text, name)
+        code = (kit / "load_test.py").read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(code))  # the load test's docstring names what its code writes
+        self.assertIn('folder / "trust"', code)
+        self.assertIn('("end", end + "\\n")', code)
+        self.assertIn("trust (the registry", doc)
+        self.assertIn("state/ (base, end, prs.tsv, pr_authors.tsv)", doc)
+
+
 # --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
 
 class TestReservedPseudonyms(BaseTest):
