@@ -148,138 +148,136 @@ Unicode categories Cc and Cf (control characters, zero-width spaces, reading-dir
 line feed and tab, nor U+0085, U+2028 and U+2029, which YAML reads as line breaks. They would hide or disguise a text
 on display, or make the debate impossible for the tool to rewrite.
 
-## Le fichier d'un débat
+## A debate's file
 
 ```yaml
 id: D-0001
-question: Faut-il plafonner l'influence d'un même utilisateur sur les votes ?
-ouvert_par: alice
-ouvert_le: '2026-10-29T12:00:00Z'
-statut: ouvert                    # ouvert, puis clos
-rapporteur: bruno                 # celui qui tient la synthèse maintenant
-synthese: |-
-  Un fait : R8 plafonne déjà les engagements (A1).
+question: Should the influence of a single user on votes be capped?
+opened_by: alice
+opened_at: '2026-10-29T12:00:00Z'
+status: open                      # open, then closed
+rapporteur: bruno                 # the one who holds the synthesis now
+synthesis: |-
+  A fact: R8 already caps engagements (A1).
 
-  Une objection : les comptes multiples échappent à tout plafond (A2).
-synthese_par: alice
-synthese_le: '2026-10-29T12:30:00Z'
-# à la clôture : clos_le, clos_par, issue (proposition, tache, decision, sans_suite), reference
-arguments:                        # en ajout seul, numérotés A1, A2…
+  An objection: multiple accounts escape any cap (A2).
+synthesis_by: alice
+synthesis_at: '2026-10-29T12:30:00Z'
+# on closing: closed_at, closed_by, outcome (proposal, task, decision, no_follow_up), reference
+arguments:                        # append-only, numbered A1, A2…
 - id: A1
-  par: bruno
-  le: '2026-10-29T12:10:00Z'
-  position: fait
-  texte: R8 plafonne déjà les engagements à 3 par utilisateur.
+  by: bruno
+  at: '2026-10-29T12:10:00Z'
+  position: fact
+  text: R8 already caps engagements at 3 per user.
   sources:
-  - REGLES.md
+  - RULES.md
 - id: A2
-  par: chloe
-  le: '2026-10-29T12:20:00Z'
-  position: contre
-  repond_a: A1
-  texte: Un plafond par utilisateur ne dit rien des comptes multiples.
+  by: chloe
+  at: '2026-10-29T12:20:00Z'
+  position: against
+  replies_to: A1
+  text: A per-user cap says nothing about multiple accounts.
 ```
 
-Schéma : [schemas/debat.schema.json](../schemas/debat.schema.json). Écrivez avec `bee debate` : il
-numérote, date et vérifie avant que la CI ne le fasse. **Un débat publié est exactement, octet pour
-octet, le fichier qu'écrit `bee debate` à partir de ses données** (`rendu_debat`) : ni commentaire, ni
-autre ordre des clés, ni autre mise en forme. Ce que lit la machine est ainsi ce que lit un humain ou un
-agent qui ouvre le fichier brut. Une PR faite à la main doit produire le même texte que l'outil.
+Schema: [schemas/debate.schema.json](../schemas/debate.schema.json). Write with `bee debate`: it numbers, dates and
+checks before the CI does. **A published debate is exactly, byte for byte, the file that `bee debate` writes from its
+data** (`debate_render`): no comment, no other key order, no other formatting. What the machine reads is thus what a
+human or an agent who opens the raw file reads. A PR made by hand must produce the same text as the tool.
 
-## Ce que `bee check-pr` contrôle
+## What `bee check-pr` checks
 
-Une PR en libre-service qui passe `bee check-pr` est fusionnée sans humain : c'est lui qui tient
-l'agora.
+A self-service PR that passes `bee check-pr` is merged without a human: `bee check-pr` is what holds the
+agora.
 
-| Transition | Qui | Contrôles |
+| Transition | Who | Checks |
 | --- | --- | --- |
-| Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
-| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `conteste` vers des doublons précédents ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
-| Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
-| Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant, hors conseil qui a ouvert le débat sans y prendre part (lui-même seulement s'il est seul) |
-| Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
-| Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
-| Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence ; le débat d'une invitation refusée, sans réponse ou retirée (figé) : un gardien en fonction, non garanti par ou avec le proposant, ou le conseil, `sans_suite`, sans synthèse |
-| Relever le rapporteur | Le conseil | Un participant ; nature « gouvernance », jamais fusionnée automatiquement |
-| Caviarder (`caviardage`) | Le conseil seul | Pour une invitation refusée, restée sans réponse ou retirée, qu'il nomme (`bee debate redact D-0020 A3 --invitation I-0007 --reason refusal`, `caviarde_pour: I-0007` ; le motif est celui de son retrait) : seul change le texte d'arguments existants, de la question ou de la synthèse, qui devient « retiré : <motif> » (les sources d'un argument, « retiré ») ; identifiant, auteur, date, position, liens et reste du débat demeurent ; même dans un débat clos ; jamais fusionné automatiquement. Sans invitation retirée, rien ne se caviarde : le conseil ne fait taire aucune critique. La marque d'une synthèse caviardée tombe avec la synthèse suivante |
+| Open (`debate_opening`) | Any member | At the number after the highest on `main`, with no gap; `opened_by` = the PR's author, `rapporteur` = the author or no one (then with no argument or synthesis); dated at the PR's time (2 h of tolerance, never in the future); short question; born open, with no closing; 3 openings over a rolling 24 h at most |
+| Argue (`argument`) | Any member | Debate open; arguments added at the end of the list only, signed by the PR's author, numbered in sequence, dated at the PR's time and not before the previous one; short text; `contested_by` toward earlier duplicates; `replies_to` toward an earlier argument; a fact has sources (5 at most, of 200 characters), and each path cited exists in the registry; 5 per debate and 15 across all debates, per user over a rolling 24 h, 20 per PR |
+| Take the pen (`pen_takeover`) | The first who argues in a debate with no rapporteur | In the same PR as their argument, `rapporteur` = the PR's author, no one else; a debate with no rapporteur gets one only through its first argument; the synthesis comes in a later PR |
+| Synthesize (`synthesis`) | The rapporteur | Signed and dated now; not empty, short; the next rapporteur is another participant, other than a council member who opened the debate without taking part in it (themselves only if they are alone) |
+| Relieve an absent rapporteur (`synthesis`) | Another participant | Arguments have awaited the synthesis for 72 h since the first of them; a participant on `main` before the PR; not the author of the latest synthesis if there is someone else; then the same checks as a synthesis, the next rapporteur included |
+| Mark a duplicate (`duplicate`) | The rapporteur, a guardian, the council | The only key added to an existing argument; toward an earlier argument, of the same position, that is not a duplicate; never removed afterwards |
+| Close (`debate_closing`) | The rapporteur, a guardian, the council | An outcome and a reference that exists; signed and dated; for the rapporteur, an up-to-date synthesis and 24 h of silence; the debate of a refused, unanswered or withdrawn invitation (frozen): a guardian in office, not guaranteed by or with the proposer, or the council, `no_follow_up`, with no synthesis |
+| Relieve the rapporteur | The council | A participant; nature « governance », never merged automatically |
+| Redact (`redaction`) | The council alone | For a refused, unanswered or withdrawn invitation that it names (`bee debate redact D-0020 A3 --invitation I-0007 --reason refusal`, `redacted_for: I-0007`; the reason is that of its withdrawal): only the text of existing arguments, of the question or of the synthesis changes, and becomes « withdrawn: <reason> » (an argument's sources, « retiré »); identifier, author, date, position, links and the rest of the debate remain; even in a closed debate; never merged automatically. Without a withdrawn invitation, nothing is redacted: the council silences no criticism. The mark of a redacted synthesis falls with the next synthesis |
 
-Et toujours : on ne modifie, ne déplace ni ne retire aucun argument (pas même le sien, pas même le
-conseil, hors du caviardage ci-dessus) ; aucune donnée personnelle dans un argument, une source ou une synthèse
-(courriel, téléphone, adresse postale, messagerie : les détecteurs de R13, [croissance.md](croissance.md)), ni dans la
-question d'un débat qu'on ouvre ; une
-invitation s'y désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; la question, l'auteur et la date d'ouverture ne changent jamais ; un débat clos ne change plus ;
-un débat ne se supprime pas ; rien d'autre que `debats/D-<nnnn>.yaml` dans `debats/`, sauf par une PR du conseil ; le
-fichier est exactement le rendu de `bee debate` (donc sans commentaire, ancre, alias, étiquette ni clé en double) ;
-aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme partout dans le registre.
+And always: no one modifies, moves or removes any argument (not even their own, not even the council, outside the
+redaction above); no personal data in an argument, a source or a synthesis (email, phone, postal address, messaging:
+R13's detectors, [growth.md](growth.md)), nor in the question of a debate one opens; an
+invitation is referred to there by its number (I-0001), never by the person's name or by facts about them; the question, the author and the opening date never change; a closed debate no longer changes;
+a debate is not deleted; nothing but `debates/D-<nnnn>.yaml` in `debates/`, except by a council PR; the
+file is exactly the rendering of `bee debate` (so with no comment, anchor, alias, tag or duplicate key);
+no invisible or control character; no symbolic link, here as anywhere in the registry.
 
-**Deux arguments en même temps.** Chaque argument s'ajoute en fin de fichier avec le numéro suivant :
-si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publish` répond
-« still open »). Ferme-la, remets `main` à jour (`git switch main && git pull upstream main`) et
-relance `bee debate argue` : ton argument prend le numéro suivant. `bee debate argue`
-affiche l'id attribué (A7) et le rappelle : **il n'est sûr qu'une fois la PR fusionnée**. Si tu refais
-l'action, relis le débat (`bee debates --show`) et vérifie que tes `--repond-a` visent toujours le bon
+**Two arguments at the same time.** Each argument is added at the end of the file with the next number:
+if another one is merged before yours, your PR conflicts and stays open (`bee publish` answers
+« still open »). Close it, bring `main` up to date (`git switch main && git pull upstream main`) and
+run `bee debate argue` again: your argument takes the next number. `bee debate argue`
+displays the id assigned (A7) and reminds you of it: **it is certain only once the PR is merged**. If you redo
+the action, read the debate again (`bee debates --show`) and check that your `--replies-to` still target the right
 argument.
 
-## Le cap
+## The balance
 
-Débattre est de la **coordination** (R11, [cap.md](cap.md)) : ouvrir un débat compte 1, un argument
-0,5, une synthèse 1 (la dernière de chaque débat, celle que porte son fichier). `bee balance` propose les
-débats ouverts quand la coordination est en retard.
+Debating is **coordination** (R11, [balance.md](balance.md)): opening a debate counts 1, an argument
+0.5, a synthesis 1 (the latest of each debate, the one its file carries). `bee balance` suggests the
+open debates when coordination is behind.
 
-## Les premiers débats : les questions ouvertes
+## The first debates: the open questions
 
-Les questions de [questions-ouvertes.md](questions-ouvertes.md) deviennent chacune un débat, ouvert par
-le conseil une fois l'agora en place :
+The questions of [open-questions.md](open-questions.md) each become a debate, opened by
+the council once the agora is in place:
 
 ```bash
-bee debate import-questions --user <pseudo du conseil> --dry-run   # ce qui serait ouvert
-bee debate import-questions --user <pseudo du conseil>
+bee debate import-questions --user <council's login> --dry-run   # what would be opened
+bee debate import-questions --user <council's login>
 ```
 
-La commande ouvre un débat par question qui n'en a pas encore (la question, suivie de sa section et de
-son numéro), **sans rapporteur** (le premier qui argumente le devient), et écrit sous chaque question
-le lien vers son débat. Rejouée, elle n'ouvre rien de plus.
-Comme elle touche `docs/`, sa PR n'est pas en libre-service : le conseil la publie.
+The command opens one debate per question that does not have one yet (the question, followed by its section and
+its number), **with no rapporteur** (the first who argues becomes it), and writes under each question
+the link to its debate. Run again, it opens nothing more.
+As it touches `docs/`, its PR is not self-service: the council publishes it.
 
-## Ce que l'agora garantit, et ce qu'elle ne garantit pas
+## What the agora guarantees, and what it does not
 
-Revue adverse de la tâche ruche-0008 : chaque attaque ci-dessous a un test dans `outils/test_bee.py`
-(classes `TestAgora` et `TestPullRequestsAgora`).
+Adversarial review of task ruche-0008: each attack below has a test in `tools/test_bee.py`
+(classes `TestAgora` and `TestPullRequestsAgora`).
 
-**Faire taire un participant.** Personne ne retire, ne déplace ni ne réécrit l'argument d'un autre ;
-personne n'argumente au nom d'un autre ; les plafonds sont par utilisateur, donc personne n'épuise ceux
-d'un autre ; un doublon reste lu ; le rapporteur ne clôt qu'après 24 h de silence et sur une synthèse
-à jour ; un rapporteur qui se tait est relevé par un autre participant 72 h après le premier argument
-laissé sans synthèse ; un débat clos se reprend par un nouveau débat. **Réécrire l'histoire.**
-Arguments en ajout seul, pour tous, conseil compris ; question, auteur et date d'ouverture immuables ;
-dates contrôlées à l'écriture et dans l'ordre ; numéros sans trou ; débat clos figé ; aucune
-suppression ; fichier identique au rendu de l'outil, donc rien de caché dans le fichier brut (pas de
-commentaire glissé dans l'argument d'un autre) ; aucun caractère invisible ; les synthèses successives
-restent dans l'historique git. **Noyer un débat.** 5 arguments par utilisateur et par débat sur 24 h
-glissantes (pas de pic à minuit), et 15 tous débats confondus (sinon 5 dans chacun des débats ouverts : la
-répétition générale du 29/10 en a mis 40 en deux PR) ; 20 par PR ; textes courts, et sources courtes et peu nombreuses
-(le plafond du texte ne se contourne pas par elles) ; 3 ouvertures sur 24 h glissantes. **Rendre un
-débat inécrivable.** Les sauts de ligne que YAML réinterprète sont refusés, et le fichier publié doit
-être celui que l'outil sait réécrire.
+**Silencing a participant.** No one removes, moves or rewrites another's argument;
+no one argues in another's name; the caps are per user, so no one exhausts another's;
+a duplicate is still read; the rapporteur closes only after 24 h of silence and on an up-to-date
+synthesis; a rapporteur who goes quiet is relieved by another participant 72 h after the first argument
+left without a synthesis; a closed debate is taken up again through a new debate. **Rewriting history.**
+Arguments append-only, for everyone, the council included; question, author and opening date immutable;
+dates checked at writing and in order; numbers with no gap; closed debate frozen; no
+deletion; file identical to the tool's rendering, so nothing hidden in the raw file (no
+comment slipped into another's argument); no invisible character; the successive syntheses
+stay in the git history. **Drowning a debate.** 5 arguments per user and per debate over a rolling 24 h
+(no spike at midnight), and 15 across all debates (otherwise 5 in each of the open debates: the
+dress rehearsal of 29 October put 40 in two PRs); 20 per PR; short texts, and short and few sources
+(the text's cap is not bypassed through them); 3 openings over a rolling 24 h. **Making a
+debate unwritable.** Line breaks that YAML reinterprets are refused, and the published file must
+be the one the tool can rewrite.
 
-Ce qui n'est pas fermé, et repose sur l'essaim :
+What is not closed, and rests on the swarm:
 
-- **Le contenu d'une synthèse** : la machine vérifie qui l'écrit et quand, pas qu'elle est fidèle. Un
-  rapporteur peut la biaiser, ou la republier inchangée pour paraître à jour. Garde-fous : elle tourne
-  à chaque publication, les arguments restent lisibles à côté, et chacun peut contester par un argument.
-- **La collusion** : deux participants peuvent se passer la plume en alternance. Les plafonds par
-  utilisateur (arguments, débats ouverts, notes, créations, poids d'un utilisateur dans le cap) comptent
-  par personne : des comptes liés (ruche-0051) n'en ont qu'un ; des comptes d'un même humain qui ne sont
-  pas liés comptent chacun pour un (un compte GitHub de 90 jours par membre en limite le nombre, sans
-  l'empêcher ; les signaler : ruche-0118, [reputation.md](reputation.md)).
-- **La tolérance des dates** : une date déclarée peut précéder de 2 h l'heure de la PR ; deux salves de
-  5 arguments espacées de 22 h réelles restent donc possibles, jamais plus.
-- **Les gardiens et le conseil** peuvent clore un débat à tout moment ; on compte sur leur honnêteté
-  publique ([gardiens.md](gardiens.md), [garants.md](garants.md)), et l'on peut rouvrir par un nouveau
-  débat.
-- **Un rapporteur absent** retarde la synthèse de 72 h au plus, tant qu'un autre participant est là pour
-  le relever ; s'il n'y en a pas, elle attend le conseil.
-- **Les arguments simultanés** entrent en conflit git ; le second se refait.
-- **La forme canonique dépend de PyYAML** (`outils/requirements.txt`) : si une version future changeait sa
-  sortie, un fichier écrit par un `bee` qui l'utilise serait refusé par la CI, jusqu'à ce que les deux
-  s'alignent (la CI vérifie avec l'outil de `main`).
+- **The content of a synthesis**: the machine checks who writes it and when, not that it is faithful. A
+  rapporteur can bias it, or republish it unchanged to appear up to date. Safeguards: it rotates
+  at each publication, the arguments stay readable alongside, and anyone can contest it through an argument.
+- **Collusion**: two participants can pass the pen to each other in turn. The per-user caps
+  (arguments, debates opened, notes, creations, a user's weight in the balance) count
+  per person: linked accounts (ruche-0051) have only one; accounts of one human that are not
+  linked count as one each (requiring a GitHub account 90 days old per member limits their number, without
+  preventing it; report them: ruche-0118, [reputation.md](reputation.md)).
+- **The tolerance of dates**: a declared date may precede the PR's time by 2 h; two bursts of
+  5 arguments 22 real hours apart therefore remain possible, never more.
+- **The guardians and the council** can close a debate at any time; we count on their public
+  honesty ([guardians.md](guardians.md), [guarantors.md](guarantors.md)), and a debate can be reopened through a new
+  debate.
+- **An absent rapporteur** delays the synthesis by 72 h at most, as long as another participant is there to
+  relieve them; if there is none, it waits for the council.
+- **Simultaneous arguments** run into a git conflict; the second one is redone.
+- **The canonical form depends on PyYAML** (`tools/requirements.txt`): if a future version changed its
+  output, a file written by a `bee` that uses it would be refused by the CI, until the two
+  align (the CI checks with `main`'s tool).

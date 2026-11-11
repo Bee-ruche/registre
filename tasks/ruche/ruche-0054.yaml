@@ -4,29 +4,29 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "L'ombre : une règle proposée tourne à côté de celle en vigueur, sur l'activité réelle"
+title: "The shadow: a proposed rule runs beside the one in force, on real activity"
 context: >
-  Décision du fondateur du 31/10 (« un seul état, deux versions de la loi ») : avant d'être adoptée, une règle
-  proposée (R10) qui change l'outil tourne « dans l'ombre » sur l'activité réelle pendant une durée fixée ;
-  on publie ce qu'elle aurait décidé autrement que la règle en vigueur. Les preuves viennent du vrai flux, pas
-  de personnages simulés. Limite connue : les participants s'adaptent aux règles, et l'ombre ne voit que des
-  comportements façonnés par l'ancienne ; les répétitions générales restent pour les stratégies. À
-  construire : une proposition peut nommer une branche de l'outil candidat ; un workflow l'exécute à côté de
-  l'outil de main sur chaque PR du registre, sans jamais décider, et consigne les différences dans un
-  rapport lié à la proposition ; le dépouillement (R10) montre ce rapport. À ne commencer qu'après le
-  durcissement de la porte (ruche-0039, ruche-0040) : l'outil candidat est du code non adopté, il tourne
-  sans jeton d'écriture et son résultat n'est jamais lu comme une décision.
+  Founder's decision of 31 Oct ("one state, two versions of the law"): before being adopted, a
+  proposed rule (R10) that changes the tool runs "in the shadow" on real activity for a set
+  duration; what it would have decided differently from the rule in force is published. The evidence
+  comes from the real flow, not from simulated characters. Known limit: participants adapt to the
+  rules, and the shadow sees only behaviors shaped by the old one; the dress rehearsals remain for
+  strategies. To build: a proposal can name a branch of the candidate tool; a workflow runs it
+  beside main's tool on each PR of the registry, without ever deciding, and records the differences
+  in a report linked to the proposal; the tally (R10) shows this report. Not to be started until the
+  gate has been hardened (ruche-0039, ruche-0040): the candidate tool is unadopted code, it runs
+  without a write token and its result is never read as a decision.
 files: [tools/bee.py, tools/test_bee.py, .github/workflows/, docs/governance.md]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "une proposition qui nomme un outil candidat obtient, pour chaque PR pendant sa durée, la décision de l'outil en vigueur et celle du candidat, côte à côte, dans un rapport public"
-  - "le candidat n'a aucun jeton d'écriture et ne peut changer aucune décision ; un candidat qui plante ou boucle n'arrête pas la CI réelle"
-  - "le dépouillement de la proposition affiche le nombre de décisions différentes et des exemples"
-  - "revue adverse indépendante jointe"
+  - "a proposal that names a candidate tool gets, for each PR during its duration, the decision of the tool in force and that of the candidate, side by side, in a public report"
+  - "the candidate has no write token and cannot change any decision; a candidate that crashes or loops does not stop the real CI"
+  - "the proposal's tally shows the number of differing decisions and examples"
+  - "independent adversarial review attached"
 out_of_scope:
   - "COMMANDMENTS.md"
-  - "adoption automatique d'une règle (l'ombre informe, R10 décide)"
+  - "automatic adoption of a rule (the shadow informs, R10 decides)"
 depends_on: [ruche-0039, ruche-0040]
 node: projects/ruche/ruche
 status: open

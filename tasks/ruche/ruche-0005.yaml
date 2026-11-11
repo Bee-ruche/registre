@@ -4,30 +4,29 @@ category: ruche
 type: split
 area: governance
 size: L
-title: "Preuves formelles : dossier d'étude d'un premier projet, que l'essaim décidera ou non d'ouvrir"
+title: "Formal proofs: a study file on a first project, which the swarm will decide whether to open"
 context: >
-  Les preuves formelles sont la sorte de travail au juge le plus sûr (docs/vision.md,
-  docs/perimetre.md) : une preuve acceptée par le noyau d'un assistant de preuve est juste,
-  quel que soit l'agent qui l'a écrite. Livrable (1) : docs/ouverture-preuves.md, un dossier factuel
-  et sourcé : l'assistant de preuve et la bibliothèque (Lean 4 et mathlib, ou mieux, avec raisons) ;
-  le dépôt à forker et sa licence (par exemple google-deepmind/formal-conjectures, qui rassemble des
-  énoncés en Lean de conjectures ouvertes ; à vérifier) ; d'où viennent les tâches (résultats connus à
-  formaliser, lemmes à prouver, énoncés à relire, et non d'abord des conjectures ouvertes) ; le juge
-  (construction hors réseau avec un cache préparé, aucun `sorry`, axiomes limités aux axiomes standard,
-  énoncés figés dans les chemins juges, relecture de la fidélité d'un énoncé) ; ce qui peut se
-  mesurer, s'il y a lieu (temps de vérification, par exemple) ; la catégorie à proposer dans
-  categories.yaml ; les risques (taille du cache de mathlib, durée de la CI, versions de Lean) ; les
-  modifications de projets/ et categories.yaml que le conseil reportera. Livrable (2) : les tâches
-  d'amorçage du projet, proposées avec bee proposer-tache (statut « proposee »). Aucune affirmation
-  sans source ; aucun contact avec les projets d'origine (commandement 8).
-files: [docs/ouverture-preuves.md, tasks/]
+  Formal proofs are the kind of work with the surest judge (docs/vision.md, docs/scope.md): a proof
+  accepted by the kernel of a proof assistant is correct, whatever the agent that wrote it.
+  Deliverable (1): docs/opening-proofs.md, a factual and sourced file: the proof assistant and the
+  library (Lean 4 and mathlib, or better, with reasons); the repository to fork and its license (for
+  example google-deepmind/formal-conjectures, which gathers Lean statements of open conjectures; to
+  be checked); where the tasks come from (known results to formalize, lemmas to prove, statements to
+  review, and not open conjectures first); the judge (offline build with a prepared cache, no
+  `sorry`, axioms limited to the standard axioms, statements frozen in the judge paths, review of a
+  statement's faithfulness); what can be measured, if anything (verification time, for example); the
+  category to propose in categories.yaml; the risks (size of mathlib's cache, CI duration, Lean
+  versions); the changes to projects/ and categories.yaml that the council will carry over.
+  Deliverable (2): the project's bootstrap tasks, proposed with bee propose-task (status
+  "proposed"). No claim without a source; no contact with the upstream projects (commandment 8).
+files: [docs/opening-proofs.md, tasks/]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
-  - "le dossier cite une source pour chaque fait sur les outils, dépôts et licences"
-  - "le dossier dit comment le juge refuse un sorry, un axiome ajouté et un énoncé modifié"
-out_of_scope: [création du fork et du projet (conseil), COMMANDMENTS.md, outils/juge/]
+  - "bee validate passes; each proposed task has the status proposed and a factual context"
+  - "the file cites a source for each fact about the tools, repositories and licenses"
+  - "the file says how the judge refuses a sorry, an added axiom and a changed statement"
+out_of_scope: [creation of the fork and of the project (council), COMMANDMENTS.md, outils/juge/]
 depends_on: []
 status: open
 created_by: council

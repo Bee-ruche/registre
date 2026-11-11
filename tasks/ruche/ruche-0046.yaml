@@ -4,27 +4,28 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "Après ruche-0028 : pseudos uniques en gouvernance, recul voisin mesuré plutôt que refusé"
+title: "After ruche-0028: unique logins in governance, neighboring regression measured rather than refused"
 context: >
-  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
-  avant le premier participant extérieur. À faire après ruche-0028 (pseudos comparés sans la casse, alerte de
-  copie toutes tâches confondues). (1) Les listes de gouvernance (gouvernance/conseil.yaml, gardiens.yaml,
-  garants.yaml) ne doivent pas porter deux orthographes d'un même pseudo : bee valider et bee verifier-pr les
-  refusent, avec la même comparaison que le reste de l'outil. (2) Un recul passé, mesuré sur un autre arbre
-  voisin dans le même fil de contributions, ne doit pas valoir refus définitif : il devient une exigence de
-  mesure d'une autre configuration (R4), que la contribution peut satisfaire.
+  From dress rehearsal no. 4 of 31 Oct (details given to the builder by the architect). To do before
+  the first outside participant. To do after ruche-0028 (logins compared case-insensitively, copy
+  alert across all tasks). (1) The governance lists (governance/council.yaml, guardians.yaml,
+  guarantors.yaml) must not carry two spellings of the same login: bee validate and bee check-pr
+  refuse them, with the same comparison as the rest of the tool. (2) A past regression, measured on
+  another neighboring tree in the same thread of contributions, must not count as a final refusal:
+  it becomes a requirement for a measurement from another configuration (R4), which the contribution
+  can satisfy.
 files: [tools/bee.py, tools/test_bee.py, docs/contributions.md]
 reach: 0.9
 metric: null
 acceptance_criteria:
-  - "test : une liste de gouvernance qui porte deux orthographes d'un même pseudo est refusée par bee valider et bee verifier-pr"
-  - "test : une contribution dont le fil porte un recul passé sur un autre arbre voisin n'est pas refusée d'office ; verifier-acceptation exige la mesure d'une autre configuration, et l'accepte une fois fournie"
-  - "test : un recul sur le même arbre reste traité comme le fait ruche-0028"
-  - "revue adverse indépendante jointe"
+  - "test: a governance list that carries two spellings of the same login is refused by bee validate and bee check-pr"
+  - "test: a contribution whose thread carries a past regression on another neighboring tree is not refused outright; check-acceptance requires the measurement of another configuration, and accepts it once provided"
+  - "test: a regression on the same tree is still treated as ruche-0028 does"
+  - "independent adversarial review attached"
 out_of_scope:
   - "COMMANDMENTS.md"
   - "RULES.md"
-  - "les forks"
+  - "the forks"
 depends_on: [ruche-0028]
 node: projects/ruche/ruche
 status: open

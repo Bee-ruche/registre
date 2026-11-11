@@ -3,40 +3,39 @@ project: miniz
 category: lossless-compression
 type: measurement
 size: S
-title: "Défauts de cache et branches mal prédites : compteurs matériels contre la simulation de Cachegrind"
+title: "Cache misses and mispredicted branches: hardware counters against Cachegrind's simulation"
 context: >
-  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
-  tache/miniz-0029, PR #18 ; sources de master a2f939a). La machine de référence (Xeon 2,1 GHz virtualisé)
-  n'a pas perf : miniz-0029 n'a pu que simuler les caches et les branches avec Cachegrind (L1d de
-  48 Kio, LL de 2 Mio). Résultats simulés, 128 premiers Kio de chaque fichier : la boucle des sondes
-  de tdefl_find_match fait 0,55 défaut L1 par sonde au niveau 6 et 0,64 au niveau 9, soit 84 % et
-  90 % des défauts L1 de ces scénarios (m_next 64 Kio, m_dict 33 Kio et m_hash 64 Kio ne tiennent
-  pas dans le L1) ; tinfl_decompress a 8,8 % de branches mal prédites, dont la recharge de bit_buf
-  (miniz_tinfl.c l. 443, 47,5 %), le choix 4 ou 8 octets (l. 590, 36 %) et la fin de la copie par
-  mots (l. 607, 32 %). Un modèle linéaire ajusté sur le chronomètre du banc (15 points : niveaux 1,
-  6, 9 × 5 familles) donne 0,138 ns par instruction plus 2,84 ns par défaut L1 simulé (R² 0,989,
-  contre 0,913 avec les seules instructions), et attribue aux défauts L1 environ 10 %, 33 % et 41 %
-  du temps des niveaux 1, 6 et 9 ; il ne voit pas les branches (coefficient instable). Ces ordres de
-  grandeur décident si des tâches de cache ou de branches, dont le gain ne se voit qu'au chronomètre
-  (seconde voie de R4), valent d'être ouvertes, et pourquoi les gains d'instructions de tinfl
-  (miniz-0017, miniz-0018) restent dans le bruit. Tâche de mesure, sans plafond d'instructions :
-  sur une machine qui a des compteurs matériels (perf, idéalement non virtualisée ; x86-64 ou
-  ARM64), mesurer pour les scénarios n1, n6, n9 et décompression du banc (128 premiers Kio de chaque
-  fichier, mêmes commandes que bee/resultats/miniz-0029/cachegrind.py) : cycles, instructions,
-  défauts L1d et LLC, branches mal prédites, par scénario et par famille (perf stat), puis par
-  fonction et par ligne pour la boucle des sondes et tinfl_decompress (perf record et perf annotate,
-  avec ou sans échantillonnage précis). Comparer aux valeurs simulées de
-  bee/resultats/miniz-0029/donnees/cachegrind.json et au modèle ci-dessus. Aucune modification de
-  miniz.
+  Source: miniz-0029's report (bee/resultats/miniz-0029/RAPPORT.md and TABLEAUX.md in the fork,
+  branch tache/miniz-0029, PR #18; sources of master a2f939a). The reference machine (virtualized
+  2.1 GHz Xeon) does not have perf: miniz-0029 could only simulate the caches and the branches with
+  Cachegrind (48 KiB L1d, 2 MiB LL). Simulated results, first 128 KiB of each file: the probe loop
+  of tdefl_find_match makes 0.55 L1 miss per probe at level 6 and 0.64 at level 9, that is 84% and
+  90% of the L1 misses of these scenarios (m_next 64 KiB, m_dict 33 KiB and m_hash 64 KiB do not fit
+  in the L1); tinfl_decompress has 8.8% mispredicted branches, among them the reload of bit_buf
+  (miniz_tinfl.c l. 443, 47.5%), the choice of 4 or 8 bytes (l. 590, 36%) and the end of the copy by
+  words (l. 607, 32%). A linear model fitted on the bench's stopwatch (15 points: levels 1, 6, 9 × 5
+  families) gives 0.138 ns per instruction plus 2.84 ns per simulated L1 miss (R² 0.989, against
+  0.913 with the instructions alone), and attributes to L1 misses about 10%, 33% and 41% of the time
+  of levels 1, 6 and 9; it does not see the branches (unstable coefficient). These orders of
+  magnitude decide whether cache or branch tasks, whose gain shows only on the stopwatch (R4's
+  second route), are worth opening, and why tinfl's instruction gains (miniz-0017, miniz-0018) stay
+  within the noise. Measurement task, with no instruction ceiling: on a machine that has hardware
+  counters (perf, ideally not virtualized; x86-64 or ARM64), measure for the bench's n1, n6, n9 and
+  decompression scenarios (first 128 KiB of each file, same commands as
+  bee/resultats/miniz-0029/cachegrind.py): cycles, instructions, L1d and LLC misses, mispredicted
+  branches, per scenario and per family (perf stat), then per function and per line for the probe
+  loop and tinfl_decompress (perf record and perf annotate, with or without precise sampling).
+  Compare with the simulated values of bee/resultats/miniz-0029/donnees/cachegrind.json and with the
+  model above. No change to miniz.
 files: [bee/resultats/miniz-0043/]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "rapport chiffré dans bee/resultats/miniz-0043/ : machine (processeur, virtualisée ou non, système, compilateur), commandes exactes, sorties de perf jointes"
-  - "pour n1, n6, n9 et décompression : cycles, instructions, défauts L1d, branches mal prédites, mesurés et non estimés, à côté des valeurs simulées de miniz-0029"
-  - "part des cycles de la boucle des sondes (n6, n9) et des branches de tinfl_decompress, avec la méthode d'attribution"
-  - "aucune modification de miniz ni des juges dans cette contribution"
-out_of_scope: [modifier miniz, modifier le banc ou le juge, optimiser]
+  - "report with figures in bee/resultats/miniz-0043/: machine (processor, virtualized or not, system, compiler), exact commands, perf outputs attached"
+  - "for n1, n6, n9 and decompression: cycles, instructions, L1d misses, mispredicted branches, measured and not estimated, next to miniz-0029's simulated values"
+  - "share of the cycles of the probe loop (n6, n9) and of tinfl_decompress's branches, with the attribution method"
+  - "no change to miniz or to the judges in this contribution"
+out_of_scope: [changing miniz, changing the bench or the judge, optimizing]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/bee
 status: open

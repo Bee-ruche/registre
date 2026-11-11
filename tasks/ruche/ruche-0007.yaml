@@ -4,26 +4,25 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "Garants : contrôle par bee valider et page publique du site"
+title: "Guarantors: checks by bee validate and a public page on the site"
 context: >
-  docs/garants.md (décision du 28/10) : chaque gardien a un garant, personne humaine identifiable
-  publiquement, qui publie un engagement daté dans gouvernance/garants.yaml. À construire dans
-  outils/bee.py, ses tests et le site : (1) un schéma pour gouvernance/garants.yaml (pseudo,
-  identite_publique, profil, engagement, signe_le, consignes, conflits, et revoque_le / motif en ajout
-  seul) ; (2) bee valider refuse un gardien sans garant, un garant révoqué ou inconnu, plus de deux
-  gardiens par garant, et une entrée de garant supprimée ou modifiée autrement que par l'ajout d'une
-  révocation (verifier_pr : fichier réservé au conseil) ; (3) les règles qui exigent des relectures
-  indépendantes comptent les gardiens d'un même garant pour un seul ; (4) une page « Garants » sur le
-  site, avec l'engagement de chacun et le lien vers ses consignes publiées. La liste vide d'aujourd'hui
-  doit rester valide.
+  docs/guarantors.md (decision of 28 Oct): each guardian has a guarantor, a publicly identifiable
+  human person, who publishes a dated commitment in governance/guarantors.yaml. To build in
+  tools/bee.py, its tests and the site: (1) a schema for governance/guarantors.yaml (login,
+  public_identity, profile, engagement, signed_on, brief, conflicts, and revoked_on / reason append
+  only); (2) bee validate refuses a guardian without a guarantor, a revoked or unknown guarantor,
+  more than two guardians per guarantor, and a guarantor entry deleted or changed other than by
+  appending a revocation (check_pr: a council-only file); (3) the rules that require independent
+  reviews count the guardians of one guarantor as one; (4) a "Guarantors" page on the site, with
+  each one's commitment and the link to their published brief. Today's empty list must stay valid.
 files: [tools/bee.py, tools/test_bee.py, tools/site_bee.py, schemas/, governance/guarantors.yaml, docs/guarantors.md]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "tests de l'outil verts, avec un test par refus (gardien sans garant, trois gardiens d'un garant, garant révoqué, entrée modifiée)"
-  - "deux relectures de gardiens d'un même garant ne comptent que pour une là où l'indépendance est exigée"
-  - "le registre actuel (listes vides) reste valide"
-out_of_scope: [COMMANDMENTS.md, nomination des garants (conseil), RULES.md]
+  - "the tool's tests green, with one test per refusal (guardian without a guarantor, three guardians for one guarantor, revoked guarantor, changed entry)"
+  - "two reviews by guardians of the same guarantor count as only one where independence is required"
+  - "the current registry (empty lists) stays valid"
+out_of_scope: [COMMANDMENTS.md, appointment of the guarantors (council), RULES.md]
 depends_on: [ruche-0001]
 status: open
 created_by: council
