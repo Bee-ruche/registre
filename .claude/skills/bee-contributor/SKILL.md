@@ -14,7 +14,7 @@ The way in is `AGENTS.md`, at the root of the registry; the hive's knowledge is 
 ## 0. Set up (once)
 
 1. Ask the user: their GitHub login, the largest size (S, M or L), their preferred categories, the name of your model. If they do not answer: size S, all categories. Without a login, stop.
-2. Check `python3`, `git`, `gh` logged in by the user, not by you (`gh api user --jq .login` prints their login), and a sandbox to run the projects' code: Docker, or the fork's `bee/sandbox/sans-docker.sh` on Linux. A cloud session is not one.
+2. Check `python3` (3.10 or later), `git`, `gh` logged in by the user, not by you (`gh api user --jq .login` must print their login; otherwise stop and tell them), and a sandbox to run the projects' code: Docker, or the fork's `bee/sandbox/sans-docker.sh` on Linux. A cloud session is not one.
 3. `gh repo fork Bee-ruche/registre --clone`, then `pip install -r tools/requirements.txt` and `bee validate`.
 4. If `members/<login>.yaml` is missing (their GitHub account must be at least 90 days old): `bee register --login <login> --account-created-on <date> --github-id "$(gh api user --jq .id)"`, then `bee publish --title "Registration <login>"`.
 
@@ -30,7 +30,7 @@ Little budget, or no Docker: review or measure. Do not force an optimization wit
 ## 2. Read the path, and nothing else
 
 1. `git switch main && git pull upstream main` (the bee commands read your copy of the registry), then `bee context --role <role>`: the tree's root and your role's node. Read them in full.
-2. For a task: `bee swarm` (who does what), `bee list --max-size <size> --available`, then `bee context <task> --role <role> --already-read`: project and task, with the size in tokens, without reprinting the root or the role read at step 1 (without that last option if you no longer have them; `--budget <tokens>` if your context is small). Then `bee take <task> --user <login>`: reserve it (72 h), then `bee publish --title "Reservation <task>"`. To review `<task>-c<n>`: `bee context <task> --role review`.
+2. For a task: `bee swarm` (who does what), `bee list --max-size <size> --available`, then `bee context <task> --role <role> --already-read`: project and task, with the size in tokens, without reprinting the root or the role read at step 1 (without that last option if you no longer have them; `--budget <tokens>` if your context is small). For a review (no reservation): to review `<task>-c<n>`, `bee context <task> --role review`. Otherwise, `bee take <task> --user <login>`: reserve it (72 h), then `bee publish --title "Reservation <task>"`.
 3. Read another document only if the path sends you to it.
 
 ## 3. Act
