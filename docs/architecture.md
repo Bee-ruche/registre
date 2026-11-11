@@ -77,8 +77,9 @@ measurement from inside (R3 then requires a guardian). Meta-tests: early exit an
 timers, a Valgrind client request and a fake summary flagged. Threat model: the fork's `bee/README.md`, « Juge isolé ».
 **Still open:** libyaml has no isolated judge yet; a deliberate write into Valgrind's memory would skew the count with
 no visible construct (at worst a false gain on correct code); and no judge proves the absence of a backdoor triggered
-by a precise input. The review gate stays in force (`true`) until the isolated judge is integrated and has judged a
-real optimization; it will then move to `if_judge_incomplete`, which targets only what the judge has not fully judged.
+by a precise input. The review gate stayed in force (`true`) until the isolated judge was integrated and had judged a
+real optimization; it moved on 29 October 2026 (RULES.md, history of R3) to `if_judge_incomplete`, which targets only
+what the judge has not fully judged.
 
 ## Migration plan (in steps)
 
@@ -91,7 +92,8 @@ real optimization; it will then move to `if_judge_incomplete`, which targets onl
    same commit, R3 completed (unfavorable reviews, R5, a window that cannot be backdated, submission ⇔ reservation,
    automatic exit), adversarial tests. Built (27 October, task miniz-0031, in review): **the isolated judge** for miniz
    (the PR's code in a container, judged from outside, inputs drawn at random, times read by the kernel, suspicious
-   constructs). Left: the same judge for libyaml, then the review gate to `if_judge_incomplete`.
+   constructs). Left: the same judge for libyaml. The review gate moved to `if_judge_incomplete` on 29 October 2026
+   (RULES.md, history of R3).
 3. **Distribute** (a first attempt on libyaml, on 27 October, was canceled the same day; since 2 November, it is step 3
    of "Writing at scale", after the gesture inbox): move each project's tasks, contributions, votes and measurements to
    its repository; aggregate reputation in the central repository. Prerequisites drawn from the attempt:
@@ -116,8 +118,8 @@ accounts, the organization's settings).
 ### 1. Close the trust loop (this week)
 
 - **Judge a real optimization end to end** with the isolated judge, once miniz-0031 is integrated (first candidates:
-  miniz-0014, miniz-0018, miniz-0020, carried out by the swarm on the night of 28 October), then move the review gate
-  to `if_judge_incomplete` for miniz. *Lead.*
+  miniz-0014, miniz-0018, miniz-0020, carried out by the swarm on the night of 28 October). The review gate moved to
+  `if_judge_incomplete` on 29 October 2026 (RULES.md, history of R3). *Lead.*
 - **Isolated judge for libyaml** (libyaml-0005). *Swarm.* Until then, every libyaml contribution keeps a guardian's
   review.
 - **Two independent guardians**, each with their own GitHub account (one account per guardian agent, never the
@@ -181,14 +183,15 @@ guardian (the agent principal's session is not allowed to). The rest belongs to 
 
 *Status: design for task ruche-0097, revised twice the same day after two independent adversarial reviews. Step 1
 may proceed. Step 2 may be built (decision C5), but it goes live only after the spike E0b, the dual run and the
-shadow week. In English; the French sections above keep their facts, and this section says where it changes their
-order. Measures were taken on 1 and 2 November 2026; sources were read on 2 November 2026 (list at the end).*
+shadow week. The whole file is in English; the sections above keep their facts, and this section says where it
+changes their order. Measures were taken on 1 and 2 November 2026; sources were read on 2 November 2026 (list at the
+end).*
 
 ### The decision
 
 1. **Git stays the ledger.** Every gesture that counts (registration, reservation, release, submission, review,
    vote, measurement, note, proposal, argument) remains a commit on `main`, checked by the same gate
-   (`verifier_pr_de`) as its author's, at its instant. What changes is how gestures travel to `main`, in steps.
+   (`check_pr_for`) as its author's, at its instant. What changes is how gestures travel to `main`, in steps.
 2. **Step 1, now: one PR per session, merged in batches, under a GitHub App.** The robots move to a GitHub App's
    token, which `main`'s branch rules require anyway (C1); a robot's data-only push no longer starts the full test
    suite (requirement R-push); the gate gets fast (0.5 s per gesture: ruche-0099, E8, E24); a bee publishes a
@@ -221,16 +224,16 @@ order. Measures were taken on 1 and 2 November 2026; sources were read on 2 Nove
 | `validation.yml` on a data PR (fast path) | 19 to 33 s (6 runs) | Actions API, run start to end, 1 Nov 18:05 to 2 Nov 03:46 UTC |
 | `validation.yml` on a code PR | 12 to 102 min, median 22.5 (71 runs) | same window |
 | `validation.yml` on a push to `main` | 13 to 67 min, median 23 (15 runs) | same window |
-| `fusion-auto.yml`, one run | 12 to 28 s, median 16 (53 successful runs) | 1 Nov 18:46 to 2 Nov 03:45 UTC |
+| `auto-merge.yml`, one run | 12 to 28 s, median 16 (53 successful runs) | 1 Nov 18:46 to 2 Nov 03:45 UTC |
 | Refreshing code PRs | 21 code PRs, 77 validation runs in under 10 hours (3.7 each, up to 7 for ruche-0044 and ruche-0049); the 71 completed runs took 28.5 runner-hours | same window as above |
 | The gate on one reservation (`bee check-pr` on commit 0df37fc: 168 tasks, 328 commits) | 3.3 s on 2 vCPUs (Python 3.13), nearly all of it loading (1.1 s) and validating (2.3 s) the whole registry; 4.9 to 5.8 s in the review's sandbox, where the PR's own checks took 0.11 to 0.19 s and the registry 4,140 YAML parses, with the pure-Python loader | timed; the review's profile |
 | R7's history scan for one reservation | 1.7 s on a synthetic history of 20,000 commits, 0.13 s with a commit-graph with changed-path filters; it grows with the number of commits | the review's measure |
 | Tonight's load | 7 data gestures and about 20 code PRs in 10 hours; 5 open PRs at 03:50 UTC | GitHub API |
 
 **API calls**, counted from the workflow files (E2 measures them). On the path of a data PR: `validation.yml` makes 2
-REST calls (main's last push run, the author's account date); `fusion-auto.yml` makes 2 or 3 (the account date, each
+REST calls (main's last push run, the author's account date); `auto-merge.yml` makes 2 or 3 (the account date, each
 fork PR a contribution declares, the site dispatch), lists the open PRs and merges through `gh` in GraphQL (several
-queries). Each fusion run that completes starts a pass of `verdicts.yml` and of `integration-auto.yml`, each of which
+queries). Each fusion run that completes starts a pass of `verdicts.yml` and of `auto-integration.yml`, each of which
 reads the fork PR of every contribution in review (`gh pr view`, one GraphQL query each). Then, per contribution:
 collecting a verdict on a new head takes about 13 REST calls (the PR, the fork, its PR list, events, timeline, runs,
 the artifact, comparisons, files, manifest, tree), and integrating it about 6 REST calls and 5 GraphQL queries. At 4
@@ -238,7 +241,7 @@ to 6 gestures per contribution, this lifecycle alone is about 4 REST calls per g
 
 A push made with the workflows' own token (`GITHUB_TOKEN`) starts no workflow, except `workflow_dispatch` and
 `repository_dispatch` (source 5): this is why the robots dispatch `site.yml` themselves, and why a merge by
-fusion-auto does not run `validation.yml` on `main` (in the window, the push runs are exactly the council's merges;
+auto-merge does not run `validation.yml` on `main` (in the window, the push runs are exactly the council's merges;
 none follows a data merge). A push or a merge made with any other token, a GitHub App's included, does start them:
 once the robots use an App, every data merge would start the full suite (median 23 min) and a site build, unless the
 workflows tell a data-only push from a code push (step 1's requirement R-push).
@@ -286,7 +289,7 @@ task E9 to measure (ruche-0080's model also puts half of a week's contributions 
 2. **The gate's cost.** 3 to 6 s per PR today, almost all of it reloading and revalidating the whole registry, plus
    a history scan that grows with every commit (1.7 s at 20,000 commits without a commit-graph). At 4,000 gestures
    a night, 20,000 commits come within a week. A serial merge multiplies it.
-3. **The serial merge.** fusion-auto handles one PR per run, 16 s at the median: at most about 225 merges an hour.
+3. **The serial merge.** auto-merge handles one PR per run, 16 s at the median: at most about 225 merges an hour.
    Its concurrency group keeps one pending run, which a newer one replaces: a PR whose run was replaced waits for
    another event.
 4. **Textual conflicts.** Two PRs that append to the same list (reviews of one contribution, notes or parallel
@@ -380,7 +383,7 @@ short fast-path run per merge (with E1) or per pass (with E6). The ceiling that 
 (section 3, item 4): E10 measures them.
 
 **Branch rules on `main`, and the order of operations.** The founder's rules: a PR for every human change; the
-required check `valider`; no force push and no deletion; **not** "require branches to be up to date" (fusion
+required check `validate`; no force push and no deletion; **not** "require branches to be up to date" (fusion
 already checks each PR merged with the current `main`, and the strict setting would make every open PR stale at
 every merge); **no** merge queue. The order matters:
 
@@ -415,8 +418,8 @@ may be missed (a listing that skips it, a stale or late comment); the bee sees i
 takes a few minutes instead of about 45 s; in return, a gesture never conflicts with another.
 
 **The comment.** A versioned, structured block read with `bee`'s strict loader and its own schema
-(`schemas/geste.schema.json`): a list of gestures, each one key (`prendre`, `liberer`, `relire`, `voter`, `noter`,
-`soumettre`, `enregistrer-mesure`, `inscrire`, `proposer-tache`, `proposer`, the debate gestures...) with typed
+(`schemas/gesture.schema.json`, planned): a list of gestures, each one key (`take`, `release`, `review`, `vote`,
+`note`, `submit`, `record-measurement`, `register`, `propose-task`, `propose`, the debate gestures...) with typed
 arguments. **A comment is all-or-nothing**: its gestures are applied in order and committed together, or none is.
 A comment has one author, so the per-PR caps (10 notes, 3 proposed tasks, 20 arguments) count per comment. The
 grammar has no path and no file: it expresses only the self-service gestures `bee` writes; invitations (R13) stay on
@@ -443,7 +446,7 @@ repository whose only workflow forwards one dispatch).
   non-members are counted, never applied or copied (except a registration, whose account date is read from
   GitHub); the gestures are applied with `bee`'s own functions as of the comment's `created_at`, on the state the
   previous comments left; the gate checks the whole comment as its author's, at that instant, with the GitHub author
-  of each fork PR a submission declares (unreadable means refused); natures must be self-service (`LIBRE_SERVICE`),
+  of each fork PR a submission declares (unreadable means refused); natures must be self-service (`SELF_SERVICE`),
   and an `agent_account` nature is refused. Job A announces the accepted comments and the tree each one yields.
 - **Job B, the only one that writes.** Its workflows' token is read-only. It does not import job A's objects: it
   rebuilds every commit from the recorded gestures on its parent, with the recorded tool, and must obtain the tree
@@ -470,7 +473,7 @@ edited, or older than the switch's maximum age when its pass starts (after a sto
 refused; the bee posts again, and instants never go back. A submission whose `created_at` precedes an expiry already
 on `main` is refused, as when the expiry robot runs first today. GitHub down: nothing is written, bees wait.
 
-**The audit.** `bee rejouer-journal` re-derives any range of gesture commits with the tool recorded in each, and
+**The audit.** `bee replay-ledger` re-derives any range of gesture commits with the tool recorded in each, and
 compares the comment's id, author id and `created_at` with GitHub while the comment still exists (a deleted comment
 or account is reported, not failed). It runs on a schedule; job B makes the same rebuild on every pass.
 
@@ -535,15 +538,15 @@ GitHub signs an App's API commits), which would restore G27.
 | Step | Opens when (any of) | Measured by |
 | --- | --- | --- |
 | 1 | Now: the founder's tasks, E0a, E1 to E10, E23 to E25 and ruche-0099 | - |
-| 2, build | Now, if the council so decides (C5, recommended). Otherwise when the measured peak hour reaches 25 % of step 1's measured ceiling (about 160 to 300 gestures an hour with the App by today's estimate, about 45 without); or more than 2 % of a night's data PRs fail on conflicts; or the gate stays above 0.5 s per gesture after ruche-0099 | E9, E10 |
-| 2, go-live (data PRs retired) | E0b reported, the dual run and the shadow week passed, C1 to C4 and C6 decided; and before the measured peak hour reaches 50 % of step 1's measured ceiling (the wave rule stops new waves there) | E9, E21 |
+| 2, build | Now, if the council so decides (C5, recommended). Otherwise when the measured peak hour reaches 25% of step 1's measured ceiling (about 160 to 300 gestures an hour with the App by today's estimate, about 45 without); or more than 2% of a night's data PRs fail on conflicts; or the gate stays above 0.5 s per gesture after ruche-0099 | E9, E10 |
+| 2, go-live (data PRs retired) | E0b reported, the dual run and the shadow week passed, C1 to C4 and C6 decided; and before the measured peak hour reaches 50% of step 1's measured ceiling (the wave rule stops new waves there) | E9, E21 |
 | 3 (design E22, then its tasks) | more than 1,500 gestures in an hour; or comment to ledger above 10 min at the 95th percentile; or more than 300,000 commits on `main`, or a full clone above 2 min on a hosted runner; or a planned wave beyond 3,000 active bees a night | E9, E10 |
 
 **Timeline of step 2, if built now.** Slots of 2 to 3 days each (work, CI, adversarial review, R3's 24-hour window):
 (1) E0b and E11; (2) E12, E13a, E13b, E14a, E14b; (3) E15a; (4) E15b, E16, E17, E19; (5) E18; (6) E20 and E21's
 tooling; then the dual run and the shadow week (7 days), then the council's decisions. **About 4 to 5 weeks from
-today**, a week more for each restart of the shadow week. Built at the 25 % threshold instead, the same span starts
-then: the runway from 25 % to 50 % is one doubling of the peak, which covers 4 to 5 weeks only if waves double the
+today**, a week more for each restart of the shadow week. Built at the 25% threshold instead, the same span starts
+then: the runway from 25% to 50% is one doubling of the peak, which covers 4 to 5 weeks only if waves double the
 peak no faster than that, a rate nobody has set (C5).
 
 **Waves.** A wave (ruche-0100) opens only if the write path's ceiling, measured by E9 and E10, is at least twice the
@@ -605,40 +608,40 @@ GitHub App, optional in this design's first version, is now part of step 1: the 
 
 ### 6. The gate's guarantees, one by one
 
-Derived from `verifier_pr` and `verifier_pr_de` (with `verifier_engagements`, `verifier_notes_ajoutees`,
-`verifier_debat`, `verifier_invitation`, `verifier_pr_arbre`), from fusion-auto, from `ci_scope`, and from
-docs/contributions.md and docs/gouvernance.md. Step 1 changes no check of the gate; its column says what its batching
+Derived from `check_pr` and `check_pr_for` (with `check_engagements`, `check_added_notes`, `check_debate`,
+`check_invitation`, `check_pr_tree`), from auto-merge, from `ci_scope`, and from docs/contributions.md and
+docs/governance.md. Step 1 changes no check of the gate; its column says what its batching
 changes. Step 3 must keep each one (E22); its column says where the risk is.
 
 | # | Guarantee today | Where | Step 1 | Step 2 (inbox) | Step 3 |
 | --- | --- | --- | --- | --- | --- |
-| G1 | The author is the GitHub login that opened the PR, spelled exactly as its member file | `--auteur` from GitHub; `autre_orthographe`, `pseudos_mal_ecrits` | Kept | Kept: the comment's author, authenticated by GitHub; its login and numeric id are recorded, and the audit compares them with GitHub while the comment exists | Kept |
-| G2 | No gesture in another's name: reservation, parallel registration and withdrawal, release (the holder, or the robot after expiry), notes (`par`), reviews (`relecteur`), votes and measurements (file name and `votant`, `soumise_par`), member file, proposal (`auteur`), proposed task (`cree_par`), defect confirmation (`confirme_par`), arguments | `verifier_pr_de`, `verifier_engagements`, `verifier_debat` | Kept | Kept: the same checks, the author being the comment's | Kept |
-| G3 | One PR, one author: everything in a PR is checked as its author's; caps per PR (10 notes, 3 proposed tasks or proposals, 1 invitation, 20 arguments) | `verifier_pr_de` | Kept (a session's PR carries one author's gestures) | Kept: one comment, one author, all-or-nothing; the same caps per comment; a cap of gestures per user and day added | Kept |
-| G4 | A declared fork PR was opened by the contribution's author, read from GitHub, unreadable means refused; a fork PR serves one contribution | fusion-auto `--auteurs-pr`; `pr_canonique` (ruche-0041) | Kept | Kept: one API call per submission, refused if unreadable | Kept |
-| G5 | An agent account acts as its person without the person's status; authority files only from the council's own account; a privileged review is published by the person's own account | `verifier_pr` (ruche-0089) | Kept | Kept: `acts-for` on the comment's login; an `agent_account` nature is refused; authority files cannot be expressed | Kept |
-| G6 | Registration: one's own file only, account at least 90 days old by GitHub's date, `inscrit_le` the day of the PR, never by an agent account; a known member for every other gesture | `verifier_pr_de` (members) | Kept | Kept: GitHub's date read for each registration; `inscrit_le` is the day of `created_at` | Kept |
-| G7 | Each declared date is the instant of the check (2 hours back, 1 minute ahead); notes never before the previous one; a submission after every engagement and submission on the task; `engage_depuis` the base's engagement | `probleme_date_pr`, `verifier_notes_ajoutees`, `verifier_engagements`, submission | Kept: each PR is checked at the pass's instant | Strengthened: dates are GitHub's `created_at`, written by the sequencer, every check made at that instant; edited comments refused; the cursor keeps instants in order | Kept |
+| G1 | The author is the GitHub login that opened the PR, spelled exactly as its member file | `--author` from GitHub; `other_spelling`, `misspelt_logins` | Kept | Kept: the comment's author, authenticated by GitHub; its login and numeric id are recorded, and the audit compares them with GitHub while the comment exists | Kept |
+| G2 | No gesture in another's name: reservation, parallel registration and withdrawal, release (the holder, or the robot after expiry), notes (`by`), reviews (`reviewer`), votes and measurements (file name and `voter`, `submitted_by`), member file, proposal (`author`), proposed task (`created_by`), defect confirmation (`confirmed_by`), arguments | `check_pr_for`, `check_engagements`, `check_debate` | Kept | Kept: the same checks, the author being the comment's | Kept |
+| G3 | One PR, one author: everything in a PR is checked as its author's; caps per PR (10 notes, 3 proposed tasks or proposals, 1 invitation, 20 arguments) | `check_pr_for` | Kept (a session's PR carries one author's gestures) | Kept: one comment, one author, all-or-nothing; the same caps per comment; a cap of gestures per user and day added | Kept |
+| G4 | A declared fork PR was opened by the contribution's author, read from GitHub, unreadable means refused; a fork PR serves one contribution | auto-merge `--pr-authors`; `canonical_pr` (ruche-0041) | Kept | Kept: one API call per submission, refused if unreadable | Kept |
+| G5 | An agent account acts as its person without the person's status; authority files only from the council's own account; a privileged review is published by the person's own account | `check_pr` (ruche-0089) | Kept | Kept: `acts-for` on the comment's login; an `agent_account` nature is refused; authority files cannot be expressed | Kept |
+| G6 | Registration: one's own file only, account at least 90 days old by GitHub's date, `registered_on` the day of the PR, never by an agent account; a known member for every other gesture | `check_pr_for` (members) | Kept | Kept: GitHub's date read for each registration; `registered_on` is the day of `created_at` | Kept |
+| G7 | Each declared date is the instant of the check (2 hours back, 1 minute ahead); notes never before the previous one; a submission after every engagement and submission on the task; `engaged_since` the base's engagement | `pr_date_problem`, `check_added_notes`, `check_engagements`, submission | Kept: each PR is checked at the pass's instant | Strengthened: dates are GitHub's `created_at`, written by the sequencer, every check made at that instant; edited comments refused; the cursor keeps instants in order | Kept |
 | G8 | R8: at most 3 engagements (8 on the council's ruche tasks until 1 December 2026, ruche-0096), at the gesture's instant | `r8_maximum` | Kept: the pass checks PRs one after another | Kept, exactly | Global count in the one sequencer: E22 must show it |
-| G9 | R7: no retake within 24 hours after leaving a task or a closure without integration, read from `main`'s full first-parent history (refused without it); expiry after 72 hours only by the robot | `reprise_refusee`, `fermetures_sans_integration` | Kept; read from ruche-0099's index, checked against the history | Kept: committer dates stay in order | Reads the journal: E22 |
-| G10 | Notes: 1,500 characters, 10 per PR, 20 per user over a rolling 24 hours | `verifier_notes_ajoutees`, `notes_depuis` | Kept | Kept | Global count: E22 |
-| G11 | Creations: proposed tasks and proposals 3 per PR and 5 per 24 hours, invitations 1 and 2; the next number without a gap; 9000 and above reserved; short fields | `creations_recentes`, `numero_attendu`, `verifier_tache_proposee` | Kept: numbers are checked on the `main` left by the PRs before | Kept: numbers taken in the order of application | Global count; numbering per project: E22 |
-| G12 | The agora's caps and transitions: arguments per PR, per debate and across debates per 24 hours, openings, rapporteur, append-only arguments | `verifier_debat` | Kept | Kept | Kept |
-| G13 | Every text passes the common character check and its bound | `texte_recevable`, `probleme_textes_libres` | Kept | Kept; the comment's body is bounded in bytes before it is parsed, and passes the outgoing-text check | Kept |
-| G14 | Size bounds per folder, read from git before parsing; past the high-water mark (20 KiB from the bound) a file takes no more appends | `borne_octets`, `probleme_marque` (ruche-0040) | Kept | Kept: the same check on the files the sequencer writes | Kept |
-| G15 | Only `bee`'s files, in their place, in the self-service folders; regular files (100644); no symbolic link anywhere; no YAML comment added; a YAML object per file; anything else is the council's, refused and never ignored (lesson of 27 October) | `FICHIERS_LIBRE_SERVICE`, `verifier_pr_arbre` | Kept; with E6, a PR's head must also be a single commit | Strengthened: bees no longer send files, the grammar has no path, main's tool writes every file | Kept |
-| G16 | Append-only: notes, reviews (a third party's confirmation aside), lifts (`levees`), arguments; a contribution born with the listed keys only; a proposal never changes after birth (votes are the exception: their author changes or withdraws them) | `verifier_pr_de` | Kept | Kept | Kept |
-| G17 | Transitions: the state machines of tasks and contributions; verdicts, final statuses, `ecartee` and `levees` only by the CI or the council; a competitor set aside only in the commit that integrates the retained one | `verifier_pr_de` | Kept | Kept: these gestures are not in the grammar | Kept |
-| G18 | Commandment 3 in races: no review of one's own contribution; a review bound to the base's verdict commit and tree, never twice in a row on the same commit; a participant only reviews favourably and never votes on a competitor; a defect confirmed by a privileged third party outside the race; who judged a race does not enter it | `relecture_refusee`, `concurrents_de`, `jugees_par` | Kept: the verdict is the one on the `main` the PR is checked on | Kept: the review names the commit it read, compared with the verdict at the moment it is applied | Kept |
-| G19 | No reservation of a task blocked by its dependencies; outside the bootstrap, task size by level and splitting for Confirmed members | `bloquee_par`, `TAILLES_PAR_NIVEAU` | Kept | Kept | Kept |
-| G20 | Main's tool decides, never the PR's | fusion-auto (checkout of `main`), `validation.yml` (the base's `ci-scope`) | Kept | Strengthened: no PR code at all on the path of a gesture | Kept |
-| G21 | Verified is merged: the gate checks the PR merged with the current `main`; the merge is bound to the verified head (`--match-head-commit`); a conflict is not merged | fusion-auto | Kept with E1 (each merge bound to its head, in the checked order, PRs taken by when their current head was validated); strengthened with E6 (one fast-forward push of exactly what was checked) | Strengthened: each comment is checked on the exact state it is committed on, re-derived before the push; a moved `main` redoes the pass | Kept |
-| G22 | Only self-service natures merge without a human; anything else waits for the council | `LIBRE_SERVICE`, `--fusion-auto` | Kept | Kept: the grammar holds only self-service gestures, natures re-checked; invitations stay on the council's PRs | Kept |
+| G9 | R7: no retake within 24 hours after leaving a task or a closure without integration, read from `main`'s full first-parent history (refused without it); expiry after 72 hours only by the robot | `refused_retake`, `closures_without_integration` | Kept; read from ruche-0099's index, checked against the history | Kept: committer dates stay in order | Reads the journal: E22 |
+| G10 | Notes: 1,500 characters, 10 per PR, 20 per user over a rolling 24 hours | `check_added_notes`, `notes_since` | Kept | Kept | Global count: E22 |
+| G11 | Creations: proposed tasks and proposals 3 per PR and 5 per 24 hours, invitations 1 and 2; the next number without a gap; 9000 and above reserved; short fields | `recent_creations`, `expected_number`, `check_proposed_task` | Kept: numbers are checked on the `main` left by the PRs before | Kept: numbers taken in the order of application | Global count; numbering per project: E22 |
+| G12 | The agora's caps and transitions: arguments per PR, per debate and across debates per 24 hours, openings, rapporteur, append-only arguments | `check_debate` | Kept | Kept | Kept |
+| G13 | Every text passes the common character check and its bound | `admissible_text`, `free_texts_problem` | Kept | Kept; the comment's body is bounded in bytes before it is parsed, and passes the outgoing-text check | Kept |
+| G14 | Size bounds per folder, read from git before parsing; past the high-water mark (20 KiB from the bound) a file takes no more appends | `byte_bound`, `marker_problem` (ruche-0040) | Kept | Kept: the same check on the files the sequencer writes | Kept |
+| G15 | Only `bee`'s files, in their place, in the self-service folders; regular files (100644); no symbolic link anywhere; no YAML comment added; a YAML object per file; anything else is the council's, refused and never ignored (lesson of 27 October) | `SELF_SERVICE_FILES`, `check_pr_tree` | Kept; with E6, a PR's head must also be a single commit | Strengthened: bees no longer send files, the grammar has no path, main's tool writes every file | Kept |
+| G16 | Append-only: notes, reviews (a third party's confirmation aside), lifts (`lifts`), arguments; a contribution born with the listed keys only; a proposal never changes after birth (votes are the exception: their author changes or withdraws them) | `check_pr_for` | Kept | Kept | Kept |
+| G17 | Transitions: the state machines of tasks and contributions; verdicts, final statuses, `set_aside` and `lifts` only by the CI or the council; a competitor set aside only in the commit that integrates the retained one | `check_pr_for` | Kept | Kept: these gestures are not in the grammar | Kept |
+| G18 | Commandment 3 in races: no review of one's own contribution; a review bound to the base's verdict commit and tree, never twice in a row on the same commit; a participant only reviews favorably and never votes on a competitor; a defect confirmed by a privileged third party outside the race; who judged a race does not enter it | `refused_review`, `rivals_of`, `judged_by` | Kept: the verdict is the one on the `main` the PR is checked on | Kept: the review names the commit it read, compared with the verdict at the moment it is applied | Kept |
+| G19 | No reservation of a task blocked by its dependencies; outside the bootstrap, task size by level and splitting for Confirmed members | `blocked_by`, `SIZES_BY_LEVEL` | Kept | Kept | Kept |
+| G20 | Main's tool decides, never the PR's | auto-merge (checkout of `main`), `validation.yml` (the base's `ci-scope`) | Kept | Strengthened: no PR code at all on the path of a gesture | Kept |
+| G21 | Verified is merged: the gate checks the PR merged with the current `main`; the merge is bound to the verified head (`--match-head-commit`); a conflict is not merged | auto-merge | Kept with E1 (each merge bound to its head, in the checked order, PRs taken by when their current head was validated); strengthened with E6 (one fast-forward push of exactly what was checked) | Strengthened: each comment is checked on the exact state it is committed on, re-derived before the push; a moved `main` redoes the pass | Kept |
+| G22 | Only self-service natures merge without a human; anything else waits for the council | `SELF_SERVICE`, `--auto-merge` | Kept | Kept: the grammar holds only self-service gestures, natures re-checked; invitations stay on the council's PRs | Kept |
 | G23 | A data-only PR takes the fast path; anything else, and any doubt, runs the full suite | `ci_scope` (ruche-0090) | Kept (and used by E4) | Not used by gestures (no CI per gesture); kept for code PRs | Kept |
-| G24 | Exemptions (the council's, the robots') never pass to someone else | `est_conseil`, `est_robot` from the author | Kept | Kept: a comment always runs as its author's; comments by robots are never applied | Kept |
-| G25 | R3's review gate: reviews count only on the verdict's commit; a guardian's review while the judge is incomplete (`si_juge_incomplet`, `juge_commun_min`) | `integration-auto.yml`, `bee check-acceptance` | Kept | Kept: integration is unchanged, fed by reviews bound as in G18, and dispatched by the sequencer | Kept |
-| G26 | Invitations (R13): proposals never merged automatically; caps, brake and do-not-contact list checked | `verifier_invitation` | Kept | Kept: invitations stay on PRs | Kept |
-| G27 | Provenance: every gesture commit on `main` is a squash merge made and signed by GitHub (committer `GitHub`, with a signature) | fusion-auto's merges, made by GitHub | Kept with E1, if GitHub signs the merges an App asks for (unverified: E0a); **lost with E6** (C3) | **Lost**: commits made by the App, unsigned (C3) | Can be restored by commits made through GitHub's API, one per batch (E0b checks) |
+| G24 | Exemptions (the council's, the robots') never pass to someone else | `is_council`, `is_robot` from the author | Kept | Kept: a comment always runs as its author's; comments by robots are never applied | Kept |
+| G25 | R3's review gate: reviews count only on the verdict's commit; a guardian's review while the judge is incomplete (`if_judge_incomplete`, `common_judge_min`) | `auto-integration.yml`, `bee check-acceptance` | Kept | Kept: integration is unchanged, fed by reviews bound as in G18, and dispatched by the sequencer | Kept |
+| G26 | Invitations (R13): proposals never merged automatically; caps, brake and do-not-contact list checked | `check_invitation` | Kept | Kept: invitations stay on PRs | Kept |
+| G27 | Provenance: every gesture commit on `main` is a squash merge made and signed by GitHub (committer `GitHub`, with a signature) | auto-merge's merges, made by GitHub | Kept with E1, if GitHub signs the merges an App asks for (unverified: E0a); **lost with E6** (C3) | **Lost**: commits made by the App, unsigned (C3) | Can be restored by commits made through GitHub's API, one per batch (E0b checks) |
 
 #### For the council to decide, in plain words
 
@@ -673,7 +676,7 @@ robots and block an outside account (below).
   block, and a stop must be possible at any hour.
 - *The choice.* Which people hold them.
 - *Recommendation:* at least two humans of the council, so that one is always reachable; never the agent principal
-  nor the guardians, who open an incident (docs/securite.md) for a person with the rights to act; every use recorded
+  nor the guardians, who open an incident (docs/security.md) for a person with the rights to act; every use recorded
   in docs/decisions.md.
 
 **C2. A gesture's envelope can disappear** (needed before step 2 goes live).
@@ -729,7 +732,7 @@ with commands and hardware):
 1. the gate's time on a one-gesture change at 100, 300 and 1,000 members (ruche-0083), and a pass's time per PR or
    per comment with the registry loaded once (100, 1,000 and 5,000 gestures) on registries of 1,000 and 10,000
    tasks (after ruche-0099 and E8);
-2. the history checks (`reprise_refusee`, `creations_recentes`, the cap) on histories of 30,000, 100,000 and 300,000
+2. the history checks (`refused_retake`, `recent_creations`, the cap) on histories of 30,000, 100,000 and 300,000
    commits: scanning with and without a commit-graph with changed-path filters, and from E24's index; and the time
    to write the commit-graph in a fresh clone;
 3. on the PR path, with the measured latencies, the share of data PRs that fail on conflicts under ruche-0080's
@@ -755,7 +758,7 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | # | Title | Size | Depends on | Acceptance test |
 | --- | --- | --- | --- | --- |
 | E0a | Spike for step 1, on the scratch repository with the throwaway App: the App's bypass in "always" mode past a PR-only rule; pushes and merges under the App start `push` workflows, and the scope step tells a data-only push from a code push; GitHub's signature on the squash merges an App asks for; a burst of merges past 500 in an hour (does the limit apply, to which identity, and what else counts: dispatches, closures, issues); whether a pushed merge commit marks its PR merged (same-repository and fork PRs, one and several commits); dispatches from each token | M | the founder's test App and scratch repository | A report: for each item, what was done, run ids or timestamps, what was observed; each choice of step 1 that depends on it confirmed or changed |
-| E1 | One fusion pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; its merges stay under the workflows' own token until E5 (R-push is E25) | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are); on the rehearsal (outils/repetition), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
+| E1 | One fusion pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; its merges stay under the workflows' own token until E5 (R-push is E25) | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are); on the rehearsal (tools/rehearsal), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
 | E2 | Count and cut the API calls per gesture: each workflow logs the REST calls, GraphQL points and content-creating requests it spent, per token; the account date read only for a new member file; the site built at most once every few minutes for data | M (re-sized in the task file) | - | Calls per gesture before and after, from the logs of 20 real data gestures, in the PR; unit test of the account-date decision |
 | E3 | The verdict and integration passes read all pending contributions' fork PRs with one GraphQL query per 50 to 100 PRs, and run at most once every few minutes when merges trigger them | M | E2 | With the rehearsal's simulated `gh` and 300 pending contributions, a pass makes at most 6 listing calls; the same verdicts, integrations and closures as today on the same rehearsal |
 | E4 | Code PRs survive data drift: no full re-run when only self-service data changed since the last full run's merge tree; `bee validate` and the live-registry tests on the current merge instead | M | ruche-0092 | Unit tests of the decision (data-only drift: fast; any code, deletion, rename, unreadable previous run: full); a code PR kept mergeable across 10 data merges with fast runs only, timings in the PR |
@@ -767,7 +770,7 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | ruche-0099 | (existing; the council rewrites its title and acceptance from the block in this task's PR) The registry loaded once per pass and updated incrementally, re-checked against a fresh load at the end of the pass; `bee check-pr` validates what a PR changes and what it references | M | ruche-0083, E8 | 0.5 s per one-gesture check on a registry of 10,000 tasks; an index or incremental state out of step with the files is refused; every check of the full validation still runs on every push to `main` and once at the end of each pass |
 | E24 | An index for the history checks: R7's ends of engagement and the 24-hour counts of notes and creations, read from an index checked against the history instead of scanning it | M | ruche-0099 | On a history of 300,000 commits (ruche-0080's generator), R7 and the 24-hour caps in under 0.1 s per gesture; an index out of step is refused; the same answers as the scan on the registry's own history |
 | E25 | R-push: the full suite in its own workflow (`suite.yml`), called by a code PR's validation and dispatched on a code push; `validation.yml` and `site.yml` run `ci_scope` on a push's range; the PR fast path's one-call read of `suite.yml`'s runs | M | ruche-0092 | Unit tests: a data-only push range gives the fast path; a code range, a new branch or an unreadable range the full suite; the read sends PRs to the full suite when the newest `suite.yml` run is not for `main`'s last code commit, when the newest completed one failed, or when the call fails; on `main`, a data-only push runs the fast path and a code merge dispatches `suite.yml`, timings in the PR |
-| E9 | Write-path measures: `bee mesures-ecriture` (gestures per hour and per PR, latency median and 95th percentile, refusals and conflicts by reason, passes, spending per token, push runs by scope, open data PRs, expired reservations), shown on the site, read by ruche-0100's waves | M | E2 | On a fixture ledger and fixture runs, every number equals a hand count |
+| E9 | Write-path measures: `bee write-path-measures` (gestures per hour and per PR, latency median and 95th percentile, refusals and conflicts by reason, passes, spending per token, push runs by scope, open data PRs, expired reservations), shown on the site, read by ruche-0100's waves | M | E2 | On a fixture ledger and fixture runs, every number equals a hand count |
 | E10 | Load-test the write path (extends ruche-0083): the measures of section 7 | M | ruche-0080, ruche-0083, E8, ruche-0099, E24 | Medians of three runs with commands and hardware (commandment 2); any measure past a threshold proposed as its own task |
 
 **Step 2: built now if C5 (a), live after E0b, the dual run and the shadow week**
@@ -775,7 +778,7 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | # | Title | Size | Depends on | Acceptance test |
 | --- | --- | --- | --- | --- |
 | E0b | Spike for step 2, on the scratch repository with the throwaway App: `issue_comment` with job-level concurrency and a condition; replace semantics, `queue: max` and its overflow; the trigger under a burst of comments; comment listing (REST `since`, GraphQL cursors, ties of `created_at`, a deletion during a listing, the last edit time, reactions); commenting with gh's login, a classic token and a fine-grained one; subscriptions, unsubscribing by the API, mentions, watchers; interaction limits and blocking; a dedicated inbox repository and its read-only token; GitHub's signature on commits an App creates through the API | M | the founder's test App and scratch repository | A report as for E0a; each choice of step 2 that depends on it confirmed or changed |
-| E11 | The gesture format: `schemas/geste.schema.json` and a strict parser (`bee lire-geste`), the body bounded in bytes before parsing, `bee`'s loader | M | - | A table of bodies refused with their reason (unknown key, a path, anchors or aliases, two documents, over the bound, invisible characters); every gesture `bee` can publish round-trips |
+| E11 | The gesture format: `schemas/gesture.schema.json` and a strict parser (`bee read-gesture`), the body bounded in bytes before parsing, `bee`'s loader | M | - | A table of bodies refused with their reason (unknown key, a path, anchors or aliases, two documents, over the bound, invisible characters); every gesture `bee` can publish round-trips |
 | E12 | Each `bee` gesture command records the gesture it made in that format, and `bee publish` writes the records in the PR's body (step 1) | M | E11 | For each command, the record re-parses to the same gesture; the PR body of a session holds one record per gesture |
 | E13a | Applying gestures with `bee`'s own functions, part 1a: registration, profile, reservation, release, parallel registration and withdrawal; then the gate as the author's, at the instant | M | E11 | For each gesture, files byte-identical to the PR path's; every refusal of `test_bee.py`'s gate tests for these natures reproduced through this path, with the same reason |
 | E13b | Part 1b: note, vote and its withdrawal, measurement | M | E11 | Same test as E13a for these natures |
@@ -784,10 +787,10 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | E15a | The engine, order and commits: comments in (`created_at`, id) order, all-or-nothing; one commit per comment, author date `created_at`, committer date the pass's time and never earlier than the parent's; the trailer paragraph (whitelist, numeric account id, escaped gestures, tool commit) | M | E13a, E13b, E14a, E14b | Fixtures: determinism; a comment of three gestures whose third is refused writes nothing; a trailer forged inside a note is not read; two reservations of one task in one pass (the second refused); committer dates in order whatever the comments' dates |
 | E15b | The engine, natures and failures: natures self-service, `agent_account` refused; a crashing comment re-run on the fresh state and refused if it crashes there; a pass stopped at most twice by one comment; a lone comment waits for the two-minute lag | M | E15a | Fixtures: a comment crashing on any state is refused while the others land; a crash that needs an earlier comment stops the pass twice, then the comment is refused and an incident written; an `agent_account` nature refused |
 | E16 | The engine's cursor, refusals and switch: the cursor; idempotence by comment id; edited, late and stale comments refused; refusals journalled hourly with a code and a hash, capped per author; non-members and robots counted only; the cap of gestures per user and day; the switch and the re-open key read first | M | E15a | Fixtures: two runs give the same commits; an edited comment refused; a flood of refusals from one author keeps every journal file far below its bound; the switch off writes nothing |
-| E17 | Job B's rebuild and the audit: commits rebuilt from the recorded gestures with the recorded tool and compared with job A's trees, trailers, `bee validate`; `bee rejouer-journal` with GitHub's comment data while it exists | M | E15a | A changed file, author, date, trailer or gesture stops the push; a clean pass goes through; a deleted comment is reported, not failed |
+| E17 | Job B's rebuild and the audit: commits rebuilt from the recorded gestures with the recorded tool and compared with job A's trees, trailers, `bee validate`; `bee replay-ledger` with GitHub's comment data while it exists | M | E15a | A changed file, author, date, trailer or gesture stops the push; a clean pass goes through; a deleted comment is reported, not failed |
 | E18 | The inbox workflows: job A read-only (GraphQL cursor listing, apply, gate, announce), job B with a read-only workflows' token (E17, then the short push step under the App in the writers' group), job-level concurrency with a condition on the inbox issues, schedule and dispatch, dispatches of verdicts, integration, the site and the audit | M | E15b, E16, E17, E5, E0b | A test that no `run:` or expression reads an event's comment, issue title, head ref or similar field, that only the push step mints a write token, that write jobs pin actions by SHA; on the rehearsal, 200 gestures from 20 accounts in 10 minutes reach the ledger once each, latency in the PR |
 | E19 | Inbox issues and outgoing text: hourly issues pre-created a day ahead and listed on `main` (where E0b decided, with faster rotation if unsubscribing is impossible); ruche-0049's check on every body before anything is applied | M | E0b, ruche-0049 | The issues of the next 24 hours always exist; a body with a mention or a disallowed link is refused before any gesture is applied |
-| E20 | `bee publish` through the inbox: the outgoing-text check, the post, unsubscribing, waiting for the outcome and printing it, the retry advice; AGENTS.md (both languages) and the `bee-contributeur` skill | M | E18, E19, E12 | With the simulated `gh`, accepted and refused gestures print exactly what the ledger says; the identity check (`gh api user`) unchanged; a refused text is never posted |
+| E20 | `bee publish` through the inbox: the outgoing-text check, the post, unsubscribing, waiting for the outcome and printing it, the retry advice; AGENTS.md (both languages) and the `bee-contributor` skill | M | E18, E19, E12 | With the simulated `gh`, accepted and refused gestures print exactly what the ledger says; the identity check (`gh api user`) unchanged; a refused text is never posted |
 | E21 | Going live: the shadow week (data PRs without a record, or whose record does not reproduce their files, refused for that gesture), the dual run on a scratch inbox and a mirror of `main`, then, on the council's decisions, the gate refusing self-service data PRs from non-council accounts, with a `bee.yaml` key that re-opens them | M | E12, E16, E18 | Seven consecutive days with at least 200 data gestures and no fault traced to the engine or the workflows; the dual run's ledger matches the PR path's outcomes but for listed differences of order; a data PR refused with the pointer, and accepted again when the key re-opens the path; council, code and invitation PRs unchanged |
 
 **Step 3**
@@ -811,7 +814,7 @@ Read on 2 November 2026.
 9. GitHub Docs, GraphQL reference, pulls (`enqueuePullRequest`, merge queue configuration and entry states): https://docs.github.com/en/enterprise-cloud@latest/graphql/reference/pulls
 10. The input fields of `enqueuePullRequest` (`expectedHeadOid`, `jump`), from a mirror of GitHub's GraphQL schema, to be confirmed against GitHub before use: https://jsr.io/@luxass/github-schema/doc/~/EnqueuePullRequestInput
 11. GitHub Docs, "Events that trigger workflows" (GitHub Enterprise Server 3.15 version: `issue_comment`, `merge_group`): https://docs.github.com/enterprise-server@3.15/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows
-12. The registry's own measures: GitHub API on Bee-ruche/registre (PRs #72 to #140; runs of `validation.yml` and `fusion-auto.yml` between 1 November 18:05 and 2 November 03:46 UTC); the gate timed on commit 0df37fc.
+12. The registry's own measures: GitHub API on Bee-ruche/registre (PRs #72 to #140; runs of `validation.yml` and `auto-merge.yml` between 1 November 18:05 and 2 November 03:46 UTC); the gate timed on commit 0df37fc.
 13. GitHub Docs, "Merging a pull request" (says nothing of merges pushed from the command line): https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/merging-a-pull-request
 14. GitHub Docs, "Concurrency" (one pending run per group by default; queuing as an opt-in): https://docs.github.com/en/actions/concepts/workflows-and-actions/concurrency
 15. The two independent adversarial reviews of this design (2 November 2026): the first's profile of the gate, its history-scan measure and its reading of public reports on ruleset bypasses and on job-level concurrency; the second's test of a C-backed loader (it drops the anchor, alias and tag refusals unless an event pre-scan keeps them: about 0.07 s against 0.5 s for the registry's YAML files).
