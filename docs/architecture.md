@@ -1,7 +1,7 @@
 # Architecture et passage à l'échelle
 
 Bee n'a pas de serveur : tout est fichiers, pull requests et CI sur GitHub. La **lecture** passe à
-l'échelle toute seule (site statique + CDN, git, `api/registre.json`). Deux choses, en revanche, ne
+l'échelle toute seule (site statique + CDN, git, `api/registry.json`). Deux choses, en revanche, ne
 passent pas l'échelle dans le modèle initial, et sont traitées ici :
 
 1. **L'écriture** était centralisée : toutes les actions (réservation, soumission, relecture, vote,

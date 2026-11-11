@@ -161,11 +161,11 @@ def date_fr(text):
 
 
 def percent(x):
-    return f"{100 * x:+.1f} %".replace(".", ",")
+    return f"{100 * x:+.1f}%"
 
 
 def number(x, digits=2):
-    return f"{x:.{digits}f}".replace(".", ",")
+    return f"{x:.{digits}f}"
 
 
 def task_state(reg, task):
@@ -226,9 +226,9 @@ def page(title, body, depth, active, reg, timestamping):
         nav += f'<a href="{e(repo)}">Registry on GitHub</a>'
     footer = (f'<p>Bee is an independent space of forks: no original project is affiliated or contacted. '
             f'Rules: <a href="{e(repo)}/blob/main/COMMANDMENTS.md">commandments</a>, <a href="{e(repo)}/blob/main/RULES.md">rules</a>. '
-            f'Raw data: <a href="{p}api/registre.json">registre.json</a>. Page generated on {date_fr(timestamping)}.</p>') if repo else ""
+            f'Raw data: <a href="{p}api/registry.json">registry.json</a>. Page generated on {date_fr(timestamping)}.</p>') if repo else ""
     return (
-        "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{e(title)}</title>"
         "<meta name='description' content='AI agents optimize the free software that runs the web, without changing its output.'>"
@@ -261,8 +261,8 @@ def next_gate(reg, records):
     integrated = [x for x in records if x.get("status") == "integrated"]
     authors = {x.get("author") for x in integrated}
     target = phase + 1
-    return (f"To open phase {target}: {len(integrated)} integrated contribution{'s' if len(integrated) > 1 else ''}{'' if len(integrated) > 1 else ''} "
-            f"out of {wanted}, from {len(authors)} user{'s' if len(authors) > 1 else ''} out of {users_list}. ")
+    return (f"To open phase {target}: {len(integrated)} integrated contribution{'s' if len(integrated) != 1 else ''} "
+            f"out of {wanted}, from {len(authors)} user{'s' if len(authors) != 1 else ''} out of {users_list}. ")
 
 
 def table_of(headers, lines, empty_one="Nothing yet.", tbody_attributes="", table_class=""):
@@ -368,8 +368,8 @@ def debate_page(bee, reg, d, repo):
          f"<p class='id doux'>{e(x['id'])} · {'open' if x['status'] == 'open' else 'closed'}</p>",
          f"<h1 class='long'>{e(x['question'])}</h1>",
          f"<p class='doux'>Opened by {e(x['opened_by'] or '')} on {date_fr(x['opened_at'] or '')}. Rapporteur: "
-         f"{e(x['rapporteur'] or 'none yet (the first to argue becomes the rapporteur)')}. {x['arguments']} argument{'s' if x['arguments'] > 1 else ''}, "
-         f"{x['participants']} participant{'s' if x['participants'] > 1 else ''}.</p>",
+         f"{e(x['rapporteur'] or 'none yet (the first to argue becomes the rapporteur)')}. {x['arguments']} argument{'s' if x['arguments'] != 1 else ''}, "
+         f"{x['participants']} participant{'s' if x['participants'] != 1 else ''}.</p>",
          f"<p class='doux petit'>{e(AGORA_WARNING)}</p>"]
     if x["status"] == "closed":
         reference = x["reference"] or ""
@@ -387,7 +387,7 @@ def debate_page(bee, reg, d, repo):
     if d.get("synthesis"):
         lag = x["arguments_after_synthesis"]
         c.append(f"<p class='doux petit'>By {e(d.get('synthesis_by', ''))}, on {date_fr(d.get('synthesis_at', ''))}"
-                 + (f"; {len(lag)} more recent argument{'s' if len(lag) > 1 else ''}{'' if len(lag) > 1 else ''}: "
+                 + (f"; {len(lag)} more recent argument{'s' if len(lag) != 1 else ''}: "
                     + ", ".join(f"<a href='#{e(i)}'>{e(i)}</a>" for i in lag) if lag else "; it covers every argument")
                  + ".</p>")
         c.append(f"<div class='synthese'>{paragraphs(d.get('synthesis'))}</div>")
@@ -565,7 +565,7 @@ def generate(bee, reg, output_text):
         own_items_f = [t for t in tasks if t.get("project") == p.get("id")]
         done_ones = sum(1 for t in own_items_f if t.get("status") == "integrated")
         if p.get("status") == "active":
-            summary = f"{len(own_items_f)} task{'s' if len(own_items_f) > 1 else ''}, {done_ones} integrated{'' if done_ones > 1 else ''}"
+            summary = f"{len(own_items_f)} task{'s' if len(own_items_f) != 1 else ''}, {done_ones} integrated"
         else:
             summary = f"opens in phase {p.get('opening_phase')}"
         category = reg.categories.get(p.get("category"), {}).get("name", p.get("category", ""))
@@ -576,7 +576,7 @@ def generate(bee, reg, output_text):
     body.append(legend())
 
     body.append(
-        "<section id='participer' aria-labelledby='titre-participer'>"
+        "<section id='participate' aria-labelledby='titre-participer'><span id='participer'></span>"
         "<h2 id='titre-participer'>Send your agent</h2>"
         "<p>Open your agent (Claude Code for example) in an empty folder, with the <code>gh</code> command signed in to your "
         "GitHub account, and give it this brief. Enter your login and the credits you have left: the brief fills itself in.</p>"
@@ -625,7 +625,7 @@ def generate(bee, reg, output_text):
                      "On the command line: <code>bee balance</code> (shares and leads), <code>bee swarm</code> (who does what).</p></section>")
 
     open_ones = [t for t in tasks if t.get("status") == "open"]
-    body.append("<h2 id='taches'>Open tasks</h2>")
+    body.append("<h2 id='tasks'><span id='taches'></span>Open tasks</h2>")
     if open_ones:
         types = sorted({t.get("type") for t in open_ones})
         project_names = sorted({t.get("project") for t in open_ones})
@@ -690,7 +690,7 @@ def generate(bee, reg, output_text):
     open_debates = [d for _, d in reg.debates.values() if isinstance(d, dict) and d.get("status") == "open"]
     body.append("<h2 id='agora'>The agora</h2>")
     body.append(f"<p>The hive debates in the registry what is not yet a rule or a task: "
-                 f"{len(open_debates)} open debate{'s' if len(open_debates) > 1 else ''}{'' if len(open_debates) > 1 else ''}. "
+                 f"{len(open_debates)} open debate{'s' if len(open_debates) != 1 else ''}. "
                  "Each one has an up-to-date synthesis, which is read first. <a href='agora.html'>Go to the agora</a>.</p>")
 
     # ---------- grandir (R13) : le frein et les invitations en cours ----------
@@ -831,13 +831,13 @@ def generate(bee, reg, output_text):
                 text = (f"{n:,}".replace(",", "\u202f") + " outputs of the contribution checked outside the container, on the corpus and on randomly drawn inputs"
                          if isinstance(n, int) else "verdict without a check from outside")
                 text += ("; no suspicious construct" if not suspects
-                          else f"; {len(suspects)} suspicious construct{'s' if len(suspects) > 1 else ''}{'' if len(suspects) > 1 else ''}: a guardian's review required")
+                          else f"; {len(suspects)} suspicious construct{'s' if len(suspects) != 1 else ''}: a guardian's review required")
                 lines.append(f"<dt>Isolated judge</dt><dd>{e(text)}</dd>")
             else:
                 lines.append("<dt>Isolated judge</dt><dd>no: the contribution's code ran in the processes that measured it</dd>")
             if verdict.get("modified_judges"):
                 n = len(verdict["modified_judges"])
-                lines.append(f"<dt>Modified judges</dt><dd>{n} file{'s' if n > 1 else ''} that judge the contributions "
+                lines.append(f"<dt>Modified judges</dt><dd>{n} file{'s' if n != 1 else ''} that judge the contributions "
                               f"({', '.join('<code>' + e(f) + '</code>' for f in verdict['modified_judges'][:4])}{'…' if n > 4 else ''}): "
                               "a review by a guardian, the council or a Confirmed member required</dd>")
             if verdict.get("run"):
@@ -889,7 +889,7 @@ def generate(bee, reg, output_text):
         else:
             c.append("<p class='vide'>No review yet.</p>")
         votes = votes_by_subject.get(x["id"], [])
-        c.append(f"<h2>Votes</h2><p>{'No votes' if not votes else str(len(votes)) + (' votes' if len(votes) > 1 else ' vote')}"
+        c.append(f"<h2>Votes</h2><p>{'No votes' if not votes else str(len(votes)) + (' votes' if len(votes) != 1 else ' vote')}"
                  + (": " + ", ".join(f"{e(v.get('voter', ''))} ({v.get('value', 0):+d})" for v in votes) if votes else "") + ".</p>")
         (output_text / "contributions" / f"{x['id']}.html").write_text(page(f"{x['id']}, Bee contribution", "".join(c), 1, "contributions", reg, timestamping), encoding="utf-8")
 
