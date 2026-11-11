@@ -13,7 +13,7 @@ because that proof is missing, not because they would be "too big":
 
 - **Cryptography**: a speed-up can break constant time and open a leak that no test or bench detects. No oracle for
   the security property.
-- **Lossy encoders, video**: proving no regression requires perceptual quality metrics that are open to debate. No
+- **Lossy encoders and video**: proving no regression requires perceptual quality metrics that are open to debate. No
   clear reproducible metric.
 - **Network, kernel, drivers**: hard to isolate in a sandbox and to measure reproducibly. (User-space protocols, on
   the other hand, can be tested in a sandbox on the loopback: that is the way protocols would come in, see the table.)

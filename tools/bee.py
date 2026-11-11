@@ -1029,7 +1029,7 @@ def engagements_of(reg, user):
         if not isinstance(t, dict):
             continue
         if reg.identities.same_one((t.get("reservation") or {}).get("user"), user):
-            result.append((tid, "réservation"))
+            result.append((tid, "reservation"))
         if any(reg.identities.same_one(p.get("user"), user) for p in parallels_of(t)):
             result.append((tid, "parallel"))
     return result
@@ -3352,7 +3352,7 @@ def showable_verdict(verdict):
     of keys replaced."""
     replaced = 0
     if "failed_step" in verdict:
-        verdict["failed_step"] = declared_text(verdict["failed_step"], 200) or "inconnue"
+        verdict["failed_step"] = declared_text(verdict["failed_step"], 200) or "unknown"
     for field in ("instructions", "degradations"):
         if isinstance(verdict.get(field), dict):
             honest_ones = {c for c in verdict[field] if VERDICT_KEY.fullmatch(c)}
@@ -6297,7 +6297,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     # R3: a rival is set aside only in the same commit as the integration of the kept
                     # contribution, by the integration robot, or by the council when it integrates itself (the hive's
                     # tasks, never integrated automatically); and then all the rivals in the race are set aside
-                    # in favour of the same kept one. Never a setting aside alone, by hand.
+                    # in favor of the same kept one. Never a setting aside alone, by hand.
                     kept = new.get("kept") or ""
                     kept_path = modified.get(kept)
                     before_r = read_yaml_ref(reg.root, base, kept_path) if kept_path else None
@@ -6313,8 +6313,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     require(integrated_here, f"{path}: a contribution is set aside only in the same commit as the integration "
                                          f"of the kept contribution ({kept or 'not named'})")
                     require(not remaining_ones and not others_kept,
-                           f"{path}: the integration of {kept or 'the kept one'} sets aside all the rivals in the race in its favour "
-                           f"(still in review: {', '.join(remaining_ones) or 'none'}; set aside in favour of another: "
+                           f"{path}: the integration of {kept or 'the kept one'} sets aside all the rivals in the race in its favor "
+                           f"(still in review: {', '.join(remaining_ones) or 'none'}; set aside in favor of another: "
                            f"{', '.join(r or '?' for r in others_kept) or 'none'})")
             continue
 
@@ -9503,7 +9503,7 @@ def cmd_record_verdict(args):
         raise BeeError(f"{args.contribution}: verdict refused, {note_wait(reg, args.contribution, 'metric', args.sha)} (the verdict's metric: "
                         f"{said}, the task's: {want}); no verdict is recorded")
     if verdict["ci"] == "red":
-        verdict["failed_step"] = str(raw.get("failed_step") or "inconnue")
+        verdict["failed_step"] = str(raw.get("failed_step") or "unknown")
     elif args.bases is not None:  # ruche-0025: verdicts.yml always passes --bases (« sha status » from the compare API); a red one integrates nothing
         with open(args.bases, encoding="utf-8") as f:
             checked_ones = {l.split()[0]: l.split()[1] for l in f if len(l.split()) == 2}
@@ -10114,7 +10114,7 @@ def cmd_integrate(args):
 
 def integrate(reg, args, path, rec, instant, reason, message=None):
     """Writes an integration (bee integrate; bee record-merge, ruche-0094): args.contribution and its task « integrated », with
-    args.merge_sha; its rivals still in the race « set_aside » in its favour; the task's engagements ended, with a note."""
+    args.merge_sha; its rivals still in the race « set_aside » in its favor; the task's engagements ended, with a note."""
     tid = rec["task"]
     rival = [(c, e) for c, e in racing_contributions(reg, tid) if c != args.contribution]
     rec = dict(rec)
@@ -10124,14 +10124,14 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
     if args.merge_sha:
         rec["merge_sha"] = args.merge_sha
     write_yaml(path, rec)
-    # R3: the rivals still in review are set aside in favour of the kept one, in the same write (hence the
+    # R3: the rivals still in review are set aside in favor of the kept one, in the same write (hence the
     # same commit of the workflow). Set aside is not refused: nothing counts against the author or their reviewers.
     for c, e in rival:
         e = dict(e)
         e["status"] = "set_aside"
         e["kept"] = args.contribution
         e["decided_at"] = instant
-        e["decision_reason"] = (f"Set aside in favour of {args.contribution}, kept by R3 (race between rival contributions "
+        e["decision_reason"] = (f"Set aside in favor of {args.contribution}, kept by R3 (race between rival contributions "
                                f"of {tid}). This is not a refusal: nothing counts against its author or its reviewers.")
         write_yaml(reg.records[c][0], e)
     task_path, task = reg.task(tid)
@@ -10147,7 +10147,7 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
         ends += [f"{p['user']} (in parallel)" for p in parallels_of(task)]
     texts_of = []
     if rival:
-        texts_of.append(f"Contribution kept: {args.contribution} (R3). Set aside in its favour: {', '.join(c for c, _ in rival)}.")
+        texts_of.append(f"Contribution kept: {args.contribution} (R3). Set aside in its favor: {', '.join(c for c, _ in rival)}.")
     if ends:
         texts_of.append(f"The task is integrated: the engagements of {', '.join(ends)} end.")
     note = {"by": "github-actions[bot]", "at": instant, "text": " ".join(texts_of)} if texts_of else None

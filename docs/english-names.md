@@ -981,7 +981,7 @@ Step names (« Dépendances », « Règles de la pull request », « Publier »,
 | Libération des réservations expirées (R7) | Release of expired reservations (R7) | expirations.yml |
 | PR body « Publié avec `bee publier`.\n\nNature : <titre>. » | « Published with `bee publish`.\n\nNature: <title>. » | bee publier writes it; nothing parses it |
 | PR titles bee suggests: « Réservation <t> », « Soumission <c> », « Inscription <login> », « Inscription en parallèle <t> », « Libération », « Relecture », « Vote », « Proposition » | « Reservation <t> », « Submission <c> », « Registration <login> », « Parallel registration <t> », « Release », « Review », « Vote », « Proposal » | free text; branch names derive from it (bee/<slug>-<date>) and from a hash of {task path: engagement} (bee/engagement-<hash>) |
-| PR comment « Écartée au profit de … retenue par la règle R3 » | « Set aside in favour of …, kept by rule R3 » | integration-auto; site and record use the same sentence |
+| PR comment « Écartée au profit de … retenue par la règle R3 » | « Set aside in favor of …, kept by rule R3 » | integration-auto; site and record use the same sentence |
 | Robot notes « Réservation de X expirée après 72 h (R7). » | « X's reservation expired after 72 h (R7). » | written into task notes (prose: old notes stay) |
 | Council commit prefix « Council record: » | unchanged | already English |
 

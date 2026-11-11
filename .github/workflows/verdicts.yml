@@ -83,14 +83,14 @@ jobs:
             if ! run=$(python3 tools/bee.py pick-run "$id" --sha "$sha" --api "$api"); then
               [ -n "$run" ] && printf '%s\n' "$run" | log_text; continue
             fi
-            read -r number_of address defect <<< "$run"
+            read -r number_of address default_branch <<< "$run"
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
             gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/verdict" || continue
             # The base verdict.json declares (fork data) is never believed: the API says whether it is an ancestor of the default
             # branch (compare: identical or ahead); bee record-verdict refuses otherwise.
             : > "$RUNNER_TEMP/verdict/bases.txt"
             for base in $(python3 tools/bee.py declared-bases "$RUNNER_TEMP/verdict/verdict.json"); do
-              status=$(gh api "repos/$repo/compare/$base...$defect" --jq .status) \
+              status=$(gh api "repos/$repo/compare/$base...$default_branch" --jq .status) \
                 && printf '%s %s\n' "$base" "$status" >> "$RUNNER_TEMP/verdict/bases.txt" || true
             done
             # Trust check: the files modified by the PR, read from GitHub's API. A PR that
