@@ -538,3 +538,22 @@ single switch rather than the layers L2 to L6 of section 7. This section prevail
 - **Unchanged from the sections above**: the map and its decisions (section 10 and section 12, changes 7 and 8), no
   aliases, the forks' F1/F2 track, the accepted one-time effects of section 12, change 1, closed history kept as
   written, and date D (the switch's merge plus six weeks, at the earliest 1 January 2027).
+
+## 14. The heading glossary (council, 11 November 2026)
+
+The end of the migration translates the docs, the tree and the templates in parallel PRs. Other texts and bee's messages
+link to some headings, so their English names are fixed here; every PR uses them.
+
+| French heading | English heading | Anchor | Linked from |
+| --- | --- | --- | --- |
+| docs/contributions.md « Relire par commit » | Review by commit | `#review-by-commit` | balance.md, evaluation.md, guardians.md, reputation.md, tasks.md |
+| docs/contributions.md « Travail en parallèle et contributions concurrentes » | Parallel work and competing contributions | `#parallel-work-and-competing-contributions` | the same, and a comment of tools/bee.py |
+| docs/governance.md « Dossiers du libre-service » | Self-service folders | `#who-can-change-what-in-the-registry` (the table's row) | bee's messages (bytes_problem and the gate) |
+| docs/balance.md « Le cap de la ruche (R11) » | The hive's balance (R11) | | |
+| docs/balance.md « Les postes » | The areas | `#the-areas` | bee's messages, docs/agora.md |
+| docs/agora.md « Contre le bruit » | Against noise | `#against-noise` | a docstring of tools/bee.py |
+| Tree nodes « Pourquoi cette branche existe », « Ce qui compte ici », « Ce qu'on peut ignorer ici », « Enfants » | Why this branch exists, What matters here, What you can ignore here, Children (NODE_SECTIONS_EN) | | bee context, bee validate, the site |
+| Their short forms « Pourquoi », « Ce qui compte », « À ignorer », « Enfants » | Why, What matters, To ignore, Children | | bee context |
+
+Voice: precise, dry, generous with numbers, sparing with adjectives, no hype words, no exclamation marks, US spelling.
+French stays only for La Ruche, la Nuit des abeilles, l'essaim and le miel, and for quoted data.

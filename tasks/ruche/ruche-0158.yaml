@@ -1,0 +1,26 @@
+id: ruche-0158
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'The council''s data prose in English: categories and project descriptions'
+context: 'categories.yaml''s category names and descriptions (shown on the site) and the prose of the candidate projects'' files are still French (about 46 lines). Translate the prose only (keys and values are names); miniz and libyaml''s project files go with ruche-0149.'
+files:
+- categories.yaml
+- projects/bzip2.yaml
+- projects/cjson.yaml
+- projects/giflib.yaml
+- projects/lodepng.yaml
+reach: 0.3
+metric: null
+acceptance_criteria:
+- no French left in these files except quoted data and the names La Ruche, la Nuit des abeilles, l''essaim, le miel
+- nothing that reads these texts breaks (tests, workflows, bee); the full suite passes
+- an independent adversarial review by an agent of another model than the builder's is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-11'

@@ -3,26 +3,26 @@ project: libyaml
 category: parsing-serialization
 type: optimization
 size: M
-title: "yaml_parser_update_buffer : chemin rapide ASCII dans le décodage UTF-8"
+title: "yaml_parser_update_buffer: an ASCII fast path in UTF-8 decoding"
 context: >
-  Profil callgrind de la base (banc analyse, 128 premiers Kio par fichier) : yaml_parser_update_buffer
-  (src/reader.c) coûte 16,6 % des instructions de l'analyse. Elle remplit le tampon et décode
-  l'UTF-8 octet par octet, avec un contrôle de validité par caractère, même quand l'entrée est de
-  l'ASCII pur (le cas courant : clés, indentation, scalaires simples). Piste : détecter les plages
-  d'octets < 0x80 et les copier/valider en bloc, en retombant sur le chemin général dès le premier
-  octet >= 0x80. Le résultat doit être STRICTEMENT identique : même flux d'événements, mêmes refus
-  sur entrée invalide (UTF-8 mal formé toujours rejeté au même endroit). bee/tests/lancer.sh et le
-  fuzzing le vérifient. Garder le chemin général comme repli (R6, portabilité).
+  Callgrind profile of the base (parsing bench, first 128 KiB of each file): yaml_parser_update_buffer
+  (src/reader.c) costs 16.6% of the parsing instructions. It fills the buffer and decodes UTF-8
+  byte by byte, with a validity check per character, even when the input is pure ASCII (the common
+  case: keys, indentation, simple scalars). Lead: detect runs of bytes < 0x80 and copy/validate them
+  in bulk, falling back to the general path at the first byte >= 0x80. The result must be STRICTLY
+  identical: same event stream, same refusals on invalid input (malformed UTF-8 always rejected at
+  the same place). bee/tests/lancer.sh and the fuzzing check it. Keep the general path as the
+  fallback (R6, portability).
 files: [src/reader.c]
 reach: 1.0
 metric: debit_analyse
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 ; flux d'événements inchangé (empreintes identiques)"
-  - "gain >= 2 % sur debit_analyse, au-delà du bruit (R4)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-  - "les entrées UTF-8 invalides sont toujours rejetées, au même endroit (cas de test dans le manifeste)"
-out_of_scope: [format de sortie, API publique (yaml.h), nouvelle dépendance, validation UTF-8 (mêmes refus)]
-# Pas d'optimisation du parseur avant le fuzzing (libyaml-0002) et le juge isolé branché à la CI (libyaml-0018), que demande R3.
+  - "green CI (R2), x86-64 and ARM64; event stream unchanged (identical fingerprints)"
+  - "gain >= 2% on debit_analyse, beyond the noise (R4)"
+  - "no other metric degraded by more than 1% (R5)"
+  - "invalid UTF-8 inputs are still rejected, at the same place (test cases in the manifest)"
+out_of_scope: [output format, public API (yaml.h), new dependency, UTF-8 validation (same refusals)]
+# No optimization of the parser before the fuzzing (libyaml-0002) and the isolated judge wired into CI (libyaml-0018), which R3 requires.
 depends_on: [libyaml-0018, libyaml-0002]
 status: open
 created_by: council

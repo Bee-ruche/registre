@@ -46,3 +46,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): docs/vision.md is already English: out of this task. docs/governance.md's heading « Dossiers du libre-service » becomes « Self-service folders » and docs/balance.md's « Les postes » becomes « The areas » (anchor #the-areas), in the same PR as the bee.py messages that quote them (heading glossary: docs/english-migration.md, section 14)."

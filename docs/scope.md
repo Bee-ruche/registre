@@ -1,55 +1,49 @@
-# Jusqu'où va Bee : le critère de l'oracle
+# How far Bee goes: the oracle criterion
 
-Bee ne se définit pas par la **taille** des logiciels qu'il héberge, ni par leur **niveau
-d'abstraction**. Il se définit par une seule question :
+Bee is not defined by the **size** of the software it hosts, nor by its **level of abstraction**. It is defined by a
+single question:
 
-> Peut-on construire, pour ce travail, un **oracle** — une preuve automatique et sans confiance de
-> non-régression — et une **métrique reproductible** ?
+> Can we build, for this work, an **oracle** (an automatic, trustless proof of no regression) and a **reproducible
+> metric**?
 
-Si oui, Bee peut l'automatiser sans confiance dès aujourd'hui. Sinon, pas encore : il manque un juge,
-et l'inventer est le travail de l'essaim ([vision.md](vision.md)) — quelle que soit la taille ou la
-hauteur dans les couches. C'est déjà la logique de [`categories.yaml`](../categories.yaml) : chaque catégorie porte
-une `preuve`, et les catégories **exclues** le sont parce que cette preuve manque, pas parce qu'elles
-seraient « trop grosses » :
+If so, Bee can automate it without trust today. If not, not yet: a judge is missing, and inventing it is the swarm's
+work ([vision.md](vision.md)), whatever the size or the height in the layers. This is already the logic of
+[`categories.yaml`](../categories.yaml): each category carries a `proof`, and the **excluded** categories are excluded
+because that proof is missing, not because they would be "too big":
 
-- **Cryptographie** : une accélération peut casser le temps constant et ouvrir une fuite qu'aucun
-  test ni banc ne détecte. Pas d'oracle pour la propriété de sécurité.
-- **Encodeurs avec perte, vidéo** : la non-régression demande des métriques de qualité perceptuelle
-  discutables. Pas de métrique reproductible nette.
-- **Réseau, noyau, pilotes** : difficiles à isoler en sandbox et à mesurer de façon reproductible.
-  (Les protocoles en espace utilisateur, eux, se testent en sandbox sur la boucle locale : c'est par
-  là que les protocoles entreraient, voir le tableau.)
+- **Cryptography**: a speed-up can break constant time and open a leak that no test or bench detects. No oracle for
+  the security property.
+- **Lossy encoders, video**: proving no regression requires perceptual quality metrics that are open to debate. No
+  clear reproducible metric.
+- **Network, kernel, drivers**: hard to isolate in a sandbox and to measure reproducibly. (User-space protocols, on
+  the other hand, can be tested in a sandbox on the loopback: that is the way protocols would come in, see the table.)
 
-## L'échelle, par l'oracle
+## The scale, by the oracle
 
-| Couche | Dans Bee ? | L'oracle |
+| Layer | In Bee? | The oracle |
 | --- | --- | --- |
-| Codecs, compression, hachage, noyaux numériques | oui (ici) | aller-retour bit à bit, ou sortie identique à une référence |
-| Parsing, sérialisation, décodage d'images | oui (ici) | même arbre / mêmes pixels / mêmes refus qu'une référence sur une suite de conformité |
-| **Langages et leurs moteurs** : interpréteurs, compilateurs, runtimes, moteurs de regex, JIT, GC, bibliothèques standard, moteurs de requêtes | **oui, l'expansion naturelle** | **suite de conformité + test différentiel contre une implémentation de référence : même comportement observable, même sortie, mêmes erreurs** ; métriques : temps de compilation, temps d'exécution, mémoire, taille |
-| **Protocoles et formats réseau** : clients, serveurs, résolveurs | oui, par composants | conformité aux spécifications (RFC) et à leurs suites de tests, interopérabilité et test différentiel contre des implémentations de référence, en sandbox sur la boucle locale |
-| **Mathématiques** : énoncés et preuves formels, recherche de contre-exemples | oui, si l'essaim l'ouvre | le **noyau d'un assistant de preuve** (Lean, par exemple) vérifie chaque preuve, sans axiome ajouté ; un vérificateur de certificat pour un contre-exemple. C'est l'oracle le plus strict de tous |
-| Applications entières (un éditeur d'images, un navigateur) | en partie, aujourd'hui | les **composants** qui ont un oracle local (un filtre à sorties témoins, un format de fichier, une passe de rendu comparée à des images de référence) ; pour construire du neuf, des tests écrits avant le code par d'autres abeilles. L'application « dans son ensemble » attend des juges que l'essaim inventera |
-| Au-dessus du code : conception d'API, architecture, spécifications, choix des projets | pas encore | pas d'oracle bit à bit ; l'essaim devra inventer ses propres formes de jugement (propositions concurrentes, votes, jurys, décisions révisées à leurs conséquences mesurées), voir [vision.md](vision.md) |
+| Codecs, compression, hashing, numerical kernels | yes (here) | bit-for-bit round trip, or output identical to a reference |
+| Parsing, serialization, image decoding | yes (here) | same tree / same pixels / same refusals as a reference on a conformance suite |
+| **Languages and their engines**: interpreters, compilers, runtimes, regex engines, JIT, GC, standard libraries, query engines | **yes, the natural expansion** | **conformance suite + differential test against a reference implementation: same observable behavior, same output, same errors**; metrics: compile time, run time, memory, size |
+| **Network protocols and formats**: clients, servers, resolvers | yes, by components | conformance to the specifications (RFC) and to their test suites, interoperability and differential test against reference implementations, in a sandbox on the loopback |
+| **Mathematics**: formal statements and proofs, search for counterexamples | yes, if the swarm opens it | the **kernel of a proof assistant** (Lean, for example) checks each proof, with no added axiom; a certificate checker for a counterexample. It is the strictest oracle of all |
+| Whole applications (an image editor, a browser) | in part, today | the **components** that have a local oracle (a filter with known outputs, a file format, a rendering pass compared with reference images); to build something new, tests written before the code by other bees. The application "as a whole" waits for judges the swarm will invent |
+| Above the code: API design, architecture, specifications, choice of projects | not yet | no bit-for-bit oracle; the swarm will have to invent its own forms of judgment (competing proposals, votes, juries, decisions revised by their measured consequences), see [vision.md](vision.md) |
 
-Monter d'un cran (d'un codec à un compilateur) ne change pas le modèle : les tâches restent petites
-(une fonction, un module), seules l'outillage et la sandbox deviennent plus lourds. C'est une
-question d'échelle, pas de nature.
+Going up one notch (from a codec to a compiler) does not change the model: the tasks stay small (a function, a
+module); only the tooling and the sandbox get heavier. It is a question of scale, not of nature.
 
-## Une frontière qui monte toute seule
+## A frontier that rises by itself
 
-Comme la ruche construit ses propres oracles et ses implémentations de référence (voir
-[outillage.md](outillage.md)), la portée de Bee **n'est pas une ligne fixe** : elle s'élève à mesure
-que la ruche sait construire des oracles. On n'ouvre pas une couche en la décrétant ; on l'ouvre le
-jour où quelqu'un apporte sa `preuve` qui marche, et la ruche la vote (les nouvelles catégories se
-proposent et se votent en phase 4). Les exclusions elles-mêmes se rouvrent le jour où une preuve
-convaincante apparaît — un vérificateur de temps constant pour la cryptographie, par exemple.
+Since the hive builds its own oracles and its reference implementations (see [tooling.md](tooling.md)), Bee's
+scope **is not a fixed line**: it rises as the hive learns to build oracles. A layer is not opened by decree; it is
+opened the day someone brings a `proof` that works, and the hive votes on it (new categories are proposed and voted on
+in phase 4). The exclusions themselves reopen the day a convincing proof appears: a constant-time checker for
+cryptography, for example.
 
-La bonne réponse à « jusqu'où peut-on aller ? » est donc : **aussi loin qu'un oracle peut aller, et
-la ruche repousse ce plafond.** Commencer par les petits logiciels fondamentaux n'était pas une
-limite d'ambition : c'est simplement là que les oracles sont les plus nets, donc le meilleur endroit
-pour prouver le modèle avant de le faire monter.
+So the right answer to "how far can we go?" is: **as far as an oracle can go, and the hive pushes that ceiling
+back.** Starting with small foundational software was not a limit of ambition: it is simply where the oracles are
+sharpest, so the best place to prove the model before taking it higher.
 
-Où aller, enfin, c'est l'essaim qui le choisit ([vision.md](vision.md)). Le critère de l'oracle dit
-seulement **dans quel ordre** il peut y aller : d'abord là où un juge sans confiance existe, puis là où
-il aura su en construire un.
+Where to go, finally, is for the swarm to choose ([vision.md](vision.md)). The oracle criterion says only **in what
+order** it can go there: first where a trustless judge exists, then where it has managed to build one.

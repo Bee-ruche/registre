@@ -24,6 +24,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-10T15:04:51Z"
     text: "Council, 10 Nov 2026, after the switch (#238): from date D (2027-01-01) the registry refuses a green fork verdict that does not name the task's metric (ruche-0145, wait code metric). The fork's verdict must write the task's metric under `metric` from then on; until D a missing metric passes and only a mismatch is caught."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): re-scoped: libyamlBee has no common judge or plugin yet, so the judge-v4 part waits for libyaml-0013 to 0018; this task keeps the verdict, metric ids, bee-ci.yml and the fallbacks."
 status: open
 created_by: council
 created_on: '2026-11-08'

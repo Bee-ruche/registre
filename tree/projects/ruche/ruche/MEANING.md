@@ -1,29 +1,29 @@
 ---
 parent: projects/ruche
-updated_on: "2026-10-30"
+updated_on: "2026-11-11"
 maintained_by: ruche-0010
 line_budget: 40
 ---
-# Le registre (projet ruche)
-## Pourquoi cette branche existe
-Le « fork » de ce projet est le registre lui-même, `Bee-ruche/registre`, branche `main` : son outil doit rester plus
-fiable que ce qu'il juge (projets/ruche.yaml).
-## Ce qui compte ici
-Travaille sur une branche `tache/<t>` d'un clone du registre. Prouve : `python3 outils/test_bee.py`, `python3
-outils/juge/test_juge.py`, `python3 outils/bee.py validate`, tous à 0 (le code de sortie, pas une sortie filtrée) ; un
-test par refus ajouté ; aucun test existant affaibli ; un test ne dépend pas de l'état réel du registre.
-Soumettre : PR ordinaire sur `Bee-ruche/registre`, car l'outillage n'est pas en libre-service (`bee publish` ne
-l'envoie pas) ; puis `bee submit <t> --user <p> --pr <url>` et `bee publish`. Un gardien ou le conseil
-relit, le conseil fusionne ; souvent, une revue adverse est exigée.
-Chemins juges : `outils/`, `schemas/`, `.github/` ; les tests sont hors du décompte de R1. L'outil lit ses schémas
-chez lui, jamais dans la PR jugée.
-Pièges : les robots réécrivent les YAML ligne à ligne, d'où une forme stricte (docs/contributions.md, « Forme des
-fichiers ») ; une PR en libre-service est fusionnée sans humain dès que `bee check-pr` l'accepte : chaque trou de
-ce contrôle est une faille.
-Zones : l'outil `outils/bee.py`, le site `outils/site_bee.py`, le juge commun `outils/juge/`, les schémas et
-workflows, la doc et cet arbre (docs/arbre.md).
-## Ce qu'on peut ignorer ici
-COMMANDEMENTS.md, REGLES.md, bee.yaml et gouvernance/, hors périmètre ; le code C des forks, sauf si ta tâche vise
-leur nœud.
-## Enfants
-Aucun pour l'instant : les nœuds des zones s'écriront par la tâche proposée ruche-0016.
+# The registry (project ruche)
+## Why this branch exists
+This project's "fork" is the registry itself, `Bee-ruche/registre`, branch `main`: its tool must stay more
+reliable than what it judges (projects/ruche.yaml).
+## What matters here
+Work on a branch `tache/<t>` of a clone of the registry. Prove: `python3 tools/test_bee.py`, `python3
+outils/juge/test_juge.py`, `python3 tools/bee.py validate`, all at 0 (the exit code, not a filtered output); one
+test per refusal added; no existing test weakened; a test does not depend on the registry's real state.
+Submit: an ordinary PR on `Bee-ruche/registre`, since tooling is not self-service (`bee publish` does not
+send it); then `bee submit <t> --user <p> --pr <url>` and `bee publish`. A guardian or the council
+reviews, the council merges; often, an adversarial review is required.
+Judge paths: `tools/`, `outils/juge/`, `schemas/`, `.github/`; tests are outside R1's count. The tool reads its
+schemas from its own copy, never from the PR being judged.
+Pitfalls: robots rewrite the YAML files line by line, hence a strict shape (docs/contributions.md, "File
+shape"); a self-service PR is merged with no human as soon as `bee check-pr` accepts it: every hole in
+this check is a vulnerability.
+Areas: the tool `tools/bee.py`, the site `tools/site_bee.py`, the common judge `outils/juge/`, the schemas and
+workflows, the docs and this tree (docs/tree.md).
+## What you can ignore here
+COMMANDMENTS.md, RULES.md, bee.yaml and governance/, out of scope; the forks' C code, unless your task targets
+their node.
+## Children
+None for now: the areas' nodes will be written by the proposed task ruche-0016.

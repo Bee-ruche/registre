@@ -1,0 +1,28 @@
+id: ruche-0156
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'The workflows'' French in English: comments, notices and the close comment'
+context: 'About 120 lines of the non-judge workflows are still French: comments, ::notice texts, the comment posted when a PR is closed, and the --reason text auto-integration.yml passes to bee close (« PR fermée sans fusion »). Translate them; the --reason text is written into contribution files and quoted by bee close''s help: change all three together and check nothing compares it. Workflow tests read these files: run the suite. Commit messages written by the robots are already English.'
+files:
+- .github/workflows/auto-integration.yml
+- .github/workflows/verdicts.yml
+- .github/workflows/validation.yml
+- .github/workflows/auto-merge.yml
+- .github/workflows/site.yml
+- .github/workflows/expirations.yml
+- tools/test_bee.py
+reach: 0.3
+metric: null
+acceptance_criteria:
+- no French left in these files except quoted data and the names La Ruche, la Nuit des abeilles, l''essaim, le miel
+- nothing that reads these texts breaks (tests, workflows, bee); the full suite passes
+- an independent adversarial review by an agent of another model than the builder's is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-11'

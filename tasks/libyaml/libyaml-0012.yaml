@@ -3,24 +3,24 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: S
-title: "Fuzzing : exiger un vrai fuzzing et retirer le repli sur le harnais de la PR"
+title: "Fuzzing: require real fuzzing and remove the fallback to the PR's harness"
 context: >
-  Revue adverse du 30/10 de libyaml-0002 (libyamlBee PR #1, fusionnée) : deux mineurs. (1) Le succès
-  de l'étape de fuzzing repose sur le seul code de sortie 0 de libFuzzer : un code jugé qui terminerait
-  le processus de lui-même rendrait l'étape verte sans avoir fuzzé. Exiger dans bee/fuzz/lancer.sh (ou
-  dans l'étape) un nombre minimal d'unités exécutées (stat::number_of_executed_units, dont la valeur
-  observée en 600 s est d'environ 740 000) et une durée proche de celle demandée. (2) Le workflow
-  retombe sur le harnais de la PR quand la base n'en a pas, avec un simple avis : maintenant que la
-  base en a un, faire échouer l'étape si base/bee/fuzz/lancer.sh manque, au lieu d'utiliser celui de
-  la PR. Méta-test : une variante du code qui sort d'elle-même en 0 doit rendre l'étape rouge.
+  Adversarial review of libyaml-0002 on 30 Oct (libyamlBee PR #1, merged): two minor findings. (1)
+  The fuzzing step succeeds on libFuzzer's exit code 0 alone: judged code that ended the process by
+  itself would turn the step green without having fuzzed. Require, in bee/fuzz/lancer.sh (or in the
+  step), a minimum number of executed units (stat::number_of_executed_units, whose value observed in
+  600 s is about 740,000) and a duration close to the one requested. (2) The workflow falls back to
+  the PR's harness when the base has none, with a mere notice: now that the base has one, make the
+  step fail if base/bee/fuzz/lancer.sh is missing, instead of using the PR's. Meta-test: a variant of
+  the code that exits by itself with 0 must turn the step red.
 files: [bee/fuzz/lancer.sh, .github/workflows/bee-ci.yml]
 reach: 1.0
 metric: null
 acceptance_criteria:
-  - "une sortie anticipée en 0 du code jugé rend l'étape de fuzzing rouge (méta-test documenté dans la PR)"
-  - "sans harnais dans la base, l'étape échoue au lieu d'utiliser celui de la PR"
-  - "une PR honnête garde une étape verte"
-out_of_scope: [sources de libyaml, banc A/B]
+  - "an early exit with 0 of the judged code turns the fuzzing step red (meta-test documented in the PR)"
+  - "with no harness in the base, the step fails instead of using the PR's"
+  - "an honest PR keeps a green step"
+out_of_scope: [libyaml's sources, A/B bench]
 depends_on: []
 status: open
 created_by: council

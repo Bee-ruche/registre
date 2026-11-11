@@ -64,6 +64,9 @@ class Ruche:
         spec = importlib.util.spec_from_file_location("bee_de_la_base", root / "tools" / "bee.py")
         self.bee = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.bee)
+        # Le journal de session de ruche-0138 (.git/bee-session : un git par fichier écrit) ne sert qu'à bee publish ; les PR
+        # de cette ruche sont faites ici : sans lui, la moitié du temps de génération, les mêmes octets.
+        self.bee.note_written = lambda path: None
         self.stream = subprocess.Popen(["git", "-C", str(root), "fast-import", "--quiet", "--date-format=raw", "--done"],
                                      stdin=subprocess.PIPE, env=ENV)
         self.n, self.prs, self.authors, self.suite = 0, [], [], "from refs/heads/main^0\n"
@@ -94,7 +97,7 @@ class Ruche:
         numbers_of = [int(m["n"]) for f in (self.root / "tasks" / project).iterdir() if (m := reason.fullmatch(f.name))]
         return f"{project}-{self.bee.next_number(numbers_of):04d}"
 
-    def add_list(self, relative_one, entry_cards):  # comme monter.sh : des fiches au bout de la liste `membres`
+    def add_list(self, relative_one, entry_cards):  # comme setup.sh : des fiches au bout de la liste `members`
         path = self.root / relative_one
         text = path.read_text(encoding="utf-8")
         text = text.replace("members: []", "members:\n" + entry_cards) if "members: []" in text else text.rstrip("\n") + "\n" + entry_cards
@@ -127,35 +130,35 @@ class Ruche:
             paths.append(self.task_path(m["task"]))
         self.pr(t, council, "Ruche de charge : garants, gardiens et une tâche par membre", paths)
 
-    def register(self, t, m):  # bee inscrire
+    def register(self, t, m):  # bee register
         path = f"members/{m['login']}.yaml"
         self.bee.write_yaml(self.root / path, {"login": m["login"], "registered_on": iso(t)[:10], "account_created_on": m["created"],
                                                     "github_id": m["id"]})
         self.pr(t, m["login"], f"Inscription {m['login']}", [path],
                 ["register", "--login", m["login"], "--account-created-on", m["created"], "--github-id", str(m["id"])])
 
-    def take(self, t, m):  # bee prendre
+    def take(self, t, m):  # bee take
         m["since"], path = iso(t), self.task_path(m["task"])
         self.bee.modify_task(self.root / path, status="reserved", reservation={"user": m["login"], "since": iso(t)})
         self.pr(t, m["login"], f"Réservation {m['task']}", [path], ["take", m["task"], "--user", m["login"]])
 
-    def note(self, t, m):  # bee noter
+    def note(self, t, m):  # bee note
         path = self.task_path(m["task"])
         self.bee.modify_task(self.root / path, note={"by": m["login"], "at": iso(t), "text": NOTE}, addition=path)
         self.pr(t, m["login"], f"Note {m['task']}", [path], ["note", m["task"], "--user", m["login"], "--text", NOTE])
 
-    def submit(self, t, m):  # bee soumettre, par le titulaire
+    def submit(self, t, m):  # bee submit, par le titulaire
         tid, cid = m["task"], m["task"] + "-c1"
         paths = [f"contributions/{tid.rsplit('-', 1)[0]}/{cid}.yaml", self.task_path(tid)]
         self.bee.write_yaml(self.root / paths[0], {"id": cid, "task": tid, "author": m["login"], "pr": m["pr"], "summary": SUMMARY,
                                                         "status": "in_review", "submitted_at": iso(t), "engaged_since": m["since"],
                                                         "reviews": []})
         self.bee.modify_task(self.root / paths[1], status="in_review", reservation=None, contribution=cid)
-        self.authors.append(f"{m['pr']}\t{m['login']}\t{m['id']}\n")  # la PR du fork est à lui (fusion-auto le relève)
+        self.authors.append(f"{m['pr']}\t{m['login']}\t{m['id']}\n")  # la PR du fork est à lui (--auto-merge le relève)
         self.pr(t, m["login"], f"Soumission {cid}", paths,
                 ["submit", tid, "--user", m["login"], "--pr", m["pr"], "--summary", SUMMARY])
 
-    def review(self, t, reviewer, m, opinion):  # bee relire, avant tout verdict de la CI du fork (donc sans --commit)
+    def review(self, t, reviewer, m, opinion):  # bee review, avant tout verdict de la CI du fork (donc sans --commit)
         cid = m["task"] + "-c1"
         path = f"contributions/{m['task'].rsplit('-', 1)[0]}/{cid}.yaml"
         rec = dict(self.bee.read_yaml(self.root / path))
@@ -166,13 +169,13 @@ class Ruche:
         self.pr(t, reviewer, f"Relecture {cid}", [path],
                 ["review", cid, "--user", reviewer, "--opinion", opinion, "--reason", REASONS[opinion]])
 
-    def vote(self, t, voter, m, value):  # bee voter, sans motif
+    def vote(self, t, voter, m, value):  # bee vote, sans motif
         cid = m["task"] + "-c1"
         path = f"votes/{cid}/{voter}.yaml"
         self.bee.write_yaml(self.root / path, {"voter": voter, "subject": cid, "value": value, "at": iso(t)})
         self.pr(t, voter, f"Vote {cid}", [path], ["vote", cid, "--user", voter, "--value", str(value)])
 
-    def propose(self, t, u, project):  # bee proposer-tache <projet> : type et taille par défaut, le modèle tel que bee l'écrit
+    def propose(self, t, u, project):  # bee propose-task <project> : type et taille par défaut, le modèle tel que bee l'écrit
         entry_card, tid = self.bee.read_yaml(self.root / "projects" / f"{project}.yaml"), self.next_value(project)
         metric = entry_card["metrics"][0]["id"]
         values_of = {"id": tid, "project": project, "category": entry_card["category"], "type": "optimization", "size": "S",
@@ -186,7 +189,7 @@ class Ruche:
         (self.root / path).write_text(("\n".join(lines) + "\n").replace("debit_compression_n6", metric), encoding="utf-8")
         self.pr(t, u, f"Proposition de tâche {tid}", [path], ["propose-task", project, "--user", u])
 
-    def argue(self, t, u, debate, position):  # bee debattre argumenter, dans un débat ouvert qui n'est pas une invitation
+    def argue(self, t, u, debate, position):  # bee debate argue, dans un débat ouvert qui n'est pas une invitation
         path = f"debates/{debate}.yaml"
         d = self.bee.read_yaml(self.root / path)
         existing = d.get("arguments") if isinstance(d.get("arguments"), list) else []
@@ -277,11 +280,20 @@ def generate(folder, number, seed, registry, base):
     return valid_one.returncode
 
 
-def replay(folder, numbers_of=()):
+def replay(folder, numbers_of=(), steps=None):
     """Rejoue les PR (toutes, ou les numéros donnés) : la commande bee de chacune, relancée sur l'état d'avant à son heure,
-    doit écrire exactement son contenu ; puis bee check-pr --auto-merge, à l'heure de sa fusion, doit l'accepter (le
-    geste du conseil : valide, réservé au conseil). Renvoie les écarts : [(numéro, raison)]."""
+    doit s'exécuter (code 0 : ni refusée, ni un nom d'avant la bascule, que bee refuse sans rien lancer) et écrire
+    exactement son contenu ; puis bee check-pr --auto-merge, à l'heure de sa fusion, doit l'accepter (le geste du conseil :
+    valide, réservé au conseil). Renvoie les écarts : [(numéro, raison)]. `steps`, une liste, reçoit chaque appel de bee,
+    dans l'ordre : (numéro, arguments, code de sortie, sortie), ce qui a vraiment tourné (ruche-0154)."""
     root, replay, gaps = folder / "trust", folder / "replay", []
+
+    def run(number_of, instant, *arguments):
+        r = run_bee(replay, instant, *arguments)
+        if steps is not None:
+            steps.append((number_of, arguments, r.returncode, r.stdout + r.stderr))
+        return r
+
     base = (folder / "state" / "base").read_text(encoding="utf-8").strip()
     log_text = git(root, "log", "--reverse", "--format=%H %P %an %at %ct%n%B%x00", f"{base}..main").decode()
     git(root, "worktree", "add", "-q", "--detach", str(replay), base)
@@ -295,18 +307,20 @@ def replay(folder, numbers_of=()):
             git(replay, "reset", "-q", "--hard", parent)
             git(replay, "clean", "-qfd")
             if body.startswith("bee "):
-                r = run_bee(replay, iso(int(open)), *shlex.split(body)[1:])
+                r = run(number_of, iso(int(open)), *shlex.split(body)[1:])
                 git(replay, "add", "-A")
-                if r.returncode or subprocess.run(["git", "-C", str(replay), "diff", "--cached", "--quiet", sha], env=ENV).returncode:
-                    gaps.append((number_of, f"{body} : n'écrit pas ce que porte la PR ({r.stdout + r.stderr})"))
+                if r.returncode:
+                    gaps.append((number_of, f"{body} : bee la refuse (code {r.returncode}) : {r.stdout + r.stderr}"))
+                elif subprocess.run(["git", "-C", str(replay), "diff", "--cached", "--quiet", sha], env=ENV).returncode:
+                    gaps.append((number_of, f"{body} : n'écrit pas ce que porte la PR"))
             git(replay, "reset", "-q", "--hard", sha)
             entry_card = replay / "members" / f"{author}.yaml"
             entry_card = (yaml.safe_load(entry_card.read_text(encoding="utf-8")) if entry_card.exists() else next(  # sinon : le conseil
                 m for m in yaml.safe_load((replay / "governance" / "council.yaml").read_text(encoding="utf-8"))["members"]
                 if m["login"] == author))
             options = ["--github-id", str(entry_card["github_id"])] + (["--account-created-on", entry_card["account_created_on"]] if "account_created_on" in entry_card else [])
-            r = run_bee(replay, iso(int(merge)), "check-pr", "--base", parent, "--head", sha, "--author", author, *options,
-                           "--pr-authors", str(folder / "state" / "pr_authors.tsv"), "--auto-merge")
+            r = run(number_of, iso(int(merge)), "check-pr", "--base", parent, "--head", sha, "--author", author, *options,
+                    "--pr-authors", str(folder / "state" / "pr_authors.tsv"), "--auto-merge")
             if r.returncode not in ((0,) if body.startswith("bee ") else (0, 3)):
                 gaps.append((number_of, f"bee check-pr la refuse (code {r.returncode}) : {r.stdout + r.stderr}"))
     finally:

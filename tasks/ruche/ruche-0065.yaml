@@ -49,3 +49,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-10T23:19:46Z"
     text: "Council, 10 Nov 2026: bee import-questions now writes 'Debate: [D-nnnn](../debates/D-nnnn.yaml)' (ruche-0146, #244); the older lines of docs/open-questions.md still say 'Débat :' and link ../debats/, a folder renamed by the switch: translate the label and fix the links (bee reads both labels until L8)."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): docs/architecture.md from line 200 is already English: only lines 1 to 199 remain. open-questions.md, its test setUp regex and the import test go in one PR."

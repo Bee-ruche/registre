@@ -3,24 +3,24 @@ project: libyaml
 category: parsing-serialization
 type: optimization
 size: S
-title: "yaml_parser_scan_plain_scalar : réduire le coût par caractère de la boucle"
+title: "yaml_parser_scan_plain_scalar: reduce the loop's per-character cost"
 context: >
-  Profil callgrind de la base : yaml_parser_scan_plain_scalar (src/scanner.c) coûte 24,4 % des
-  instructions de l'analyse — c'est la fonction la plus chaude. Elle lit un scalaire « plain »
-  caractère par caractère en appelant à chaque tour des macros de classification (IS_BLANK, IS_BREAK,
-  CHECK, etc.) et en vérifiant la fin de tampon. Pistes : hisser les lectures d'état répétées hors de
-  la boucle, regrouper les tests de fin de ligne/blanc, traiter les caractères non spéciaux par
-  petites plages. Aucune exploration n'a encore été faite : seule la part du coût est démontrée. Le
-  résultat doit être strictement identique (flux d'événements et refus). Garder un chemin générique.
+  Callgrind profile of the base: yaml_parser_scan_plain_scalar (src/scanner.c) costs 24.4% of the
+  parsing instructions; it is the hottest function. It reads a plain scalar character by character,
+  calling classification macros (IS_BLANK, IS_BREAK, CHECK, etc.) on every iteration and checking
+  for the end of the buffer. Leads: hoist the repeated state reads out of the loop, group the
+  end-of-line/blank tests, process non-special characters in small runs. No exploration has been
+  done yet: only the share of the cost is demonstrated. The result must be strictly identical (event
+  stream and refusals). Keep a generic path.
 files: [src/scanner.c]
 reach: 1.0
 metric: debit_analyse
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 ; flux d'événements inchangé (empreintes identiques)"
-  - "gain >= 2 % sur debit_analyse, au-delà du bruit (R4), ou échec documenté avec les mesures"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, comportement sur entrée invalide]
-# Pas d'optimisation du parseur avant le fuzzing (libyaml-0002) et le juge isolé branché à la CI (libyaml-0018), que demande R3.
+  - "green CI (R2), x86-64 and ARM64; event stream unchanged (identical fingerprints)"
+  - "gain >= 2% on debit_analyse, beyond the noise (R4), or a failure documented with the measurements"
+  - "no other metric degraded by more than 1% (R5)"
+out_of_scope: [output format, public API, new dependency, behavior on invalid input]
+# No optimization of the parser before the fuzzing (libyaml-0002) and the isolated judge wired into CI (libyaml-0018), which R3 requires.
 depends_on: [libyaml-0018, libyaml-0002]
 status: open
 created_by: council

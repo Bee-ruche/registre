@@ -511,13 +511,13 @@ def tree_page(bee, reg, repo):
                  f" · {x['lines']} lines out of {e(str(header.get('line_budget', '?')))} · "
                  f"<a href='{e(repo)}/blob/main/{e(bee.node_file(n))}'>source</a></p>")
         for name in bee.NODE_SECTIONS:
-            if name == "Enfants":
+            if name == "Children":
                 continue
             c.append(f"<h3>{e(name)}</h3>{node_markdown(x['sections'].get(name, ''))}")
         children = [en for en in x["children"] if en in nodes]
-        c.append("<h3>Enfants</h3>" + (("<ul class='liste'>" + "".join(
+        c.append("<h3>Children</h3>" + (("<ul class='liste'>" + "".join(
             f"<li>{node_link(en)}: {e(nodes[en]['title'] or en)}</li>" for en in children) + "</ul>") if children
-            else node_markdown(x["sections"].get("Enfants", ""))) + "</section>")
+            else node_markdown(x["sections"].get("Children", ""))) + "</section>")
     return "".join(c)
 
 
