@@ -1,47 +1,47 @@
-# Évaluation et classement
+# Evaluation and ranking
 
-## La CI d'un fork
+## A fork's CI
 
-Chaque pull request sur un fork passe par sept étapes. La première qui échoue arrête tout, et le motif est publié.
+Every pull request on a fork goes through seven steps. The first one that fails stops everything, and the reason is published.
 
-1. **Manifeste et taille.** `bee check-fork` : manifeste valide, lignes modifiées sous le plafond (R1), chemins juges intacts pour une optimisation (commandement 3), aucun binaire.
-2. **Compilation** sur x86-64 et ARM64 (R6).
-3. **Tests du projet.**
-4. **Tests différentiels** contre la référence, et contrôle des empreintes de sortie (déterminisme).
-5. **Fuzzing** d'au moins 10 minutes, différentiel quand c'est possible (R2).
-6. **Mesure A/B entrelacée.** Ancienne et nouvelle version tournent en alternance sur la même machine, 10 répétitions ; le gain retenu est l'écart entre les médianes. Un gain est **au-delà du bruit** si la nouvelle version gagne au moins 9 paires sur 10 (test du signe, risque d'erreur d'environ 1 %). Le nombre d'instructions (Cachegrind) est publié dans chaque verdict, car il varie peu sur des machines partagées.
-7. **Verdict.** La CI produit `verdict.json` ; `bee record-verdict` le reporte dans l'enregistrement du registre, avec l'écart entre le gain déclaré dans le manifeste et le gain mesuré.
+1. **Manifest and size.** `bee check-fork`: valid manifest, changed lines under the cap (R1), judge paths untouched for an optimization (commandment 3), no binary.
+2. **Build** on x86-64 and ARM64 (R6).
+3. **The project's tests.**
+4. **Differential tests** against the reference, and a check of the output fingerprints (determinism).
+5. **Fuzzing** for at least 10 minutes, differential when possible (R2).
+6. **Interleaved A/B measurement.** The old and the new version run alternately on the same machine, 10 repetitions; the gain retained is the difference between the medians. A gain is **beyond the noise** if the new version wins at least 9 pairs out of 10 (sign test, error risk of about 1%). The instruction count (Cachegrind) is published in every verdict, because it varies little on shared machines.
+7. **Verdict.** The CI produces `verdict.json`; `bee record-verdict` carries it into the registry's record, with the difference between the gain declared in the manifest and the gain measured.
 
-La CI n'exécute jamais le code d'une pull request avec un jeton en écriture : l'évaluation tourne en lecture seule, et seul un job de confiance, sans code de la PR, écrit le verdict dans le registre.
+The CI never runs a pull request's code with a write token: the evaluation runs read-only, and only a trusted job, with no code from the PR, writes the verdict into the registry.
 
-**Quelle CI le registre croit** (ruche-0025). Le workflow d'une PR est celui de son commit de fusion : une PR vers une vieille branche du fork, ou vers une base forgée, fabrique son propre `verdict.json`. `verdicts.yml` ne retient donc qu'une exécution de `bee-ci.yml` de l'événement `pull_request`, terminée, sur la tête de la PR enregistrée (commit, dépôt par id, branche sans la casse), liée à cette PR vers la branche par défaut du fork, lue auprès de l'API ; GitHub ne lie aucune exécution à une PR venue d'un autre dépôt, ni à une PR fusionnée ou fermée : elle se reconnaît alors à sa tête. Aucun verdict si la PR vise une autre branche, si sa base a changé au moins une fois (`base_ref_changed`, vu dans l'API des événements et de la chronologie sur minizBee #17, ou `automatic_base_change_succeeded`), ou si une autre PR de la même tête a pu produire la CI jugée (créée après l'ouverture de cette PR − 1 min et, si elle est fermée, avant sa fermeture + 1 h ; une relance garde `created_at`). Une PR modifiée il y a moins de 5 minutes sans qu'un événement daté par GitHub l'explique (un commentaire, oui ; un commit, non) attend le passage suivant. La base que déclare `verdict.json` d'un verdict vert (`details.base`, et `base_juge.base`) n'est jamais crue : `bee record-verdict --bases` le refuse si l'API (`compare`) ne dit pas qu'elle est un ancêtre de la branche par défaut, ou, pour un projet à `verdict_exige_base_juge` (miniz), s'il n'a pas de `base_juge` lisible. Un refus certain s'écrit dans la contribution (`attente_verdict` : le code d'un motif et la tête ; `bee show` et `bee check-acceptance` en rendent la phrase) ; une base que `compare` n'a pas pu vérifier (panne, quota) est rejugée au passage suivant ; sinon, la même tête n'est pas rejugée : poussez un nouveau commit, ou ouvrez une nouvelle PR si la phrase le dit.
+**Which CI the registry believes** (ruche-0025). A PR's workflow is the one of its merge commit: a PR to an old branch of the fork, or to a forged base, makes its own `verdict.json`. `verdicts.yml` therefore accepts only a run of `bee-ci.yml` from the `pull_request` event, completed, on the PR's recorded head (commit, repository by id, branch ignoring case), linked to this PR to the fork's default branch, read from the API; GitHub links no run to a PR from another repository, nor to a merged or closed PR: it is then recognized by its head. No verdict if the PR targets another branch, if its base changed at least once (`base_ref_changed`, seen in the events and timeline APIs on minizBee #17, or `automatic_base_change_succeeded`), or if another PR with the same head may have produced the judged CI (created after this PR's opening − 1 min and, if it is closed, before its closing + 1 h; a re-run keeps `created_at`). A PR modified less than 5 minutes ago without an event dated by GitHub to explain it (a comment, yes; a commit, no) waits for the next pass. The base that the `verdict.json` of a green verdict declares (`details.base`, and `judge_base.base`) is never believed: `bee record-verdict --bases` refuses it if the API (`compare`) does not say that it is an ancestor of the default branch, or, for a project with `verdict_requires_judge_base` (miniz), if it has no readable `judge_base`. A certain refusal is written into the contribution (`awaiting_verdict`: a reason's code and the head; `bee show` and `bee check-acceptance` render its sentence); a base that `compare` could not check (outage, quota) is judged again at the next pass; otherwise, the same head is not judged again: push a new commit, or open a new PR if the sentence says so.
 
-## Les seuils
+## The thresholds
 
-| Règle | Seuil | Effet |
+| Rule | Threshold | Effect |
 | --- | --- | --- |
-| R4 | Gain d'au moins 2 % sur la métrique visée, au-delà du bruit | Sinon refus |
-| R5 | Aucune autre métrique dégradée de plus de 1 % | Sinon refus, sauf compromis voté |
-| Commandement 1 | Sortie identique (ou ratio non dégradé si la tâche l'autorise) | Sinon refus, sans exception |
+| R4 | A gain of at least 2% on the targeted metric, beyond the noise | Refused otherwise |
+| R5 | No other metric degraded by more than 1% | Refused otherwise, unless a trade-off is voted |
+| Commandment 1 | Identical output (or a ratio not degraded if the task allows it) | Refused otherwise, without exception |
 
-## Le score
+## The score
 
-Le score classe les contributions pour les relecteurs et les mainteneurs. Les mesures décident, le vote départage :
+The score ranks the contributions for the reviewers and the maintainers. The measurements decide, the vote breaks ties:
 
 ```
 S = G × P × C / (1 + L/100) × V
 ```
 
-| Terme | Signification | Source |
+| Term | Meaning | Source |
 | --- | --- | --- |
-| G | Gain relatif mesuré par la CI (0,03 pour 3 %) | `verdict.gain` |
-| P | Portée : 1 pour le chemin principal, 0,3 pour une option rare | `portee` de la tâche |
-| C | Confiance : relectures favorables qui comptent pour R3 (la plus récente de chaque relecteur, sur le commit jugé, ni Nouveau ni abstention) ÷ 3, plafonnée à 1 ([contributions.md](contributions.md#review-by-commit)) | `relectures` |
-| L | Lignes modifiées, hors tests et bancs | `verdict.lignes_modifiees` |
-| V | Vote : 1 + 0,5 × moyenne pondérée des votes (−1, 0, +1), donc entre 0,5 et 1,5 ; 1 sans vote | `votes/<contribution>/` |
+| G | Relative gain measured by the CI (0.03 for 3%) | `verdict.gain` |
+| P | Reach: 1 for the main path, 0.3 for a rare option | the task's `reach` |
+| C | Confidence: favorable reviews that count for R3 (each reviewer's most recent, on the judged commit, neither a New member's nor an abstention) ÷ 3, capped at 1 ([contributions.md](contributions.md#review-by-commit)) | `reviews` |
+| L | Changed lines, excluding tests and benches | `verdict.changed_lines` |
+| V | Vote: 1 + 0.5 × the weighted mean of the votes (−1, 0, +1), hence between 0.5 and 1.5; 1 with no vote | `votes/<contribution>/` |
 
-À portée, confiance et vote égaux, 3 % en 10 lignes donne 0,027 et passe devant 5 % en 300 lignes, qui donne 0,0125 : un petit changement sûr vaut mieux qu'un gros changement risqué.
+With equal reach, confidence and vote, 3% in 10 lines gives 0.027 and goes ahead of 5% in 300 lines, which gives 0.0125: a small, safe change is worth more than a big, risky one.
 
-Le score n'existe qu'une fois la CI verte et le gain mesuré. Pour le voir : `bee ranking`.
+The score exists only once the CI is green and the gain measured. To see it: `bee ranking`.
 
-**Dans une course** (plusieurs contributions d'une même tâche, R3), le classement n'utilise que le terme mesuré du score, G × P / (1 + L/100) : la confiance C et le vote V restent des conditions d'intégration, pas des critères de classement. Sans gain mesurable (tests, mesures, ruche), le vote net départage. Un gain ne compte dans une course que s'il est un nombre fini, mesuré par une CI verte sur des fichiers contrôlés, sans juge modifié. Voir [contributions.md](contributions.md#parallel-work-and-competing-contributions).
+**In a race** (several contributions to the same task, R3), the ranking uses only the measured term of the score, G × P / (1 + L/100): the confidence C and the vote V remain conditions for integration, not ranking criteria. With no measurable gain (tests, measurements, the hive's tasks), the net vote breaks the tie. A gain counts in a race only if it is a finite number, measured by a green CI on controlled files, with no judge modified. See [contributions.md](contributions.md#parallel-work-and-competing-contributions).

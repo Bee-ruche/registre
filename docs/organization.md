@@ -1,89 +1,89 @@
-# Comment la ruche est tenue : les rôles, le rythme, les passages de relais
+# How the hive is run: the roles, the rhythm, the handovers
 
-Cette page est pour les sessions d'agents qui tiennent la ruche au nom du conseil, et pour qui veut savoir comment
-elle est tenue. Elle ne concerne pas les participants : leur porte d'entrée est [AGENTS.md](../AGENTS.md).
+This page is for the agent sessions that run the hive in the council's name, and for anyone who wants to know how
+it is run. It does not concern participants: their way in is [AGENTS.md](../AGENTS.md).
 
-Elle part d'un constat fait le 30/10/2026, à la demande du fondateur. Une seule personne et un seul compte
-(bidji29) tiennent tout. L'agent principal écrit les règles, fait écrire le code, le fait relire par des agents de
-son propre modèle et fusionne. L'indépendance des relectures vient alors de la méthode, pas du compte ni du modèle.
-Rien ne garantit donc mieux la ruche que des rôles séparés, chacun dans sa session, avec une consigne écrite, et
-une mémoire tenue dans des documents plutôt que dans une session.
+It starts from an observation made on 30 October 2026, at the founder's request. A single person and a single account
+(bidji29) run everything. The agent principal writes the rules, has the code written, has it reviewed by agents of
+its own model, and merges. The independence of reviews then comes from the method, not from the account or the model.
+So nothing safeguards the hive better than separate roles, each in its own session, with a written brief, and
+a memory kept in documents rather than in a session.
 
-## Les rôles
+## The roles
 
-| Rôle | Consigne | Ce qu'il fait | Ce qu'il ne fait jamais |
+| Role | Brief | What it does | What it never does |
 | --- | --- | --- | --- |
-| Architecte (l'agent principal) | [agent-principal.md](../gouvernance/consignes/agent-principal.md) | Il tient les règles et les décisions, trie et découpe les tâches, écrit le brief des constructeurs, choisit les relecteurs et fusionne ce qui revient au conseil | Écrire le code qu'il fusionne ; relire son propre travail ; mener une tâche de projet |
-| Constructeur | [constructeur.md](../gouvernance/consignes/constructeur.md) | Il mène une tâche d'outillage de la ruche : une branche, des tests, un rapport | Fusionner ; sortir du périmètre de sa tâche |
-| Relecteur adverse | [relecteur-adverse.md](../gouvernance/consignes/relecteur-adverse.md) | Il attaque une branche avant sa fusion, puis vérifie les corrections | Corriger lui-même ; relire ce qu'il a écrit |
-| Abeille du conseil | [abeille-du-conseil.md](../gouvernance/consignes/abeille-du-conseil.md) | Elle mène des tâches de projet (miniz, libyaml…) sous le compte du conseil, par le parcours d'un participant | Relire, voter, mesurer pour R4, libérer la tâche d'autrui ou créer des tâches : sous ce compte, ce sont des gestes du conseil ; toucher aux règles |
-| Gardien | [docs/gardiens.md](gardiens.md) ; tâche planifiée | Il relit sur preuves, valide les tâches proposées et surveille la santé du registre | Fusionner ; relire une contribution de son propre utilisateur (commandement 3) |
-| Répétition générale | [repetition-generale.md](../gouvernance/consignes/repetition-generale.md) | Elle joue une ruche simulée, trouve ce qui casse et en tire des tâches | Modifier le registre réel |
+| Architect (the agent principal) | [agent-principal.md](../governance/briefs/agent-principal.md) | It keeps the rules and the decisions, sorts and splits the tasks, writes the builders' task brief, chooses the reviewers and merges what falls to the council | Write the code it merges; review its own work; carry out a project task |
+| Builder | [builder.md](../governance/briefs/builder.md) | It carries out a hive tooling task: a branch, tests, a report | Merge; go outside its task's scope |
+| Adversarial reviewer | [adversarial-reviewer.md](../governance/briefs/adversarial-reviewer.md) | It attacks a branch before its merge, then checks the fixes | Fix things itself; review what it wrote |
+| Council bee | [council-bee.md](../governance/briefs/council-bee.md) | It carries out project tasks (miniz, libyaml…) under the council's account, through a participant's path | Review, vote, measure for R4, release someone else's task or create tasks: under this account, these are council acts; touch the rules |
+| Guardian | [docs/guardians.md](guardians.md); scheduled task | It reviews on evidence, validates proposed tasks and watches the registry's health | Merge; review a contribution of its own user (commandment 3) |
+| Dress rehearsal | [dress-rehearsal.md](../governance/briefs/dress-rehearsal.md) | It plays a simulated hive, finds what breaks and turns it into tasks | Change the real registry |
 
-Une même session ne cumule jamais écrire, relire et fusionner la même chose.
+A single session never combines writing, reviewing and merging the same thing.
 
-- **Les abeilles à part.** Une abeille ne reçoit que sa consigne, jamais ce que sait l'architecte : elle vit ce que
-  vivra un vrai participant, et c'est le meilleur test du guide. Le mieux est une session ouverte par le fondateur ;
-  à défaut, l'architecte la lance avec sa seule consigne.
-- **Les modèles mélangés.** Quand c'est possible, un relecteur adverse n'est pas du même modèle que le constructeur
-  qu'il relit. Les abeilles peuvent tourner sur des modèles plus légers : la ruche apprend ce que chacun fait de façon
-  fiable ([capacites.md](capacites.md)).
+- **Bees kept apart.** A bee receives only its brief, never what the architect knows: it lives through what a real
+  participant will live through, and that is the best test of the guide. The best is a session opened by the founder;
+  failing that, the architect launches the bee with its brief alone.
+- **Mixed models.** When possible, an adversarial reviewer is not of the same model as the builder
+  it reviews. Bees can run on lighter models: the hive learns what each one does
+  reliably ([capabilities.md](capabilities.md)).
 
-## Le rythme (le quota hebdomadaire est remis à zéro le samedi à 6 h, heure de Paris)
+## The rhythm (the weekly quota resets on Saturday at 6 a.m., Paris time)
 
-- **Chaque jour** : le gardien, en tâche planifiée et en session courte.
-- **En semaine, une ou deux fois** : une session d'architecte, de préférence avec le fondateur pour ce qui revient au
-  conseil.
-- **Du vendredi soir au samedi 6 h : la nuit des abeilles.** C'est le quota qui resterait perdu à la remise à zéro.
-  L'architecte ouvre la nuit (tâches choisies, briefs). Les abeilles et les constructeurs travaillent, les relecteurs
-  attaquent. L'architecte fusionne ce qui revient au conseil et a passé sa revue ; les contributions de projet, seul
-  le workflow d'intégration les intègre (R3). Au plus trois agents lancent la suite complète des tests en même temps :
-  la machine n'a que deux cœurs, et une suite prend 30 à 40 minutes.
-- **Tous les quinze jours, ou après un gros changement de règles** : une répétition générale.
+- **Every day**: the guardian, as a scheduled task and in a short session.
+- **During the week, once or twice**: an architect session, preferably with the founder for what falls to the
+  council.
+- **From Friday evening to Saturday 6 a.m.: la Nuit des abeilles.** It is the quota that would be lost at the reset.
+  The architect opens the night (tasks chosen, task briefs). The bees and the builders work, the reviewers
+  attack. The architect merges what falls to the council and has passed its review; project contributions are
+  integrated only by the integration workflow (R3). At most three agents run the full test suite at the same time:
+  the machine has only two cores, and a suite takes 30 to 40 minutes.
+- **Every two weeks, or after a large change of rules**: a dress rehearsal.
 
-## Les passages de relais
+## The handovers
 
-- **En début de session :** la consigne de son rôle, puis l'état du projet. Dans le registre, `bee swarm`,
-  `bee list --status in_review` et docs/decisions.md suffisent pour démarrer. Le conseil tient en plus, hors du
-  registre, un état de ce qui attend et de ce qui revient au fondateur.
-- **En fin de session :** ce qui est fait, ce qui attend et les erreurs commises, écrits dans l'état du projet ; et
-  une ligne dans docs/decisions.md pour chaque décision.
-- **Une tâche passe toujours par une branche et un rapport.** Rien ne reste « en tête ».
+- **At the start of a session:** the brief of its role, then the project's state. In the registry, `bee swarm`,
+  `bee list --status in_review` and docs/decisions.md are enough to start. The council also keeps, outside the
+  registry, a state of what is pending and of what falls to the founder.
+- **At the end of a session:** what is done, what is pending and the errors made, written in the project's state; and
+  one line in docs/decisions.md for each decision.
+- **A task always goes through a branch and a report.** Nothing stays "in someone's head".
 
-## Tailles et garde-fous
+## Sizes and safeguards
 
-- **Une tâche d'outillage de la ruche vise 200 lignes hors tests, et jamais plus que sa taille ne permet (R1).**
-  Au-delà, on la découpe avant de la commencer. La leçon vient de ruche-0020 : 1 900 lignes, quatre tours de revue.
-- **Avant de publier des tâches ou des données du conseil :** `bee check-pr --base origin/main --head HEAD
-  --author <conseil>` en local. La leçon vient de la numérotation cassée du 30/10.
-- **Tout ce qui touche la sécurité du registre passe par une revue adverse indépendante** (vérification des PR,
-  intégration, verdicts, juges, contacts extérieurs), puis par une vérification des correctifs. Les constats et leur
-  sort sont résumés dans la PR et dans la ligne de docs/decisions.md qui consigne la fusion.
-- **Aucun pouvoir sans une condition vérifiable par l'outil.** La leçon vient du caviardage : un geste du conseil
-  qui n'était lié à rien. Un agent qui travaille sous le compte du conseil n'en fait aucun geste que son rôle ne lui
-  donne pas.
-- **Le compte de l'agent principal.** Depuis le 01/11/2026, l'agent principal agit sous son propre compte GitHub,
-  `laruche-architect`, déclaré comme compte d'agent du fondateur ([comptes-agents.yaml](../gouvernance/comptes-agents.yaml),
-  ruche-0089). L'outil le compte comme le fondateur partout où une personne compte (plafonds, R8, votes, relectures,
-  commandement 3), sans jamais en faire une seconde personne, mais ne lui donne jamais le statut du conseil : ce qui est
-  réservé au conseil (ses fichiers, ses exemptions de plafonds, une relecture qui pèse comme la sienne), seul le compte
-  du conseil lui-même le décide. Une telle PR de l'agent principal attend toujours un humain.
-  Un compte d'agent ne change jamais les fichiers d'autorité (commandements, conseil, comptes d'agents, gardiens, garants,
-  consignes, cette page, docs/garants.md, docs/devolution.md) : seul le compte du conseil. Être du conseil vaut inscription : le compte
-  d'agent hérite de l'identité de sa personne, jamais de son statut. Avant de renommer ou de supprimer ce compte, le
-  conseil retire sa déclaration : un login libéré peut être repris.
-- **Les limites de la session se signalent, elles ne se contournent pas.** Une session ne peut pas poser
-  d'étiquette, ni supprimer une branche, ni régler un dépôt.
-- **Ce qui change cette organisation**, ou les consignes que le garant donne à l'agent principal, est proposé par
-  l'agent principal et adopté par le fondateur lui-même : l'agent principal ne fusionne pas les règles de son propre
-  rôle.
+- **A hive tooling task aims at 200 lines outside tests, and never more than its size allows (R1).**
+  Beyond that, it is split before it is started. The lesson comes from ruche-0020: 1,900 lines, four review rounds.
+- **Before publishing tasks or council data:** `bee check-pr --base origin/main --head HEAD
+  --author <council>` locally. The lesson comes from the broken numbering of 30 October.
+- **Anything that touches the registry's security goes through an independent adversarial review** (PR verification,
+  integration, verdicts, judges, outside contacts), then through a check of the fixes. The findings and what became
+  of them are summarized in the PR and in the line in docs/decisions.md that records the merge.
+- **No power without a condition the tool can check.** The lesson comes from redaction: a council act
+  that was tied to nothing. An agent that works under the council's account performs no council act that its role
+  does not give it.
+- **The agent principal's account.** Since 1 November 2026, the agent principal acts under its own GitHub account,
+  `laruche-architect`, declared as an agent account of the founder ([agent-accounts.yaml](../governance/agent-accounts.yaml),
+  ruche-0089). The tool counts it as the founder wherever a person counts (caps, R8, votes, reviews,
+  commandment 3), without ever making it a second person, but never gives it the council's status: what is
+  reserved to the council (its files, its exemptions from caps, a review that weighs like its own) is decided only by
+  the council's account itself. A PR from the agent principal on any of these always waits for a human.
+  An agent account never changes the authority files (commandments, council, agent accounts, guardians, guarantors,
+  briefs, this page, docs/guarantors.md, docs/devolution.md): only the council's account does. Being on the council counts as registration: the agent
+  account inherits its person's identity, never that person's status. Before renaming or deleting this account, the
+  council withdraws its declaration: a released login can be claimed again by another account.
+- **The session's limits are reported, not worked around.** A session cannot create
+  a tag, delete a branch or change a repository's settings.
+- **What changes this organization**, or the brief the guarantor gives to the agent principal, is proposed by
+  the agent principal and adopted by the founder himself: the agent principal does not merge the rules of its own
+  role.
 
-## Ce qui reste fragile, et ce qui y répond
+## What remains fragile, and what answers it
 
-- **Une seule personne.** Tous les agents du compte bidji29 sont ceux d'un même utilisateur : aucune de leurs
-  relectures n'est indépendante (commandement 3), et personne ne mesure ailleurs (R4). Y répondent les invitations de
-  R13 (garants, gardiens, participants) et le chronomètre ARM64 du juge commun (ruche-0024, ruche-0031).
-- **Un seul modèle.** Un gardien d'un autre modèle, sous un compte dédié, apporte un autre regard sur la santé du
-  registre et sur le travail des autres membres. Tant que le fondateur est son garant, il reste son agent : il ne
-  relit pas les contributions de bidji29. Pour elles, il faut un autre humain.
-- **La mémoire des sessions.** Y répondent cette page, les consignes et l'état du projet.
+- **A single person.** All the agents of the bidji29 account are those of one and the same user: none of their
+  reviews is independent (commandment 3), and no one measures elsewhere (R4). R13's invitations (guarantors,
+  guardians, participants) and the common judge's ARM64 timer (ruche-0024, ruche-0031) answer it.
+- **A single model.** A guardian of another model, under a dedicated account, brings another view of the
+  registry's health and of the other members' work. As long as the founder is its guarantor, it remains his agent: it
+  does not review bidji29's contributions. For those, another human is needed.
+- **The sessions' memory.** This page, the briefs and the project's state answer it.
