@@ -4991,6 +4991,8 @@ class TestPublishBySession(BasePublish):
     def test_from_date_d_on_the_former_key_is_no_longer_looked_for(self):
         """From DATE_D on, the former key is looked for neither in the state file nor on GitHub: the engagement leaves in its own
         PR, under its English title."""
+        spell_registry(self.dir, "en")  # ruche-0149: from DATE_D on, French metric ids are refused
+        self.on_main("English metric ids")
         self.a(f"{bee.DATE_D}T12:00:00Z")
         self.ok("take", "miniz-0099", "--user", "alice")
         self.a(f"{bee.DATE_D}T12:30:00Z")
@@ -22698,7 +22700,8 @@ class TestForkDocumentsRuche0145(BaseTest):
             verdict.write_text(json.dumps(FRENCH_VERDICT), encoding="utf-8")
             self.assertIn(f"read until {bee.DATE_D} only", record()[1])
             self.assertEqual(path.read_bytes(), before, "nothing written")
-            verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "metric": "debit_compression_n6", "changed_lines": 10}), encoding="utf-8")
+            spell_registry(self.dir, "en")  # ruche-0149: from D on, the metric ids are English
+            verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "metric": "compression_throughput_n6", "changed_lines": 10}), encoding="utf-8")
             code, text = record()
             self.assertEqual(code, 0, text)
             self.assertIn("manifest ignored (task unreadable", text)  # French after D: ignored, as an unreadable manifest
@@ -22749,12 +22752,13 @@ class TestVerdictMetricRuche0145(BaseTest):
         old = {"ci": "green", "gain": 0.03, "changed_lines": 10}  # no metric named: read before D (above), refused from D on
         verdict.write_text(json.dumps(old), encoding="utf-8")
         with mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"}):
+            spell_registry(self.dir, "en")  # ruche-0149: from D on, the metric ids are English
             code, text = record("abc1235")
             self.assertEqual(code, 1, text)
-            self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: absent, the task's: debit_compression_n6)", text)
+            self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: absent, the task's: compression_throughput_n6)", text)
             self.assertEqual(bee.read_yaml(path)["awaiting_verdict"], {"reason": "metric", "sha": "abc1235"})
             self.assertEqual(bee.read_yaml(path)["verdict"]["ci"], "red", "nothing recorded")
-            verdict.write_text(json.dumps({**old, "metric": "debit_compression_n6"}), encoding="utf-8")
+            verdict.write_text(json.dumps({**old, "metric": "compression_throughput_n6"}), encoding="utf-8")
             code, text = record("abc1236")
             self.assertEqual(code, 0, text)
             self.assertEqual(bee.read_yaml(path)["verdict"]["ci"], "green")
@@ -22764,6 +22768,288 @@ class TestVerdictMetricRuche0145(BaseTest):
             code, text = record("abc1237")
             self.assertEqual(code, 0, text)
 
+
+# ruche-0149: the metric ids written in a vocabulary, whatever the live data's is. The tests name a French id only through
+# bee.METRIC_IDS_FR, so that tools/migration/metric_ids.py (whole words in string literals) leaves them as they are.
+METRIC_WORD = re.compile(r"(?<![A-Za-z0-9_])(" + "|".join(map(re.escape, sorted([*bee.METRIC_IDS, *bee.METRIC_IDS_FR], key=len, reverse=True)))
+                         + r")(?![A-Za-z0-9_])")
+
+
+def spelled(text, vocabulary):
+    """A text with its metric ids in one vocabulary (« fr » or « en »)."""
+    return METRIC_WORD.sub(lambda m: bee.metric_spelling(bee.metric_spelling(m[1], "en"), vocabulary), text)
+
+
+def spell_registry(root, vocabulary):
+    """A test registry's projects and tasks naming their metrics in one vocabulary."""
+    for path in [*sorted((root / "projects").glob("*.yaml")), *sorted((root / "tasks").glob("*/*.yaml"))]:
+        path.write_text(spelled(path.read_text(encoding="utf-8"), vocabulary), encoding="utf-8")
+
+
+class TestMetricIdsRuche0149(BaseTest):
+    """English names, step 5: until date D, a fork verdict, a manifest's measurements, an ab.py report, a measurement or a task names a
+    metric in either vocabulary, one per document, read and recorded in its project's spelling (French until the registry's data is
+    renamed, English after: the forks may switch first); a document that mixes both is refused, and French is refused from D on."""
+
+    EN, MEM = "compression_throughput_n6", "max_memory_kb"
+
+    def spell(self, vocabulary):
+        spell_registry(self.dir, vocabulary)
+
+    def after_d(self):
+        return mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"})
+
+    def test_the_map_is_names_yaml_s_closed_domain(self):
+        domain = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))["domains"]["metric_id"]
+        self.assertEqual(bee.METRIC_IDS, {a: b for a, b in domain.items() if a != b})
+        self.assertEqual(len(set(domain.values())), len(domain), "one-to-one")
+        for path in sorted((ROOT / "projects").glob("*.yaml")):  # every id a project names, on one side or the other
+            for m in yaml.safe_load(path.read_text(encoding="utf-8"))["metrics"]:
+                for i in filter(None, (m["id"], m.get("instructions"))):
+                    self.assertTrue(i in domain or i in domain.values(), f"{path.name}: {i}")
+        self.assertIn(f"metric: {bee.TEMPLATE_METRIC}\n", (ROOT / "templates/task.yaml").read_text(encoding="utf-8"))
+        self.assertIn(bee.TEMPLATE_METRIC, bee.METRIC_IDS_FR)
+
+    def test_validate_reads_a_project_and_a_task_in_either_vocabulary_until_d(self):
+        task, project = self.dir / "tasks/miniz/miniz-0099.yaml", self.dir / "projects/miniz.yaml"
+        for vocabulary in ("fr", "en"):
+            with self.subTest(vocabulary):
+                self.spell(vocabulary)
+                self.valid_one()
+                task.write_text(spelled(task.read_text(encoding="utf-8"), {"fr": "en", "en": "fr"}[vocabulary]), encoding="utf-8")
+                self.valid_one()  # the task in the other vocabulary than its project's
+        fr_mem = bee.METRIC_IDS_FR[self.MEM]
+        project.write_text(project.read_text(encoding="utf-8").replace(f"id: {self.MEM}", f"id: {fr_mem}"), encoding="utf-8")
+        code, text = self.bee("validate")
+        self.assertEqual(code, 1, text)
+        self.assertIn(f"projects/miniz.yaml: French metric ids ({fr_mem}) and English ones (", text)
+        self.spell("en")
+        task.write_text(spelled(task.read_text(encoding="utf-8"), "fr"), encoding="utf-8")
+        with self.after_d():
+            text = self.bee("validate")[1]
+            self.assertIn(f"tasks/miniz/miniz-0099.yaml: French metric ids ({bee.METRIC_IDS_FR[self.EN]}): read until {bee.DATE_D} only", text)
+            self.assertNotIn("projects/miniz.yaml: French", text)
+            self.spell("fr")
+            self.assertIn("projects/miniz.yaml: French metric ids (", self.bee("validate")[1])
+            self.spell("en")
+            self.assertNotIn("miniz.yaml: French metric ids", self.bee("validate")[1])
+            self.assertNotIn("miniz-0099.yaml: French metric ids", self.bee("validate")[1])
+
+    def record_verdicts(self, project_vocabulary):
+        self.spell(project_vocabulary)
+        cid = self.submit_0099()
+        verdict, manifest, path = self.dir / "verdict.json", self.dir / "manifest.yaml", self.dir / f"contributions/miniz/{cid}.yaml"
+        record = lambda sha: self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", sha)  # noqa: E731
+        sp = bee.metric_spelling
+        document = lambda v, mixed=False: {  # noqa: E731
+            "ci": "green", "gain": 0.03, "changed_lines": 10, "metric": sp(self.EN, v),
+            "instructions": {sp("instructions_parse", v): {"A": 100, "B": 90, "gain": 0.1}, "instructions_n6": {"A": 100, "B": 95, "gain": 0.05}},
+            "degradations": {sp(self.MEM, "fr" if mixed else v): -0.02}}
+        for vocabulary, sha in (("fr", "abc1231"), ("en", "abc1232")):
+            with self.subTest(project=project_vocabulary, document=vocabulary):
+                verdict.write_text(json.dumps(document(vocabulary)), encoding="utf-8")
+                manifest.write_text(spelled(FILLED_MANIFEST, vocabulary), encoding="utf-8")
+                code, text = record(sha)
+                self.assertEqual(code, 0, text)
+                v = bee.read_yaml(path)["verdict"]
+                self.assertEqual(set(v["instructions"]), {sp("instructions_parse", project_vocabulary), "instructions_n6"})
+                self.assertEqual(v["degradations"], {sp(self.MEM, project_vocabulary): -0.02})
+                self.assertEqual(v["declared_gap"], 0.07, "the manifest's gain on the task's metric")
+                self.valid_one()
+        before = path.read_bytes()
+        verdict.write_text(json.dumps(document("en", mixed=True)), encoding="utf-8")
+        code, text = record("abc1233")
+        self.assertEqual(code, 1, text)
+        self.assertIn("one vocabulary per document", text)
+        manifest.write_text(spelled(FILLED_MANIFEST, "en").replace(f"before: {{{self.EN}", f"before: {{{bee.METRIC_IDS_FR[self.EN]}"), encoding="utf-8")
+        verdict.write_text(json.dumps(document("en")), encoding="utf-8")
+        code, text = record("abc1234")
+        self.assertEqual(code, 0, text)
+        self.assertNotIn("declared_gap", bee.read_yaml(path)["verdict"], "a mixed manifest is ignored, as an unreadable one")
+        with self.after_d():
+            before = path.read_bytes()
+            verdict.write_text(json.dumps(document("fr")), encoding="utf-8")
+            self.assertIn(f"read until {bee.DATE_D} only", record("abc1235")[1])
+            self.assertEqual(path.read_bytes(), before, "nothing written")
+            verdict.write_text(json.dumps(document("en")), encoding="utf-8")
+            self.assertEqual(record("abc1236")[0], 0)
+            self.assertEqual(bee.read_yaml(path)["verdict"]["degradations"], {sp(self.MEM, project_vocabulary): -0.02})
+
+    def test_a_verdict_in_either_vocabulary_is_recorded_in_a_french_project_s_spelling(self):
+        self.record_verdicts("fr")
+
+    def test_a_verdict_in_either_vocabulary_is_recorded_in_an_english_project_s_spelling(self):
+        self.record_verdicts("en")
+
+    def test_a_manifest_an_ab_report_and_a_measurement_in_either_vocabulary(self):
+        manifest, report, sp = self.dir / "manifest.yaml", self.dir / "ab.json", bee.metric_spelling
+        for project_vocabulary in ("fr", "en"):
+            self.spell(project_vocabulary)
+            for vocabulary in ("fr", "en"):
+                with self.subTest(project=project_vocabulary, manifest=vocabulary):
+                    manifest.write_text(spelled(FILLED_MANIFEST, vocabulary), encoding="utf-8")
+                    code, text = self.bee("validate-manifest", str(manifest))
+                    self.assertEqual(code, 0, text)
+        mixed = spelled(FILLED_MANIFEST, "en").replace(f"after: {{{self.EN}", f"after: {{{bee.METRIC_IDS_FR[self.EN]}")
+        manifest.write_text(mixed, encoding="utf-8")
+        self.assertIn("manifest.yaml: French metric ids (", self.bee("validate-manifest", str(manifest))[1])
+        manifest.write_text(spelled(FILLED_MANIFEST, "fr"), encoding="utf-8")
+        with self.after_d():
+            self.assertIn(f"read until {bee.DATE_D} only", self.bee("validate-manifest", str(manifest))[1])
+        cid = self.submit_0099()  # the project is English now
+        for user, project_vocabulary, vocabulary in (("bruno", "en", "fr"), ("chloe", "fr", "en")):
+            with self.subTest(project=project_vocabulary, report=vocabulary):
+                self.spell(project_vocabulary)
+                report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
+                                              "machine": {"architecture": "arm64"}, "metrics": {
+                                                  sp(self.EN, vocabulary): {"gain": 0.05, "beyond_noise": True},
+                                                  sp(self.MEM, vocabulary): {"gain": 0.0, "beyond_noise": False}}}), encoding="utf-8")
+                code, text = self.bee("record-measurement", cid, "--ab", str(report), "--user", user)
+                self.assertEqual(code, 0, text)
+                self.assertEqual(set(bee.read_yaml(self.dir / f"measurements/{cid}/{user}.yaml")["metrics"]),
+                                 {sp(self.EN, project_vocabulary), sp(self.MEM, project_vocabulary)})
+                self.valid_one()
+        report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"}, "machine": {"architecture": "arm64"},
+                                      "metrics": {self.EN: {"gain": 0.05}, bee.METRIC_IDS_FR[self.MEM]: {"gain": 0.0}}}), encoding="utf-8")
+        code, text = self.bee("record-measurement", cid, "--ab", str(report), "--user", "bidji29")
+        self.assertEqual(code, 1, text)
+        self.assertIn("one vocabulary per document", text)
+        self.assertFalse((self.dir / f"measurements/{cid}/bidji29.yaml").exists())
+
+    def reproduce(self, project_vocabulary, vocabulary):
+        """A measurement from another configuration that names the metric in the other vocabulary than its project's still reproduces
+        a stopwatch gain for R4."""
+        self.spell(project_vocabulary)
+        cid = self.submit_0099()
+        verdict = self.dir / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "green", "gain": 0.06, "beyond_noise": True, "changed_lines": 10,
+                                       "instructions": {"instructions_n6": {"A": 100, "B": 100, "gain": 0.0}}}), encoding="utf-8")
+        self.assertEqual(self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        missing = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), cid)[2] if "reproduced by a measurement" in r]  # noqa: E731
+        self.assertTrue(missing())
+        bee.write_yaml(self.dir / f"measurements/{cid}/bruno.yaml", {
+            "contribution": cid, "submitted_by": "bruno", "at": "2026-10-27T12:00:00Z", "base": "2948eeb", "candidate": "abc1234",
+            "config": {"architecture": "arm64"}, "metrics": {bee.metric_spelling(self.EN, vocabulary): {"gain": 0.05, "beyond_noise": True}}})
+        self.assertFalse(missing())
+        self.valid_one()
+
+    def test_r4_reads_a_french_measurement_for_an_english_project(self):
+        self.reproduce("en", "fr")
+
+    def test_r4_reads_an_english_measurement_for_a_french_project(self):
+        self.reproduce("fr", "en")
+
+    def test_check_pr_reads_a_measurement_in_either_vocabulary(self):
+        self.spell("en")
+        cid = self.submit_0099()
+        for c in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-qm", "base"]):
+            git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", *c)
+        fr = bee.METRIC_IDS_FR
+        for name, metrics, expected in (("French", {fr[self.EN]: {"gain": 0.05, "beyond_noise": True}}, None),
+                                        ("mixed", {fr[self.EN]: {"gain": 0.05}, self.MEM: {"gain": 0.0}}, "one vocabulary per document")):
+            with self.subTest(name):
+                git(self.dir, "switch", "-qC", "measurement", "main")
+                bee.write_yaml(self.dir / f"measurements/{cid}/bruno.yaml", {
+                    "contribution": cid, "submitted_by": "bruno", "at": os.environ["BEE_NOW"], "base": "2948eeb", "candidate": "839b676",
+                    "config": {"architecture": "arm64"}, "metrics": metrics})
+                for c in (["add", "-A"], ["commit", "-qm", "pr"]):
+                    git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", *c)
+                code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "bruno", "--auto-merge")
+                self.assertEqual(code, 1 if expected else 0, text)
+                self.assertIn(expected or "FUSION_AUTO=oui", text)
+                git(self.dir, "switch", "-qf", "main")
+
+    def test_a_task_proposed_with_either_id_names_its_project_s(self):
+        self.spell("en")
+        code, text = self.bee("propose-task", "miniz", "--user", "alice", "--metric", bee.METRIC_IDS_FR["decompression_throughput"])
+        self.assertEqual(code, 0, text)
+        task = bee.read_yaml(max(self.dir.glob("tasks/miniz/miniz-0*.yaml")))
+        self.assertEqual(task["metric"], "decompression_throughput")
+        self.assertIn("gain >= 2% on decompression_throughput, beyond the noise (R4)", task["acceptance_criteria"])
+        self.valid_one()
+
+
+class TestMetricIdsScriptRuche0149(unittest.TestCase):
+    """tools/migration/metric_ids.py (P2 for the metric ids) on a toy repository: the places, the prose of open tasks, the code's
+    strings and comments; nothing else, and the head must be exactly that."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("metric_ids", ROOT / "tools" / "migration" / "metric_ids.py")
+        self.mi = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mi)
+        self.repo = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
+        for path in ("tools/bee.py", "tools/migration/rename.py", "tools/migration/metric_ids.py", "tools/migration/names.yaml"):
+            (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / path, self.repo / path)
+        fr = lambda name: bee.METRIC_IDS_FR[name]  # noqa: E731
+        self.files = {
+            "projects/miniz.yaml": f"id: miniz\nmetrics:\n  - id: {fr('decompression_throughput')}  # comment\n"
+                                   f"    instructions: instructions_decompression\n  - id: ratio_n6\n",
+            "tasks/miniz/miniz-0001.yaml": f"id: miniz-0001\nstatus: open\ntitle: \"Faster, on {fr('decompression_throughput')}\"\n"
+                                           f"context: >\n  The stopwatch on {fr('decompression_throughput')}\n  and ratio_n6.\n"
+                                           f"metric: {fr('decompression_throughput')}\nnotes:\n  - text: \"{fr('decompression_throughput')}\"\n",
+            "tasks/miniz/miniz-0002.yaml": f"id: miniz-0002\nstatus: integrated\ntitle: \"On {fr('decompression_throughput')}\"\n"
+                                           f"metric: {fr('decompression_throughput')}\n",
+            "contributions/miniz/miniz-0002-c1.yaml": f"id: miniz-0002-c1\nsummary: '{fr('max_memory_kb')} as written'\nverdict:\n"
+                                                      f"  degradations:\n    {fr('max_memory_kb')}: -0.01\n  instructions:\n"
+                                                      f"    {fr('instructions_parse')}: {{A: 1, B: 1, gain: 0.0}}\n",
+            "tools/test_bee.py": f"X = '{fr('max_memory_kb')}: 3'  # {fr('max_memory_kb')}\n{fr('max_memory_kb')} = 1\n",
+            "README.md": f"{fr('max_memory_kb')}\n"}
+        for path, text in self.files.items():
+            (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / path).write_text(text, encoding="utf-8")
+        self.base = self.commit("base")
+
+    def commit(self, message):
+        for c in (["init", "-q"], ["add", "-A"], ["commit", "-qm", message]):
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(self.repo), *c], check=True, capture_output=True)
+        return subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+    def run_it(self, *arguments):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = self.mi.main([*arguments, "--repo", str(self.repo)])
+        return code, out.getvalue()
+
+    def test_write_then_check_the_head(self):
+        base = self.base
+        code, text = self.run_it("write", "--base", base)
+        self.assertEqual(code, 0, text)
+        read = lambda p: (self.repo / p).read_text(encoding="utf-8")  # noqa: E731
+        self.assertEqual(read("projects/miniz.yaml"), "id: miniz\nmetrics:\n  - id: decompression_throughput  # comment\n"
+                                                      "    instructions: instructions_decompression\n  - id: ratio_n6\n")
+        self.assertEqual(read("tasks/miniz/miniz-0001.yaml"),
+                         spelled(self.files["tasks/miniz/miniz-0001.yaml"], "en").replace("text: \"decompression_throughput\"",
+                                                                                         f"text: \"{bee.METRIC_IDS_FR['decompression_throughput']}\""))
+        self.assertEqual(read("tasks/miniz/miniz-0002.yaml"), self.files["tasks/miniz/miniz-0002.yaml"].replace(
+            f"metric: {bee.METRIC_IDS_FR['decompression_throughput']}", "metric: decompression_throughput"))
+        self.assertIn("    max_memory_kb: -0.01\n", read("contributions/miniz/miniz-0002-c1.yaml"))
+        self.assertIn("    instructions_parse: {A: 1, B: 1, gain: 0.0}\n", read("contributions/miniz/miniz-0002-c1.yaml"))
+        self.assertIn(f"summary: '{bee.METRIC_IDS_FR['max_memory_kb']} as written'", read("contributions/miniz/miniz-0002-c1.yaml"))
+        self.assertEqual(read("tools/test_bee.py"), f"X = 'max_memory_kb: 3'  # max_memory_kb\n{bee.METRIC_IDS_FR['max_memory_kb']} = 1\n")
+        self.assertEqual(read("README.md"), self.files["README.md"])
+        head = self.commit("written")
+        code, text = self.run_it("check", "--base", base, "--head", head)
+        self.assertEqual(code, 0, text)
+        self.assertIn("the 5 changed files are their translation", text)
+        for path, old, new in (("tasks/miniz/miniz-0002.yaml", "title: \"On ", "title: \"About "),
+                               ("README.md", "\n", " \n"), ("tools/test_bee.py", "= 1", "= 2")):
+            with self.subTest(path):
+                (self.repo / path).write_text(read(path).replace(old, new), encoding="utf-8")
+                code, text = self.run_it("check", "--base", base, "--head", self.commit("by hand"))
+                self.assertEqual(code, 1, text)
+                self.assertIn(f"✗ {path}: not ", text)
+                (self.repo / path).write_text(read(path).replace(new, old), encoding="utf-8")
+
+    def test_an_english_id_already_in_the_data_or_an_unknown_one_is_refused(self):
+        for name, text in (("English", "id: miniz\nmetrics:\n  - id: max_memory_kb\n"), ("unknown", "id: miniz\nmetrics:\n  - id: vitesse\n")):
+            with self.subTest(name):
+                (self.repo / "projects/miniz.yaml").write_text(text, encoding="utf-8")
+                code, out = self.run_it("check", "--base", self.commit(name))
+                self.assertEqual(code, 1, out)
+                self.assertIn("projects/miniz.yaml: value « ", out)
+                self.assertIn(" » outside the domain metric_id", out)
 
 
 class TestCheckMessagesRuche0146(unittest.TestCase):
