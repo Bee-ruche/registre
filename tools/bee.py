@@ -1544,8 +1544,9 @@ def merge_time(reg, path):
 
 
 def effective_submission(reg, rec):
-    """D'où partent la fenêtre de R3, les bornes de course et l'ancienneté (ruche-0028) : la fusion de la PR de soumission quand
-    l'historique la dit, jamais avant submitted_at ; sinon submitted_at. Antidater submitted_at (2 h de tolérance) ne rogne rien."""
+    """Where R3's window, the race bounds and seniority start from (ruche-0028): the merge of the submission PR when the
+    history tells it, never before submitted_at; otherwise submitted_at. Backdating submitted_at (2 h of tolerance)
+    trims nothing."""
     submitted = _instant_or_none(rec.get("submitted_at"))
     path = (reg.records.get(rec.get("id")) or (None,))[0]
     merge = merge_time(reg, path) if submitted and path else None
@@ -1553,22 +1554,22 @@ def effective_submission(reg, rec):
 
 
 # --------------------------------------------------------------------------
-# Cap de la ruche (R11) et tableau de l'essaim : vers où diriger le travail, qui fait quoi
+# The hive's balance (R11) and the swarm table: where to direct the work, who does what
 # --------------------------------------------------------------------------
 
-# Poste d'une tâche qui n'en déclare pas (docs/cap.md) : les tests sont des juges, donc de la gouvernance ;
-# mesures et relectures vérifient le travail des autres (coordination) ; le reste est le travail sur les projets.
+# Area of a task that declares none (docs/balance.md): tests are judges, hence governance;
+# measurements and reviews check the work of others (coordination); the rest is the work on the projects.
 AREA_BY_TYPE = {"optimization": "projects", "split": "projects", "test": "governance",
                   "measurement": "coordination", "review": "coordination"}
 SIZE_WEIGHT = {"S": 1.0, "M": 2.0, "L": 3.0}
-# Poids des gestes qui ne sont pas des tâches (docs/cap.md) : ils comptent aussi comme du travail de la ruche.
+# Weights of the gestures that are not tasks (docs/balance.md): they count as the hive's work too.
 GESTURE_WEIGHTS = {"review": 1.0, "measurement": 1.0, "note": 0.5, "proposal": 2.0, "vote": 0.5, "task_creation": 1.0,
-                # Agora (docs/agora.md) : débattre est de la coordination.
+                # Agora (docs/agora.md): debating is coordination.
                 "debate_opening": 1.0, "argument": 0.5, "synthesis": 1.0}
 
 
 def area_of(task):
-    """Poste d'une tâche : celui qu'elle déclare, sinon celui de son type (la méta du projet « ruche » : gouvernance)."""
+    """Area of a task: the one it declares, otherwise its type's (the meta of the « ruche » project: governance)."""
     task = task or {}
     if task.get("area"):
         return task["area"]
@@ -1578,7 +1579,7 @@ def area_of(task):
 
 
 def balance_target(reg):
-    """Parts visées par poste, en pourcentage (bee.yaml, clé balance.areas)."""
+    """Target shares by area, as a percentage (bee.yaml, key balance.areas)."""
     return {str(p): float(v) for p, v in setting(reg, "balance.areas").items()}
 
 
@@ -1595,24 +1596,25 @@ def _instant_or_none(value):
 
 
 def activity_by_area(reg, instant=None, days=None):
-    """Travail de la ruche sur la fenêtre, par poste : ({area: {"total": poids, "gestes": {kind_of: poids}}}, jours).
+    """The hive's work over the window, by area: ({area: {"total": poids, "gestes": {kind_of: poids}}}, days).
 
-    Compte les réservations en cours et les contributions (poids de la taille de la tâche), les tâches créées ou
-    proposées, les relectures, mesures et notes (coordination), les débats ouverts, arguments et synthèses de l'agora
-    (coordination ; seule la dernière synthèse d'un débat est dans son fichier), les propositions de règle et les
-    votes (gouvernance). Les robots ne comptent pas.
+    Counts the reservations in progress and the contributions (weight of the task's size), the tasks created or
+    proposed, the reviews, measurements and notes (coordination), the agora's open debates, arguments and syntheses
+    (coordination; only a debate's last synthesis is in its file), the rule proposals and the
+    votes (governance). Robots do not count.
 
-    Un geste compte à l'instant du commit qui l'a fusionné dans la branche (DatesDeFusion), pas à sa date déclarée : une
-    date antidatée ou postdatée ne le fait ni entrer dans la fenêtre, ni y rester. Sans historique git (copie sans .git,
-    clone superficiel), il compte à sa date déclarée, et pas du tout si elle est dans le futur (gesture_instant).
+    A gesture counts at the instant of the commit that merged it into the branch (MergeDates), not at its declared date:
+    a backdated or postdated date neither brings it into the window nor keeps it there. Without git history (a copy
+    without .git, a shallow clone), it counts at its declared date, and not at all if that date is in the future
+    (gesture_instant).
 
-    Un même utilisateur ne pèse pas plus de balance.max_weight_per_user_per_day dans un poste, par jour UTC : ses gestes
-    comptent dans l'ordre où ils sont arrivés, jusqu'à ce plafond ; un seul ne fait pas basculer le guide. Ses comptes liés
-    pèsent avec lui (ruche-0051)."""
+    A single user weighs no more than balance.max_weight_per_user_per_day in an area, per UTC day: their gestures
+    count in the order they arrived, up to that cap; a single one does not tip the guide. Their linked accounts
+    weigh with them (ruche-0051)."""
     gestures, days = recent_gestures(reg, instant, days)
     activity = defaultdict(lambda: {"total": 0.0, "gestures": defaultdict(float)})
     cap_value = max_weight_per_day(reg)
-    taken_one = defaultdict(float)  # (utilisateur, poste, jour UTC) -> poids déjà compté
+    taken_one = defaultdict(float)  # (user, area, UTC day) -> weight already counted
     for moment, area, weight, kind_of, who_is in sorted(gestures, key=lambda g: g[0]):
         key = (reg.identities.key(who_is), area, moment.astimezone(dt.timezone.utc).date())  # ruche-0051: a person's accounts, one weight
         account = min(weight, max(0.0, cap_value - taken_one[key]))
@@ -1624,13 +1626,13 @@ def activity_by_area(reg, instant=None, days=None):
 
 
 def recent_gestures(reg, instant=None, days=None, abstentions=True):
-    """Les gestes de la ruche sur la fenêtre du cap, datés comme dans activity_by_area, sans plafond : ([(instant, poste,
-    poids, genre, qui)], jours). Le cap les pèse ; le frein de R13 y lit les membres actifs."""
+    """The hive's gestures over the balance's window, dated as in activity_by_area, without a cap: ([(instant, area,
+    weight, kind, who)], days). The balance weighs them; R13's brake reads the active members in them."""
     instant = instant or now_instant()
     days = int(days or setting(reg, "balance.window_days"))
     beginning, end = instant - dt.timedelta(days=days), instant + dt.timedelta(minutes=10)
     dates = merge_dates(reg, beginning)
-    gestures = []  # (instant, poste, poids, genre, qui) : plafonnés ensuite par utilisateur, poste et jour
+    gestures = []  # (instant, area, weight, kind, who): capped afterwards by user, area and day
 
     def count(area, weight, when_at, kind_of, who_is, path, key):
         if who_is in reg.robots:
@@ -1648,7 +1650,7 @@ def recent_gestures(reg, instant=None, days=None, abstentions=True):
         if t.get("status") == "reserved" and isinstance(reservation, dict):
             count(area, weight, reservation.get("since"), "work in progress", reservation.get("user"), path,
                     engagement_key(reservation))
-        # Une inscription en parallèle (R11) est du travail en cours, comme une réservation.
+        # A parallel registration (R11) is work in progress, like a reservation.
         for p in parallels_of(t) if t.get("status") in ("reserved", "in_review") else []:
             count(area, weight, p.get("since"), "work in progress", p.get("user"), path, engagement_key(p))
         count(area, GESTURE_WEIGHTS["task_creation"], t.get("created_on"), "tasks created or proposed", t.get("created_by"), path,
@@ -1687,13 +1689,13 @@ def recent_gestures(reg, instant=None, days=None, abstentions=True):
 
 
 def max_weight_per_day(reg):
-    """Poids d'un même utilisateur dans un poste, par jour UTC, au-delà duquel ses gestes ne comptent plus dans le cap
-    (bee.yaml : balance.max_weight_per_user_per_day)."""
+    """A single user's weight in an area, per UTC day, beyond which their gestures no longer count in the balance
+    (bee.yaml: balance.max_weight_per_user_per_day)."""
     return float(setting(reg, "balance.max_weight_per_user_per_day"))
 
 
 def balance_state(reg, instant=None, days=None):
-    """Cible et part réelle de chaque poste, et le poste le plus en retard sur sa cible."""
+    """Target and actual share of each area, and the area furthest behind its target."""
     target = balance_target(reg)
     activity, days = activity_by_area(reg, instant, days)
     total = sum(a["total"] for a in activity.values())
@@ -1710,8 +1712,8 @@ def balance_state(reg, instant=None, days=None):
 
 
 def race_state(reg, tid, levels, instant):
-    """La course d'une tâche, pour la montrer : contributions classées (avec leurs bornes d'attente propres), engagés qui
-    travaillent encore."""
+    """A task's race, to show it: ranked contributions (with their own waiting bounds), engaged ones who are
+    still working."""
     t = reg.tasks.get(tid, (None, {}))[1] or {}
     contributions = []
     for rank, (cid, e) in enumerate(race_ranking(reg, tid, levels), start=1):
@@ -1731,8 +1733,8 @@ def race_state(reg, tid, levels, instant):
 
 
 def swarm_table(reg, instant=None, note_days=7):
-    """Qui fait quoi : réservations et inscriptions en parallèle, contributions en relecture et courses entre
-    contributions concurrentes, notes récentes, débats ouverts de l'agora et leur dernière activité (coordination, R11)."""
+    """Who does what: reservations and parallel registrations, contributions in review and races between
+    rival contributions, recent notes, the agora's open debates and their last activity (coordination, R11)."""
     instant = instant or now_instant()
     max_hours, window = float(setting(reg, "reservation_max_hours")), float(setting(reg, "acceptance_window_hours"))
     hours = lambda since: round((instant - since).total_seconds() / 3600, 1)  # noqa: E731
@@ -1761,14 +1763,14 @@ def swarm_table(reg, instant=None, note_days=7):
         race = race_state(reg, tid, levels, instant)
         for c in race["contributions"]:
             ranks[c["contribution"]] = (c["rank"], len(race["contributions"]))
-        # Une course se montre dès qu'il y a de la concurrence : plusieurs contributions, ou une contribution et
-        # des abeilles qui travaillent encore sur la même tâche.
+        # A race shows as soon as there is competition: several contributions, or a contribution and
+        # bees still working on the same task.
         if len(race["contributions"]) > 1 or race["engaged"]:
             races.append(race)
     for cid, (_, e) in sorted(reg.records.items()):
         if not isinstance(e, dict) or e.get("status") != "in_review":
             continue
-        submitted = effective_submission(reg, e)  # comme R3 (ruche-0028)
+        submitted = effective_submission(reg, e)  # as in R3 (ruche-0028)
         t = reg.tasks.get(e.get("task"), (None, {}))[1] or {}
         rank, total = ranks.get(cid, (1, 1))
         review.append({"contribution": cid, "task": e.get("task"), "area": area_of(t), "author": e.get("author"),
@@ -1776,8 +1778,8 @@ def swarm_table(reg, instant=None, note_days=7):
                           "reviews_total": len(e.get("reviews") or []),
                           "window_left_hours": round(max(0.0, window - hours(submitted)), 1) if submitted else None,
                           "rank": rank, "rivals": [c for c, _ in racing_contributions(reg, e.get("task")) if c != cid]})
-    # Notes récentes : datées par le commit qui les a fusionnées (une note antidatée ne se cache pas, une note datée de
-    # 2099 ne reste pas en tête : T2, T3) ; sans historique git, par leur date déclarée, et une date future est ignorée.
+    # Recent notes: dated by the commit that merged them (a backdated note does not hide, a note dated
+    # 2099 does not stay on top: T2, T3); without git history, by their declared date, and a future date is ignored.
     limit_value = instant - dt.timedelta(days=note_days)
     dates = merge_dates(reg, limit_value)
     for tid, (path, t) in reg.tasks.items():
@@ -1794,7 +1796,7 @@ def swarm_table(reg, instant=None, note_days=7):
     notes = [note for _, note in sorted(notes, key=lambda x: x[0], reverse=True)]
     debates = [debate_summary(d) for _, d in reg.debates.values() if isinstance(d, dict) and d.get("status") == "open"]
     debates.sort(key=lambda x: (str(x["last_activity"] or ""), x["id"] or ""), reverse=True)
-    # R13 : les invitations en cours (ni acceptées, ni refusées, ni sans réponse, ni écartées) et l'état du frein.
+    # R13: the pending invitations (neither accepted, nor refused, nor unanswered, nor set aside) and the brake's state.
     brake, conf = brake_state(reg, instant), growth_config(reg)
     invitations = [invitation_summary(i, conf, instant, brake) for _, (_, i) in sorted(reg.invitations.items())
                    if isinstance(i, dict) and invitation_state(i) in ("proposed", "decided", "sent", "reminded")
@@ -1808,11 +1810,11 @@ def swarm_table(reg, instant=None, note_days=7):
 
 
 # --------------------------------------------------------------------------
-# Réputation, score, votes
+# Reputation, score, votes
 # --------------------------------------------------------------------------
 
 class Levels(dict):
-    """Levels by person, under their current login, with the identity that names them (`qui`, ruche-0022)."""
+    """Levels by person, under their current login, with the identity that names them (`who_is`, ruche-0022)."""
 
 
 def compute_levels(reg):
@@ -1825,29 +1827,29 @@ def compute_levels(reg):
         if not isinstance(rec, dict) or "author" not in rec:
             continue
         status = rec.get("status")
-        # « ecartee » (une concurrente a été retenue à sa place, R3) n'est pas un refus : elle vaut 0, pour l'auteur
-        # comme pour chacun de ses relecteurs, défaut confirmé compris (docs/reputation.md).
+        # « set_aside » (a rival was chosen in its place, R3) is not a refusal: it is worth 0, for the author
+        # as for each of its reviewers, confirmed defect included (docs/reputation.md).
         if status == "set_aside":
             continue
         if status == "integrated":
             stats[who_is.name(rec["author"])]["integrated"] += 1
-        # Une relecture par commit jugé (ruche-0012) : un relecteur gagne ou perd au plus une fois par contribution, sur sa
-        # relecture la plus récente, et seulement si elle porte sur le commit où la contribution a été décidée (celui du
-        # verdict) : sans commit ou sur un autre commit, R3 ne l'a pas comptée, elle vaut 0 ; une abstention ne rapporte rien.
-        # +2 une fois si l'un de ses défauts a été confirmé.
+        # One review per judged commit (ruche-0012): a reviewer gains or loses at most once per contribution, on their
+        # most recent review, and only if it is on the commit where the contribution was decided (the verdict's):
+        # without a commit or on another commit, R3 did not count it, it is worth 0; an abstention earns nothing.
+        # +2 once if one of their defects was confirmed.
         decide = (rec.get("verdict") or {}).get("sha") if isinstance(rec.get("verdict"), dict) else None
         for reviewer, r in last_reviews(rec, who_is).items():
             if persons.same_one(reviewer, rec["author"]):  # ruche-0051: an account linked since reviewed its person's work: no point
                 continue
             s = stats[reviewer]
             if any(confirmed_by_a_third_party(x, persons) for x in rec.get("reviews") or []
-                   if isinstance(x, dict) and who_is.name(x.get("reviewer")) == reviewer):  # un défaut ne rapporte que confirmé par un tiers
+                   if isinstance(x, dict) and who_is.name(x.get("reviewer")) == reviewer):  # only a defect confirmed by a third party earns
                 s["reviews"] += 2
             elif r.get("sha") != decide:
                 continue
             elif status == "cancelled" and r.get("opinion") == "favorable" and not rec.get("never_integrated"):
-                # Seule une contribution intégrée puis annulée coûte un point à qui l'avait approuvée ; une contribution
-                # close sans avoir été intégrée (PR fermée sans fusion, bee cloturer) vaut 0 (docs/reputation.md).
+                # Only a contribution integrated then cancelled costs a point to whoever approved it; a contribution
+                # closed without being integrated (PR closed without merge, bee close) is worth 0 (docs/reputation.md).
                 s["reviews"] -= 1
             elif (status == "integrated" and r.get("opinion") == "favorable") or (status == "refused" and r.get("opinion") == "unfavorable"):
                 s["reviews"] += 1
@@ -1876,14 +1878,14 @@ def level_of(levels, login):
 
 
 def counted_review(reg, levels, reviewer):
-    """R3 (docs/reputation.md) : l'avis d'un Nouveau est enregistré mais ne compte pas pour R3 ; celui d'un Contributeur,
-    d'un Confirmé, d'un gardien ou du conseil compte."""
+    """R3 (docs/reputation.md): a New member's opinion is recorded but does not count for R3; that of a Contributor,
+    a Confirmed member, a guardian or the council counts."""
     return reviewer in reg.privileged_ones() or level_of(levels, reviewer) != "New"
 
 
 def reviews_that_count(reg, rec, levels):
-    """Relectures qui comptent pour R3 sur le commit jugé (favorables et défavorables), à afficher (essaim, site) : 0 sans
-    verdict."""
+    """Reviews that count for R3 on the judged commit (favorable and unfavorable), for display (swarm, site): 0 without
+    a verdict."""
     if not rec.get("verdict"):
         return 0
     survey = reviews_survey(reg, rec, levels)
@@ -1891,29 +1893,31 @@ def reviews_that_count(reg, rec, levels):
 
 
 def thread_of(reg, rec):
-    """Le fil d'une contribution (revue adverse de ruche-0012) : les contributions du même auteur sur la même tâche, closes
-    comprises, elle incluse. Un refus ou un défaut posé dans le fil le suit, quel que soit le commit : re-soumettre, ou
-    amender (même arbre, autre sha), ne l'efface pas ; la copie d'un autre auteur n'a pas le même fil. [(id, enregistrement)]."""
+    """A contribution's thread (adversarial review of ruche-0012): the contributions of the same author on the same
+    task, closed ones included, itself included. A refusal or a defect laid in the thread follows it, whatever the
+    commit: resubmitting, or amending (same tree, another sha), does not erase it; another author's copy does not have
+    the same thread. [(id, record)]."""
     thread = [(c, e) for c, (_, e) in reg.records.items()
            if isinstance(e, dict) and e.get("task") == rec.get("task") and reg.identities.same_one(e.get("author"), rec.get("author")) and c != rec.get("id")]
     return thread + [(rec.get("id"), rec)]
 
 
 def reviews_survey(reg, rec, levels):
-    """Ce que pèsent les relectures (R3, score, essaim ; ruche-0012 après revues adverses), relecteur par relecteur, d'après sa
-    relecture la plus récente, dans le fil de la contribution (thread_of, ordonné par date `le`), une fois écartées celles de
-    l'auteur et celles qu'une levée du conseil sur cette contribution neutralise. Une relecture la plus récente non recevable
-    (avis qu'un concurrent ne peut pas donner) ne compte ni pour ni contre et ne fait jamais revenir une plus ancienne.
-    « Sur le commit jugé » : son sha est celui du verdict ; « du contenu jugé » : même arbre git (same_content), un commit
-    amendé compris. Les levées du conseil de toutes les contributions du fil comptent.
-    - favorable : sa plus récente est favorable, sur le commit jugé, et sur cette contribution même ;
-    - défavorable (balance de R3) : sa plus récente relecture du contenu jugé, si elle est défavorable ;
-    - bloquante (gardien, conseil, Confirmé) : sa plus récente est défavorable, quel que soit son commit, ou sa plus récente
-      relecture du contenu jugé l'est ; elle tient jusqu'à ce qu'il relise ;
-    - défaut confirmé : bloque tant qu'il est sur sa plus récente relecture, ou sur sa plus récente du contenu jugé ;
-    - abstention : sa plus récente ne pèse rien, n'ouvre aucune porte, n'abaisse aucun seuil.
-    Un Nouveau ne compte pas, sauf par un défaut confirmé. « fil » : [(relecteur, contribution, « refusal » ou « défaut
-    confirmé »)] quand ce qui bloque vient d'une autre contribution du fil."""
+    """What the reviews weigh (R3, score, swarm; ruche-0012 after adversarial reviews), reviewer by reviewer, from their
+    most recent review, in the contribution's thread (thread_of, ordered by date `at`), after setting aside those of the
+    author and those that a council lift on this contribution neutralizes. A most recent review that is not admissible
+    (an opinion a rival cannot give) counts neither for nor against and never brings back an older one.
+    « On the judged commit »: its sha is the verdict's; « of the judged content »: same git tree (same_content), an
+    amended commit included. The council's lifts on all the contributions of the thread count.
+    - favorable: their most recent is favorable, on the judged commit, and on this very contribution;
+    - unfavorable (R3's balance): their most recent review of the judged content, if it is unfavorable;
+    - blocking (guardian, council, Confirmed): their most recent is unfavorable, whatever its commit, or their most
+      recent review of the judged content is; it holds until they review again;
+    - confirmed defect: blocks as long as it is on their most recent review, or on their most recent of the judged
+      content;
+    - abstention: their most recent weighs nothing, opens no gate, lowers no threshold.
+    A New member does not count, except through a confirmed defect. « thread »: [(reviewer, contribution, « refusal » or
+    « confirmed defect »)] when what blocks comes from another contribution of the thread."""
     verdict = rec.get("verdict") if isinstance(rec.get("verdict"), dict) else {}
     sha = verdict.get("sha")
     rivals, privileged_ones = rivals_of(reg, rec), reg.privileged_ones()
@@ -1927,7 +1931,7 @@ def reviews_survey(reg, rec, levels):
                 all_ones.append(((_instant_or_none(r.get("at")) or PASS_REF, cid == rec.get("id"), rank), r))
     by = defaultdict(list)
     for _, r in sorted(all_ones, key=lambda x: x[0]):
-        by[reg.identities.key(str(r.get("reviewer")))].append(r)  # un relecteur, quelle que soit la casse de son login
+        by[reg.identities.key(str(r.get("reviewer")))].append(r)  # one reviewer, whatever the case of their login
     on_it = lambda r: bool(verdict) and r.get("sha") == sha  # noqa: E731
     here = lambda r: origin_of.get(id(r)) == rec.get("id")  # noqa: E731
     admissible = lambda r: r if r and admissible_opinion(r, rivals) else None  # noqa: E731
@@ -1956,16 +1960,16 @@ def reviews_survey(reg, rec, levels):
             survey["stale_ones" if last_one.get("sha") else "no_commit"].append(last_one)
         if last_one and on_it(last_one) and here(last_one) and last_one.get("opinion") == "favorable":
             survey["favorable_ones"].append(last_one)
-        # Balance de R3 : sa plus récente relecture du commit jugé, si elle est défavorable, même s'il a relu depuis un autre
-        # commit (retour à un commit qu'il a refusé).
+        # R3's balance: their most recent review of the judged commit, if it is unfavorable, even if they have since
+        # reviewed another commit (a return to a commit they refused).
         if of_the_commit and of_the_commit.get("opinion") == "unfavorable":
             survey["unfavorable_ones"].append(of_the_commit)
     return survey
 
 
 def same_content(review, verdict):
-    """La relecture porte-t-elle sur le contenu jugé ? Même arbre git quand la relecture et le verdict le connaissent (un commit
-    amendé, autre sha, garde le même contenu), sinon même sha (revue adverse de ruche-0012)."""
+    """Is the review on the judged content? Same git tree when the review and the verdict know it (an amended commit,
+    another sha, keeps the same content), otherwise same sha (adversarial review of ruche-0012)."""
     if not verdict:
         return False
     if review.get("tree") and verdict.get("tree"):
@@ -1973,13 +1977,14 @@ def same_content(review, verdict):
     return review.get("sha") == verdict.get("sha")
 
 
-# ruche-0028 (1) : l'enregistrement garde la trace de ses VERDICTS_MAX derniers verdicts (verdicts ; au-delà, verdicts_oublies les
-# compte). Relancer la CI sur un contenu déjà mesuré ajoute une mesure, n'en efface aucune (répétition générale n° 3).
+# ruche-0028 (1): the record keeps a trace of its last VERDICTS_MAX verdicts (verdicts; beyond that, dropped_verdicts
+# counts them). Rerunning the CI on content already measured adds a measurement, erases none (dress rehearsal no. 3).
 VERDICTS_MAX = 20
 
 
 def trace_verdict(v):
-    """Ce que l'historique garde d'un verdict : de quoi reconnaître son contenu mesuré et rejuger R1, R4 et le classement."""
+    """What the history keeps of a verdict: enough to recognize its measured content and judge R1, R4 and the ranking
+    again."""
     trace = {k: v[k] for k in ("sha", "tree", "ci", "gain", "beyond_noise", "changed_lines") if k in v}
     if isinstance(v.get("instructions"), dict):
         trace["instructions"] = {n: {k: i.get(k) for k in ("A", "B", "gain")} for n, i in v["instructions"].items() if isinstance(i, dict)}
@@ -1987,17 +1992,19 @@ def trace_verdict(v):
 
 
 def tallies(v):
-    """Les décomptes d'instructions B (exacts) de chaque scénario d'un verdict : ils reconnaissent le contenu mesuré ; None sans."""
+    """The exact B instruction counts of each scenario of a verdict: they recognize the measured content; None
+    without."""
     i = v.get("instructions") if isinstance(v.get("instructions"), dict) else {}
     return tuple(sorted((str(n), x["B"]) for n, x in i.items() if isinstance(x, dict) and isinstance(x.get("B"), (int, float))
                         and not isinstance(x.get("B"), bool))) or None
 
 
 def same_measurement(h, v):
-    """Même contenu mesuré (revue adverse de ruche-0028, S1 : retoucher le manifeste changeait l'arbre et redonnait un tirage du
-    chronomètre) : mêmes scénarios, décomptes B à moins de 1 % les uns des autres (vérification de 3ea3a71 : une instruction de
-    plus redonnait un tirage ; R4 exige 2 %, moins de 1 % ne porte pas un gain), sinon même arbre (sinon même sha). Le fil seul
-    est comparé (content_verdicts). Ceci borne les tirages ; le vrai remède reste une autre configuration (ruche-0031)."""
+    """Same measured content (adversarial review of ruche-0028, S1: touching up the manifest changed the tree and gave
+    another draw of the stopwatch): same scenarios, B counts within 1 percent of each other (check of 3ea3a71: one
+    more instruction gave another draw; R4 requires 2 percent, less than 1 percent does not carry a gain), otherwise
+    same tree (otherwise same sha). Only the thread is compared (content_verdicts). This bounds the draws; the real
+    remedy remains another configuration (ruche-0031)."""
     a, b = tallies(h), tallies(v)
     if not (a and b):
         return same_content(h, v)
@@ -2005,8 +2012,9 @@ def same_measurement(h, v):
 
 
 def content_verdicts(reg, rec):
-    """Le verdict courant, puis chaque autre verdict vert du même contenu mesuré gardé par la contribution ou par son fil (même
-    auteur, même tâche, closes comprises : re-soumettre ne repart pas de zéro) : [(verdict, contribution)]."""
+    """The current verdict, then every other green verdict of the same measured content kept by the contribution or by
+    its thread (same author, same task, closed ones included: resubmitting does not start from scratch):
+    [(verdict, contribution)]."""
     verdict = rec.get("verdict") if isinstance(rec.get("verdict"), dict) else {}
     here, trace = rec.get("id"), trace_verdict(verdict)
     return [(verdict, here)] + [(h, c) for c, e in thread_of(reg, rec) for h in e.get("verdicts") or ([e.get("verdict")] if c != here else [])
@@ -2014,13 +2022,14 @@ def content_verdicts(reg, rec):
 
 
 def refusal_elsewhere(reg, rec, levels=None):
-    """Alerte pour les relecteurs (revue adverse de ruche-0012), jamais un blocage : le contenu jugé (même arbre, sinon même sha)
-    porte, dans une autre contribution, un refus encore actif : la plus récente relecture de ce relecteur sur ce contenu,
-    dans tout le registre, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
-    aucune levée du conseil ne la neutralise. Un autre compte qui soumet un contenu refusé n'est pas bloqué automatiquement
-    (le contenu d'une contribution change à chaque commit poussé : un ordre entre contributions bloquerait l'original ou
-    libérerait la copie) ; le refus se repose sur la copie. ruche-0028 (5) : toutes tâches confondues (un contenu refusé soumis sous
-    une autre tâche), et une contribution refusee (statut) dont un verdict portait ce contenu. [(relecteur ou None, contribution)]."""
+    """A warning for reviewers (adversarial review of ruche-0012), never a block: the judged content (same tree, else
+    same sha) carries, in another contribution, a refusal still active: that reviewer's most recent review of this
+    content, in the whole registry, is an unfavorable one from a guardian, the council or a Confirmed member, or carries
+    a confirmed defect, and no council lift neutralizes it. Another account that submits refused content is not blocked
+    automatically (a contribution's content changes with each pushed commit: an order between contributions would block
+    the original or free the copy); the refusal is laid again on the copy. ruche-0028 (5): all tasks together (refused
+    content submitted under another task), and a refused contribution (status) one of whose verdicts carried this
+    content. [(reviewer or None, contribution)]."""
     verdict = rec.get("verdict") if isinstance(rec.get("verdict"), dict) else {}
     if not verdict.get("sha"):
         return []
@@ -2046,14 +2055,14 @@ def refusal_elsewhere(reg, rec, levels=None):
 
 
 def lifted_in_thread(reg, rec, review):
-    """Une levée du conseil sur l'une des contributions du fil couvre-t-elle cette relecture (comme dans R3) ?"""
+    """Does a council lift on one of the thread's contributions cover this review (as in R3)?"""
     return any(lift(reg, e, review) for _, e in thread_of(reg, rec))
 
 
 def lift(reg, rec, review):
-    """Recours du conseil (lifts : relecteur, motif, par, le) : une relecture de ce relecteur publiée avant la levée ne pèse
-    plus sur cette contribution (ni sur son fil, quand on la juge) ; ce qu'il relit ensuite compte de nouveau. Une levée qui
-    n'est pas du conseil, ou datée dans le futur, ne vaut rien (bee validate la refuse aussi)."""
+    """The council's recourse (lifts: reviewer, reason, by, at): a review by this reviewer published before the lift no
+    longer weighs on this contribution (nor on its thread, when it is judged); what they review afterwards counts
+    again. A lift that is not the council's, or dated in the future, is worth nothing (bee validate refuses it too)."""
     moment, limit_value = _instant_or_none(review.get("at")), now_instant() + LEAD_MAX
     for l in rec.get("lifts") or []:
         when_at = _instant_or_none(l.get("at")) if isinstance(l, dict) else None
@@ -2064,7 +2073,7 @@ def lift(reg, rec, review):
 
 
 def compute_score(reg, rec, levels):
-    """S = G × P × C / (1 + L/100) × V (voir docs/evaluation.md). None tant que la CI n'a pas mesuré."""
+    """S = G × P × C / (1 + L/100) × V (see docs/evaluation.md). None as long as the CI has not measured."""
     verdict = rec.get("verdict") or {}
     if verdict.get("ci") != "green" or verdict.get("gain") is None:
         return None
@@ -2072,10 +2081,10 @@ def compute_score(reg, rec, levels):
     reach = float(task[1].get("reach", 1.0)) if task else 1.0
     gain = float(verdict["gain"])
     lines = int(verdict.get("changed_lines", 0))
-    # Comme R3 (releve_relectures) : les favorables qui comptent sur le commit jugé, ni Nouveaux ni abstentions.
+    # As in R3 (reviews_survey): the favorable ones that count on the judged commit, neither New ones nor abstentions.
     trust = min(1.0, len(reviews_survey(reg, rec, levels)["favorable_ones"]) / 3)
     numerator = denominator = 0
-    for vote in counted_votes(reg, rec):  # comme le vote net : ni l'auteur (ni un compte lié), ni un concurrent en course
+    for vote in counted_votes(reg, rec):  # like the net vote: neither the author (nor a linked account) nor a racing rival
         weight = voice_weight(reg, levels, vote.get("voter"))
         numerator += weight * vote.get("value", 0)
         denominator += weight
@@ -2091,7 +2100,7 @@ def tally_proposal(reg, identifier, levels, instant):
     closing = opening + dt.timedelta(days=setting(reg, "vote_duration_days"))
     in_favour = against = 0
     voters = set()
-    for vote in votes_of(reg, identifier):  # un votant, une voix, quorum compris (sans la casse)
+    for vote in votes_of(reg, identifier):  # one voter, one voice, quorum included (case-insensitive)
         weight = voice_weight(reg, levels, vote.get("voter"))
         if weight == 0:
             continue
@@ -2113,7 +2122,7 @@ def tally_proposal(reg, identifier, levels, instant):
 
 
 # --------------------------------------------------------------------------
-# Validation du registre
+# Registry validation
 # --------------------------------------------------------------------------
 
 def check_registry(reg):
@@ -2131,7 +2140,7 @@ def check_registry(reg):
         reg.adopt(persons)
 
 
-def link_problems(reg):  # ruche-0051: a declaration alone does nothing; compte_de always confirms one, and no file lists itself
+def link_problems(reg):  # ruche-0051: a declaration alone does nothing; account_of always confirms one, and no file lists itself
     linked = {id(f) for f, _ in confirmed_links([m for _, m in reg.members.values() if isinstance(m, dict)])}
     return [f"members/{stem}.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
             "member files that name their login (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
@@ -2161,8 +2170,9 @@ def check_accounts(reg):
             add_to(str(e))
 
     def past_instant(path, value, what_it, tolerance=TOLERANCE_DATE):
-        """Un instant lisible, jamais dans le futur au-delà de 2 h, comme la tolérance de check-pr (revue adverse de ruche-0012 :
-        une levée datée de 2099 neutralisait d'avance toute relecture ; bee validate ne dépend pas de l'horloge à la seconde)."""
+        """A readable instant, never in the future beyond 2 h, like check-pr's tolerance (adversarial review of
+        ruche-0012: a lift dated 2099 neutralized every review in advance; bee validate does not depend on the clock to
+        the second)."""
         try:
             if read_instant(value, f"{reg.rel(path)} ({what_it})") > now_instant() + tolerance:
                 add_to(f"{reg.rel(path)}: {what_it} ({value}) is in the future")
@@ -2171,7 +2181,8 @@ def check_accounts(reg):
 
     rules = (reg.root / "RULES.md").read_text(encoding="utf-8") if (reg.root / "RULES.md").exists() else ""
 
-    # bee.yaml itself (its keys, their form, the cap, the reserved pseudonyms): problemes_reglages, in verifier_registre (ruche-0144).
+    # bee.yaml itself (its keys, their form, the balance, the reserved pseudonyms): settings_problems, in check_registry
+    # (ruche-0144).
     known_areas = set(balance_target(reg))
     readable_reserved = not (setting_problem(reg.config, "reserved_logins") or setting_problem(reg.config, "robots"))
 
@@ -2195,7 +2206,7 @@ def check_accounts(reg):
     for stem, (path, member) in sorted(reg.members.items()):
         if per_schema("member", path, member) and member["login"] != stem:
             add_to(f"{reg.rel(path)}: login « {member['login']} » differs from the file name")
-        if stem.casefold() in seen_logins:  # un login GitHub ne tient pas compte de la casse : un seul compte, une seule fiche
+        if stem.casefold() in seen_logins:  # a GitHub login ignores case: one account, one member file
             add_to(f"{reg.rel(path)}: « {stem} » and « {seen_logins[stem.casefold()]} » are the same GitHub login (case does not "
                     "count): one member file per account")
         seen_logins.setdefault(stem.casefold(), stem)
@@ -2250,7 +2261,7 @@ def check_accounts(reg):
             reservations[reg.identities.name(task["reservation"]["user"])].append((task["id"], "", task["reservation"]["since"]))
             if not reg.registered(task["reservation"]["user"]):
                 add_to(f"{place_of}: reserved by « {task['reservation']['user']} », who is not registered")
-        # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
+        # Parallel work (R11): each one once, never the holder, never the author of a contribution in the race.
         seen_parallels = set()
         racing_authors = {e.get("author") for _, e in racing_contributions(reg, task["id"])}
         for i, p in enumerate(task.get("parallel") or []):
@@ -2274,8 +2285,8 @@ def check_accounts(reg):
             elif task["status"] in ("reserved", "in_review") and reg.records[task["contribution"]][1].get("status") != "in_review":
                 add_to(f"{place_of}: task {task['status']}, but its contribution « {task['contribution']} » is no longer in review")
         if task["status"] in ("integrated", "open", "proposed", "abandoned"):
-            # R3 : une fois une contribution intégrée, ses concurrentes sont écartées dans le même commit ; une tâche
-            # ouverte n'a plus de contribution en course.
+            # R3: once a contribution is integrated, its rivals are set aside in the same commit; an open
+            # task no longer has a contribution in the race.
             remaining_ones = [c for c, _ in racing_contributions(reg, task["id"])]
             if remaining_ones:
                 add_to(f"{place_of}: task {task['status']}, but contribution(s) still in review: {', '.join(remaining_ones)}")
@@ -2320,8 +2331,8 @@ def check_accounts(reg):
         if not reg.registered(rec["author"]):
             add_to(f"{place_of}: author « {rec['author']} » not registered")
         if rec["status"] == "set_aside":
-            # R3 : une contribution n'est écartée qu'au profit d'une concurrente de la même tâche, intégrée (ou intégrée
-            # puis annulée par le conseil).
+            # R3: a contribution is set aside only in favor of a rival of the same task, integrated (or integrated
+            # then cancelled by the council).
             kept = reg.records.get(rec.get("kept"), (None, {}))[1] or {}
             if rec.get("kept") == rec["id"] or kept.get("task") != rec["task"] or kept.get("status") not in ("integrated", "cancelled"):
                 add_to(f"{place_of}: set aside in favor of « {rec.get('kept')} », which is not an integrated contribution of the same task")
@@ -2330,7 +2341,7 @@ def check_accounts(reg):
                     "its reviewers answer for it if it is cancelled")
         if isinstance(a := rec.get("awaiting_verdict"), dict) and a.get("reason") not in VERDICT_WAIT:  # ruche-0025
             add_to(f"{place_of}: awaiting_verdict/reason is not a bee code ({', '.join(VERDICT_WAIT)})")
-        if isinstance(d := rec.get("declared"), dict):  # recopié au verdict (ruche-0017) : le reste des bornes au schéma
+        if isinstance(d := rec.get("declared"), dict):  # copied at the verdict (ruche-0017): other bounds in the schema
             if any(declared_text(t, len(t)) != t for t in [d["model"], d["doubts"], *d["tested"], *d["untested"]] if t) or (
                     not math.isfinite(d["gain"] or 0) or len(yaml.safe_dump({"declared": d}, allow_unicode=True, width=100)) > DECLARED_MAX["rendered"]):
                 add_to(f"{place_of}: declared is not as bee record-verdict copies it (text on one line, with no invisible "
@@ -2344,14 +2355,14 @@ def check_accounts(reg):
         for i, l in enumerate(rec.get("lifts") or []):
             if l["by"] not in reg.council:
                 add_to(f"{place_of}: lifts/{i}: a lift is written by the council, not by « {l['by']} »")
-            past_instant(path, l["at"], f"lifts/{i}/at", LIFT_TOLERANCE)  # jamais en libre-service : 5 min suffisent
+            past_instant(path, l["at"], f"lifts/{i}/at", LIFT_TOLERANCE)  # never self-service: 5 min is enough
         for i, r in enumerate(rec["reviews"]):
             if reg.identities.same_one(r["reviewer"], rec["author"]):
                 add_to(f"{place_of}: reviews/{i}: the author cannot review their own contribution (commandment 3)")
-            refusal = refused_review(rec["reviews"][:i], r, reg.identities, lambda x: lifted_in_thread(reg, rec, x))  # un autre commit que sa plus récente
+            refusal = refused_review(rec["reviews"][:i], r, reg.identities, lambda x: lifted_in_thread(reg, rec, x))  # a commit other than their latest
             if refusal:
                 add_to(f"{place_of}: reviews/{i}: {refusal}")
-            if r.get("reported_defect") and r["opinion"] == "abstention":  # sans commit : refusé à l'ajout (relire, verifier-pr)
+            if r.get("reported_defect") and r["opinion"] == "abstention":  # no commit: refused when added (review, check-pr)
                 add_to(f"{place_of}: reviews/{i}: an abstention does not report a defect")
             past_instant(path, r["at"], f"reviews/{i}/at")
             if (r.get("confirmed_defect") or "confirmed_by" in r) and not (r.get("reported_defect") and confirmed_by_a_third_party(r, reg.identities)):
@@ -2400,16 +2411,16 @@ def check_accounts(reg):
             add_to(f"{place_of}: submitted by « {measurement['submitted_by']} », who is not registered")
         valid_instant(path, measurement["at"], "at")
 
-    for path, s in reg.reports.values():  # ruche-0118: written by bee signaler, decided by the council (bee signalement)
+    for path, s in reg.reports.values():  # ruche-0118: written by bee report, decided by the council (bee decide-report)
         for what_it, x in (("at", s), ("decision/at", s.get("decision"))) if (form_text := per_schema("report", path, s)) else ():
             if x:
                 valid_instant(path, x["at"], what_it)
         for refusal in report_refusal_on_main(reg, s) if form_text else ():  # ruche-0137
             add_to(f"{reg.rel(path)}: {refusal}")
 
-    # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
-    # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
-    # ruche-0040: and each text under its bound (borne_texte), in every self-service file, the do-not-contact list included.
+    # ruche-0029: the common check of every free text, in each value and each key of the data bee prints, even
+    # escaped in YAML; a title and a summary fit on one line. The verdict, written by the CI, has its own bounds.
+    # ruche-0040: and each text under its bound (text_bound), in every self-service file, the do-not-contact list included.
     list_of = [(reg.root / PATH_NO_CONTACT, reg.do_not_contact)] if reg.do_not_contact is not None else []
     for path, data in [*reg.tasks.values(), *reg.records.values(), *reg.proposals.values(), *reg.debates.values(),
                             *reg.invitations.values(), *reg.members.values(), *reg.votes, *reg.measurements, *reg.reports.values(), *list_of]:
@@ -2421,10 +2432,10 @@ def check_accounts(reg):
 
     check_agent_accounts(reg, add_to)
     check_agora_registry(reg, add_to, per_schema, valid_instant)
-    check_invitations_registry(reg, add_to, per_schema, valid_instant)  # R13 (docs/croissance.md)
-    if reg.removals is not None:  # ruche-0048 : des empreintes et une demande vérifiable, rien d'autre
+    check_invitations_registry(reg, add_to, per_schema, valid_instant)  # R13 (docs/growth.md)
+    if reg.removals is not None:  # ruche-0048: fingerprints and a verifiable request, nothing else
         per_schema("removals", reg.root / PATH_REMOVALS, reg.removals)
-    check_tree(reg, add_to)  # l'arbre du sens (docs/arbre.md)
+    check_tree(reg, add_to)  # the tree of meaning (docs/tree.md)
     return problems_found
 
 
@@ -2438,7 +2449,7 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
     problems_found += [p.replace("CONTRIBUTION.yaml", origin_of, 1) for p in personal_texts(reg, "CONTRIBUTION.yaml", None, data)[0]]
     for error in sorted(reg.schema("manifest").iter_errors(data), key=lambda e: [str(x) for x in e.absolute_path]):
         if isinstance(error.instance, str) and any(m in error.instance for m in TO_FILL_IN_MARKERS):
-            continue  # déjà signalé ci-dessus
+            continue  # already reported above
         place_of = "/".join(cite(x) for x in error.absolute_path) or "(root)"
         problems_found.append(f"{origin_of}: {place_of}: {message_schema(error)}")
     raw_measurements = data.get("measurements") if isinstance(data.get("measurements"), dict) else {}
@@ -2459,7 +2470,7 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
                          "Without a real measurement, do not submit: release the task with a note.")
     measurements = raw_measurements
     known_ones = reg.metrics(task.get("project"))
-    # Et le décompte d'instructions d'une métrique (instructions_<scénario>), sur lequel R4 juge (ruche-0017).
+    # And a metric's instruction count (instructions_<scenario>), on which R4 judges (ruche-0017).
     known_ones = list(known_ones) + [m["instructions"] for m in known_ones.values() if isinstance(m.get("instructions"), str)]
     for quoted_side in ("before", "after"):
         block = measurements.get(quoted_side) if isinstance(measurements.get(quoted_side), dict) else {}
@@ -2480,7 +2491,7 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
 
 
 # --------------------------------------------------------------------------
-# Vérification d'une pull request sur le registre (aucun code de la PR n'est exécuté)
+# Checking a pull request on the registry (no code of the PR is run)
 # --------------------------------------------------------------------------
 
 def git(repo, *arguments, replace_with=False):
@@ -2511,7 +2522,7 @@ def read_yaml_ref(repo, ref, path):
     try:
         text = result.stdout.decode("utf-8")
     except UnicodeDecodeError:
-        # Un binaire glissé sous un nom en .yaml : illisible, donc refusé, sans faire tomber la vérification.
+        # A binary slipped in under a .yaml name: unreadable, hence refused, without bringing the check down.
         raise BeeError(f"{ref}:{path}: this is not UTF-8 text (binary?)") from None
     return load_yaml_text(text, f"{ref}:{path}")
 
@@ -2520,7 +2531,7 @@ def matches(path, reasons):
     return any(fnmatch.fnmatchcase(path, reason) for reason in reasons)
 
 
-# --- Fichiers du libre-service : seuls ceux qu'écrit bee, chacun à sa place (répétition générale du 29/10, T7 et T8) ---
+# --- Self-service files: only those bee writes, each in its place (dress rehearsal of 29/10, T7 and T8) ---
 
 LOGIN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"
 TASK_ID_PATTERN = r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}"
@@ -2529,7 +2540,7 @@ PATH_PROPOSAL = re.compile(r"^proposals/P-(?P<n>[0-9]{4})\.yaml\Z")
 PATH_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml\Z")
 PATH_REPORT = re.compile(r"^reports/S-(?P<n>[0-9]{4})\.yaml\Z")  # ruche-0118
 PATH_NO_CONTACT = "invitations/do-not-contact.yaml"
-# Dossier → (forme attendue de ses fichiers, pour le message ; motif). Les débats ont leurs propres contrôles (verifier_debat).
+# Folder → (expected form of its files, for the message; pattern). Debates have their own checks (check_debate).
 SELF_SERVICE_FILES = {
     "tasks": ("tasks/<project>/<project>-<nnnn>.yaml", PATH_TASK),
     "contributions": ("contributions/<project>/<task>-c<n>.yaml", re.compile(rf"^contributions/[a-z0-9]+(?:-[a-z0-9]+)*/{TASK_ID_PATTERN}-c[0-9]+\.yaml\Z")),
@@ -2549,10 +2560,10 @@ BYTES_MAX = {"tasks": 256 * 1024, "contributions": 256 * 1024, "votes": 32 * 102
               "proposals": 128 * 1024, "debates": 512 * 1024, "invitations": 64 * 1024, PATH_NO_CONTACT: 1024 * 1024,
               "reports": 4 * 1024}
 READ_BYTES_MAX = max(BYTES_MAX.values())
-# An append (AJOUTS) stops at the bound minus MARGE_OCTETS: a reserve for closes, syntheses, reservations and robot writes.
+# An append (ADDITIONS) stops at the bound minus BYTE_MARGIN: a reserve for closes, syntheses, reservations and robot writes.
 BYTE_MARGIN, ADDITIONS = 20 * 1024, frozenset({"note", "argument", "review", "parallel_registration"})
-# Each text (value or key), in characters: its own bound, else TEXTE_LONG_MAX for its kind's long fields ("notes/texte": each note's),
-# else TEXTE_CHAMP_MAX; the write-time bounds stay under them (test_bee.py checks it); the verdict has its own (VERDICT_MAX).
+# Each text (value or key), in characters: its own bound, else LONG_TEXT_MAX for its kind's long fields ("notes/text": each note's),
+# else FIELD_TEXT_MAX; the write-time bounds stay under them (test_bee.py checks it); the verdict has its own (VERDICT_MAX).
 LONG_TEXT_MAX, FIELD_TEXT_MAX = 4000, 300
 OWN_TEXTS = {("proposals", "proposed_text"): 8000, ("proposals", "reason"): 8000}
 LONG_FIELDS = {"tasks": ("context", "acceptance_criteria", "out_of_scope", "notes/text"),
@@ -2580,7 +2591,7 @@ def bytes_problem(relative_one, size):
 
 
 def require_room(relative_one, text):
-    """Refuses, before writing, an append that would take `relatif` past its high-water mark (BYTE_MARGIN)."""
+    """Refuses, before writing, an append that would take `relative_one` past its high-water mark (BYTE_MARGIN)."""
     if len(text.encode("utf-8")) > byte_bound(relative_one) - BYTE_MARGIN:
         raise BeeError(marker_problem(relative_one))
 
@@ -2605,7 +2616,7 @@ def object_sizes(repo, names):
 
 
 def sizes_a(repo, ref, paths):
-    """{path: size at `ref`} of those of `chemins` bee may read (a self-service folder, or YAML), from git alone; fails closed."""
+    """{path: size at `ref`} of those of `paths` bee may read (a self-service folder, or YAML), from git alone; fails closed."""
     paths = [c for c in paths if self_service_kind(c) or c.lower().endswith((".yaml", ".yml"))]
     sizes_of = object_sizes(repo, [f"{ref}:{c}" for c in paths]) if paths else []
     if sizes_of is None:
@@ -2616,26 +2627,27 @@ def sizes_a(repo, ref, paths):
 
 
 def text_bound(sort_kind, place_of):
-    """The bound in characters of the text at `lieu` (as texts_by names it: « notes[0]/text ») in a file of kind `sorte`."""
+    """The bound in characters of the text at `place_of` (as texts_by names it: « notes[0]/text ») in a file of kind
+    `sort_kind`."""
     field = re.sub(r"\[\d+\]", "", place_of)
     return OWN_TEXTS.get((sort_kind, field)) or (LONG_TEXT_MAX if field in LONG_FIELDS.get(sort_kind, ()) else FIELD_TEXT_MAX)
 
 
 def next_number(numbers_of):
-    """Le numéro qui suit le plus grand déjà pris, hors de la plage réservée aux tests (RESERVED_NUMBER et plus) : sans trou,
-    et un numéro squatté dans la plage réservée ne gèle pas la numérotation."""
+    """The number after the largest already taken, outside the range reserved for tests (RESERVED_NUMBER and up): no
+    gap, and a number squatted in the reserved range does not freeze the numbering."""
     return max((n for n in numbers_of if n < RESERVED_NUMBER), default=0) + 1
 
 
 def numbers_in(reg, ref, folder, reason):
-    """Numéros (groupe « n » de `motif`) des fichiers de `dossier` à la révision `ref`."""
+    """Numbers (group « n » of `reason`) of the files of `folder` at revision `ref`."""
     return [int(m["n"]) for name in git(reg.root, "ls-tree", "-z", "--name-only", ref, folder.rstrip("/") + "/", replace_with=True)
             if (m := reason.match(name))]
 
 
 def expected_numbers(added_items, following):
-    """{chemin ajouté: chemin attendu} pour des fichiers numérotés ajoutés ensemble ([(numéro, chemin, gabarit)]) : les numéros
-    qui suivent, dans l'ordre ; None pour un numéro de la plage réservée aux tests."""
+    """{chemin ajouté: chemin attendu} for numbered files added together ([(number, path, template)]): the numbers
+    that follow, in order; None for a number in the range reserved for tests."""
     expected_items = {}
     for number_of, path, template in sorted(added_items):
         if number_of >= RESERVED_NUMBER:
@@ -2646,27 +2658,27 @@ def expected_numbers(added_items, following):
     return expected_items
 
 
-# --- Notes sur les tâches : contrôlées comme les arguments de l'agora (T1, T2, T3, T15) ---
+# --- Notes on tasks: checked like the agora's arguments (T1, T2, T3, T15) ---
 
 def config_notes(reg):
-    """Plafonds des notes : bee.yaml (clé notes), tous exigés (ruche-0144 : absent ou mal formé, refusé)."""
+    """The notes' caps: bee.yaml (key notes), all required (ruche-0144: missing or malformed, refused)."""
     return setting(reg, "notes")
 
 
 def notes_since(reg, user, beginning):
-    """Notes de l'utilisateur, toutes tâches confondues, datées après `debut` (fenêtre glissante du plafond)."""
+    """The user's notes, all tasks together, dated after `beginning` (the cap's rolling window)."""
     return sum(1 for _, t in reg.tasks.values() if isinstance(t, dict) for n in _list(t.get("notes"))
                if reg.identities.same_one(n.get("by"), user) and (moment := _instant_or_none(n.get("at"))) and moment > beginning)
 
 
 def check_added_notes(reg, path, previous_ones, added, author, instant):
-    """Notes qu'une PR ajoute à une tâche, à sa création comme sur une tâche existante, contrôlées comme les arguments de
-    l'agora : signées de l'auteur de la PR ; datées de l'heure de la PR (2 h de tolérance, jamais dans le futur), pas d'avant
-    la note précédente ; courtes (notes.text_max), sans caractère invisible ni de contrôle. Renvoie (problèmes, instants
-    des notes bien datées), pour les plafonds par PR et sur 24 h glissantes."""
+    """Notes a PR adds to a task, at its creation as on an existing task, checked like the agora's
+    arguments: signed by the PR's author; dated at the time of the PR (2 h tolerance, never in the future), not before
+    the previous note; short (notes.text_max), with no invisible or control character. Returns (problems, instants
+    of the well-dated notes), for the caps per PR and over a rolling 24 h."""
     problems_found, instants = [], []
     conf = config_notes(reg)
-    # Une note héritée datée dans le futur ne bloque personne : on ne compare qu'aux notes déjà passées.
+    # An inherited note dated in the future blocks no one: it is compared only with notes already past.
     previous_one = max((m for n in _list(previous_ones) if (m := _instant_or_none(n.get("at"))) and m <= instant + LEAD_MAX),
                     default=None)
     for k, note in enumerate(added):
@@ -2700,9 +2712,9 @@ def check_added_notes(reg, path, previous_ones, added, author, instant):
 
 
 def pr_date_problem(value, what_it, instant):
-    """None si `valeur` est l'heure de la PR (à 2 h près, jamais plus d'une minute dans le futur), comme les dates déclarées
-    de l'agora, des notes et des soumissions ; sinon la raison. Pour le `le` des votes, des relectures et des mesures (revue
-    adverse de ruche-0011, m1 : un vote daté de 2099 passait)."""
+    """None if `value` is the time of the PR (within 2 h, never more than a minute in the future), like the declared
+    dates of the agora, notes and submissions; otherwise the reason. For the `at` of votes, reviews and measurements
+    (adversarial review of ruche-0011, m1: a vote dated 2099 got through)."""
     try:
         moment = read_instant(value, what_it)
     except BeeError as e:
@@ -2719,27 +2731,27 @@ def pr_days(instant):
     return sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
 
 
-# --- Créations en libre-service : tâches proposées, propositions de règle (revue adverse de ruche-0011, B1 et I2) ---
+# --- Self-service creations: proposed tasks, rule proposals (adversarial review of ruche-0011, B1 and I2) ---
 #
-# Une seule PR pouvait prendre tous les numéros (P-0001 à P-8999, ou 8 965 tâches) et faire basculer le cap ; un contexte de
-# 200 Ko passait. Créations plafonnées par PR et par utilisateur sur 24 h glissantes (le conseil ne l'est pas), champs courts.
+# A single PR could take every number (P-0001 to P-8999, or 8,965 tasks) and tip the balance; a context of
+# 200 KB got through. Creations capped per PR and per user over a rolling 24 h (the council is not), short fields.
 
-# Ce qui est créé en libre-service, par dossier : (éléments du registre, clé de l'auteur, clé de la date déclarée).
+# What is created in self-service, by folder: (registry elements, the author's key, the declared date's key).
 CREATED_BY = {"tasks": ("tasks", "created_by", "created_on"), "proposals": ("proposals", "author", "opened_at"),
              "invitations": ("invitations", "proposed_by", "proposed_at"), "reports": ("reports", "by", "at")}
 
 
 def config_creations(reg):
-    """Plafonds des créations : bee.yaml (clé creations), tous exigés (ruche-0144 : absent ou mal formé, refusé)."""
+    """The creations' caps: bee.yaml (key creations), all required (ruche-0144: missing or malformed, refused)."""
     return setting(reg, "creations")
 
 
 def recent_creations(reg, ref, folder, user, instant):
-    """Tâches (`dossier` « tasks », clé created_by), propositions de règle (« proposals », clé auteur) ou invitations
-    (« invitations », clé proposed_by) créées par `utilisateur` sur les 24 h glissantes : arrivées dans `ref` depuis 24 h
-    (instant de leur fusion, historique git), plus celles que porte le registre lu et que `ref` n'a pas encore (la PR
-    vérifiée, ou le clone de l'agent). Sans historique git, d'après leur date déclarée (created_on au jour près, opened_at,
-    proposed_at)."""
+    """Tasks (`folder` « tasks », key created_by), rule proposals (« proposals », key author) or invitations
+    (« invitations », key proposed_by) created by `user` over the rolling 24 h: arrived in `ref` within 24 h
+    (instant of their merge, git history), plus those the loaded registry holds and `ref` does not have yet (the PR
+    being checked, or the agent's clone). Without git history, from their declared date (created_on to the day,
+    opened_at, proposed_at)."""
     beginning = instant - CAP_WINDOW
     attribute, key, date = CREATED_BY[folder]
     elements = getattr(reg, attribute)
@@ -2759,9 +2771,9 @@ def recent_creations(reg, ref, folder, user, instant):
 
 
 def check_proposed_task(reg, path, task):
-    """Les champs libres d'une tâche proposée sont courts et lisibles (I2) : titre, contexte, critères d'acceptation,
-    hors-périmètre, fichiers et dépendances, en longueur et en nombre (bee.yaml, clé creations), non vides, sans caractère
-    invisible ni de contrôle. Renvoie les problèmes."""
+    """A proposed task's free fields are short and readable (I2): title, context, acceptance criteria,
+    out of scope, files and dependencies, in length and in number (bee.yaml, key creations), not empty, with no
+    invisible or control character. Returns the problems."""
     conf = config_creations(reg)
     problems_found = []
 
@@ -2787,16 +2799,16 @@ def check_proposed_task(reg, path, task):
     return problems_found
 
 
-# --- R7 : qui quitte une tâche sans contribution ne la reprend pas aussitôt (T13) ---
+# --- R7: whoever leaves a task without a contribution does not take it back right away (T13) ---
 
 def retake_delay(reg):
-    """Heures pendant lesquelles qui a quitté une tâche sans contribution ne la reprend pas (bee.yaml :
-    retake_after_release_hours ; R7, proposition P-0002)."""
+    """Hours during which whoever left a task without a contribution does not take it back (bee.yaml:
+    retake_after_release_hours; R7, proposal P-0002)."""
     return float(setting(reg, "retake_after_release_hours"))
 
 
 def engagement_on(task, user, who_is):
-    """Le début de l'engagement de `utilisateur` sur la tâche (sa réservation, ou son inscription en parallèle), ou None."""
+    """The start of `user`'s engagement on the task (their reservation, or their parallel registration), or None."""
     if not isinstance(task, dict):
         return None
     reservation = task.get("reservation") if isinstance(task.get("reservation"), dict) else {}
@@ -2806,10 +2818,10 @@ def engagement_on(task, user, who_is):
 
 
 def engagement_ends(reg, ref, relative_one, user, since):
-    """Instants où un engagement de `utilisateur` sur la tâche `relatif` (réservation, inscription en parallèle) a pris fin
-    sans contribution (libération, retrait, expiration), d'après l'historique de `ref` : l'instant du commit qui l'a fusionné
-    (premier parent). Seules les versions postérieures à `depuis`, et celle qui les précède, sont relues. Une fin par
-    soumission (la version suivante pointe sur une contribution de l'utilisateur) ou par intégration n'en est pas une."""
+    """Instants when an engagement of `user` on the task `relative_one` (reservation, parallel registration) ended
+    without a contribution (release, removal, expiry), from the history of `ref`: the instant of the commit that merged
+    it (first parent). Only the versions later than `since`, and the one before them, are read again. An end by
+    submission (the next version points to a contribution of the user) or by integration is not one."""
     kept_items = []
     for sha, moment, _ in first_parent_commits(reg.root, ref, relative_one):
         kept_items.append((sha, moment))
@@ -2835,11 +2847,11 @@ STATUSES_CLOSED_WITHOUT_INTEGRATION = ("cancelled", "set_aside")
 
 
 def closures_without_integration(reg, ref, tid, user, instant):
-    """Instants où une contribution de `utilisateur` sur la tâche `tid` a été close sans intégration : annulée (PR fermée
-    sans fusion, never_integrated, comprise) ou écartée. Revue adverse de ruche-0011, I1 : une soumission bidon, puis sa PR
-    fermée, rouvrait la tâche à son auteur avec 72 h neuves ; une telle clôture est une fin d'engagement comme une
-    libération. L'instant est celui du commit (premier parent de `ref`) qui l'a close ; maintenant si la clôture n'est pas
-    encore dans `ref` (elle arrive avec la PR vérifiée)."""
+    """Instants when a contribution of `user` on the task `tid` was closed without integration: cancelled (PR closed
+    without merge, never_integrated, included) or set aside. Adversarial review of ruche-0011, I1: a dummy submission,
+    then its PR closed, reopened the task to its author with 72 fresh hours; such a closure is an end of engagement
+    like a release. The instant is that of the commit (first parent of `ref`) that closed it; now if the closure is not
+    yet in `ref` (it arrives with the PR being checked)."""
     closures = []
     for path, e in reg.records.values():
         if not (isinstance(e, dict) and e.get("task") == tid and reg.identities.same_one(e.get("author"), user)
@@ -2855,10 +2867,10 @@ def closures_without_integration(reg, ref, tid, user, instant):
 
 
 def refused_retake(reg, ref, relative_one, user, instant, local_end=None, history_required=False):
-    """R7 : None si `utilisateur` peut réserver la tâche ou s'y inscrire en parallèle ; sinon la raison : il l'a quittée sans
-    contribution (libération, retrait, expiration), ou sa contribution y a été close sans intégration, il y a moins de
-    retake_after_release_hours. `local_end` : une libération faite dans le clone, pas encore publiée.
-    `history_required` (check-pr) : sans historique git complet, la reprise ne se vérifie pas, elle est refusée."""
+    """R7: None if `user` may reserve the task or register on it in parallel; otherwise the reason: they left it without
+    a contribution (release, removal, expiry), or their contribution on it was closed without integration, less than
+    retake_after_release_hours ago. `local_end`: a release made in the clone, not yet published.
+    `history_required` (check-pr): without a complete git history, the retake cannot be checked, it is refused."""
     hours = retake_delay(reg)
     if not hours:
         return None
@@ -2883,11 +2895,11 @@ def refused_retake(reg, ref, relative_one, user, instant, local_end=None, histor
 
 def check_engagements(reg, path, old, new, differences, author, *, is_council, is_robot, instant, added,
                          level, bootstrap, base=None):
-    """Transitions du travail en parallèle à statut constant (réservée → réservée, en review → en relecture).
+    """Transitions of parallel work at a constant status (reserved → reserved, in review → in review).
 
-    Renvoie (nature, problèmes). Chaque transition est en libre-service et contrôlée : on ne s'inscrit et ne se
-    retire que soi-même ; on ne soumet en parallèle que si l'on est inscrit ; la réservation d'un autre ne change
-    de main que par la promotion du plus ancien inscrit, à la date de son inscription (R7).
+    Returns (nature, problems). Each transition is self-service and checked: one registers and
+    withdraws only oneself; one submits in parallel only if registered; someone else's reservation changes
+    hands only by the promotion of the oldest one registered, as of the date of their registration (R7).
     """
     problems_found = []
 
@@ -2902,7 +2914,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
     holder = ra.get("user")
 
     if ra != rn:
-        # Le titulaire s'en va (libération, ou expiration constatée par le robot) : le plus ancien inscrit prend sa place.
+        # The holder leaves (release, or expiry noted by the robot): the oldest one registered takes their place.
         require(differences <= {"reservation", "parallel", "notes"},
                "a promotion changes only the reservation and the list of those registered in parallel")
         elected = oldest(pa)
@@ -2918,7 +2930,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
         return "promotion", problems_found
 
     if old_contribution != new_contribution:
-        # Soumission d'un inscrit en parallèle : sa contribution entre en course, la réservation du titulaire ne bouge pas.
+        # Submission by one registered in parallel: their contribution enters the race, the holder's reservation stays.
         require(differences <= {"parallel", "contribution", "notes"},
                "a parallel submission changes only the list of those registered and the task's contribution")
         registered = any(p.get("user") == author for p in pa)
@@ -2950,9 +2962,9 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
             refusal = refused_retake(reg, base, path, who_is, instant, history_required=True)
             require(refusal is None, refusal or "")
         try:
-            # La date d'inscription fixe le rang de promotion et dit si l'inscription précède une soumission (R3) :
-            # elle doit être l'heure réelle, ni antidatée ni postdatée, et jamais antérieure à ce qui existe déjà sur
-            # la tâche (on s'inscrit après la réservation, après les inscrits et après les soumissions en course).
+            # The registration date sets the promotion rank and tells if the registration precedes a submission (R3):
+            # it must be the real time, neither backdated nor postdated, and never earlier than what already exists on
+            # the task (one registers after the reservation, after those registered and after the racing submissions).
             since = read_instant(p.get("since"), path)
             require(instant - dt.timedelta(hours=2) <= since <= instant + LEAD_MAX,
                    "the parallel registration must be dated at the time of the PR (within 2 h, never in the future); "
