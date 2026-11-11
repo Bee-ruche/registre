@@ -2951,7 +2951,7 @@ class TestTreePullRequests(BaseTest):
         self.commit()
         code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "alice")
         self.assertEqual(code, 1, text)
-        self.assertIn("node « projects/lossless-compression/miniz/zip » introuvable", text)
+        self.assertIn("node « projects/lossless-compression/miniz/zip » not found", text)
 
 
     def verify(self, author, *options):
@@ -2969,7 +2969,7 @@ class TestTreePullRequests(BaseTest):
                 self.commit()
                 code, text = self.verify("alice", "--auto-merge")
                 self.assertEqual(code, 1, text)
-                self.assertIn("commentaire(s) YAML ajouté(s) ou modifié(s)", text)
+                self.assertIn("YAML comment(s) added or modified", text)
                 code, text = self.verify("bidji29", "--auto-merge")
                 self.assertNotIn("FUSION_AUTO=oui", text, "même du conseil, un commentaire sort la PR du libre-service")
                 git(self.dir, "switch", "-q", "main")
@@ -2992,7 +2992,7 @@ class TestTreePullRequests(BaseTest):
         self.commit()
         code, text = self.verify("bidji29")
         self.assertEqual(code, 1, text)
-        self.assertIn("node « projects/lossless-compression/miniz/tinfl » introuvable", text)
+        self.assertIn("node « projects/lossless-compression/miniz/tinfl » not found", text)
 
     def test_m1_a_node_removed_afterwards_does_not_block_main(self):
         """La course de la revue adverse : une tâche vise une zone, une PR d'outillage relue retire la zone. Fusionnées
@@ -3328,7 +3328,7 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verify("alice")[0], 1)
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 3, text)
-        self.assertIn("relecture humaine", text)
+        self.assertIn("human review", text)
 
     def test_tooling_proposed_by_a_member_never_merged_alone(self):
         """Tâches de la ruche : un membre peut proposer de l'outillage ; seule une relecture puis le conseil le fusionnent."""
@@ -3520,7 +3520,7 @@ class TestPullRequests(BaseTest):
                 os.environ["BEE_NOW"] = now_instant
                 code_read, text = self.verify("alice", "--pr-time", "2026-10-27T12:00:00Z")
                 self.assertEqual(code_read, code, text)
-                self.assertEqual("outside [the check - 24 h, the check + 1 min] : push again" in text, bool(code))
+                self.assertEqual("outside [the check - 24 h, the check + 1 min]: push again" in text, bool(code))
 
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
@@ -3906,7 +3906,7 @@ class TestPublish(BasePublish):
         self.bee("take", "miniz-0099", "--user", "alice")
         code, text = self.bee("publish", "--title", "Réservation miniz-0099", "--interval", "0")
         self.assertEqual(code, 0, text)
-        self.assertIn("fusionnée", text)
+        self.assertIn("PR merged", text)
         calls = self.log_text.read_text(encoding="utf-8")
         self.assertIn("api repos/Bee-ruche/registre/pulls -X POST -f title=Réservation miniz-0099 -f head=bee/reservation-miniz-0099-20261027-120000 -f base=main", calls)
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
@@ -3919,7 +3919,7 @@ class TestPublish(BasePublish):
         before = git(self.dir, "rev-parse", "HEAD")
         code, text = self.bee("publish", "--title", "Réservation miniz-0099", "--dry-run")
         self.assertEqual(code, 0, text)
-        self.assertIn("Rien n'a été écrit ni poussé", text)
+        self.assertIn("Nothing was written or pushed", text)
         self.assertIn("tasks/miniz/miniz-0099.yaml", text)
         self.assertFalse(self.log_text.exists(), "aucun appel à gh")
         self.assertEqual(git(self.dir, "rev-parse", "HEAD"), before)
@@ -3938,19 +3938,19 @@ class TestPublish(BasePublish):
         self.state.write_text('{"state": "closed", "merged": false}', encoding="utf-8")
         code, text = self.bee("publish", "--title", "Réservation miniz-0099", "--interval", "0")
         self.assertEqual(code, 1)
-        self.assertIn("refusée", text)
+        self.assertIn("was refused", text)
         self.bee("release", "miniz-0099", "--user", "alice")
         self.bee("take", "miniz-0099", "--user", "bruno")
         self.state.write_text('{"state": "open", "merged": false}', encoding="utf-8")
         code, text = self.bee("publish", "--title", "Réservation miniz-0099", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2)
-        self.assertIn("relecture humaine", text)
+        self.assertIn("human review", text)
         self.assertIn("bee/reservation-miniz-0099-20261027-120000-2", git(self.dir, "branch"), "un second titre identique reçoit un suffixe")
 
     def test_nothing_to_publish(self):
         code, text = self.bee("publish", "--title", "Rien")
         self.assertEqual(code, 1)
-        self.assertIn("aucun changement", text)
+        self.assertIn("no change", text)
 
     # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
 
@@ -4052,7 +4052,7 @@ class TestPublish(BasePublish):
                         with self.subTest(name=name, options=options[::2], dry_run=dry_run):
                             code, output_text = self.bee("publish", *options, *dry_run)
                             self.assertEqual(code, 1, output_text)
-                            self.assertIn(f"bee : {'body' if '--body' in options else 'title'}", output_text)
+                            self.assertIn(f"bee: {'body' if '--body' in options else 'title'}", output_text)
                             self.assertIn(cause, output_text)
         code, output_text = self.bee("publish", "--title", "Merci @octocat", "--interval", "0")  # the real thing, real git
         self.assertEqual(code, 1, output_text)
@@ -4266,7 +4266,7 @@ class TestPublishBySession(BasePublish):
             self.ok("note", "miniz-9002", "--user", "chloe", "--text", f"Note de session numéro {i + 1}.")
         code, text = self.bee("publish", "--title", "Session chloe", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("11 notes ajoutés, au plus 10 (notes.max_per_pr)", text)
+        self.assertIn("11 notes added, at most 10 (notes.max_per_pr)", text)
         self.assertFalse(self.log_text.exists(), "aucun appel à gh")
         self.assertEqual(git(self.dir, "branch", "--format=%(refname:short)").split(), ["main"])
         git(self.dir, "switch", "-qc", "lot")
@@ -4346,27 +4346,27 @@ class TestPublishBySession(BasePublish):
         on_disk = lambda: ({c: (self.dir / c).read_bytes() for c in (self.SUBMISSION, self.TASK)},  # noqa: E731
                                  git(self.dir, "status", "--porcelain"))
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--dry-run")
-        self.assertIn("En deux PR, dans l'ordre : d'abord « Réservation miniz-0099 » seule (tasks/miniz/miniz-0099.yaml), puis, "
-                      "une fois fusionnée, « Soumission miniz-0099-c1 »", text)
+        self.assertIn("In two PRs, in order: first « Réservation miniz-0099 » alone (tasks/miniz/miniz-0099.yaml), then, "
+                      "once it is merged, « Soumission miniz-0099-c1 »", text)
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--no-wait")
         self.assertEqual(code, 1, text)
-        self.assertIn("« Réservation miniz-0099 » doit être fusionnée avant « Soumission miniz-0099-c1 »", text)
+        self.assertIn("« Réservation miniz-0099 » must be merged before « Soumission miniz-0099-c1 »", text)
         self.assertEqual((self.prs(), on_disk()), ([], before))
         self.mode.write_text("fermee", encoding="utf-8")
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("la PR a été refusée et fermée", text)
-        self.assertIn("Rien d'autre n'est publié : vos changements sont revenus sur le disque.", text)
+        self.assertIn("the PR was refused and closed", text)
+        self.assertIn("Nothing else is published: your changes are back on disk.", text)
         self.assertEqual((self.prs(), on_disk()), (["Réservation miniz-0099"], before))
         self.mode.write_text("ouverte", encoding="utf-8")
         for _ in range(2):  # run again while it waits: the same PR is followed, a second one is never opened
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
             self.assertEqual(code, 2, text)
-            self.assertIn("rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee publish une fois cette PR "
-                          "fusionnée : il la suit, sans en ouvrir une seconde.", text)
+            self.assertIn("nothing else is published, your changes are on disk. Run bee publish again once this PR "
+                          "is merged: it follows it, without opening a second one.", text)
             self.assertNotIn("git stash", text)
             self.assertEqual((self.prs(), on_disk()), (["Réservation miniz-0099"] * 2, before))
-        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/2)", text)
+        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/2)", text)
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
         # The reservation merges; run once more, bee publier follows it, then sends the submission alone.
         self.mode.write_text("merge", encoding="utf-8")
@@ -4398,9 +4398,9 @@ class TestPublishBySession(BasePublish):
         self.assertEqual((self.prs(), self.disk_state()), (["Réservation miniz-0099"], before))
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1) : bee publish la suit, "
-                      "sans en ouvrir une seconde.", text)
-        self.assertIn(f"Remis sur le disque : {self.SUBMISSION}, {self.TASK}", text)
+        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1): bee publish follows it, "
+                      "without opening a second one.", text)
+        self.assertIn(f"Put back on disk: {self.SUBMISSION}, {self.TASK}", text)
         self.assertEqual((self.prs(), self.disk_state()), (["Réservation miniz-0099"], before))
         self.mode.write_text("merge", encoding="utf-8")
         base = git(self.dir, "rev-parse", "HEAD").strip()
@@ -4429,8 +4429,8 @@ class TestPublishBySession(BasePublish):
         before = self.disk_state(note)
         code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("« Réservation miniz-0099 » est fusionnée, mais « Soumission miniz-0099-c1 » ne s'applique plus sur main", text)
-        self.assertIn(f"Remis sur le disque : {self.SUBMISSION}, {self.TASK}, {note}", text.rsplit("✓ PR fusionnée", 1)[1])
+        self.assertIn("« Réservation miniz-0099 » is merged, but « Soumission miniz-0099-c1 » no longer applies on main", text)
+        self.assertIn(f"Put back on disk: {self.SUBMISSION}, {self.TASK}, {note}", text.rsplit("✓ PR merged", 1)[1])
         self.assertEqual((self.prs(), self.disk_state(note)[0]), (["Réservation miniz-0099"], before[0]))
         self.assertEqual(git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
         git(self.dir, "fetch", "-q", "origin")
@@ -4457,7 +4457,7 @@ class TestPublishBySession(BasePublish):
                     git(self.dir, "remote", "set-url", "origin", str(self.root / "distant.git"))
                 self.assertEqual(code, 1, text)
                 self.assertIn("git push", text)
-                self.assertIn(f"Remis sur le disque : {self.SUBMISSION}, {self.TASK}", text)
+                self.assertIn(f"Put back on disk: {self.SUBMISSION}, {self.TASK}", text)
                 self.assertEqual((self.prs(), self.disk_state(), git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip()),
                                  ([], before, "main"))
 
@@ -4477,7 +4477,7 @@ class TestPublishBySession(BasePublish):
         with mock.patch("time.sleep", side_effect=while_waiting):
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("ont changé sur le disque pendant l'attente : ils y restent", text)
+        self.assertIn("changed on disk during the wait: they stay there", text)
         self.assertIn("Ajoutée pendant l'attente.", (self.dir / note).read_text(encoding="utf-8"))
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
         self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
@@ -4495,15 +4495,15 @@ class TestPublishBySession(BasePublish):
         for options in ([], ["--redate"]):
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--dry-run", *options)
             self.assertEqual(code, 1, text)
-            self.assertIn("2026-10-27T12:00:00Z : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à 2 h près, "
-                          "jamais dans le futur ; pour la seconde PR, --timeout minutes plus tard)", text)
+            self.assertIn("2026-10-27T12:00:00Z: outside the gate's window (each declared date is the time of the PR, within 2 h, "
+                          "never in the future; for the second PR, --timeout minutes later)", text)
             self.assertIn('bee publish --title "Soumission miniz-0099-c1" --redate', text)
         self.assertEqual((self.prs(), self.disk_state()), ([], before))
         self.ok("publish", "--title", "Soumission miniz-0099-c1", "--dry-run", "--timeout", "4")  # 13 h 59 - 2 h <= 12 h
         self.a("2026-10-27T14:30:00Z")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
-        self.assertIn("Redaté à 2026-10-27T14:30:00Z : 2026-10-27T12:00:00Z, 2026-10-27T12:30:00Z", text)
+        self.assertIn("Redated to 2026-10-27T14:30:00Z: 2026-10-27T12:00:00Z, 2026-10-27T12:30:00Z", text)
         self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
         reservation, submission = self.merges(base)
         self.accepted_one(reservation, "alice", "reservation")
@@ -4530,10 +4530,10 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T14:30:00Z")
         code, text = self.bee("publish", "--title", "Note alice", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("2026-10-27T12:00:00Z : hors de la fenêtre de la porte", text)
+        self.assertIn("2026-10-27T12:00:00Z: outside the gate's window", text)
         self.assertEqual(((self.dir / note).read_bytes(), self.prs()), (before, []))
         text = self.ok("publish", "--title", "Note alice", "--redate", "--interval", "0")
-        self.assertIn("Redaté à 2026-10-27T14:30:00Z : 2026-10-27T12:00:00Z", text)
+        self.assertIn("Redated to 2026-10-27T14:30:00Z: 2026-10-27T12:00:00Z", text)
         (merge,) = self.merges(base)
         self.accepted_one(merge, "alice", "note")
         notes = {n["by"]: n["at"] for n in self.task("miniz-9002")["notes"]}
@@ -4556,7 +4556,7 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T12:55:00Z")
         code, text = self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", text)
+        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
         git(self.dir, "fetch", "-q", "origin")
         self.assertEqual((self.prs(), git(self.dir, "rev-parse", f"origin/{(self.root / 'pr-1').read_text().strip()}")),
                          (["Réservation miniz-0099"], first_one), "la PR qui attend n'a rien reçu de plus")
@@ -4583,7 +4583,7 @@ class TestPublishBySession(BasePublish):
             self.state_file().unlink()
             code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")
             self.assertEqual(code, 2, text)
-            self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", text)
+            self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
             self.assertEqual(self.prs(), ["Réservation miniz-0099"])
         self.mode.write_text("merge", encoding="utf-8")
         self.state_file().unlink()
@@ -4606,7 +4606,7 @@ class TestPublishBySession(BasePublish):
                 self.state_file().write_bytes(content.encode("latin-1"))
                 code, text = self.bee("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee-publish.json est illisible : rien n'est écrit ni poussé. Supprimez-le", text)
+                self.assertIn("bee-publish.json is unreadable: nothing is written or pushed. Delete it", text)
                 self.assertNotIn("Traceback", text)
                 self.assertEqual((self.disk_state(), self.log_text.exists()), (before, False))
                 self.assertEqual(git(self.dir, "branch", "--format=%(refname:short)").split(), ["main"])
@@ -4633,7 +4633,7 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(git(self.dir, "diff", "--cached", "--name-only"), "", "rien ne reste dans l'index")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--interval", "0")
-        self.assertIn("Laissés de côté (bee ne les a pas écrits) : tasks/miniz/miniz-9002.yaml, measurements/brouillon.txt", text)
+        self.assertIn("Left aside (bee did not write them): tasks/miniz/miniz-9002.yaml, measurements/brouillon.txt", text)
         reservation, submission = self.merges(base)
         self.assertEqual((self.files(reservation), self.files(submission)), ([self.TASK], [self.SUBMISSION, self.TASK]))
         self.accepted_one(submission, "alice", "submission")
@@ -4686,7 +4686,7 @@ class TestPublishBySession(BasePublish):
                 base = git(self.dir, "rev-parse", "HEAD").strip()
             code, text = self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")
             self.assertEqual(code, 0 if merge else 2, text)
-            self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", text)
+            self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
         self.assertEqual(self.prs(), ["Réservation miniz-0099", "Réservation miniz-9001", "Session alice"])
         r1, r2, rest_of = self.merges(base)
         self.assertEqual((self.files(r1), self.files(r2)), ([self.TASK], ["tasks/miniz/miniz-9001.yaml"]))
@@ -4703,7 +4703,7 @@ class TestPublishBySession(BasePublish):
         self.a("2026-10-27T15:30:00Z")
         code, text = self.bee("publish", "--title", "Session alice", "--redate", "--timeout", "0", "--interval", "0")
         self.assertEqual(code, 2, text)
-        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", text)
+        self.assertIn("« Réservation miniz-0099 » is already waiting (https://github.com/Bee-ruche/registre/pull/1)", text)
         self.assertEqual(self.prs(), ["Réservation miniz-0099"])
         self.mode.write_text("merge", encoding="utf-8")
         self.ok("publish", "--title", "Session alice", "--redate", "--interval", "0")
@@ -4729,7 +4729,7 @@ class TestPublishBySession(BasePublish):
         before = self.disk_state()
         code, text = self.bee("publish", "--title", "Session alice", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la PR est fusionnée, mais main change {note}, retouché(s) à la main : mettez-les de côté (git stash)", text)
+        self.assertIn(f"the PR is merged, but main changes {note}, touched up by hand: put them aside (git stash)", text)
         self.assertEqual(((self.dir / note).read_bytes(), self.disk_state(), self.state_file().is_file()), (touched_up, before, True))
         git(self.dir, "stash", "push", "-q", "--", note)
         self.ok("publish", "--title", "Session alice", "--interval", "0")
@@ -4759,7 +4759,7 @@ class TestPublishBySession(BasePublish):
                     path.unlink()
                     target.rename(path) if link != ".git/bee-publish.json" else target.unlink()
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"lien symbolique refusé, bee n'écrit ni ne lit à travers : {link if '.git' not in link else ''}", text)
+                self.assertIn(f"symbolic link refused, bee neither writes nor reads through one: {link if '.git' not in link else ''}", text)
                 self.assertEqual((after, self.log_text.exists()), (before, False))
         self.mode.write_text("ouverte", encoding="utf-8")  # pendant l'attente, la tâche devient un lien : rien n'est écrit à travers
         target = outside_one / "task.yaml"
@@ -4773,7 +4773,7 @@ class TestPublishBySession(BasePublish):
         with mock.patch("time.sleep", side_effect=while_waiting):
             code, text = self.bee("publish", "--title", "Session alice", "--interval", "0")
         self.assertEqual(code, 1, text)
-        self.assertIn("ont changé sur le disque pendant l'attente : ils y restent", text)
+        self.assertIn("changed on disk during the wait: they stay there", text)
         self.assertIn("status: in_review", target.read_text(encoding="utf-8"))
 
     def test_the_address_of_a_state_file_prints_neutralized(self):
@@ -4800,10 +4800,10 @@ class TestPublishBySession(BasePublish):
                           encoding="utf-8")
         self.on_main("plafond d'arguments par PR ramené à 3")
         for who_is, arguments, tasks, refusal in (
-                ("bidji29", 4, 0, ("4 arguments ajoutés, au plus 3 (agora.arguments_max_per_pr)",
+                ("bidji29", 4, 0, ("4 arguments added, at most 3 (agora.arguments_max_per_pr)",
                                    "plafond : 4 arguments ajoutés par cette PR, au plus 3")),
                 ("bidji29", 3, 0, None),
-                ("alice", 0, 4, ("4 tasks ajoutés, au plus 3 (creations.tasks_max_per_pr)",
+                ("alice", 0, 4, ("4 tasks added, at most 3 (creations.tasks_max_per_pr)",
                                  "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3")),
                 ("alice", 0, 3, None), ("bidji29", 0, 4, None)):
             with self.subTest(who_is=who_is, arguments=arguments, tasks=tasks):
@@ -7311,7 +7311,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                                                          verdict={**self.GOOD, **declared_one})
                 self.assertIsNone(verdict, output_text)
                 certain = "diverged" in said or "behind" in said or "unreadable" in said
-                self.assertIn(f"  | bee : {self.cid}: verdict refused, {bee.VERDICT_WAIT['base']} (declared base: {said}); "
+                self.assertIn(f"  | bee: {self.cid}: verdict refused, {bee.VERDICT_WAIT['base']} (declared base: {said}); "
                               "no verdict is recorded" + ("\n" if certain else ", judged again at the next pass\n"), output_text)
                 self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": "base", "sha": "abc1234"} if certain else None)
                 compared_ones = [a["args"][1] for a in calls if "/compare/" in a["args"][1]]
@@ -7346,7 +7346,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             with self.subTest(declared_one=declared_one):
                 output_text, verdict, _ = self.collect({"comparaisons": {old_head: "ahead"}}, verdict={**self.WRONG, **declared_one})
                 self.assertIsNone(verdict, output_text)
-                self.assertIn(f"  | bee : {self.cid}: verdict refused, {bee.VERDICT_WAIT['judge_base']}", output_text)
+                self.assertIn(f"  | bee: {self.cid}: verdict refused, {bee.VERDICT_WAIT['judge_base']}", output_text)
                 self.assertEqual(self.rec(self.cid)["awaiting_verdict"]["reason"], "judge_base")
         path = self.dir / "projects/miniz.yaml"
         path.write_text(path.read_text(encoding="utf-8").replace("verdict_requires_judge_base: true\n", ""), encoding="utf-8")
@@ -8853,7 +8853,7 @@ class TestDressRehearsal(BaseDressRehearsal):
             path.write_text("# Avis du conseil\n\n[attempt équipe red] Texte libre.\n", encoding="utf-8")
         self.commit()
         text = self.refused("gaspard", "members/gaspard.md: unexpected file in members/: only the files members/<login>.yaml")
-        for name in ("gaspard.html", "gaspard ", "gaspard.yml", "under_it/gaspard.yaml"):
+        for name in ("gaspard.html", "gaspard:", "gaspard.yml", "under_it/gaspard.yaml"):
             self.assertIn(f"members/{name}", text)
         # Le bon nom, mais pas un objet YAML : refusé aussi.
         self.branch("list_of")
@@ -12625,7 +12625,7 @@ class TestPersonalDataGate(BaseTest):
         code, text = self.note("Il soigne un cancer, dit la note.")
         self.assertEqual(code, 3, text)
         self.assertIn("human_review", text)
-        self.assertIn("Un humain doit lire cette PR avant sa fusion", text)
+        self.assertIn("A human must read this PR before it is merged", text)
         code, text = self.note("The health checks pass on every minor version; 29 954 575 instructions (-2,1 %), run 41075923604.")
         self.assertEqual(code, 0, text)
         self.assertIn("FUSION_AUTO=oui", text)
@@ -12848,7 +12848,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         text = self.gesture("guardian-approval", "gina")
         self.assertIn("Other declared identities: gitlab:fictif-tiers", text)
         self.assertIn("check on the sources", text)
-        self.assertIn("Vérifiez d'abord que les autres identités", (ROOT / "tools/bee.py").read_text(encoding="utf-8"))
+        self.assertIn("Check first that the other declared identities", (ROOT / "tools/bee.py").read_text(encoding="utf-8"))
         # Sans autre identité : « aucune ».
         self.assertIn("Other declared identities: none", "\n".join(bee.identity_lines(
             {"person": {"identifier": "github:hubot", "channel": "https://github.com/hubot"}})))
@@ -16158,7 +16158,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
         self.assertEqual(workflow_commands(output_text), [], output_text)
         code, output_text = self.bee("vote", WORKFLOW_TRAP, "--user", "alice", "--value", "1")
         self.assertEqual(code, 1, output_text)
-        self.assertIn("bee : unknown vote subject: x\n  : :error::PIEGE", output_text)  # ruche-0088: the next lines indented
+        self.assertIn("bee: unknown vote subject: x\n  : :error::PIEGE", output_text)  # ruche-0088: the next lines indented
         self.assertEqual(workflow_commands(output_text), [], output_text)
         self.assertEqual(bee.show_error(bee.show_error(WORKFLOW_TRAP)), bee.show_error(WORKFLOW_TRAP), "fixed point")
         self.assertEqual(bee.show_error("Honnête :: rien à casser"), "Honnête :: rien à casser")
@@ -18329,7 +18329,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.a("2026-12-02T00:00:00Z")
         code, text = self.verify("bidji29", *push)
         self.assertEqual(code, 1, text)
-        self.assertIn("--pr-time (2026-11-30T23:30:00Z) : outside [the check - 24 h, the check + 1 min]", text)
+        self.assertIn("--pr-time (2026-11-30T23:30:00Z): outside [the check - 24 h, the check + 1 min]", text)
         self.refused("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_bootstrap")  # a local run: the check's time
 
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
@@ -18688,7 +18688,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                     git(self.dir, "rm", "-q", f"votes/{subject}/{voter}.yaml")
                     self.commit()
                     text = self.refused(voter, f"votes/{subject}/{voter}.yaml: a published vote is never withdrawn (commandment 10)")
-                    self.assertIn("PR refusée (1 problème(s))", text, "the only refusal is this rule's: the voter withdraws their own vote")
+                    self.assertIn("PR refused (1 problem(s))", text, "the only refusal is this rule's: the voter withdraws their own vote")
                     self.abandon(name)
 
     def test_renaming_own_vote_is_refused(self):
@@ -18833,7 +18833,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         self.close_it("integrated")
         self.vote_by_hand("bidji29", "integration-et-vote", since="integration")
         text = self.refused("bidji29", f"votes/{self.cid}/bidji29.yaml: {message}")
-        self.assertIn("PR refusée (1 problème(s))", text)
+        self.assertIn("PR refused (1 problem(s))", text)
         main = git(self.dir, "rev-parse", "main").strip()
         schema = json.loads((self.dir / "schemas/contribution-record.schema.json").read_text(encoding="utf-8"))
         statuses = [s for s in schema["properties"]["status"]["enum"] if s != "in_review"]  # every status out of review
@@ -18849,7 +18849,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                 with self.subTest(status=status, voter=voter):
                     self.vote_by_hand(voter, name := f"{status}-{voter}")
                     text = self.refused(voter, f"votes/{self.cid}/{voter}.yaml: {message}")
-                    self.assertIn("PR refusée (1 problème(s))", text, "the only refusal is the closed vote")
+                    self.assertIn("PR refused (1 problem(s))", text, "the only refusal is the closed vote")
                     self.abandon(name)
             with self.subTest(status=status, folder="miniz-0099-c01"):  # the file's sujet names it, in another folder
                 self.vote_by_hand("chloe", name := f"{status}-c01", folder="miniz-0099-c01")
@@ -19224,7 +19224,7 @@ class TestQuotedPathsGate(BaseDressRehearsal):
             return code, text.replace(bee.show_error(name), "<name>")
         expected = publish("a_b")
         self.assertEqual(expected[0], 1)
-        self.assertIn("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : <name>.bak.", expected[1])
+        self.assertIn("these files are not self-service and would get the PR refused: <name>.bak.", expected[1])
         for name, character in QUOTED_CHARACTERS.items():
             with self.subTest(character=name):
                 self.assertEqual(publish(f"a{character}b"), expected)
@@ -22253,8 +22253,8 @@ class TestRenamedCommandsRuche0145(BaseTest):
             with self.subTest(argv=argv):
                 code, text = self.bee(*argv)
                 self.assertEqual(code, 2, text)
-                self.assertIn(f"::error title=bee::« {old} » was renamed « {new} » by the switch to English (ruche-0145) : nothing was run", text)
-                self.assertIn(f"bee : « {old} » was renamed « {new} »", text)
+                self.assertIn(f"::error title=bee::« {old} » was renamed « {new} » by the switch to English (ruche-0145): nothing was run", text)
+                self.assertIn(f"bee: « {old} » was renamed « {new} »", text)
                 self.assertNotIn("usage:", text)  # not --help: the forks' check-fork probe sees a failure, never an old command's usage
         self.assertEqual(path.read_bytes(), before, "nothing written")
         self.assertFalse((self.dir / "passe").exists())
