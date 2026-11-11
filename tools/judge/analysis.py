@@ -38,21 +38,21 @@ UNDEFINED_ALLOWED = frozenset({
 
 # Instructions with no use in a computing library, but useful to deceive a measurement or to escape it.
 SUSPICIOUS_MNEMONICS = {
-    "syscall": "appel système direct",
-    "sysenter": "appel système direct",
-    "int": "interruption logicielle (appel système 32 bits ou point d'arrêt)",
-    "int3": "point d'arrêt",
-    "rdtsc": "lecture du compteur de cycles",
-    "rdtscp": "lecture du compteur de cycles",
+    "syscall": "direct system call",
+    "sysenter": "direct system call",
+    "int": "software interrupt (32-bit system call or breakpoint)",
+    "int3": "breakpoint",
+    "rdtsc": "reading the cycle counter",
+    "rdtscp": "reading the cycle counter",
     "rdpmc": "reading a performance counter",
-    "rdpid": "lecture de l'identifiant de processeur",
-    "rdrand": "nombre aléatoire matériel",
-    "rdseed": "nombre aléatoire matériel",
-    "cpuid": "identification du processeur (détection d'un émulateur ou de Valgrind)",
-    "xgetbv": "lecture d'état du processeur",
+    "rdpid": "reading the processor id",
+    "rdrand": "hardware random number",
+    "rdseed": "hardware random number",
+    "cpuid": "processor identification (detecting an emulator or Valgrind)",
+    "xgetbv": "reading the processor's state",
     "(bad)": "bytes the disassembler cannot decode",
     ".byte": "bytes the disassembler cannot decode",
-    "preambule_valgrind": "préambule de requête client Valgrind (suspend le décompte d'instructions)",
+    "preambule_valgrind": "Valgrind client request preamble (suspends the instruction count)",
     "segment_wx": "memory both writable and executable in the linked program",
     "pile_executable": "executable stack in the linked program",
 }
@@ -72,21 +72,21 @@ FORBIDDEN_SECTIONS = re.compile(r"^\.(?:init_array|fini_array|preinit_array|ctor
 
 # Judged files, read whole (each file of B against the same file of A): words with no business in the project.
 SOURCE_WORDS = [
-    (re.compile(r"\b(?:__asm__|__asm|asm)\b"), "assembleur en ligne"),
+    (re.compile(r"\b(?:__asm__|__asm|asm)\b"), "inline assembly"),
     (re.compile(r"__attribute(?:__)?\s*\(\s*\((?:[^()]|\([^()]*\))*?(?:constructor|destructor|ifunc|section|weak|alias)"),
-     "attribut de lien ou d'initialisation"),
+     "link or initialization attribute"),
     (re.compile(r"(?:#|%:)\s*(?:include(?:_next)?|import)\s*(?:[<\"](?:sys/|unistd\.h|dlfcn\.h|signal\.h|time\.h|sched\.h|pthread\.h"
                 r"|fcntl\.h|cpuid\.h|valgrind/)|[^\s<\"])"),
-     "en-tête système (processus, horloge, signaux, Valgrind)"),
+     "system header (processes, clock, signals, Valgrind)"),
     (re.compile(r"\b(?:getenv|RUNNING_ON_VALGRIND|VALGRIND_\w+|CACHEGRIND_\w+|CALLGRIND_\w+|dlsym|dlopen)\b"),
-     "détection de l'environnement de mesure"),
+     "detection of the measurement environment"),
     (re.compile(r"\b(?:__builtin_ia32_(?:rdtscp?|rdpmc|rdrand\w*|rdseed\w*|rdpid|xgetbv)|__?rdtscp?|__rdpmc|_xgetbv|_rd(?:rand|seed)\w*"
                 r"|__cpuid\w*|__get_cpuid\w*|__builtin_cpu_(?:supports|init|is))\b"),
-     "lecture du processeur ou de l'horloge"),
+     "reading the processor or the clock"),
     # This scan of the text is only a net: token pasting (« a##sm ») or _Pragma can
     # form a forbidden word the patterns above do not see (adversarial review of 28 October). The analysis
     # of the objects sees the code produced.
-    (re.compile(r"##|%:%:|\b_Pragma\b|(?:#|%:)\s*pragma\b"), "concaténation de jetons ou pragma (peut former un mot interdit)"),
+    (re.compile(r"##|%:%:|\b_Pragma\b|(?:#|%:)\s*pragma\b"), "token pasting or pragma (can form a forbidden word)"),
 ]
 
 
@@ -203,25 +203,25 @@ def analyse(surveys_a, surveys_b, texts_a, texts_b, prefixes=(), allowed_set=())
     for (nom, t), file in sorted(sym_b.items()):
         if nom in NEVER_ALLOWED and (nom, t) not in sym_a:
             suspects.append({"type": "appel_interdit" if t in ("U", "w", "v") else "symbole_interdit",
-                             "detail": f"{nom} ({file}) : fonction qui sert à tromper la mesure (jamais permise)"})
+                             "detail": f"{nom} ({file}): a function that serves to deceive the measurement (never allowed)"})
         elif t in ("i", "u") and (nom, t) not in sym_a:
-            suspects.append({"type": "symbole", "detail": f"{nom} ({file}) : fonction indirecte ou symbole unique (type {t})"})
+            suspects.append({"type": "symbole", "detail": f"{nom} ({file}): indirect function or unique symbol (type {t})"})
         elif t in ("U", "w", "v"):
             if nom not in all_allowed and nom not in undefined_a and not (prefixes and nom.startswith(prefixes)):
-                suspects.append({"type": "appel_externe", "detail": f"{nom} ({file}) : fonction externe hors de la liste permise"})
+                suspects.append({"type": "appel_externe", "detail": f"{nom} ({file}): external function outside the allowed list"})
         elif t.isupper() and nom not in defined_a and not (prefixes and nom.startswith(prefixes)):
-            suspects.append({"type": "symbole_defini", "detail": f"{nom} ({file}) : symbole global hors de l'espace de noms du projet "
-                                                                 "(il pourrait remplacer une fonction du harnais ou de la libc)"})
+            suspects.append({"type": "symbole_defini", "detail": f"{nom} ({file}): global symbol outside the project's namespace "
+                                                                 "(it could replace a function of the harness or of the libc)"})
     sec_a, sec_b = sections(surveys_a["sections"]), sections(surveys_b["sections"])
     for nom in sorted(sec_b - sec_a):
         if FORBIDDEN_SECTIONS.match(nom) or not ALLOWED_SECTIONS.match(nom):
-            suspects.append({"type": "section", "detail": f"{nom} : section exécutée avant le programme ou inhabituelle"})
+            suspects.append({"type": "section", "detail": f"{nom}: section run before the program, or unusual"})
     mn_a, mn_b = mnemonics_found(surveys_a["desassemblage"]), mnemonics_found(surveys_b["desassemblage"])
     for word, n in sorted(mn_b.items()):
         if n > mn_a.get(word, 0):
-            cause = "préambule de requête client Valgrind (suspend le décompte d'instructions)" if word == "preambule_valgrind" \
+            cause = "Valgrind client request preamble (suspends the instruction count)" if word == "preambule_valgrind" \
                 else SUSPICIOUS_MNEMONICS[word]
-            suspects.append({"type": "instruction", "detail": f"{word} : {n} occurrence(s) contre {mn_a.get(word, 0)} dans la base ({cause})"})
+            suspects.append({"type": "instruction", "detail": f"{word}: {n} occurrence(s) against {mn_a.get(word, 0)} in the base ({cause})"})
     for survey, or_else in (("objets", "the objects' executable sections"), ("programme", "the linked program's executable segments")):
         (oc_a, unreadable_a), (oc_b, unreadable_b) = occurrences(surveys_a[survey]), occurrences(surveys_b[survey])
         suspects += [{"type": "analyse_incomplete", "detail": d} for d in unreadable_a + unreadable_b]
@@ -232,7 +232,7 @@ def analyse(surveys_a, surveys_b, texts_a, texts_b, prefixes=(), allowed_set=())
     seen_a = text_constructs(texts_a)
     for (path, cause, extract), n in sorted(text_constructs(texts_b).items()):
         if n > seen_a[(path, cause, extract)]:
-            suspects.append({"type": "source", "detail": f"{cause} : « {extract[:160]} » ({path})"})
+            suspects.append({"type": "source", "detail": f"{cause}: « {extract[:160]} » ({path})"})
     return [dict(s, detail=s["detail"] if len(s["detail"]) <= DETAIL_MAX else s["detail"][:DETAIL_MAX - 1] + "…") for s in suspects]
 
 

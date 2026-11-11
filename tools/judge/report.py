@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""judge.json's SHA-256 and key figures (FORMATS), juge.yml's job outputs; the verdict job checks the report against them.
-  python3 report.py juge.json                    the figures, « key=value » lines (empty values: no report)
-  python3 report.py juge.json --code CODE        juge.yml's outputs: code=CODE then the figures, once the report is checked;
+"""judge.json's SHA-256 and key figures (FORMATS), judge.yml's job outputs; the verdict job checks the report against them.
+  python3 report.py judge.json                   the figures, « key=value » lines (empty values: no report)
+  python3 report.py judge.json --code CODE       judge.yml's outputs: code=CODE then the figures, once the report is checked;
                                                   code=2 if it fails its check (none or malformed for code 0, another
                                                   code stated) (ruche-0117); a refusal (1) needs no report (ruche-0136)
-  python3 report.py juge.json --verify S.json --base BASE --head HEAD
+  python3 report.py judge.json --verify S.json --base BASE --head HEAD
       S.json: toJSON(needs.<judging job>.outputs), BASE and HEAD the pull request's commits; 0 the same report, its code 0,
       the PR's commits and both seeds drawn by the judge (ruche-0136); 1 not; 2 error. Any non-zero exit blocks the verdict.
 Standard library only: a verdict job can run this file alone (docs/juge-commun.md)."""
@@ -17,7 +17,7 @@ import re
 import stat
 import sys
 
-REPORT_MAX = 32 << 20  # bytes; juge.json is far smaller (juge.py caps its list of suspicious constructs)
+REPORT_MAX = 32 << 20  # bytes; judge.json is far smaller (judge.py caps its list of suspicious constructs)
 FORMATS = {"fingerprint": r"[0-9a-f]{64}", "suspects": r"0|[1-9][0-9]{0,8}", "outputs_compared": r"0|[1-9][0-9]{0,15}",
            "plugin": r"[0-9a-f]{64}", "seed": r"[0-9a-f]{2,64}", "base": r"[0-9a-f]{40}|", "head": r"[0-9a-f]{40}|"}
 
@@ -132,7 +132,7 @@ def contradicts(path):
 
 
 def publish(path, code):
-    """juge.yml's job outputs: {"code": ..., figures}; code 2 and no figures if the report fails its check. A refusal needs no
+    """judge.yml's job outputs: {"code": ..., figures}; code 2 and no figures if the report fails its check. A refusal needs no
     report: code 1 stays 1 whatever state its report is in, unless the report states another code."""
     try:
         if code == "1" and contradicts(path):

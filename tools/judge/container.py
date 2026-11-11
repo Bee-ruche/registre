@@ -51,10 +51,10 @@ def fixed_times(*folders):
 
 
 def mount_point(*command):
-    """mount or umount, as root or through sudo -n (juge.yml's runner); failing is an error of the environment."""
+    """mount or umount, as root or through sudo -n (judge.yml's runner); failing is an error of the environment."""
     r = subprocess.run(([] if os.geteuid() == 0 else ["sudo", "-n"]) + list(command), capture_output=True, text=True)
     if r.returncode != 0:
-        raise Erreur(f"{command[0]} du tmpfs d'une exécution impossible (root ou sudo -n requis) : " + propre(r.stderr, 300))
+        raise Erreur(f"{command[0]} of an execution's tmpfs failed (root or sudo -n required): " + propre(r.stderr, 300))
 
 
 def copy_tree(source, target):
@@ -82,7 +82,7 @@ class Docker:
             cmd.append("-i")
         for host, target, read_only in place_at(mounts):
             if "," in host or "," in target:
-                raise Erreur(f"chemin de montage invalide : {host}")
+                raise Erreur(f"invalid mount path: {host}")
             cmd += ["--mount", f"type=bind,source={host},target={target}" + (",readonly" if read_only else "")]
         cmd += [self.image] + command
         with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
@@ -100,8 +100,8 @@ class Docker:
                 state = survey(nom, kill_it=True)
                 p.kill()
                 if state.get("Status") in (None, "created"):  # never started: the machine's failure; once run, a refusal
-                    raise Panne(f"machine du juge en panne : conteneur jamais démarré en {timeout_seconds} s ({command[0]})")
-                raise Refus(f"délai de {timeout_seconds} s dépassé dans le conteneur ({command[0]})")
+                    raise Panne(f"failure of the judge's machine: container never started within {timeout_seconds} s ({command[0]})")
+                raise Refus(f"timeout of {timeout_seconds} s exceeded in the container ({command[0]})")
             finally:
                 for f in children_of:
                     f.join()
@@ -110,7 +110,7 @@ class Docker:
         state = survey(nom)
         if (state.get("Status"), state.get("Error"), state.get("ExitCode")) != ("exited", "", p.returncode):
             journal("docker run's errors (kept out of the reason): " + propre(bytes(read_items[1]), 500))
-            raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode})")
+            raise Panne(f"failure of the judge's machine (Docker, its runtime or the image; code {p.returncode})")
         return subprocess.CompletedProcess(cmd, p.returncode, bytes(read_items[0]), bytes(read_items[1]))
 
 
@@ -134,14 +134,14 @@ def dockerfile(packages):
     packages = list(packages or [])
     for p in packages:
         if not PACKAGE.fullmatch(p):
-            raise Erreur(f"nom de paquet invalide dans le greffon : {p!r}")
+            raise Erreur(f"invalid package name in the plugin: {p!r}")
     if packages:
-        text += ("\n# Paquets propres au projet (PAQUETS du greffon).\n"
+        text += ("\n# The project's own packages (the plugin's PAQUETS).\n"
                   "RUN apt-get update -q \\\n"
                   " && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \\\n"
                   f"      {' '.join(packages)} \\\n"
                   " && rm -rf /var/lib/apt/lists/*\n")
-    return text + "\n# Utilisateur sans privilège sous lequel tourne tout le reste (Docker.lancer passe aussi --user).\nUSER 65534:65534\nWORKDIR /\n"
+    return text + "\n# The unprivileged user everything else runs as (Docker.launch passes --user too).\nUSER 65534:65534\nWORKDIR /\n"
 
 
 def build_image(packages, network_on=None):
@@ -159,15 +159,15 @@ def build_image(packages, network_on=None):
     finally:
         shutil.rmtree(context, ignore_errors=True)
     if r.returncode != 0:
-        raise Erreur("construction de l'image impossible : " + r.stderr[-2000:])
+        raise Erreur("image build failed: " + r.stderr[-2000:])
     return label
 
 
 def image_id(label):
-    """The image's id, the SHA-256 of its configuration (which names its layers): containers run it, juge.json records it."""
+    """The image's id, the SHA-256 of its configuration (which names its layers): containers run it, judge.json records it."""
     r = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", label], capture_output=True, text=True)
     if r.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", r.stdout.strip()):
-        raise Erreur(f"identifiant de l'image {label} illisible : " + propre(r.stderr, 300))
+        raise Erreur(f"unreadable id of the image {label}: " + propre(r.stderr, 300))
     return r.stdout.strip()
 
 
@@ -194,7 +194,7 @@ def compile_stopwatch(docker, travail):
     r = docker.launch(["sh", "-c", "umask 000 && cc -O2 -std=gnu99 -Wall -Wextra /source/chrono.c -o /sortie/chrono"],
                       [(source, "/source", True), (output_text, "/sortie", False)], pids=64, timeout_seconds=300)
     if r.returncode != 0:
-        raise Erreur("compilation de chrono impossible : " + propre(r.stderr))
+        raise Erreur("chrono's compilation failed: " + propre(r.stderr))
     stopwatch = os.path.join(travail, "chrono")
     os.makedirs(stopwatch)
     shutil.copyfile(os.path.join(output_text, "chrono"), os.path.join(stopwatch, "chrono"))
@@ -216,7 +216,7 @@ class Execution:
         for label, command in plan:
             i = command.index(HARNESS) + 1 if HARNESS in command else len(command)
             if i == len(command) or any(c in x for x in [label] + command for c in "\t\n"):
-                raise Erreur(f"commande de plan invalide : {propre(label, 80)}")
+                raise Erreur(f"invalid plan command: {propre(label, 80)}")
             lines.append("\t".join([label, " ".join(command[i:])] + command[:i]))
         open_folder(outputs)
         token = secrets.token_hex(16)
@@ -242,21 +242,21 @@ class Execution:
             mount_point("umount", root)
             os.rmdir(root)
         if r.returncode != 0:
-            raise Refus(f"le lanceur a échoué pour {variant} (code {r.returncode}) : " + propre(r.stderr))
+            raise Refus(f"the launcher failed for {variant} (code {r.returncode}): " + propre(r.stderr))
         measurements = {}
         lines = [l for l in r.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
         if len(lines) != len(plan):
-            raise Refus(f"{variant} : {len(lines)} mesure(s) pour {len(plan)} commande(s)")
+            raise Refus(f"{variant}: {len(lines)} measurement(s) for {len(plan)} command(s)")
         for line_text, (label, _) in zip(lines, plan):
             try:
                 m = json.loads(line_text)
             except ValueError:
-                raise Refus(f"{variant} : ligne de mesure illisible ({label})")
+                raise Refus(f"{variant}: unreadable measurement line ({label})")
             if not isinstance(m, dict) or m.get("jeton") != token or m.get("etiquette") != label:
-                raise Refus(f"{variant} : ligne de mesure non authentique ({label})")
+                raise Refus(f"{variant}: measurement line not authentic ({label})")
             if m.get("code") != 0 or m.get("signal") != 0:
-                raise Refus(f"{variant}/{label} : code {m.get('code')}, signal {m.get('signal')}. " + propre(r.stderr, 800))
+                raise Refus(f"{variant}/{label}: code {m.get('code')}, signal {m.get('signal')}. " + propre(r.stderr, 800))
             if valgrind and not isinstance(m.get("instructions"), int):
-                raise Refus(f"{variant}/{label} : résumé de Valgrind absent ou illisible")
+                raise Refus(f"{variant}/{label}: Valgrind's summary missing or unreadable")
             measurements[label] = m
         return measurements

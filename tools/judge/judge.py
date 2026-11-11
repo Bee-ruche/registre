@@ -15,7 +15,7 @@ What the common judge guarantees, whatever the plugin:
 - the seed of the inputs drawn at random is chosen here, AFTER compilation; the plugin perturbs the
   measurements' inputs at each repetition;
 - processor time and memory are measured by the kernel (wait4) in the common judge's chrono launcher,
-  compiled apart; the instruction count covers the harness's whole process and is read on
+  compiled separately; the instruction count covers the harness's whole process and is read on
   Valgrind's last line;
 - the outputs are read only through lecture.py (no link, no special file, bounded size);
 - an analysis of the compiled objects (analysis.py) lists the suspicious constructs.
@@ -83,8 +83,8 @@ OBJECT = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}\.o")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # a word followed by « _ »: an identifier boundary
 ALLOWED_MAX = 64
-SUSPICIOUS_MAX = 100  # juge.json lists at most this many suspicious constructs and counts the rest (constructions_suspectes_omises)
-# Kinds of suspicious construct, the most serious first: juge.json lists them in this order, and counts each kind (ruche-0117).
+SUSPICIOUS_MAX = 100  # judge.json lists at most this many suspicious constructs and counts the rest (suspicious_constructs_omitted)
+# Kinds of suspicious construct, the most serious first: judge.json lists them in this order, and counts each kind (ruche-0117).
 SEVERITY = ("analyse_incomplete", "architecture", "appel_interdit", "symbole_interdit", "instruction", "octets", "section", "symbole",
            "symbole_defini", "appel_externe", "source")
 NEVER_ALLOWED = analysis.NEVER_ALLOWED
@@ -124,7 +124,7 @@ def load_plugin(tooling, options):
     relative = (found or [PLUGIN_PATH])[0]
     english, path, parts = relative == PLUGIN_PATH, os.path.join(tooling, relative), relative.split(os.sep)
     if not os.path.isfile(path):
-        raise Erreur(f"greffon introuvable : {' ou '.join(found or (PLUGIN_PATH, FRENCH_PLUGIN_PATH))} dans {tooling}")
+        raise Erreur(f"plugin not found: {' or '.join(found or (PLUGIN_PATH, FRENCH_PLUGIN_PATH))} in {tooling}")
     if any(os.path.islink(os.path.join(tooling, *parts[:i + 1])) for i in range(len(parts))):
         raise Erreur(f"plugin {relative}: every component of its path must be a real folder or file, not a link")
     with open(path, "rb") as f:
@@ -134,7 +134,7 @@ def load_plugin(tooling, options):
     spec.loader.exec_module(module)
     names = PLUGIN_NAMES if english else {}
     if not hasattr(module, names.get("Projet", "Projet")):
-        raise Erreur(f"le greffon ne définit pas de classe {names.get('Projet', 'Projet')}")
+        raise Erreur(f"the plugin defines no class {names.get('Projet', 'Projet')}")
     cls = getattr(module, names.get("Projet", "Projet"))
     plugin = cls(dict(options))
     # Names of the other contract defined in the module, in the class body or in a base class's (not those an instance or a
@@ -149,36 +149,36 @@ def load_plugin(tooling, options):
     missing_items = [names.get(a, a) for a in REQUIRED_ATTRIBUTES if not hasattr(projet, a)] + \
                 [names.get(m, m) for m in REQUIRED_METHODS if not callable(getattr(projet, m, None))]
     if missing_items:
-        raise Erreur("greffon incomplet : " + ", ".join(missing_items))
+        raise Erreur("incomplete plugin: " + ", ".join(missing_items))
     if any(not (isinstance(m, (tuple, list)) and len(m) == 3 and m[1] in tuple(DIRECTIONS)) for m in projet.METRIQUES):
         raise Erreur(f"plugin's {names.get('METRIQUES', 'METRIQUES')}: (name, direction, unit) each, the direction "
                      + ("higher or lower" if english else "plus_haut or plus_bas"))
     sides_of = tuple(projet.COTES)
     if not sides_of or any(not inputs_module.COTE_PERMIS.fullmatch(c) for c in sides_of) or len(set(sides_of)) != len(sides_of):
-        raise Erreur("COTES du greffon invalides")
+        raise Erreur("plugin's COTES invalid")
     for s, c in projet.SCENARIOS.items():
         if c not in sides_of or not inputs_module.NOM_PERMIS.fullmatch(s):
-            raise Erreur(f"scénario invalide dans le greffon : {s}")
+            raise Erreur(f"invalid scenario in the plugin: {s}")
     if any(s not in projet.SCENARIOS for s in projet.INSTRUCTIONS):
-        raise Erreur("INSTRUCTIONS du greffon : scénario inconnu")
+        raise Erreur("plugin's INSTRUCTIONS: unknown scenario")
     # Namespace and allowed functions: an empty or too short prefix would switch off two categories of
     # the objects' analysis (adversarial review of 28 October); the functions that deceive the measurement are never allowed.
     prefixes, allowed_set = tuple(projet.PREFIXES), tuple(getattr(projet, "PERMIS", ()))
     if not prefixes or any(not isinstance(p, str) or not PREFIX.fullmatch(p) for p in prefixes):
-        raise Erreur("PREFIXES du greffon invalides : au moins un préfixe, chacun un mot terminé par « _ » (mz_, yaml_…)")
+        raise Erreur("plugin's PREFIXES invalid: at least one prefix, each a word ending in « _ » (mz_, yaml_…)")
     covering = sorted(n for n in NEVER_ALLOWED if n.startswith(prefixes))
     if covering:
-        raise Erreur("PREFIXES du greffon : couvriraient des fonctions jamais permises : " + ", ".join(covering))
+        raise Erreur("plugin's PREFIXES: they would cover functions never allowed: " + ", ".join(covering))
     if len(allowed_set) > ALLOWED_MAX or any(not isinstance(n, str) or not IDENTIFIER.fullmatch(n) for n in allowed_set):
-        raise Erreur(f"PERMIS du greffon invalide : au plus {ALLOWED_MAX} noms de fonctions")
+        raise Erreur(f"plugin's PERMIS invalid: at most {ALLOWED_MAX} function names")
     forbidden_items = sorted(set(allowed_set) & NEVER_ALLOWED)
     if forbidden_items:
-        raise Erreur("PERMIS du greffon : fonctions jamais permises : " + ", ".join(forbidden_items))
+        raise Erreur("plugin's PERMIS: functions never allowed: " + ", ".join(forbidden_items))
     if hasattr(projet, "DIFF"):
-        raise Erreur("DIFF n'existe plus : le diff analysé est celui de SOURCES (revue adverse du 28/10)")
+        raise Erreur("DIFF no longer exists: the diff analyzed is SOURCES' (adversarial review of 28 October)")
     for relative_path in list(projet.OUTILLAGE) + [projet.CONSTRUIRE]:
         if os.path.isabs(relative_path) or ".." in relative_path.split("/"):
-            raise Erreur(f"chemin d'outillage invalide dans le greffon : {relative_path}")
+            raise Erreur(f"invalid tooling path in the plugin: {relative_path}")
     return projet, fingerprint
 
 
@@ -192,7 +192,7 @@ def _no_link(repo, relative_one):
         path = os.path.join(path, m)
         st = os.lstat(path)
         if stat.S_ISLNK(st.st_mode):
-            raise Refus(f"{relative_one} : lien symbolique refusé")
+            raise Refus(f"{relative_one}: symbolic link refused")
         if i < len(chunks) - 1 and not stat.S_ISDIR(st.st_mode):
             return False
     return stat.S_ISREG(os.lstat(path).st_mode)
@@ -205,7 +205,7 @@ def copy_sources(repo, destination, reasons, required_items):
     found_items = set()
     for reason in reasons:
         if os.path.isabs(reason) or ".." in reason.split("/"):
-            raise Erreur(f"motif de sources invalide : {reason}")
+            raise Erreur(f"invalid sources pattern: {reason}")
         for path in sorted(glob.glob(os.path.join(glob.escape(repo), reason))):
             relative_one = os.path.relpath(path, repo)
             if relative_one in found_items or not _no_link(repo, relative_one):
@@ -216,7 +216,7 @@ def copy_sources(repo, destination, reasons, required_items):
             found_items.add(relative_one)
     for r in required_items:
         if r not in found_items:
-            raise Refus(f"{r} introuvable dans {repo}")
+            raise Refus(f"{r} not found in {repo}")
     return destination
 
 
@@ -228,7 +228,7 @@ def copy_tooling(tooling, source_a, destination, projet):
     for relative_one in projet.OUTILLAGE:
         source = os.path.join(tooling, relative_one)
         if os.path.islink(source) or not os.path.isdir(source):
-            raise Erreur(f"dossier d'outillage absent de la base : {relative_one}")
+            raise Erreur(f"tooling folder missing from the base: {relative_one}")
         shutil.copytree(source, os.path.join(destination, relative_one), symlinks=True,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     copy_sources(source_a, os.path.join(destination, "base"), projet.EN_TETES_BASE, ())
@@ -262,40 +262,40 @@ def build(docker, projet, sources, tooling, output_text, label, travail):
                       pids=64, timeout_seconds=900)
     failure = Erreur if label == "A" else Refus
     if r.returncode != 0:
-        raise failure(f"la compilation de {label} a échoué : " + propre(r.stderr))
+        raise failure(f"the compilation of {label} failed: " + propre(r.stderr))
     obj_folder = os.path.join(output_text, "obj")
     if os.path.islink(obj_folder) or not os.path.isdir(obj_folder):
-        raise failure(f"{label} : pas de dossier obj/ après la construction")
+        raise failure(f"{label}: no obj/ folder after the build")
     objects_found = []
     for n in sorted(os.listdir(obj_folder)):
         st = os.lstat(os.path.join(obj_folder, n))
         if not n.endswith(".o"):
             continue
         if not OBJECT.fullmatch(n) or not stat.S_ISREG(st.st_mode):
-            raise failure(f"{label} : objet invalide dans obj/ : {propre(n, 80)}")
+            raise failure(f"{label}: invalid object in obj/: {propre(n, 80)}")
         objects_found.append(n)
     expected_items, duplicate_items = expected_objects(sources)
     if duplicate_items:
-        raise failure(f"{label} : unités de traduction homonymes (un seul objet possible dans obj/) : "
+        raise failure(f"{label}: translation units of the same name (only one object possible in obj/): "
                     + ", ".join(propre(d, 80) for d in duplicate_items[:10]))
     missing_items = sorted(expected_items - set(objects_found))
     if missing_items:
-        raise failure(f"{label} : fichier(s) source(s) sans objet dans obj/ (non compilés ou non relevables) : "
+        raise failure(f"{label}: source file(s) without an object in obj/ (not compiled or not surveyable): "
                     + ", ".join(propre(m, 80) for m in missing_items[:10]))
     if not objects_found:
-        raise failure(f"{label} : aucun objet dans obj/")
+        raise failure(f"{label}: no object in obj/")
     surveys_folder = container.open_folder(os.path.join(travail, f"releves-{label}"))
     script = ('umask 000 && cd /construction/obj && nm -P -A "$@" > /releves/symboles.txt'
               ' && objdump -h "$@" > /releves/sections.txt && objdump -d --no-show-raw-insn "$@" > /releves/desassemblage.txt')
     r = docker.launch(["sh", "-c", script, "releves"] + objects_found,
                       [(output_text, "/construction", True), (surveys_folder, "/releves", False)], pids=64, timeout_seconds=900)
     if r.returncode != 0:
-        raise failure(f"{label} : relevés d'analyse impossibles : " + propre(r.stderr))
+        raise failure(f"{label}: analysis surveys failed: " + propre(r.stderr))
     surveys = {key: exiger(surveys_folder, nom, 256 << 20).decode("utf-8", "replace") for key, nom in SURVEYS}
     for o in objects_found:  # each object is in each survey (objdump: « <object>:     file format … »)
         if not any(line_text.startswith(o + ":") for line_text in surveys["desassemblage"].splitlines()) or \
            not any(line_text.startswith(o + ":") for line_text in surveys["sections"].splitlines()):
-            raise Erreur(f"{label} : {o} absent des relevés d'analyse : juge mal monté")
+            raise Erreur(f"{label}: {o} missing from the analysis surveys: judge badly set up")
     surveys["objets"] = [(o, exiger(obj_folder, o)) for o in objects_found]
     surveys["programme"] = [("execution", exiger(output_text, "execution"))]
     return surveys
@@ -396,9 +396,9 @@ def same_outputs(index, verification, outputs, shuffled, scenarios):
                 if measured is not None:
                     views += 1
                     if measured != verification.ecrite(quoted_side, relative_one):
-                        raise Refus(f"scénario {s} : sortie de B différente de sa sortie en vérification pour la même entrée")
+                        raise Refus(f"scenario {s}: B's output differs from its output in verification for the same input")
             if not views:
-                raise Erreur(f"{quoted_side}/{nom}, scénario {s} : aucune sortie de B comparable à la vérification (mêmes sorties attendues)")
+                raise Erreur(f"{quoted_side}/{nom}, scenario {s}: no output of B comparable with verification (the same outputs expected)")
             total += views
     return total
 
@@ -421,7 +421,7 @@ def erase(*groups):
 
 def counted_integer(n):
     if not isinstance(n, int) or isinstance(n, bool) or n < 0:
-        raise Erreur("le greffon doit renvoyer un nombre de sorties comparées (entier positif)")
+        raise Erreur("the plugin must return a number of outputs compared (a positive integer)")
     return n
 
 
@@ -429,21 +429,21 @@ def require_coverage(outputs_b, entrees, step):
     """Each input must have had at least one output of B read by the plugin during the step."""
     forgotten_ones = [e.nom for e in entrees if not outputs_b.couvre(e.cote, e.nom)]
     if forgotten_ones:
-        raise Erreur(f"{step} : le greffon n'a lu aucune sortie de B pour {len(forgotten_ones)} entrée(s) "
-                     f"({', '.join(forgotten_ones[:5])}) : juge mal monté")
+        raise Erreur(f"{step}: the plugin read no output of B for {len(forgotten_ones)} input(s) "
+                     f"({', '.join(forgotten_ones[:5])}): judge badly set up")
 
 
 # ------------------------------------------------------------------ declared history
 
 def fetch_history(tooling, text, token=None, budget=600):
-    """Fetches into the base's repository the commits its plugin reads (juge.yml's `historique`), with their trees
+    """Fetches into the base's repository the commits its plugin reads (judge.yml's `history`), with their trees
     and blobs but no history. Each must be in the base's ancestry, as GitHub's compare API on the calling repository
     (GITHUB_REPOSITORY) says (identical or behind), all checked before any fetch; checks and fetches share one time
-    budget. juge.yml runs it in its own step (--history-only), the only call of judge.py given a token
+    budget. judge.yml runs it in its own step (--history-only), the only call of judge.py given a token
     (GH_TOKEN, passed to gh alone), before anything loads the plugin and before the PR."""
     commits, repo = sorted(set(text.split())), os.environ.get("GITHUB_REPOSITORY", "")
     if len(commits) > HISTORY_MAX or not all(COMMIT.fullmatch(c) for c in commits):
-        raise Erreur(f"historique : at most {HISTORY_MAX} full commit SHAs (40 hexadecimal digits), separated by blanks")
+        raise Erreur(f"history: at most {HISTORY_MAX} full commit SHAs (40 hexadecimal digits), separated by blanks")
     if not commits:
         return []
     end = time.monotonic() + budget
@@ -453,21 +453,21 @@ def fetch_history(tooling, text, token=None, budget=600):
             return subprocess.run(command, capture_output=True, text=True, errors="replace", env=env,
                                   timeout=max(0.01, end - time.monotonic()))
         except subprocess.TimeoutExpired:
-            raise Erreur(f"historique : checks and fetches exceeded their budget of {budget} s")
+            raise Erreur(f"history: checks and fetches exceeded their budget of {budget} s")
         except OSError as e:
-            raise Erreur(f"historique : {command[0]} unavailable ({propre(str(e), 200)})")
+            raise Erreur(f"history: {command[0]} unavailable ({propre(str(e), 200)})")
     base = launch(["git", "-C", tooling, "rev-parse", "HEAD"]).stdout.strip()
     if not REPO.fullmatch(repo) or not COMMIT.fullmatch(base):
-        raise Erreur("historique : the calling repository (GITHUB_REPOSITORY, owner/name) and the base's commit are required")
+        raise Erreur("history: the calling repository (GITHUB_REPOSITORY, owner/name) and the base's commit are required")
     for c in commits:
         r = launch(["gh", "api", f"repos/{repo}/compare/{base}...{c}", "--jq", ".status"],
                    {**os.environ, "GH_TOKEN": token} if token else None)
         if r.returncode != 0 or r.stdout.strip() not in ("identical", "behind"):
-            raise Erreur(f"historique : {c} is not in the ancestry of the base ({propre(r.stdout.strip() or r.stderr, 300)})")
+            raise Erreur(f"history: {c} is not in the ancestry of the base ({propre(r.stdout.strip() or r.stderr, 300)})")
     for c in commits:
         r = launch(["git", "-C", tooling, "fetch", "--quiet", "--no-tags", "--depth=1", "origin", f"{c}:refs/bee/historique/{c}"])
         if r.returncode != 0:
-            raise Erreur(f"historique : commit {c} not fetched from the base's origin : " + propre(r.stderr, 500))
+            raise Erreur(f"history: commit {c} not fetched from the base's origin: " + propre(r.stderr, 500))
     return commits
 
 
@@ -477,7 +477,7 @@ def options_of(list_of):
     options = {}
     for o in list_of or []:
         if "=" not in o:
-            raise Erreur(f"option invalide (CLE=VALEUR attendu) : {o}")
+            raise Erreur(f"invalid option (KEY=VALUE expected): {o}")
         key, value = o.split("=", 1)
         options[key.strip()] = value.strip()
     return options
@@ -493,10 +493,10 @@ def main(argv=None):
     parser.add_argument("--history-only", action="store_true",
                            help="checks and fetches the declared history (--history) into the base, without loading the plugin")
     parser.add_argument("--history", default="", help="with --history-only: commits fetched into the base")
-    parser.add_argument("--judge-source", help="REPO@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
-    parser.add_argument("--base", help="commit of A, recorded in juge.json (juge.yml: checked against the event)")
-    parser.add_argument("--head", help="commit of B, recorded in juge.json (juge.yml: checked against the event)")
-    parser.add_argument("--workdir", help="folder of the work directory (juge.yml: a size-bounded tmpfs)")
+    parser.add_argument("--judge-source", help="REPO@COMMIT of this judge's code (judge.yml: the workflow's own commit)")
+    parser.add_argument("--base", help="commit of A, recorded in judge.json (judge.yml: checked against the event)")
+    parser.add_argument("--head", help="commit of B, recorded in judge.json (judge.yml: checked against the event)")
+    parser.add_argument("--workdir", help="folder of the work directory (judge.yml: a size-bounded tmpfs)")
     parser.add_argument("--option", action="append", default=[], help="plugin option, KEY=VALUE (repeatable)")
     parser.add_argument("--repetitions", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=1)
@@ -505,19 +505,19 @@ def main(argv=None):
     parser.add_argument("--instructions-threshold", type=float, default=0.002)
     parser.add_argument("--json")
     parser.add_argument("--seed", help="hexadecimal seed (local reproduction); default: drawn at random")
-    parser.add_argument("--order-seed", help="hexadecimal seed of the scenarios' order (local reproduction); default: drawn at random, apart")
-    parser.add_argument("--build-network", help="docker build's network (« host » without Docker's bridge)")
+    parser.add_argument("--order-seed", help="hexadecimal seed of the scenarios' order (local reproduction); default: drawn at random, separately")
+    parser.add_argument("--build-network", help="docker build's network ('host' without Docker's bridge)")
     parser.add_argument("--memory", default="4g")
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args(argv)
     if args.repetitions < 1 or args.warmup < 0:
         parser.error("--repetitions: at least 1; --warmup: at least 0")
     if args.history and not args.history_only:
-        parser.error("--history goes with --history-only")
+        parser.error("--history requires --history-only")
     if any(c is not None and not COMMIT.fullmatch(c) for c in (args.base, args.head)):
-        parser.error("--base, --head : full commits (40 hexadecimal digits)")
+        parser.error("--base, --head: full commits (40 hexadecimal digits)")
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
-    # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
+    # stays in /proc/<pid>/environ: judge.yml gives the token to the --history-only call alone).
     token = os.environ.pop("GH_TOKEN", None)
     FAILURE.update(json=args.json, judge={"version": JUDGE_VERSION, "common": common_tag(), "source": args.judge_source,
                                         "base": args.base, "head": args.head})
@@ -527,7 +527,7 @@ def main(argv=None):
 
     beginning = time.time()
     if shutil.which("docker") is None:
-        raise Erreur("docker introuvable")
+        raise Erreur("docker not found")
     tooling = os.path.abspath(args.tooling)
     if not args.image_only:
         os.environ["GIT_ALLOW_PROTOCOL"] = "none"  # judging: no git transport at all, the declared history is already here
@@ -557,8 +557,8 @@ def main(argv=None):
         architecture = platform.machine().lower()
         if architecture not in ANALYSED_ARCHITECTURES:
             # analysis.py knows only x86-64 instructions: elsewhere, the disassembly is not analyzed.
-            suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
-                                                               "(analyse.py ne couvre que x86-64)"})
+            suspects.append({"type": "architecture", "detail": f"{architecture}: the objects' instructions not analyzed "
+                                                               "(analysis.py covers only x86-64)"})
         by_type = dict(sorted(collections.Counter(s["type"] for s in suspects).items()))
         suspects.sort(key=lambda s: SEVERITY.index(s["type"]) if s["type"] in SEVERITY else len(SEVERITY))
         omitted_ones, suspects = max(0, len(suspects) - SUSPICIOUS_MAX), suspects[:SUSPICIOUS_MAX]
@@ -589,9 +589,9 @@ def main(argv=None):
             roots[v] = Sorties(roots[v], names, figees)
         view_b = Sorties(roots["B"], names)
         compared_ones += counted_integer(projet.verifier(Sorties(roots["A"], names), view_b, entrees))
-        require_coverage(view_b, entrees, "vérification")
+        require_coverage(view_b, entrees, "verification")
         if compared_ones == 0:
-            raise Erreur("vérification : aucune sortie comparée : juge mal monté")
+            raise Erreur("verification: no output compared: judge badly set up")
         fixes = {v: dict(projet.fixes(Sorties(roots[v], names), corpus)) for v in "AB"}
         for v in "AB":
             roots[v].controler()
@@ -601,7 +601,7 @@ def main(argv=None):
         # Verification inputs mixed into every measurement (ruche-0037), spread over the repetitions.
         by_side = {c: [e for e in entrees if e.cote == c] for c in set(projet.SCENARIOS.values())}
         if not all(by_side.values()):
-            raise Erreur("un côté mesuré n'a aucune entrée de vérification à mêler aux mesures : greffon invalide")
+            raise Erreur("a measured side has no verification input to mix into the measurements: invalid plugin")
         rounds = {c: round_number(rng, l) for c, l in by_side.items()}
         how_many = {c: -(-len(l) // (args.warmup + args.repetitions)) for c, l in by_side.items()}
         light_ones = {c: [e for e in l if max(len(e.donnees), e.taille) <= args.instructions_prefix]
@@ -631,7 +631,7 @@ def main(argv=None):
                     view = Sorties(outputs[v])
                     vals, n = projet.scenario(s, Sorties(outputs["A"]), view, entrees, raw[v][s])
                     compared_ones += counted_integer(n)
-                    require_coverage(view, [e for e in entrees if e.cote == quoted_side], f"scénario {s} ({v})")
+                    require_coverage(view, [e for e in entrees if e.cote == quoted_side], f"scenario {s} ({v})")
                     values_of.update(vals)
                     timed |= set(vals)
                 if i >= args.warmup:
@@ -643,15 +643,15 @@ def main(argv=None):
             journal(f"repetition {i + 1}/{args.warmup + args.repetitions} ({'warmup' if i < args.warmup else 'measured'}) done")
 
         report = {
-            "repetitions": args.repetitions, "warmup": args.warmup, "order": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
+            "repetitions": args.repetitions, "warmup": args.warmup, "order": "A, B then B, A, alternately; scenarios: judge.scenarios",
             "machine": stats.description_machine(),
             "method": {
-                "retained_value": "médiane des répétitions",
-                "gain": "médiane(B)/médiane(A) - 1 (plus_haut) ; 1 - médiane(B)/médiane(A) (plus_bas) ; positif = mieux",
-                "beyond_noise": f"test du signe sur les paires entrelacées, comme ab.py (k = {stats.sign_threshold(args.repetitions)} sur {args.repetitions})",
-                "stopwatch": ("temps processeur (utilisateur + système) du processus qui exécute un scénario, lu par le "
-                                "lanceur chrono du juge commun avec wait4 ; une exécution par scénario et par répétition, "
-                                "sur des entrées perturbées à chaque répétition"),
+                "retained_value": "median of the repetitions",
+                "gain": "median(B)/median(A) - 1 (higher); 1 - median(B)/median(A) (lower); positive = better",
+                "beyond_noise": f"sign test on the interleaved pairs, as in ab.py (k = {stats.sign_threshold(args.repetitions)} of {args.repetitions})",
+                "stopwatch": ("processor time (user + system) of the process that runs a scenario, read by the "
+                                "common judge's chrono launcher with wait4; one execution per scenario and per repetition, "
+                                "on inputs perturbed at each repetition"),
             },
             "metrics": {}, "measurements": {"A": {}, "B": {}},
         }
@@ -704,9 +704,9 @@ def main(argv=None):
                     "direction": "lower", "unit": "instructions", "A": a, "B": b, "gain": gain,
                     "beyond_noise": gain is not None and abs(gain) > args.instructions_threshold}
             report["method"]["instructions"] = (
-                f"valgrind --tool=cachegrind dans le conteneur, tout le processus du harnais (rien n'échappe au décompte), "
-                f"entrées du greffon (préfixe de {args.instructions_prefix} octets), perturbées ; résumé relevé par "
-                f"chrono sur la dernière ligne de Valgrind ; au-delà du bruit si l'écart dépasse {100 * args.instructions_threshold:.2f} %")
+                f"valgrind --tool=cachegrind in the container, the harness's whole process (nothing escapes the count), "
+                f"the plugin's inputs (a prefix of {args.instructions_prefix} bytes), perturbed; summary read by "
+                f"chrono on Valgrind's last line; beyond the noise if the difference exceeds {100 * args.instructions_threshold:.2f}%")
 
         verification = {"outputs_compared": compared_ones, "inputs_mixed": interleaved, "mixed_per_repetition": how_many,
                         "instructions_without_mixing": without_shuffle, "fixed_without_measurement": without_measurement}
@@ -720,21 +720,21 @@ def main(argv=None):
             "plugin": plugin_fingerprint,
             "code": 0, "outcome": ISSUES[0],
             "seed": seed.hex(),
-            # A seed given on the command line is a local reproduction, never a judgement: rapport.py --verifier refuses it.
+            # A seed given on the command line is a local reproduction, never a judgement: report.py --verify refuses it.
             "seed_origin": {"seed": "given" if args.seed else "drawn", "order_seed": "given" if args.order_seed else "drawn"},
             "image": image,
             "image_id": docker.image,
             "suspicious_constructs_omitted": omitted_ones, "suspicious_constructs_by_type": by_type,
-            "isolation": " ".join(container.ISOLATION + container.Docker.BOUNDS) + " --pids-limit 2 (exécution), 64 (compilation) ; "
-                         f"chaque exécution sur son tmpfs ({container.TMPFS}), rempli à neuf",
+            "isolation": " ".join(container.ISOLATION + container.Docker.BOUNDS) + " --pids-limit 2 (execution), 64 (compilation); "
+                         f"each execution on its own tmpfs ({container.TMPFS}), filled anew",
             "verification": verification,
             "analysis": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
                          "allowed": list(getattr(projet, "PERMIS", ()))},
             "suspicious_constructs": suspects,
-            "scenarios": {"separation": "un conteneur par scénario (vérification : un par côté) ; ses sorties figées (SHA-256 de chaque "
-                          "fichier et liste) à la fin du conteneur, seules lues : un écart ensuite est un refus",
-                          "order": "tiré à chaque répétition, le même pour A et B", "order_seed": graine_ordre.hex(),
-                          "cpu_time": "utilisateur + système, wait4 dans chrono (pas le cgroup) ; sous Valgrind en « instructions »",
+            "scenarios": {"separation": "one container per scenario (verification: one per side); its outputs frozen (SHA-256 of each "
+                          "file, and the listing) when the container ends, the only ones read: a difference afterwards is a refusal",
+                          "order": "drawn at each repetition, the same for A and B", "order_seed": graine_ordre.hex(),
+                          "cpu_time": "user + system, wait4 in chrono (not the cgroup); under Valgrind in « instructions »",
                           "steps": unfolding},
         }
         report["duration_s"] = round(time.time() - beginning, 1)
@@ -751,7 +751,7 @@ def main(argv=None):
 
 
 def write_report(path, report):
-    """juge.json, whole or not at all (a temporary file renamed onto it); its text, every lone surrogate replaced."""
+    """judge.json, whole or not at all (a temporary file renamed onto it); its text, every lone surrogate replaced."""
     text = re.sub("[\ud800-\udfff]", "\ufffd", json.dumps(report, ensure_ascii=False, indent=2))
     if path:
         folder = os.path.dirname(os.path.abspath(path))
@@ -769,12 +769,12 @@ def write_report(path, report):
 
 
 def stop_it(code, message, fault=False):
-    """The judge stops (1 refusal, 2 error): the message on standard error and, with --json, in juge.json (ruche-0136)."""
+    """The judge stops (1 refusal, 2 error): the message on standard error and, with --json, in judge.json (ruche-0136)."""
     print(message, file=sys.stderr)
     try:
         write_report(FAILURE.get("json"), {"judge": dict(FAILURE.get("judge", {}), code=code, outcome=ISSUES[code], machine_failure=fault,
                                                          reason=message)})
-    except (OSError, ValueError):  # no report, never a stale or partial one: rapport.py --code keeps the exit code
+    except (OSError, ValueError):  # no report, never a stale or partial one: report.py --code keeps the exit code
         with contextlib.suppress(OSError, TypeError):
             os.unlink(FAILURE.get("json"))
     return code
@@ -784,8 +784,8 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Refus as e:
-        sys.exit(stop_it(1, f"juge : REFUS : {propre(str(e), 3000)}"))
+        sys.exit(stop_it(1, f"judge: REFUSAL: {propre(str(e), 3000)}"))
     except Erreur as e:
-        sys.exit(stop_it(2, f"juge : erreur : {propre(str(e), 3000)}", isinstance(e, Panne)))
+        sys.exit(stop_it(2, f"judge: error: {propre(str(e), 3000)}", isinstance(e, Panne)))
     except Exception:  # noqa: BLE001 — a defect of the judge or of the plugin: never a success, never a raw traceback
-        sys.exit(stop_it(2, "juge : erreur interne (juge ou greffon) : " + propre(traceback.format_exc(), 3000)))
+        sys.exit(stop_it(2, "judge: internal error (judge or plugin): " + propre(traceback.format_exc(), 3000)))

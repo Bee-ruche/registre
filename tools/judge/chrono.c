@@ -63,7 +63,7 @@ static void sur_alarme(int signal_recu)
 
 static void mourir(const char *message)
 {
-    fprintf(stderr, "chrono : %s\n", message);
+    fprintf(stderr, "chrono: %s\n", message);
     exit(2);
 }
 
@@ -133,20 +133,20 @@ int main(int argc, char **argv)
     umask(0); /* inherited by the child: the host must be able to erase what it writes (another user) */
     /* First: nobody (same uid) opens /proc/<this process>/fd or /mem any more. */
     if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
-        mourir("prctl(PR_SET_DUMPABLE) a échoué");
+        mourir("prctl(PR_SET_DUMPABLE) failed");
 
     (void)argv;
     if (argc != 1 || chdir("/") != 0)
-        mourir("usage : chrono, sans argument (jeton, options et plan sur l'entrée standard)");
+        mourir("usage: chrono, without argument (token, options and plan on standard input)");
 
     if (!fgets(jeton, sizeof(jeton), stdin))
-        mourir("jeton absent sur l'entrée standard");
+        mourir("token missing on standard input");
     jeton[strcspn(jeton, "\r\n")] = 0;
     n = strlen(jeton);
     if (n < 16 || n > 64 || strspn(jeton, "0123456789abcdef") != n)
-        mourir("jeton invalide");
+        mourir("invalid token");
     if (!fgets(ligne, sizeof(ligne), stdin) || sscanf(ligne, "%u %d", &delai, &valgrind) != 2)
-        mourir("options absentes (délai, valgrind)");
+        mourir("options missing (timeout, valgrind)");
 
     while (fgets(ligne, sizeof(ligne), stdin))
     {
@@ -158,17 +158,17 @@ int main(int argc, char **argv)
             capacite = capacite ? 2 * capacite : 16;
             lignes = realloc(lignes, capacite * sizeof(*lignes));
             if (!lignes)
-                mourir("mémoire insuffisante");
+                mourir("out of memory");
         }
         memcpy(lignes[nombre++], ligne, LIGNE_MAX);
     }
 
     nul = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (nul < 0)
-        mourir("/dev/null introuvable");
+        mourir("/dev/null not found");
     /* Standard input (the pipe that carried the token) closes here: the child does not inherit it. */
     if (dup2(nul, 0) < 0)
-        mourir("dup2 a échoué");
+        mourir("dup2 failed");
 
     memset(&action, 0, sizeof(action));
     action.sa_handler = sur_alarme;
@@ -189,24 +189,24 @@ int main(int argc, char **argv)
             champs[nchamps++] = morceau;
         champs[nchamps] = NULL;
         if (nchamps < 3 || !etiquette_valide(champs[0]))
-            mourir("ligne de plan invalide");
+            mourir("invalid plan line");
 
         /* The parameters (the mode included): PARAMETRES bytes, the line padded with spaces and ended by a line
            feed, in a pipe the child reads, then closes. */
         n = strlen(champs[1]);
         if (n >= PARAMETRES)
-            mourir("paramètres trop longs");
+            mourir("parameters too long");
         memset(parametres, ' ', PARAMETRES - 1);
         memcpy(parametres, champs[1], n);
         parametres[PARAMETRES - 1] = '\n';
         if (pipe2(tube, O_CLOEXEC) != 0 || pipe2(entree, O_CLOEXEC) != 0 || write(entree[1], parametres, PARAMETRES) != PARAMETRES
             || close(entree[1]) != 0)
-            mourir("tubes impossibles");
+            mourir("pipes failed");
         fflush(stdout);
         debut = maintenant();
         pid = fork();
         if (pid < 0)
-            mourir("fork a échoué");
+            mourir("fork failed");
         if (pid == 0)
         {
             if (dup2(entree[0], 0) < 0 || dup2(nul, 1) < 0 || dup2(tube[1], 2) < 0)
@@ -254,7 +254,7 @@ int main(int argc, char **argv)
         }
         while (wait4(pid, &statut, 0, &ru) < 0)
             if (errno != EINTR)
-                mourir("wait4 a échoué");
+                mourir("wait4 failed");
         alarm(0);
         fils_courant = 0;
         fin = maintenant();
