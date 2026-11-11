@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""bee : l'outil en ligne de commande du registre Bee.
+"""bee: the command-line tool of the Bee registry.
 
     python3 tools/bee.py --help
 
-Dépendances : Python 3.10 ou plus récent, PyYAML et jsonschema
+Dependencies: Python 3.10 or newer, PyYAML and jsonschema
 (`pip install -r tools/requirements.txt`).
 
-L'outil ne fait aucun appel réseau et n'exécute jamais le code d'un projet.
-Il lit et écrit les fichiers YAML du registre. Les opérations GitHub
-(branches, pull requests) restent à la charge de l'agent et de son
-user : voir AGENTS.md.
+The tool makes no network call and never runs a project's code.
+It reads and writes the registry's YAML files. The GitHub operations
+(branches, pull requests) remain the job of the agent and of their
+user: see AGENTS.md.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from collections import Counter, defaultdict
 try:
     import yaml
     from jsonschema import Draft202012Validator, FormatChecker
-except ImportError:  # pragma: no cover - message pour l'utilisateur
+except ImportError:  # pragma: no cover - message for the user
     sys.exit("bee: missing dependencies. Install them with: pip install pyyaml jsonschema")
 
 VERSION = "0.1.0"
@@ -48,39 +48,39 @@ VOTE_WEIGHT = {"New": 0, "Contributor": 1, "Confirmed": 2}
 SIZES_BY_LEVEL = {"New": ("S",), "Contributor": ("S", "M"), "Confirmed": ("S", "M", "L")}
 ID_CONTRIBUTION = re.compile(r"^(?P<task>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)\Z")
 ID_PROPOSAL = re.compile(r"^P-[0-9]{4}\Z")
-# Numéros 9000 et plus (tâches <projet>-9xxx, propositions P-9xxx) : réservés aux tests de l'outil (fixtures). Ils restent
-# hors du libre-service et n'entrent pas dans la numérotation : un numéro squatté là ne gèle plus bee proposer ni bee
-# proposer-tache (répétition générale du 29/10, T5 et T6 ; tâche ruche-0011).
+# Numbers 9000 and above (tasks <project>-9xxx, proposals P-9xxx): reserved for the tool's tests (fixtures). They stay
+# outside self-service and do not enter the numbering: a number squatted there no longer freezes bee propose or bee
+# propose-task (dress rehearsal of 29/10, T5 and T6; task ruche-0011).
 RESERVED_NUMBER = 9000
 TO_FILL_IN = "À REMPLIR"
 # English placeholder (AGENTS.en.md), refused like the French one (ruche-0055).
 TO_FILL_IN_EN = "TO FILL IN"
 TO_FILL_IN_MARKERS = (TO_FILL_IN, TO_FILL_IN_EN)
 SELF_SERVICE_TASK_KEYS = {"status", "reservation", "parallel", "contribution", "notes"}
-# Outillage du registre (tâches de la ruche) : un membre peut le modifier par PR, jamais fusionnée automatiquement.
+# The registry's tooling (the hive's tasks): a member may change it by PR, never merged automatically.
 TOOLING_PATHS = ("tools/*", "schemas/*", "templates/*", "docs/*", ".github/*", ".claude/*", "tree/*",
                      "AGENTS.md", "README.md", "USERS.md", "MAINTAINERS.md",
                      "outils/juge/*")  # ruche-0153: the common judge stays outils/juge/ after the switch to English, until judge-v4
 
 
 class BeeError(Exception):
-    """Erreur d'usage, affichée telle quelle (code de sortie 1)."""
+    """Usage error, shown as it is (exit code 1)."""
 
 
 # --------------------------------------------------------------------------
-# YAML et dates
+# YAML and dates
 # --------------------------------------------------------------------------
 
 class BeeLoader(yaml.SafeLoader):
-    """Chargeur YAML qui garde les dates en texte (les schémas les attendent ainsi) et refuse les clés en double.
+    """YAML loader that keeps dates as text (the schemas expect them so) and refuses duplicate keys.
 
-    Une clé répétée (deux blocs reservation:, paralleles:…) serait lue avec la dernière valeur, alors que l'édition
-    textuelle des robots (modify_task) ne touche que le premier bloc : un fichier ainsi écrit tromperait les
-    contrôles et bloquerait les robots. Il est illisible, donc refusé partout (valider, check-pr)."""
+    A repeated key (two reservation:, parallel:… blocks) would be read with its last value, whereas the robots'
+    textual editing (modify_task) touches only the first block: a file written so would deceive the
+    checks and block the robots. It is unreadable, hence refused everywhere (validate, check-pr)."""
 
     def compose_node(self, parent, index):
-        # Ni ancre (&a), ni alias (*a), ni étiquette explicite (!!str, !truc…) : la valeur lue doit être celle qu'on voit
-        # écrite, et celle que les robots éditent ligne à ligne.
+        # No anchor (&a), no alias (*a), no explicit tag (!!str, !thing…): the value read must be the one seen
+        # written, and the one the robots edit line by line.
         event = self.peek_event()
         if isinstance(event, yaml.AliasEvent):
             raise yaml.composer.ComposerError(None, None, "YAML alias (*…) refused", event.start_mark)
@@ -99,11 +99,11 @@ class BeeLoader(yaml.SafeLoader):
             try:
                 already = key in views
                 views.add(key)
-            except TypeError:  # clé non hachable : la construction elle-même la refusera
+            except TypeError:  # unhashable key: the construction itself will refuse it
                 continue
             if already:
                 raise yaml.constructor.ConstructorError(None, None, f"duplicate key « {key} »", key_node.start_mark)
-        return yaml.constructor.SafeConstructor.construct_mapping(self, node, deep=deep)  # named: _ChargeurBeeC shares it
+        return yaml.constructor.SafeConstructor.construct_mapping(self, node, deep=deep)  # named: _BeeLoaderC shares it
 
 
 BeeLoader.yaml_implicit_resolvers = {
@@ -113,8 +113,8 @@ BeeLoader.yaml_implicit_resolvers = {
 
 
 # ruche-0130: libyaml's parser, when PyYAML has it, reads the registry about eight times faster. It composes the nodes in
-# C, so ChargeurBee.compose_node never sees its events. The C path is taken only for a text made of an allowlist of forms
-# read alike by both parsers (_lisible_en_c); any other text, a finding or an error, goes to the pure-Python loader, whose
+# C, so BeeLoader.compose_node never sees its events. The C path is taken only for a text made of an allowlist of forms
+# read alike by both parsers (_readable_in_c); any other text, a finding or an error, goes to the pure-Python loader, whose
 # value, refusal and message stay the reference (and the loader when libyaml is missing, or of a version not exercised
 # here). The constructor (merge key, duplicate key, integer too long) is the same Python code on both paths.
 C_DEPTH_MAX = 64
@@ -189,9 +189,9 @@ def read_yaml(path):
 
 
 def shape_problems(text, data):
-    """Chaque clé de premier niveau d'un objet est écrite `cle:` en colonne 0, exactement une fois, sans guillemets ni
-    espace avant les deux-points : c'est sur cette forme que travaille l'édition textuelle des robots (modify_task).
-    Une clé écrite autrement (« "reservation": », « status : », en ligne {…}) serait lue mais pas éditée : refusée."""
+    """Each top-level key of an object is written `key:` in column 0, exactly once, without quotes or a
+    space before the colon: that is the form the robots' textual editing works on (modify_task).
+    A key written otherwise (« "reservation": », « status : », inline {…}) would be read but not edited: refused."""
     if not isinstance(data, dict):
         return []
     if len(data) > 64:  # ruche-0040: the checks below are quadratic in the keys (no schema has more than about 25)
@@ -204,9 +204,9 @@ def shape_problems(text, data):
                              "quotes or a space before the colon")
     if problems_found:
         return problems_found
-    # Le bloc que les robots éditent (_bloc_racine) doit être exactement la valeur lue : relu seul, il donne
-    # {cle: valeur} ; et les blocs couvrent tout le fichier, hors lignes vides et commentaires. Un commentaire en colonne
-    # 0 au milieu d'une liste, ou un objet en ligne continué en colonne 0, coupent le bloc : refusés.
+    # The block the robots edit (_root_block) must be exactly the value read: read back alone, it gives
+    # {key: value}; and the blocks cover the whole file, blank lines and comments aside. A comment in column
+    # 0 in the middle of a list, or an inline object continued in column 0, cuts the block: refused.
     lines = text.split("\n")
     covered = set()
     for key, value in data.items():
@@ -244,8 +244,8 @@ def write_yaml(path, data):
 
 
 def note_written(path):
-    """ruche-0138 : consigne chaque fichier que bee écrit dans un dépôt git (.git/bee-session, chaque chemin suivi d'un NUL) ;
-    bee publish ne publie qu'eux, jamais un autre fichier de l'arbre de travail."""
+    """ruche-0138: records each file bee writes in a git repository (.git/bee-session, each path followed by a NUL);
+    bee publish publishes only them, never another file of the working tree."""
     path = pathlib.Path(path).resolve()
     if any((p / ".git").exists() for p in path.parents) and (r := subprocess.run(
             ["git", "rev-parse", "--show-toplevel", "--git-path", "bee-session"], cwd=path.parent, capture_output=True,
@@ -256,12 +256,12 @@ def note_written(path):
 
 
 def quotes_found(value):
-    """Scalaire YAML entre guillemets doubles (une chaîne JSON est un scalaire YAML valide)."""
+    """Double-quoted YAML scalar (a JSON string is a valid YAML scalar)."""
     return json.dumps(str(value), ensure_ascii=False)
 
 
 def now_instant():
-    """Instant courant en UTC ; BEE_NOW permet de le fixer (tests, CI rejouable)."""
+    """Current instant in UTC; BEE_NOW lets one fix it (tests, replayable CI)."""
     fixed_value = os.environ.get("BEE_NOW")
     if fixed_value:
         return read_instant(fixed_value, "BEE_NOW")
@@ -294,7 +294,7 @@ TYPES_JSON = {"string": "a string", "number": "a number", "integer": "an integer
 
 
 def message_schema(error):
-    """Traduit en français les erreurs de validation les plus courantes."""
+    """Rewrites the most common validation errors in the tool's own words."""
     v, expected, value = error.validator, error.validator_value, error.instance
     if v == "required":
         missing_items = [c for c in expected if isinstance(value, dict) and c not in value]
@@ -329,7 +329,7 @@ def message_schema(error):
 
 
 def fields_to_fill(data, path=""):
-    """Chemins des valeurs qui contiennent encore « À REMPLIR » (or its English form, « TO FILL IN »)."""
+    """Paths of the values that still hold « À REMPLIR » (or its English form, « TO FILL IN »)."""
     if isinstance(data, dict):
         return [c for key, val in data.items() for c in fields_to_fill(val, f"{path}/{key}" if path else str(key))]
     if isinstance(data, list):
@@ -338,7 +338,7 @@ def fields_to_fill(data, path=""):
 
 
 # --------------------------------------------------------------------------
-# Édition textuelle des tâches (préserve la mise en forme écrite à la main)
+# Textual editing of tasks (keeps the hand-written formatting)
 # --------------------------------------------------------------------------
 
 def _continues_block(line_text):
@@ -346,7 +346,7 @@ def _continues_block(line_text):
 
 
 def _root_block(lines, key):
-    """(début, fin) du bloc de premier niveau `cle:` dans la liste de lignes, ou None."""
+    """(beginning, end) of the top-level block `key:` in the list of lines, or None."""
     for i, line_text in enumerate(lines):
         if line_text.startswith(key + ":"):
             j = i + 1
@@ -389,7 +389,7 @@ _UNCHANGED = object()
 
 
 def _last_present_key(text, keys):
-    """La dernière des clés de premier niveau présentes dans le texte (ancre d'insertion), sinon la première."""
+    """The last of the top-level keys present in the text (insertion anchor), else the first."""
     lines = text.split("\n")
     present_ones = [c for c in keys if _root_block(lines, c)]
     return present_ones[-1] if present_ones else keys[0]
@@ -407,7 +407,7 @@ def modify_task(path, *, status=None, reservation=_UNCHANGED, parallel=_UNCHANGE
         ]
         text = replace_block(text, "reservation", lines, after="status")
     if parallel is not _UNCHANGED:
-        # Inscriptions en parallèle (R11) : une liste vide retire le bloc.
+        # Parallel registrations (R11): an empty list removes the block.
         lines = ["parallel:"] if parallel else []
         for p in parallel or []:
             lines += [f"  - user: {quotes_found(p['user'])}", f"    since: {quotes_found(p['since'])}"]
@@ -421,7 +421,7 @@ def modify_task(path, *, status=None, reservation=_UNCHANGED, parallel=_UNCHANGE
         for n in notes:
             lines += [f"  - by: {quotes_found(n['by'])}", f"    at: {quotes_found(n['at'])}", f"    text: {quotes_found(n['text'])}"]
         text = replace_block(text, "notes", lines)
-    load_yaml_text(text, str(path))  # garde-fou : le résultat doit rester du YAML valide
+    load_yaml_text(text, str(path))  # safeguard: the result must stay valid YAML
     if addition:  # ruche-0040: the task's path, for a member's append (note, parallel registration)
         require_room(addition, text)
     pathlib.Path(path).write_text(text, encoding="utf-8")
@@ -429,10 +429,10 @@ def modify_task(path, *, status=None, reservation=_UNCHANGED, parallel=_UNCHANGE
 
 
 # --------------------------------------------------------------------------
-# Réglages (bee.yaml), ruche-0144 : ils échouent fermés
+# Settings (bee.yaml), ruche-0144: they fail closed
 # --------------------------------------------------------------------------
-# The one list of the bee.yaml keys bee reads, each with its form (a check: None, or what is expected). bee valider refuses a listed key
-# missing or malformed, and any key not listed; every read goes through reglage(), which refuses (ErreurBee) what bee valider would. No
+# The one list of the bee.yaml keys bee reads, each with its form (a check: None, or what is expected). bee validate refuses a listed key
+# missing or malformed, and any key not listed; every read goes through setting(), which refuses (BeeError) what bee validate would. No
 # read falls back to a default: a setting renamed on one side only stops what reads it, never switches a safeguard off.
 
 def _shape(is_one, expected):
@@ -453,7 +453,7 @@ def _readable_instant(v):
         return False
 
 
-def _areas(v, config):  # R11 (docs/cap.md)
+def _areas(v, config):  # R11 (docs/balance.md)
     if not isinstance(v, dict) or not v or not all(re.fullmatch(r"[a-z][a-z0-9_]*", str(n)) and _number(p) and 0 <= p <= 100 for n, p in v.items()):
         return "the areas (a-z, 0-9, _) and their share as a percentage, from 0 to 100, expected (R11, docs/balance.md)"
     return None if abs(sum(v.values()) - 100) <= 0.01 else f"the shares add up to {sum(v.values()):g}%, not 100%"
@@ -504,7 +504,7 @@ SETTINGS = {
 
 
 def setting_problem(config, path):
-    """What bee validate and reglage() say of the setting at `chemin` ("cle" or "section.key"), or None if it is there and well formed;
+    """What bee validate and setting() say of the setting at `path` ("key" or "section.key"), or None if it is there and well formed;
     KeyError if SETTINGS does not list it."""
     config = config if isinstance(config, dict) else {}
     section, _, key = path.rpartition(".")
@@ -516,8 +516,8 @@ def setting_problem(config, path):
 
 
 def setting(config, path, raw=False):
-    """ruche-0144: the setting at `chemin` of bee.yaml (`config`, or a Registre's); a section, as a dict of all its keys. Missing or
-    malformed: ErreurBee. brut: as written (None if missing), only for the reads that close by themselves (r8_bootstrap, common_judge_min,
+    """ruche-0144: the setting at `path` of bee.yaml (`config`, or a Registry's); a section, as a dict of all its keys. Missing or
+    malformed: BeeError. raw: as written (None if missing), only for the reads that close by themselves (r8_bootstrap, common_judge_min,
     reserved_logins, robots)."""
     config = getattr(config, "config", config)
     if isinstance(SETTINGS.get(path), dict):
@@ -545,7 +545,7 @@ def settings_problems(config):
 
 
 # --------------------------------------------------------------------------
-# Chargement du registre
+# Loading the registry
 # --------------------------------------------------------------------------
 
 class Registry:
@@ -553,21 +553,21 @@ class Registry:
         self.root = pathlib.Path(root or os.environ.get("BEE_REGISTRY") or TOOL_ROOT).resolve()
         if not (self.root / "bee.yaml").exists():
             raise BeeError(f"{self.root} is not a Bee registry (bee.yaml not found). Use --registry.")
-        # Les schémas viennent de l'outil lui-même, jamais des données vérifiées :
-        # une pull request ne peut pas assouplir les schémas qui la jugent.
+        # The schemas come from the tool itself, never from the checked data:
+        # a pull request cannot loosen the schemas that judge it.
         self.schemas_folder = pathlib.Path(schemas or TOOL_ROOT / "schemas")
         self._schemas = {}
         self.loading_problems = []
-        self._shapes_to_check = []  # (chemin, texte, données) : contrôle de forme fait par verifier_registre seul
+        self._shapes_to_check = []  # (path, text, data): shape check done by check_registry alone
         self.config = self._read("bee.yaml") or {}
         council = self._read("governance/council.yaml") or {}
         self.council = {m.get("login") for m in council.get("members", []) if isinstance(m, dict)}
-        # Gardiens : agents (ou humains) nommés par le conseil, dont la relecture compte pour la porte de
-        # R3 et pour les changements de juges. Ils relisent ; ils ne fusionnent jamais (c'est le workflow).
+        # Guardians: agents (or humans) named by the council, whose review counts for the gate of
+        # R3 and for changes of judges. They review; they never merge (the workflow does).
         guardians = self._read_optional("governance/guardians.yaml") or {}
         self.guardian_cards = [m for m in guardians.get("members", []) or [] if isinstance(m, dict)]
         self.guardians = {m.get("login") for m in self.guardian_cards}
-        # Garants non révoqués (docs/garants.md) et incidents (R13, frein) : lus pour l'état du frein (etat_frein).
+        # Unrevoked guarantors (docs/guarantors.md) and incidents (R13, brake): read for the brake state (brake_state).
         guarantors = self._read_optional("governance/guarantors.yaml") or {}
         self.guarantors = {m["login"] for m in guarantors.get("members", []) or []
                         if isinstance(m, dict) and isinstance(m.get("login"), str) and not m.get("revoked_on")}
@@ -582,8 +582,8 @@ class Registry:
         self.members = self._folder("members/*.yaml")
         self.proposals = self._folder("proposals/*.yaml")
         self.debates = self._folder("debates/*.yaml")  # agora (docs/agora.md)
-        # R13 (docs/croissance.md). Un fichier qui n'est pas un objet (troisième revue adverse) est écarté et signalé : bee valider
-        # le refuse, et tant qu'il est là, aucun geste d'invitation ne passe (invitations_illisibles).
+        # R13 (docs/growth.md). A file that is not an object (third adversarial review) is set aside and reported: bee validate
+        # refuses it, and while it is there, no invitation gesture passes (unreadable_invitations).
         self.invitations = {}
         for stem, (path, inv) in self._folder("invitations/I-*.yaml").items():
             if isinstance(inv, dict):
@@ -591,8 +591,8 @@ class Registry:
             else:
                 self.loading_problems.append(f"{self.rel(path)}: the file must hold a YAML object (key: value)")
         self.do_not_contact = self._read_optional("invitations/do-not-contact.yaml")
-        self.removals = self._read_optional(PATH_REMOVALS)  # retraits demandés (ruche-0048), par empreintes
-        self.reports = self._folder("reports/S-*.yaml")  # ruche-0118: comptes qu'un membre croit liés
+        self.removals = self._read_optional(PATH_REMOVALS)  # requested removals (ruche-0048), by fingerprints
+        self.reports = self._folder("reports/S-*.yaml")  # ruche-0118: accounts a member believes linked
         self.votes = []
         for path in sorted(self.root.glob("votes/*/*.yaml")):
             data = self._read_file(path)
@@ -627,11 +627,11 @@ class Registry:
         return login in self.members or login in self.council or (isinstance(login, str) and login.casefold() in self.identities.names)
 
     def privileged_ones(self):
-        """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
+        """Council and guardians: those whose review opens the gate of R3."""
         return Logins(self.council | self.guardians, self.identities)
 
     def _symlink(self, path):
-        """Vrai si le fichier, ou un dossier entre lui et la racine du registre, est un lien symbolique."""
+        """True if the file, or a folder between it and the registry's root, is a symbolic link."""
         path = pathlib.Path(path)
         try:
             parts_of = path.relative_to(self.root).parts
@@ -645,8 +645,8 @@ class Registry:
         return False
 
     def _read_file(self, path):
-        # Un lien symbolique n'est jamais suivi : il ferait lire un autre fichier que celui du registre (au pire un fichier
-        # de la machine, qu'un message d'erreur pourrait citer). verifier_pr le refuse aussi dans toute PR.
+        # A symbolic link is never followed: it would make bee read another file than the registry's (at worst a file
+        # of the machine, which an error message could quote). check_pr refuses it too in any PR.
         if self._symlink(path):
             try:
                 place_of = str(pathlib.Path(path).relative_to(self.root))
@@ -664,14 +664,14 @@ class Registry:
         except BeeError as e:
             self.loading_problems.append(str(e))
             return None
-        except (OSError, UnicodeDecodeError) as e:  # un dossier nommé x.yaml, un fichier qui n'est pas de l'UTF-8…
+        except (OSError, UnicodeDecodeError) as e:  # a folder named x.yaml, a file that is not UTF-8…
             self.loading_problems.append(f"{self.rel(path)}: unreadable file ({type(e).__name__})")
             return None
         self._shapes_to_check.append((path, text, data))
         return data
 
     def form_problems(self):
-        """Forme des fichiers lus (shape_problems) : coûteuse, elle n'est contrôlée que par check_registry."""
+        """Shape of the files read (shape_problems): costly, it is checked only by check_registry."""
         return [f"{self.rel(c)}: {p}" for c, text, data in self._shapes_to_check for p in shape_problems(text, data)]
 
     def _folder(self, reason):
@@ -718,7 +718,7 @@ class Registry:
         return self.invitations[identifier]
 
     def require_spelling(self, login):
-        if good := other_spelling(self, login):  # ruche-0028 (revue, N1) : une seule orthographe, dès l'entrée
+        if good := other_spelling(self, login):  # ruche-0028 (review, N1): one spelling only, from the input on
             raise BeeError(f"{login}: your member file is {good}; a login is written as its file is, case included")
 
     def require_member(self, login):
@@ -740,57 +740,57 @@ class Registry:
 
 
 # --------------------------------------------------------------------------
-# Travail en parallèle déclaré et course entre contributions concurrentes (R3, R7, R8, R11)
+# Declared parallel work and race between competing contributions (R3, R7, R8, R11)
 # --------------------------------------------------------------------------
 #
-# Une tâche a au plus un titulaire (clé reservation). D'autres abeilles peuvent s'y inscrire en parallèle
-# (clé paralleles : [{utilisateur, depuis}]), au su de tous, tant qu'elle est réservée ou en relecture, et
-# chacune peut soumettre sa propre contribution <tâche>-cN. Les contributions d'une même tâche en relecture
-# sont en course : R3 n'intègre que la meilleure (raisons_course) et écarte les autres.
+# A task has at most one holder (key reservation). Other bees may register on it in parallel
+# (key parallel: [{user, since}]), in everyone's sight, while it is reserved or in review, and
+# each may submit their own contribution <task>-cN. The contributions of one task in review
+# are in a race: R3 integrates only the best (race_causes) and sets the others aside.
 #
-# Le statut de la tâche suit le titulaire (docs/contributions.md, « Travail en parallèle ») :
-#   reservee      un titulaire travaille ; des contributions d'inscrits en parallèle peuvent déjà être en
-#                 relecture : sa réservation et son échéance R7 n'en sont pas touchées ;
-#   en_relecture  personne ne tient la réservation et au moins une contribution est en relecture ;
-#   ouverte       ni titulaire, ni inscrit en parallèle, ni contribution en course.
-# La clé contribution désigne la dernière contribution soumise ; une fois la tâche intégrée, la retenue.
-# Les contributions en course se lisent dans contributions/ (clé tache), jamais dans une liste recopiée.
+# The task's status follows the holder (docs/contributions.md, « Travail en parallèle »):
+#   reserved      a holder is working; contributions of parallel registrants may already be in
+#                 review: the holder's reservation and R7 deadline are not affected;
+#   in_review     no one holds the reservation and at least one contribution is in review;
+#   open          no holder, no parallel registrant, no contribution in the race.
+# The key contribution names the last contribution submitted; once the task is integrated, the kept one.
+# The contributions in the race are read in contributions/ (key task), never in a copied list.
 
 FAR_FUTURE = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
 PASS_REF = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 # A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
 # in CI, the push's) or of the check that reads it.
 LEAD_MAX = dt.timedelta(minutes=1)
-INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + AVANCE_MAX]
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + LEAD_MAX]
 
 
 def parallels_of(task):
-    """Inscriptions en parallèle d'une tâche, dans l'ordre du fichier : [{utilisateur, depuis}]."""
+    """Parallel registrations of a task, in the file's order: [{user, since}]."""
     list_of = (task or {}).get("parallel") if isinstance(task, dict) else None
     return [p for p in list_of or [] if isinstance(p, dict)]
 
 
 def oldest(parallel):
-    """L'inscrit en parallèle qui devient titulaire si le titulaire s'en va : l'inscription la plus ancienne,
-    puis la première de la liste à date égale. Ne dépend pas de l'heure : la promotion se vérifie seule."""
+    """The parallel registrant who becomes holder if the holder leaves: the oldest registration,
+    then the first of the list at equal date. Does not depend on the time: the promotion can be checked on its own."""
     if not parallel:
         return None
     return min(enumerate(parallel), key=lambda ip: (_instant_or_none(ip[1].get("since")) or FAR_FUTURE, ip[0]))[1]
 
 
 def without_it(parallel, user):
-    """La liste des inscriptions privée de celle de `utilisateur` (ordre conservé)."""
+    """The list of registrations without that of `user` (order kept)."""
     return [p for p in parallel if p.get("user") != user]
 
 
 def same_login(a, b):
-    """Un login GitHub ne tient pas compte de la casse : « Alice » et « alice » sont le même compte (revue adverse de
-    ruche-0012). Partout où l'identité compte (fil, juges d'une course, R7, R8, auteur d'une PR, fiches members/)."""
+    """A GitHub login does not depend on case: « Alice » and « alice » are the same account (adversarial review of
+    ruche-0012). Everywhere identity counts (thread, judges of a race, R7, R8, author of a PR, members/ files)."""
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
 def reserved_login(config, login):
-    """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's reserved_logins, the council and the robots,
+    """ruche-0104: why `login` may not name a member file (None if it may): bee.yaml's reserved_logins, the council and the robots,
     case aside (same_login). Unless both lists are there and well formed, as bee validate wants them (ruche-0144), no name is accepted."""
     if setting_problem(config, "reserved_logins") or setting_problem(config, "robots"):
         return "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise (ruche-0104)"
@@ -799,7 +799,7 @@ def reserved_login(config, login):
     return None
 
 
-def logins_of(entry):  # a member file's or a governance entry's logins: pseudo (or account), then anciens_logins
+def logins_of(entry):  # a member file's or a governance entry's logins: login (or account), then former_logins
     old_items = entry.get("former_logins") if isinstance(entry.get("former_logins"), list) else []
     return [x for x in [entry.get("login", entry.get("account")), *old_items] if isinstance(x, str)]
 
@@ -807,7 +807,7 @@ def logins_of(entry):  # a member file's or a governance entry's logins: pseudo 
 def confirmed_links(entry_cards):
     """ruche-0051: [(an account's member file, its person's)]: the person's file lists the account's number in other_accounts, and
     the account's own file names the person's number in account_of. One step only: neither side is linked the other way. Both files
-    name their pseudo (else no link, and bee validate says why)."""
+    name their login (else no link, and bee validate says why)."""
     by_number = {f["github_id"]: f for f in entry_cards if isinstance(f, dict) and type(f.get("github_id")) is int}
     return [(f, p) for f in by_number.values() if type(f.get("account_of")) is int and (p := by_number.get(f["account_of"])) is not None
             and p is not f and f["github_id"] in (p.get("other_accounts") if isinstance(p.get("other_accounts"), list) else [])
@@ -815,9 +815,9 @@ def confirmed_links(entry_cards):
 
 
 class Identities:
-    """ruche-0022: a member file with github_id names one person (its pseudo) under its logins, current and former; any other
-    login is itself. `numeros` binds logins to account numbers. Each Registre reads its own; the gate takes main's (check_pr).
-    ruche-0051: so is an account linked from both sides; `comptes` (compte, by_account) keeps each account apart."""
+    """ruche-0022: a member file with github_id names one person (its login) under its logins, current and former; any other
+    login is itself. `numbers_of` binds logins to account numbers. Each Registry reads its own; the gate takes main's (check_pr).
+    ruche-0051: so is an account linked from both sides; `accounts` (account, by_account) keeps each account apart."""
     def __init__(self, entry_cards=(), lists_of=()):
         self.names, self.numbers_of, self.conflicts, self.accounts = {}, {}, [], {}
         for e, member in [*((f, True) for f in entry_cards), *((e, False) for e in lists_of)]:
@@ -830,7 +830,7 @@ class Identities:
         self.names = {**self.accounts, **{x.casefold(): p["login"] for f, p in confirmed_links(entry_cards) for x in logins_of(f)}}
         self.group_by()
 
-    def group_by(self):  # ruche-0051: each person's accounts, read once (comptes_de is called for every eligible voter)
+    def group_by(self):  # ruche-0051: each person's accounts, read once (accounts_of is called for each eligible voter)
         self.groups = {}
         for x in self.names:
             self.groups.setdefault(self.key(x), set()).add(self.account(x))
@@ -858,8 +858,8 @@ class Identities:
 
 
 class Logins(frozenset):
-    """« pseudo in … » sans la casse (same_login), pour le conseil, les gardiens, les garants, les robots et les concurrents
-    (ruche-0028, répétition générale n° 3 : une levée « par: BIDJI29 » ne valait rien). ruche-0051 : par compte, sauf `personne`."""
+    """« login in … » without case (same_login), for the council, the guardians, the guarantors, the robots and the rivals
+    (ruche-0028, dress rehearsal no. 3: a lift « by: BIDJI29 » was worth nothing). ruche-0051: by account, unless `person`."""
     def __new__(cls, logins_list=(), who_is=None, person=False):
         together_set = super().__new__(cls, logins_list)
         together_set.who_is, together_set.person = who_is, person
@@ -872,15 +872,15 @@ class Logins(frozenset):
         return isinstance(login, str) and key(login) in self.folds
 
 
-# Revue adverse de 3ea3a71 (N1) : une seule orthographe par pseudo, dès l'entrée. Un pseudo qui ne suit une fiche (membres/,
-# conseil, gardiens, garants, robots) qu'à la casse près est refusé, avec l'orthographe de la fiche, jamais ramené en silence :
-# les comparaisons exactes en aval (R13, plafonds, signatures) restent justes.
+# Adversarial review of 3ea3a71 (N1): one spelling per login, from the input on. A login that follows a file (members/,
+# council, guardians, guarantors, robots) only up to case is refused, with the file's spelling, never silently brought back:
+# the exact comparisons downstream (R13, caps, signatures) stay right.
 LOGIN_FIELDS = frozenset({"author", "user", "by", "reviewer", "voter", "submitted_by", "confirmed_by", "created_by",
                            "proposed_by", "opened_by", "closed_by", "synthesis_by", "rapporteur", "login", "guarantor"})
 
 
 def other_spelling(reg, login):
-    """L'orthographe de la fiche d'un pseudo qui ne la suit qu'à la casse près ; None s'il est écrit comme elle, ou inconnu."""
+    """The file's spelling of a login that follows it only up to case; None if it is written as the file is, or unknown."""
     known_items = vars(reg).setdefault("_spellings", {})
     if not known_items:
         for p in [*reg.members, *reg.council, *reg.guardians, *reg.guarantors, *reg.robots, *reg.agents]:
@@ -890,7 +890,7 @@ def other_spelling(reg, login):
 
 
 def misspelt_logins(reg, data, depth=0):
-    """Les (champ, pseudo, orthographe de sa fiche) des champs d'identité d'un fichier qui ne suivent leur fiche qu'à la casse près."""
+    """The (field, login, its file's spelling) of a file's identity fields that follow their file only up to case."""
     if isinstance(data, dict) and depth < 20:
         return [(k, v, b) for k, v in data.items() if k in LOGIN_FIELDS and (b := other_spelling(reg, v))] + [
             x for v in data.values() for x in misspelt_logins(reg, v, depth + 1)]
@@ -898,7 +898,7 @@ def misspelt_logins(reg, data, depth=0):
 
 
 # ruche-0089: declared agent accounts. An agent account acts as its person (the gate checks its PRs under the person's name,
-# without the person's council or guardian status), and only the person's own pseudo is ever written in the registry.
+# without the person's council or guardian status), and only the person's own login is ever written in the registry.
 AGENT_ACCOUNTS = "governance/agent-accounts.yaml"
 AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "governance/council.yaml", AGENT_ACCOUNTS, "governance/guardians.yaml",  # path prefixes, any case
                    "governance/guarantors.yaml", "governance/briefs/", "docs/organization.md", "docs/guarantors.md", "docs/devolution.md",
@@ -1012,7 +1012,7 @@ def reproduces_for_r4(reg, measurement, author):
 
 
 def engagements_of(reg, user):
-    """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
+    """R8: the user's reservations and parallel registrations, all agents together: [(task, kind)]."""
     result = []
     for tid, (_, t) in sorted(reg.tasks.items()):
         if not isinstance(t, dict):
@@ -1025,9 +1025,9 @@ def engagements_of(reg, user):
 
 
 def r8_maximum(reg, user, tasks, instant):
-    """R8, one rule for bee take, bee validate and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all counted.
+    """R8, one rule for bee take, bee validate and the gate: the most engagements `user` may hold with `tasks` (ids), all counted.
     ruche-0096: if `instant` (a new engagement's; in bee validate, the latest one's) is before r8_bootstrap.until (UTC), a council member
-    whose engagements are ALL on ruche tasks created by the council (while no member is named conseil) may hold r8_bootstrap.max."""
+    whose engagements are ALL on ruche tasks created by the council (while no member is named council) may hold r8_bootstrap.max."""
     usual_value, exception = setting(reg, "reservations_max_per_user"), setting(reg, "r8_bootstrap", raw=True)
     try:
         maximum, end = exception["max"], read_instant(exception["until"], "r8_bootstrap")
@@ -1041,27 +1041,27 @@ def r8_maximum(reg, user, tasks, instant):
 
 
 def engagement_expired(reg, since, instant):
-    """R7 : une réservation ou une inscription en parallèle sans contribution prend fin après reservation_max_hours."""
+    """R7: a reservation or a parallel registration without a contribution ends after reservation_max_hours."""
     beginning = _instant_or_none(since)
     return beginning is not None and instant - beginning > dt.timedelta(hours=setting(reg, "reservation_max_hours"))
 
 
 def contribution_numbers(reg, tid, except_for=None):
-    """Numéros N des contributions <tid>-cN déjà enregistrées (sauf `sauf`)."""
+    """Numbers N of the contributions <tid>-cN already recorded (except `except_for`)."""
     return [int(m["n"]) for cid in reg.records if cid != except_for
             for m in [ID_CONTRIBUTION.match(cid)] if m and m["task"] == tid]
 
 
 def racing_contributions(reg, tid):
-    """Contributions de la tâche encore en relecture, de la plus ancienne à la plus récente : [(id, enregistrement)]."""
+    """The task's contributions still in review, from the oldest to the most recent: [(id, record)]."""
     list_of = [(cid, e) for cid, (_, e) in reg.records.items()
              if isinstance(e, dict) and e.get("task") == tid and e.get("status") == "in_review"]
     return sorted(list_of, key=lambda x: (_instant_or_none(x[1].get("submitted_at")) or FAR_FUTURE, x[0]))
 
 
 def race_participants(reg, tid):
-    """Les parties prenantes ACTUELLES de la course d'une tâche : titulaire, inscrits en parallèle, auteurs des
-    contributions en relecture."""
+    """The CURRENT parties to a task's race: holder, parallel registrants, authors of the
+    contributions in review."""
     t = reg.tasks.get(tid, (None, {}))[1] or {}
     who_is = set()
     if isinstance(t, dict) and t.get("status") == "reserved":
@@ -1072,9 +1072,9 @@ def race_participants(reg, tid):
 
 
 def rivals_of(reg, rec):
-    """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, en ce moment (commandement 3 : on ne juge pas
-    son concurrent). Tant qu'ils sont engagés dans la course, leurs votes et leurs avis défavorables sur cette
-    contribution ne comptent pas, quelle que soit leur date ; leurs avis favorables comptent."""
+    """Those competing with the author of `rec` on its task, at this moment (commandment 3: one does not judge
+    one's rival). While they are engaged in the race, their votes and their unfavorable opinions on this
+    contribution do not count, whatever their date; their favorable opinions count."""
     return Logins((p for p in race_participants(reg, rec.get("task")) if not reg.identities.same_one(p, rec.get("author"))), reg.identities, True)
 
 
@@ -1082,24 +1082,24 @@ CONFIRMATION_KEYS = ("confirmed_defect", "confirmed_by")
 
 
 def confirmed_by_a_third_party(review, who_is):
-    """Un défaut est confirmé par un tiers (confirmed_by) : la CI, le conseil, un gardien ou un Confirmé autre que le
-    relecteur qui l'a signalé. Seul un tel défaut rapporte (+2) à son relecteur."""
+    """A defect is confirmed by a third party (confirmed_by): the CI, the council, a guardian or a Confirmed other than
+    the reviewer who reported it. Only such a defect earns (+2) for its reviewer."""
     by = review.get("confirmed_by")
     return bool(review.get("confirmed_defect")) and bool(by) and not who_is.same_one(by, review.get("reviewer"))
 
 
 def is_confirmation(former, new_one):
-    """`nouvelle` est `ancienne`, un défaut signalé pas encore confirmé, à laquelle on n'a ajouté que la confirmation."""
+    """`new_one` is `former`, a reported defect not yet confirmed, to which only the confirmation was added."""
     return (isinstance(former, dict) and isinstance(new_one, dict) and bool(former.get("reported_defect"))
             and not any(k in former for k in CONFIRMATION_KEYS) and new_one.get("confirmed_defect") is True
             and {k: v for k, v in new_one.items() if k not in CONFIRMATION_KEYS} == former)
 
 
 def judged_by(reg, tid, login):
-    """Contributions encore en course de la tâche sur lesquelles `pseudo` a donné un avis défavorable, signalé un défaut
-    (signaler est juger, revue adverse de ruche-0012) ou confirmé un défaut. Qui a jugé une course n'y entre plus
-    (commandement 3) : ni inscription en parallèle, ni réservation, tant que ces contributions sont en course ; on ne se
-    retire pas pour juger puis revenir concourir."""
+    """The task's contributions still in the race on which `login` gave an unfavorable opinion, reported a defect
+    (reporting is judging, adversarial review of ruche-0012) or confirmed a defect. Whoever judged a race no longer
+    enters it (commandment 3): neither parallel registration nor reservation, while these contributions are in the race;
+    one does not withdraw to judge and then come back to compete."""
     return [c for c, e in racing_contributions(reg, tid)
             if any(isinstance(r, dict) and ((reg.identities.same_one(r.get("reviewer"), login) and (r.get("opinion") == "unfavorable" or r.get("reported_defect")))
                                             or reg.identities.same_one(r.get("confirmed_by"), login))
@@ -1112,9 +1112,9 @@ def judge_message(tid, login, judged_ones):
 
 
 def admissible_opinion(review, rivals):
-    """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte.
-    Exception : un défaut CONFIRMÉ (par un tiers : la CI, le conseil, un gardien ou un Confirmé) compte toujours, quel
-    que soit le relecteur : il n'est plus un avis, c'est un fait établi par un tiers."""
+    """A rival can only acknowledge another's contribution: only their favorable opinion, without a defect, counts.
+    Exception: a CONFIRMED defect (by a third party: the CI, the council, a guardian or a Confirmed) always counts,
+    whoever the reviewer: it is no longer an opinion, it is a fact established by a third party."""
     return review.get("reviewer") not in rivals or bool(review.get("confirmed_defect")) or (
         review.get("opinion") == "favorable" and not review.get("reported_defect"))
 
@@ -1123,15 +1123,15 @@ OPINIONS = ("favorable", "unfavorable", "abstention")
 
 
 def last_reviews(rec, who_is):
-    """{reviewer: sa relecture la plus récente} (ajout seul : l'ordre de la liste est celui des publications)."""
+    """{reviewer: their most recent review} (append only: the list's order is that of publication)."""
     return {who_is.name(r.get("reviewer")): r for r in rec.get("reviews") or [] if isinstance(r, dict)}
 
 
 def refused_review(previous_ones, review, who_is, lift_of=lambda r: False):
-    """Une relecture de plus (ruche-0012, revue adverse) : elle porte sur un autre commit que la plus récente de son relecteur
-    (X, Y, puis X redevient possible ; jamais deux de suite sur le même) ; sans commit, seulement en première. Une relecture
-    levée par le conseil (lift_of) n'est plus « la plus récente » : après la levée, il peut relire le commit jugé. None si
-    elle est recevable, sinon la raison."""
+    """One more review (ruche-0012, adversarial review): it is on another commit than its reviewer's most recent one
+    (X, Y, then X possible again; never two in a row on the same one); without a commit, only as the first. A review
+    lifted by the council (lift_of) is no longer « the most recent »: after the lift, they may review the judged
+    commit. None if it is admissible, otherwise the reason."""
     own_items_f = [r for r in previous_ones if isinstance(r, dict) and who_is.same_one(r.get("reviewer"), review.get("reviewer")) and not lift_of(r)]
     if not own_items_f:
         return None
@@ -1145,8 +1145,8 @@ def refused_review(previous_ones, review, who_is, lift_of=lambda r: False):
 
 
 def votes_of(reg, subject):
-    """Les votes d'un sujet, un par votant sans la casse (revue adverse de ruche-0028, S4 : « Alice » votait une seconde fois après
-    « alice ») : son plus récent (le), puis son dernier fichier."""
+    """A subject's votes, one per voter without case (adversarial review of ruche-0028, S4: « Alice » voted a second time after
+    « alice »): their most recent (at), then their last file."""
     by = {}
     for path, v in sorted(reg.votes, key=lambda cv: (_instant_or_none(cv[1].get("at")) or PASS_REF, str(cv[0]))):
         if v.get("subject") == subject and isinstance(v.get("voter"), str):
@@ -1155,31 +1155,31 @@ def votes_of(reg, subject):
 
 
 def admissible_vote(vote, rivals):
-    """Un concurrent ne vote pas sur une contribution concurrente : tant qu'il est en course, aucun de ses votes ne compte."""
+    """A rival does not vote on a competing contribution: while they are in the race, none of their votes counts."""
     return vote.get("voter") not in rivals
 
 
 def counted_votes(reg, rec):
-    """Les votes qui comptent sur une contribution (vote net, score) : ni de son auteur, ni d'un compte lié à lui, même d'avant
-    le lien (ruche-0051), ni de ses concurrents actuels."""
+    """The votes that count on a contribution (net vote, score): not from its author, nor from an account linked to them,
+    even from before the link (ruche-0051), nor from its current rivals."""
     rivals = rivals_of(reg, rec)
     return [v for v in votes_of(reg, rec.get("id")) if not reg.identities.same_one(v.get("voter"), rec.get("author"))
             and admissible_vote(v, rivals)]
 
 
 def net_vote(reg, rec, levels):
-    """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
+    """Weighted net vote of a contribution: neither the author nor its current rivals."""
     return sum(int(v.get("value", 0)) * voice_weight(reg, levels, v.get("voter")) for v in counted_votes(reg, rec))
 
 
 def measured_gain(reg, rec):
-    """Ce que la machine mesure d'une contribution : le terme de gain du score, G × P / (1 + L/100) (docs/evaluation.md),
-    sans la confiance (relectures) ni le vote. None sans verdict vert qui mesure un gain (tests, mesures, ruche…)."""
+    """What the machine measures of a contribution: the gain term of the score, G × P / (1 + L/100) (docs/evaluation.md),
+    without confidence (reviews) or vote. None if no green verdict measures a gain (tests, measurements, ruche…)."""
     verdict = rec.get("verdict") or {}
     gain = verdict.get("gain")
     if verdict.get("ci") != "green" or not isinstance(gain, (int, float)) or isinstance(gain, bool) or not math.isfinite(gain):
         return None
-    # Un gain ne se croit que mesuré par un verdict contrôlé (fichiers de la PR lus par le registre) et sans juge modifié.
+    # A gain is trusted only when measured by a checked verdict (PR files read by the registry) with no judge modified.
     if not verdict.get("checked_files") or verdict.get("modified_judges"):
         return None
     task = reg.tasks.get(rec.get("task"), (None, {}))[1] or {}
@@ -1187,7 +1187,7 @@ def measured_gain(reg, rec):
         reach, lines = float(task.get("reach", 1.0)), int(verdict.get("changed_lines", 0))
     except (TypeError, ValueError):
         return None
-    # ruche-0028 (1) : le gain le moins favorable des verdicts du même contenu mesuré (relancer la CI ne fait pas monter).
+    # ruche-0028 (1): the least favorable gain of the same measured content's verdicts (rerunning CI does not raise it).
     gain = min([float(gain)] + [h["gain"] for h, _ in content_verdicts(reg, rec)[1:] if isinstance(h.get("gain"), (int, float))
                                 and not isinstance(h.get("gain"), bool) and math.isfinite(h["gain"])])
     value = gain * reach / (1 + lines / 100)
@@ -1195,33 +1195,33 @@ def measured_gain(reg, rec):
 
 
 def ranking_key(reg, rec, levels):
-    """Rang dans une course (R3), du meilleur au moins bon. La machine juge ce qu'elle peut mesurer, l'essaim départage
-    le reste : une contribution au gain mesuré se classe sur ce gain seul (measured_gain ; relectures et votes restent des
-    conditions de R3, pas des critères de classement), et passe devant celles qui n'en ont pas ; entre celles-ci (tests,
-    mesures, ruche, CI pas verte), le vote net pondéré. Puis la soumission la plus ancienne, puis l'identifiant : ordre
-    total, le choix est déterministe."""
+    """Rank in a race (R3), from the best to the least good. The machine judges what it can measure, the swarm decides
+    the rest: a contribution with a measured gain is ranked on that gain alone (measured_gain; reviews and votes remain
+    conditions of R3, not ranking criteria), and goes ahead of those that have none; among these (tests,
+    measurements, ruche, CI not green), the weighted net vote. Then the oldest submission, then the identifier: a total
+    order, the choice is deterministic."""
     gain = measured_gain(reg, rec)
     return (gain is None, -(gain or 0.0), -net_vote(reg, rec, levels) if gain is None else 0,
             effective_submission(reg, rec) or FAR_FUTURE, str(rec.get("id")))
 
 
 def race_ranking(reg, tid, levels):
-    """Les contributions de la tâche en relecture, de la mieux classée à la moins bien classée."""
+    """The task's contributions in review, from the best ranked to the worst ranked."""
     return sorted(racing_contributions(reg, tid), key=lambda x: ranking_key(reg, x[1], levels))
 
 
 def engagement_start(rec):
-    """Début de l'engagement de l'auteur sur la tâche avant de soumettre (engaged_since : sa réservation ou son inscription
-    en parallèle), sinon sa soumission (enregistrements antérieurs à ce champ)."""
+    """Start of the author's engagement on the task before submitting (engaged_since: their reservation or their parallel
+    registration), else their submission (records older than this field)."""
     return _instant_or_none(rec.get("engaged_since")) or _instant_or_none(rec.get("submitted_at"))
 
 
 def wait_bounds(reg, rec):
-    """Bornes propres à une contribution X (R3, course) : (fin de sa protection, fin de toute attente).
-    Jusqu'à submitted_at(X) + 72 h (R7) + 24 h (fenêtre de R3) = 96 h, X attend ce qui pourrait la battre ; jusqu'à
-    + 24 h encore (120 h), une concurrente intégrable mieux classée ; ensuite, plus rien. Ces bornes ne dépendent que
-    de X : ni une contribution ancienne qui traîne, ni une soumission plus récente ne les déplacent. submitted_at(X) se lit
-    effective_submission (ruche-0028 : la fusion de la PR de soumission)."""
+    """Bounds proper to a contribution X (R3, race): (end of its protection, end of any wait).
+    Until submitted_at(X) + 72 h (R7) + 24 h (R3's window) = 96 h, X waits for what could beat it; until
+    24 h later (120 h), a better-ranked integrable rival; after that, nothing. These bounds depend only
+    on X: neither an old contribution that lingers nor a more recent submission moves them. submitted_at(X) is read
+    through effective_submission (ruche-0028: the merge of the submission PR)."""
     submitted = effective_submission(reg, rec)
     if submitted is None:
         return None, None
@@ -1231,10 +1231,10 @@ def wait_bounds(reg, rec):
 
 
 def holder_departure(reg, tid, parallel):
-    """Ce que devient une tâche réservée quand son titulaire s'en va (libération ou expiration, R7) :
-    le plus ancien inscrit en parallèle devient titulaire, à la date de son inscription (l'échéance ne s'allonge
-    pas) ; sinon, la tâche passe en relecture s'il y a des contributions en course ; sinon, elle est rouverte.
-    Renvoie (changements pour modify_task, phrase pour la note)."""
+    """What becomes of a reserved task when its holder leaves (release or expiry, R7):
+    the oldest parallel registrant becomes holder, as of the date of their registration (the deadline is not
+    extended); otherwise, the task goes into review if there are contributions in the race; otherwise, it is reopened.
+    Returns (changes for modify_task, sentence for the note)."""
     elected = oldest(parallel)
     if elected:
         rest_of = without_it(parallel, elected["user"])
@@ -1250,22 +1250,22 @@ def holder_departure(reg, tid, parallel):
 
 
 # --------------------------------------------------------------------------
-# Historique git du registre : quand un geste est arrivé dans la branche principale (R7, R11)
+# The registry's git history: when a gesture arrived in the main branch (R7, R11)
 # --------------------------------------------------------------------------
 #
-# Une date déclarée dans un fichier (le, depuis, ouverte_le…) est écrite par l'auteur de la PR ; la date du commit qui
-# l'a fusionnée dans la branche principale ne l'est pas : sur le premier parent, c'est le commit que GitHub crée en
-# fusionnant la PR. Le cap et l'essaim datent les gestes par elle (répétition générale du 29/10, T3 : des notes antidatées
-# gonflaient le cap sans paraître dans l'essaim), et R7 y lit qui a quitté une tâche, et quand (T13).
+# A date declared in a file (at, since, opened_at…) is written by the PR's author; the date of the commit that
+# merged it into the main branch is not: on the first parent, it is the commit GitHub creates when
+# merging the PR. The balance and the swarm date gestures by it (dress rehearsal of 29/10, T3: backdated notes
+# inflated the balance without showing in the swarm), and R7 reads there who left a task, and when (T13).
 
 GESTURE_FOLDERS = ("tasks", "contributions", "votes", "measurements", "proposals", "debates")
-# Seuls ces chemins sont relus dans l'historique : ni guillemet, ni espace, ni saut de ligne (git cat-file --batch).
+# Only these paths are read back in the history: no quote, no space, no newline (git cat-file --batch).
 PATH_HISTORY = re.compile(r"^(?:tasks|contributions|votes|measurements|proposals|debates)/[A-Za-z0-9._/-]+\.yaml\Z")
 
 
 class _HistoryLoader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
-    """Relit les versions passées d'un fichier, vite (libyaml s'il est là), avec les mêmes types que ChargeurBee (dates en
-    texte) : un geste se reconnaît d'une version à l'autre à ses valeurs."""
+    """Reads back a file's past versions, fast (libyaml if it is there), with the same types as BeeLoader (dates as
+    text): a gesture is recognized from one version to the next by its values."""
 
 
 _HistoryLoader.yaml_implicit_resolvers = BeeLoader.yaml_implicit_resolvers
@@ -1281,7 +1281,7 @@ def _read_version(text):
 
 
 def _git_raw(repo, *arguments, entry=None):
-    """git sans exception : (code de sortie, sortie en octets)."""
+    """git without exceptions: (exit code, output in bytes)."""
     try:
         result = subprocess.run(["git", "-C", str(repo), *arguments], input=entry, capture_output=True)
     except OSError:
@@ -1291,8 +1291,8 @@ def _git_raw(repo, *arguments, entry=None):
 
 def git_fields(output_text, arguments, replace_with=False):
     """ruche-0095: the fields of a git listing asked with -z (its output, in bytes), each path as it is in the repository,
-    never quoted; an output that is not NUL-terminated is refused (ErreurBee). A path that is not UTF-8 text is refused too,
-    the path shown escaped; with `remplacer` (the readers of main's tree and history, which a refusal would block for good),
+    never quoted; an output that is not NUL-terminated is refused (BeeError). A path that is not UTF-8 text is refused too,
+    the path shown escaped; with `replace_with` (the readers of main's tree and history, which a refusal would block for good),
     it is read with each undecodable byte written \\xNN instead, so that it equals no path written by bee."""
     if output_text and not output_text.endswith(b"\0"):
         raise BeeError(f"git {' '.join(arguments)} : not a -z listing")
@@ -1306,8 +1306,8 @@ def git_fields(output_text, arguments, replace_with=False):
 
 
 def history_available(root):
-    """Vrai si `racine` est la racine d'un dépôt git complet : ni un clone superficiel (son historique s'arrête au dernier
-    commit), ni un dossier sans git ou dans le dépôt d'un autre. Sans cela, l'historique ne dit pas quand un geste est arrivé."""
+    """True if `root` is the root of a complete git repository: not a shallow clone (its history stops at the last
+    commit), nor a folder without git or in another's repository. Otherwise the history does not say when a gesture arrived."""
     code, output_text = _git_raw(root, "rev-parse", "--show-toplevel", "--is-shallow-repository")
     lines = output_text.decode("utf-8", "replace").splitlines()
     if code or len(lines) < 2:
@@ -1319,9 +1319,9 @@ def history_available(root):
 
 
 def first_parent_commits(root, ref, *paths, filter_fn=None):
-    """Commits de `ref` qui touchent ces chemins, sur le premier parent (les fusions dans la branche), du plus récent au plus
-    ancien : [(sha, instant du commit, [paths touchés])]. `filtre` : celui de git diff (« A » : les fichiers ajoutés).
-    Vide si l'historique est illisible."""
+    """Commits of `ref` that touch these paths, on the first parent (the merges into the branch), from the most recent to the
+    oldest: [(sha, commit instant, [paths touched])]. `filter_fn`: git diff's (« A »: the added files).
+    Empty if the history is unreadable."""
     code, output_text = _git_raw(root, "log", "-z", "--first-parent", "--no-renames", "--format=%x00%H %ct",
                              "--name-only", *([f"--diff-filter={filter_fn}"] if filter_fn else []), ref, "--", *paths)
     if code:
@@ -1341,8 +1341,8 @@ def first_parent_commits(root, ref, *paths, filter_fn=None):
 
 
 def read_versions(root, requests):
-    """Contenu de fichiers à des révisions données, en un seul appel (git cat-file --batch) : {(sha, chemin): texte, ou None
-    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de PATH_HISTORY sont lus.
+    """Content of files at given revisions, in a single call (git cat-file --batch): {(sha, path): text, or None
+    if the file does not exist at that revision or is not UTF-8 text}. Only the paths of PATH_HISTORY are read.
     ruche-0095: never a request that holds a newline or a carriage return (cat-file --batch reads one per line, and drops a
     final carriage return: it would read another file, or shift every answer after it)."""
     requests = [d for d in dict.fromkeys(requests) if PATH_HISTORY.match(d[1]) and not set("\n\r") & set(f"{d[0]}:{d[1]}")]
@@ -1362,7 +1362,7 @@ def read_versions(root, requests):
             break
         header = output_text[position:end].split()
         position = end + 1
-        if len(header) == 3 and header[2].isdigit():  # « <objet> <type> <taille> », puis le contenu ; sinon « … missing »
+        if len(header) == 3 and header[2].isdigit():  # « <object> <type> <size> », then the content; else « … missing »
             size = int(header[2])
             content = output_text[position:position + size]
             position += size + 1
@@ -1374,7 +1374,7 @@ def read_versions(root, requests):
     return result
 
 
-# Un geste se reconnaît à ses valeurs, pas à sa place dans le fichier : une mise en forme réécrite ne le date pas à nouveau.
+# A gesture is recognized by its values, not by its place in the file: rewritten formatting does not date it again.
 def _key(*values_of):
     return tuple(str(v) for v in values_of)
 
@@ -1384,7 +1384,7 @@ def note_key(note):
 
 
 def engagement_key(engagement):
-    """Réservation ou inscription en parallèle (un inscrit promu titulaire garde la date de son inscription : même clé)."""
+    """Reservation or parallel registration (a registrant promoted to holder keeps their registration date: same key)."""
     return _key("engagement", engagement.get("user"), engagement.get("since"))
 
 
@@ -1429,7 +1429,7 @@ def _list(value):
 
 
 def gesture_keys(relative_one, data):
-    """Les gestes que porte une version d'un fichier du registre, par leur clé (les mêmes qu'activity_by_area)."""
+    """The gestures a version of a registry file carries, by their key (the same as activity_by_area's)."""
     if not isinstance(data, dict):
         return set()
     folder = relative_one.split("/", 1)[0]
@@ -1453,16 +1453,16 @@ def gesture_keys(relative_one, data):
 
 
 class MergeDates:
-    """Quand chaque geste est arrivé dans la branche du registre : l'instant du premier commit (premier parent, donc la fusion
-    de sa PR) dont la version du fichier le porte. Seuls les commits postérieurs à `debut`, et la version qui les précède,
-    sont relus : un geste déjà présent avant la fenêtre est daté PASS_REF ; un geste absent de l'historique (pas encore publié,
-    ou fichier hors de git), None."""
+    """When each gesture arrived in the registry's branch: the instant of the first commit (first parent, hence the merge
+    of its PR) whose version of the file carries it. Only the commits after `beginning`, and the version before them,
+    are read back: a gesture already present before the window is dated PASS_REF; a gesture absent from the history
+    (not yet published, or a file outside git), None."""
 
     def __init__(self, reg, beginning):
         self.beginning = beginning
         self.available = history_available(reg.root)
-        self._before = set()   # fichiers dont tout le contenu publié est antérieur à la fenêtre
-        self._first = {}   # fichier -> {clé du geste: instant de fusion, ou PASSE}
+        self._before = set()   # files whose whole published content is older than the window
+        self._first = {}   # file -> {gesture key: merge instant, or PASS_REF}
         if self.available:
             self._load(reg.root)
 
@@ -1484,7 +1484,7 @@ class MergeDates:
             window, before = [], None
             for sha, moment in by_file.get(path, []):
                 if moment < self.beginning:
-                    before = sha  # l'état du fichier au début de la fenêtre
+                    before = sha  # the file's state at the start of the window
                     break
                 window.append((sha, moment))
             if not window and path not in modified_items:
@@ -1509,7 +1509,7 @@ class MergeDates:
 
 
 def merge_dates(reg, beginning):
-    """DatesDeFusion pour une fenêtre qui commence à `debut`, gardée sur le registre (une fenêtre plus large sert aussi)."""
+    """MergeDates for a window that starts at `beginning`, kept on the registry (a wider window serves too)."""
     cache = getattr(reg, "_merge_dates", None)
     if cache is None or cache.beginning > beginning:
         cache = MergeDates(reg, beginning)
@@ -1518,28 +1518,28 @@ def merge_dates(reg, beginning):
 
 
 def gesture_instant(reg, dates, path, key, declared_one, instant):
-    """Quand un geste compte (cap, essaim) : à l'instant du commit qui l'a fusionné (DatesDeFusion), jamais à sa date
-    déclarée ; sans historique git, ou pour un geste pas encore publié, à sa date déclarée, et pas du tout si elle est dans
-    le futur."""
+    """When a gesture counts (balance, swarm): at the instant of the commit that merged it (MergeDates), never at its
+    declared date; without git history, or for a gesture not yet published, at its declared date, and not at all if it
+    is in the future."""
     if dates is not None and dates.available and path is not None:
         moment = dates.date(reg.rel(path), key)
         if moment is not None:
             return moment
-    # Sans historique, une date future est ignorée (et non ramenée à maintenant : elle compterait à chaque passage).
+    # Without history, a future date is ignored (and not brought back to now: it would count at every pass).
     moment = _instant_or_none(declared_one)
     return moment if moment and moment <= instant + LEAD_MAX else None
 
 
 def merge_time(reg, path):
-    """ruche-0028 (6) : quand le fichier d'une contribution est arrivé dans la branche (le dernier commit, sur le premier parent,
-    qui l'a ajouté : la fusion de la PR de soumission, même si l'identifiant a déjà servi) ; None sans historique complet, pas
-    encore publié, ou daté dans le futur."""
+    """ruche-0028 (6): when a contribution's file arrived in the branch (the last commit, on the first parent, that
+    added it: the merge of the submission PR, even if the identifier was already used); None without a complete history,
+    not yet published, or dated in the future."""
     cache = vars(reg).setdefault("_merges", {})
     if None not in cache:
         cache[None] = history_available(reg.root)
     if path not in cache:
         additions = first_parent_commits(reg.root, "HEAD", reg.rel(path), filter_fn="A") if cache[None] else []
-        cache[path] = additions[0][1] if additions and additions[0][1] <= now_instant() + LEAD_MAX else None  # du plus récent au plus ancien
+        cache[path] = additions[0][1] if additions and additions[0][1] <= now_instant() + LEAD_MAX else None  # newest first
     return cache[path]
 
 
