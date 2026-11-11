@@ -2922,7 +2922,7 @@ class TestTree(BaseTest):
         for role in ("optimize", "review", "measure", "debate", "guard", "propose", "invite"):
             with self.subTest(role=role):
                 self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commands: ")
-        self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <your copy>",
+        self.assertIn("python3 <registry>/outils/juge/juge.py --outillage . --source-a <base> --source-b <your copy>",
                       self.flat(self.node("projects/lossless-compression/miniz").read_text(encoding="utf-8")))
 
     def test_site_and_api_show_the_tree(self):

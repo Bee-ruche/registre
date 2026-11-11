@@ -19,13 +19,14 @@ Duration: `bee/tests/lancer.sh` under 30 s on the CI (criterion of miniz-0023 an
 34.6 s before `api.c`, which adds about 5 s (miniz-0026's manifest, shared machine).
 Stopwatch noise: ab.py's A/A test, from −1.4% to +0.5% (bee/README.md: virtualized 2.1 GHz Xeon, base 2948eeb); about
 ±0.4% on the isolated judge, on GitHub's machines (note of miniz-0018); elsewhere, to be measured (miniz-0003).
-Profiler: since miniz-0033, a comment is no longer taken for a function; names with capital letters stay « hors
-fonction » (miniz-0034). Compile the bench and profile in the same session of `bee/sandbox/sans-docker.sh`, which mounts
-the repository at a different path each time, otherwise everything goes to « hors miniz » (miniz-0034). The profile
-table of bee/README.md dates from the base 2948eeb (miniz-0034).
-The isolated judge (miniz-0031) is authoritative: it checks each output with the host's zlib and counts the whole
-process; its meta-tests (`bee/juge/test_juge.py`) run on every PR that changes `bee/juge/`. The move to the common judge
-is in review (miniz-0032); a PR that touches `.github/` is never merged automatically (note of miniz-0032).
+Profiler: since miniz-0033, a comment is no longer taken for a function; since miniz-0034, names with capital letters
+are detected and no longer go to « hors fonction ». Compile the bench and profile in the same session of
+`bee/sandbox/sans-docker.sh`, which mounts the repository at a different path each time, otherwise everything goes to
+« hors miniz » (miniz-0034). The profile table of bee/README.md is that of master at a2f939a (miniz-0034).
+The isolated judge is authoritative: the common judge, which replaced the fork's own judge (miniz-0031) in miniz-0032,
+with the plugin the fork keeps in `bee/juge/projet.py`; it checks each output with the host's zlib and counts the whole
+process; its meta-tests (`bee/juge/test_juge.py`) run on every PR that changes `bee/juge/`. A PR that touches `.github/`
+is never merged automatically (note of miniz-0032).
 A new judge proves what it catches: regressions seeded in a copy of the sources (roles/measure). The corpus, 61 files
 and 12.0 MB almost entirely synthetic (miniz-0028), changes only through a task that allows it (bee/README.md).
 ## What you can ignore here

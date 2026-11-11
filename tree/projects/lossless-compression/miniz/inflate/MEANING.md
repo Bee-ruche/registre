@@ -28,8 +28,8 @@ Format of `m_look_up` (miniz_tinfl.c l. 363 at 9977da4): a positive entry is (co
 this format as is, and the tables produced stay identical (miniz-0022).
 A fast path is proven at its bounds too: that of the literal loop requires 4 bytes of input and 2 of output (l. 427),
 and the `flux-1` check (one-byte buffers, bee/tests/differentiel.c l. 7) never exercises it (corrective note of
-ruche-0014): « flux-1 with no difference » proves the slow paths, not the fast one. Show which input and output sizes,
-on either side of the threshold, exercise it; the rest goes in `untested`.
+ruche-0014): "flux-1 with no difference" proves the slow paths, not the fast one. Show which input and output sizes, on
+either side of the threshold, exercise it; the rest goes in `untested`.
 Invariants: slow paths (end of buffer, resumption of the coroutine) intact, they alone allow byte-by-byte calls
 (miniz-0017); on invalid input, the same statuses and the same bytes produced before stopping (miniz-0018), compared by
 `fuzz_inflate` and the isolated judge; Adler-32 reduced modulo 65521 at least once every 5552 bytes (miniz-0016).
