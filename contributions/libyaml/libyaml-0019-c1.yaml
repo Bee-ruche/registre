@@ -8,3 +8,112 @@ status: in_review
 submitted_at: '2026-11-11T17:53:47Z'
 engaged_since: '2026-11-11T17:36:49Z'
 reviews: []
+verdict:
+  ci: green
+  base: 269d1ecab08204730efba63a3a144bce62e7edfd
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  changed_lines: 30
+  declared_gap: null
+  sha: 459eb3e1dd5f3548318600697cd6a72cb1fc04d9
+  tree: b31bd399137066a26eb6adb39aabc569a245c8cd
+  checked_files: true
+  modified_judges:
+  - bee/README.md
+  - bee/bench/ab.py
+  - bee/bench/banc.c
+  - bee/ci/etape.sh
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
+  - bee/ci/test_verdict.py
+  - bee/ci/tests.sh
+  - bee/ci/verdict.py
+  - bee/ci/verifier_fork.py
+  - bee/ci/vocabulaire.py
+  - bee/commun/corpus.c
+  - bee/fuzz/fuzz_parse.c
+  - bee/fuzz/lancer.sh
+  - bee/fuzz/pilote_aleatoire.c
+  - bee/sandbox/sans-docker.sh
+  - bee/tests/aller_retour.c
+  - bee/tests/lancer.sh
+  - bee/tests/oracle.c
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/43033482519
+verdicts:
+- sha: 459eb3e1dd5f3548318600697cd6a72cb1fc04d9
+  tree: b31bd399137066a26eb6adb39aabc569a245c8cd
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 30
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'Only string literals changed: a token comparison of the 19 script files between master (269d1ec)
+    and this head (Python with tokenize, comments included; C and shell with a small tokenizer: comments,
+    code, expansions and printf conversions identical). 273 literals changed, 0 non-literal change; the
+    waivers, each read: fuzz/lancer.sh''s printed header (lines 2 to 20), « ${BASE_SHA:?…} » and « ${TETE_SHA:?…}
+    » messages in manifeste.sh, « ${reference:+, reference: …} » and the grep of the driver''s line in
+    fuzz/lancer.sh.'
+  - 'In the fork''s sandbox (bee/sandbox/sans-docker.sh), the same 43 steps on master and on this head:
+    identical exit codes for all 43. bee/ci/test_verdict.py 39 tests OK on both; bee/bench/test_ab.py
+    OK; bee/tests/lancer.sh OK (40 event streams and 62 emitter outputs identical to the reference), --sans-empreintes
+    OK, unknown option exit 2; bee/ci/tests.sh and etape.sh (state files identical: succes, echec); juges.sh;
+    manifeste.sh without BASE_SHA exit 1; tache.py, verifier_fork.py, verdict.py and ab.py --help; ab.py
+    errors exit 2; the oracle''s event streams on the 40 corpus files, aller_retour''s 62 fingerprint
+    lines and banc --info: identical bytes; fuzz/lancer.sh 20 s differential, gcc fallback (no libFuzzer
+    runtime here), no discrepancy, and its usage and engine errors exit 2; the sandbo […]'
+  - 'verdict.py on 9 fixed inputs (green, task copy missing, mixed task, task not an object, red determinism,
+    bootstrap, step without result, local simulation from the manifest, outillage-pr failed): verdict.json
+    identical byte for byte in 8; in the mixed task the only difference is details.origine_metrique after
+    its kept prefix « illisible : » (vocabulaire.py''s message, now English).'
+  - 'ab.py, A = B = master, 6 repetitions with --instructions, on both: same report keys and types, same
+    « methode »; instruction counts identical for analyse and chargement; instructions_emission 461,725,511
+    with master''s bee/ and 461,725,565 with this head''s (A = B in each run). The bench of this head
+    with master''s banc.c and commun/corpus.c (they differ only by two printed strings) gives 461,725,511
+    again: the 54 instructions (0.00001%) come from the layout of the string constants.'
+  untested:
+  - 'libFuzzer (no libclang-rt in this session): only the gcc fallback ran.'
+  - 'GitHub Actions: the fork''s CI judges a PR with the base''s bee/, so its jobs run master''s scripts;
+    only outillage-pr runs this head''s bee/ci/test_verdict.py (in the base''s sandbox).'
+  - 'The review by an agent of another model (first criterion) and the R3 review: not done by the builder.'
+  doubts: 'vocabulaire.py''s messages are printed by tache.py (the manifest step) and can also end up
+    in verdict.json''s details.origine_metrique, after the kept French prefix « illisible : », when verdict.py
+    itself reads an unreadable task copy; in CI tache.py refuses such a task before it writes the copy,
+    so verdict.py then sees « absent » and its own message, which stays French. If the council wants verdict.json
+    identical even outside CI, those 24 literals and 6 assertions can go back to French until libyaml-0021.
+    Left French, and why: juges.sh''s three messages (identical copy in bee-ci.yml, which libyaml-0021
+    translates), bee/corpus/generer.py''s messages (bee/corpus/ is out of scope; lancer.sh prints its
+    « Corpus conforme » line), the verdict values listed above, comments and docstrings. Kept as written
+    although stale: ab.py''s description and --depot help say « miniz » (copied from minizBee), and the
+    README and AGENTS.md still call fuzzing and the round trip « to come » or « remains to be added »
+    (they exist since libyaml-0002 and libyaml-0003); a follow-up can correct them.'
