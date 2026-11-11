@@ -1318,7 +1318,8 @@ families:
       juge/scenarios/deroulement[]/temps_processeur_s: null
       juge/scenarios/deroulement[]/temps_processeur_s/*: null
   ab_report:
-    note: bee/bench/ab.py report read by bee enregistrer-mesure --ab
+    note: 'the forks'' bee/bench/ab.py report (--json), read by bee record-measurement --ab (boundary): the keys it reads, at the
+      top, in machine, in each metric and its sign_test (bee.FORK_KEYS, ab_report); the report''s other keys are not read'
     files: []
     writer: text
     keys:
@@ -1331,6 +1332,15 @@ families:
       paires: pairs
       paires_utiles: useful_pairs
       test_du_signe: sign_test
+      machine: machine
+      processeur: processor
+      architecture: architecture
+      coeurs: cores
+      systeme: system
+      compilateur: compiler
+      gain: gain
+      au_dela_du_bruit: beyond_noise
+      commit: commit
     key_values:
       metriques: null
   out_list:

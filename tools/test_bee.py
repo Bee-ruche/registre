@@ -22614,7 +22614,7 @@ class TestForkDocumentsRuche0145(BaseTest):
 
     def test_the_keys_are_the_maps_and_date_d_is_a_date_at_the_earliest_2027(self):
         families = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))["families"]
-        for kind, family in (("manifest", "manifest"), ("verdict", "fork_verdict")):
+        for kind, family in (("manifest", "manifest"), ("verdict", "fork_verdict"), ("ab_report", "ab_report")):
             self.assertEqual(bee.FORK_KEYS[kind], {k: v for k, v in families[family]["keys"].items() if k != v}, kind)
         self.assertRegex(bee.DATE_D, r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
         self.assertGreaterEqual(bee.DATE_D, "2027-01-01")
@@ -22764,6 +22764,70 @@ class TestVerdictMetricRuche0145(BaseTest):
             code, text = record("abc1237")
             self.assertEqual(code, 0, text)
 
+
+# The forks' ab.py report (bee/bench/ab.py --json) as minizBee and libyamlBee write it until miniz-0050 and libyaml-0021: the keys
+# bee record-measurement reads, in French, and some it does not read; ENGLISH_AB_REPORT, the same report with the keys bee reads in English.
+FRENCH_AB_REPORT = {"base": {"rev": "upstream/master", "commit": "2948eeb"}, "candidat": {"rev": "HEAD", "commit": "abc1234"},
+                    "repetitions": 10, "chauffe": 1, "machine": {"processeur": "Xeon 2,1 GHz", "architecture": "x86_64", "coeurs": 2,
+                                                                 "systeme": "Linux-6.8", "compilateur": "gcc 13.3"},
+                    "metriques": {"debit_compression_n6": {"sens": "plus_haut", "gain": 0.05, "au_dela_du_bruit": True,
+                                                           "test_du_signe": {"paires": 10, "paires_utiles": 10, "victoires_B": 9, "victoires_A": 1}},
+                                  "memoire_max_ko": {"sens": "plus_bas", "gain": 0.0, "au_dela_du_bruit": False,
+                                                     "test_du_signe": {"paires": 10, "paires_utiles": 0, "victoires_B": 0, "victoires_A": 0}}},
+                    "mesures": {"A": {"debit_compression_n6": 50.0}, "B": {"debit_compression_n6": 52.5}}}
+ENGLISH_AB_REPORT = json.loads(re.sub(r'"(candidat|processeur|coeurs|systeme|compilateur|metriques|au_dela_du_bruit|test_du_signe|paires|'
+                                      r'paires_utiles|victoires_B)":', lambda m: '"%s":' % {
+                                          "candidat": "candidate", "processeur": "processor", "coeurs": "cores", "systeme": "system",
+                                          "compilateur": "compiler", "metriques": "metrics", "au_dela_du_bruit": "beyond_noise",
+                                          "test_du_signe": "sign_test", "paires": "pairs", "paires_utiles": "useful_pairs",
+                                          "victoires_B": "b_wins"}[m[1]], json.dumps(FRENCH_AB_REPORT)))
+
+
+class TestAbReportRuche0145(BaseTest):
+    """bee record-measurement reads the forks' ab.py report in either vocabulary until date D, one per report, as their verdict and
+    manifest (a gap the switch left: it read the English keys only, and a fork's report gave « no usable metric »)."""
+
+    def record(self, cid, report, user):
+        path = self.dir / "ab.json"
+        path.write_text(json.dumps(report), encoding="utf-8")
+        return self.bee("record-measurement", cid, "--ab", str(path), "--user", user)
+
+    def test_a_french_and_an_english_report_give_the_same_measurement(self):
+        self.assertIn("candidate", ENGLISH_AB_REPORT)
+        cid, written = self.submit_0099(), {}
+        for user, report in (("bruno", FRENCH_AB_REPORT), ("chloe", ENGLISH_AB_REPORT)):
+            with self.subTest(user=user):
+                code, text = self.record(cid, report, user)
+                self.assertEqual(code, 0, text)
+                m = bee.read_yaml(self.dir / f"measurements/{cid}/{user}.yaml")
+                written[user] = {k: m[k] for k in ("base", "candidate", "config", "metrics", "repetitions")}
+        self.assertEqual(written["bruno"], written["chloe"])
+        self.assertEqual(written["bruno"]["config"], {"processor": "Xeon 2,1 GHz", "architecture": "x86_64", "cores": 2,
+                                                      "system": "Linux-6.8", "compiler": "gcc 13.3"})
+        self.assertEqual((written["bruno"]["base"], written["bruno"]["candidate"], written["bruno"]["repetitions"]), ("2948eeb", "abc1234", 10))
+        self.assertEqual(written["bruno"]["metrics"]["debit_compression_n6"], {"gain": 0.05, "beyond_noise": True, "b_wins": 9, "pairs": 10})
+        self.valid_one()
+
+    def test_a_mixed_report_is_refused_and_french_from_date_d_on(self):
+        cid = self.submit_0099()
+        n6 = FRENCH_AB_REPORT["metriques"]["debit_compression_n6"]
+        for name, report in (("machine", {**FRENCH_AB_REPORT, "machine": {**FRENCH_AB_REPORT["machine"], "compiler": "clang 17"}}),
+                             ("sign test", {**FRENCH_AB_REPORT, "metriques": {"debit_compression_n6": {
+                                 **n6, "test_du_signe": {**n6["test_du_signe"], "b_wins": 9}}}}),
+                             ("top", {**ENGLISH_AB_REPORT, "candidat": FRENCH_AB_REPORT["candidat"]})):
+            with self.subTest(name):
+                code, text = self.record(cid, report, "bruno")
+                self.assertEqual(code, 1, text)
+                self.assertIn("one vocabulary per document", text)
+                self.assertFalse((self.dir / f"measurements/{cid}/bruno.yaml").exists())
+        with mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"}):
+            code, text = self.record(cid, FRENCH_AB_REPORT, "bruno")
+            self.assertEqual(code, 1, text)
+            self.assertIn(f"read until {bee.DATE_D} only", text)
+            self.assertEqual(self.record(cid, ENGLISH_AB_REPORT, "bruno")[0], 0)
+        unchanged = {"metrics": {"debit_compression_n6": {"gain": 0.05}}, "machine": {"architecture": "arm64"}}  # the same in both
+        self.assertIs(bee.fork_document("ab_report", unchanged, "r"), unchanged)
+        self.assertEqual(bee.fork_document("ab_report", ["a list"], "r"), ["a list"])  # left to record-measurement's checks
 
 
 class TestCheckMessagesRuche0146(unittest.TestCase):

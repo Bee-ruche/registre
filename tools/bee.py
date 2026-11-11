@@ -6645,20 +6645,26 @@ SELF_SERVICE = {"reservation", "release", "submission", "update", "note", "revie
 # Checking a contribution branch on a fork (rule R1, commandment 3)
 # --------------------------------------------------------------------------
 
-# ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json) are read in either
+# ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json, the ab.py report
+# bee record-measurement reads) are read in either
 # vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or CONTRIBUTION.yaml; from DATE_D on, English only.
 # The switch's merge plus six weeks, 2027-01-01 at the earliest: the council sets it at the freeze, and moves it only by a PR.
 DATE_D = "2027-01-01"
-# The forks' French keys and their English names (tools/migration/names.yaml, families manifest and fork_verdict; the others are the
-# same in both), read at the top of a document and in the mappings named in FORK_NESTED, never in data-keyed ones (metric ids).
+# The forks' French keys and their English names (tools/migration/names.yaml, families manifest, fork_verdict and ab_report; the
+# others are the same in both), read at the top of a document and in the mappings FORK_NESTED names by their path (* for any key of a
+# data-keyed mapping), never as data keys themselves (metric ids).
 FORK_KEYS = {"manifest": {"tache": "task", "utilisateur": "user", "modele": "model", "resume": "summary", "changement": "change",
                           "mesures": "measurements", "commande": "command", "avant": "before", "apres": "after", "teste": "tested",
                           "non_teste": "untested", "doutes": "doubts", "taille_reelle": "actual_size"},
              "verdict": {"etape_en_echec": "failed_step", "metrique": "metric", "au_dela_du_bruit": "beyond_noise", "mesures": "measurements",
                          "lignes_modifiees": "changed_lines", "amorcage": "bootstrap", "base_juge": "judge_base", "regle": "rule",
                          "depart": "start", "juge": "judge", "commun": "common", "projet": "project", "greffon": "plugin", "graine": "seed",
-                         "sorties_comparees": "outputs_compared", "constructions_suspectes": "suspicious_constructs", "etapes": "steps"}}
-FORK_NESTED = {"manifest": ("agent", "measurements"), "verdict": ("judge", "judge_base")}
+                         "sorties_comparees": "outputs_compared", "constructions_suspectes": "suspicious_constructs", "etapes": "steps"},
+             "ab_report": {"metriques": "metrics", "candidat": "candidate", "victoires_B": "b_wins", "paires": "pairs", "paires_utiles": "useful_pairs",
+                           "test_du_signe": "sign_test", "processeur": "processor", "coeurs": "cores", "systeme": "system",
+                           "compilateur": "compiler", "au_dela_du_bruit": "beyond_noise"}}
+FORK_NESTED = {"manifest": ("agent", "measurements"), "verdict": ("judge", "judge_base"),
+               "ab_report": ("machine", "metrics/*", "metrics/*/sign_test")}
 
 
 def before_date_d():
@@ -6666,20 +6672,30 @@ def before_date_d():
 
 
 def fork_document(kind, data, where):
-    """A fork's manifest or verdict.json (kind) in English, or BeeError: all English, as it is; all French, translated, until DATE_D;
-    French from DATE_D on, or both vocabularies in one document, refused. A document that is not a mapping is left to its checks."""
+    """A fork's manifest, verdict.json or ab.py report (kind) in English, or BeeError: all English, as it is; all French, translated,
+    until DATE_D; French from DATE_D on, or both vocabularies in one document, refused. A document that is not a mapping is left to its
+    checks."""
     if not isinstance(data, dict):
         return data
     table, nested = FORK_KEYS[kind], FORK_NESTED[kind]
-    keys = {k for k in data} | {k for x, v in data.items() if table.get(x, x) in nested and isinstance(v, dict) for k in v}
+
+    def walk(d, path, name):  # d rebuilt, name(key) for each key of the top and of the mappings at a path of FORK_NESTED
+        place, out = not path or "/".join(path) in nested, {}
+        for k, v in d.items():
+            inner = next((p for p in ((*path, str(table.get(k, k) if place else k)), (*path, "*")) if isinstance(v, dict)
+                          and any(f"{n}/".startswith("/".join(p) + "/") for n in nested)), None)
+            out[name(k) if place else k] = walk(v, inner, name) if inner else v
+        return out
+
+    keys = set()
+    walk(data, (), lambda k: keys.add(k) or k)
     french, english = sorted(k for k in keys if k in table), sorted(k for k in keys if k in set(table.values()))
     if french and english:
         raise BeeError(f"{where}: French keys ({', '.join(french[:3])}) and English keys ({', '.join(english[:3])}): one vocabulary per document")
     if french and not before_date_d():
         raise BeeError(f"{where}: French keys ({', '.join(french[:3])}): read until {DATE_D} only (the switch to English, ruche-0145); "
                        "write it again in English (bee manifest writes English)")
-    return {table.get(k, k): {table.get(x, x): y for x, y in v.items()} if table.get(k, k) in nested and isinstance(v, dict) else v
-            for k, v in data.items()} if french else data
+    return walk(data, (), lambda k: table.get(k, k)) if french else data
 
 
 def manifest_path(task_identifier):
@@ -9574,7 +9590,7 @@ def cmd_record_measurement(args):
         raise BeeError(f"{reg.rel(already)} already exists: one measurement per person and per contribution, never changed once "
                         "published (commandment 10); if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
-        raw = json.load(f)
+        raw = fork_document("ab_report", json.load(f), args.ab)  # ruche-0145: the forks' ab.py writes French until F2, read until DATE_D
     machine = raw.get("machine") or {}
     config = {k: machine[k] for k in ("processor", "architecture", "cores", "system", "compiler") if machine.get(k) is not None}
     if not config.get("architecture"):
