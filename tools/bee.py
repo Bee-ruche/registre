@@ -5656,10 +5656,10 @@ SUITE_INVITATION = {"decided": "the sending (green light given), by a human of t
 
 
 def invitation_summary(inv, conf, instant=None, brake=None):
-    """L'état d'une invitation en une ligne de données (bee swarm, bee show, site, API) ; « expiree » : non décidée à temps ;
-    « to_redecide » : feu vert échu sans envoi (troisième revue adverse, C8). `conf` (growth_config) : l'échéance est
-    celle de bee.yaml, comme à la porte (revue de ruche-0052, A). `frein` (brake_state) : sous un incident ou un frein qui
-    l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
+    """An invitation's state as one line of data (bee swarm, bee show, site, API); « expired »: not decided in time;
+    « to_redecide »: green light expired without sending (third adversarial review, C8). `conf` (growth_config): the
+    deadline is bee.yaml's, as at the gate (review of ruche-0052, A). `brake` (brake_state): under an incident or a
+    brake that stops it, a decided invitation awaits nothing, not even the sending."""
     instant = instant or now_instant()
     state = invitation_state(inv)
     awaits = (("the council's approval" if "guardian_approval" in inv else "a guardian's approval") if state == "proposed"
@@ -5683,7 +5683,7 @@ def invitation_summary(inv, conf, instant=None, brake=None):
 
 
 def check_pr(reg, base, head, *args, **kwargs):
-    """ruche-0088: _check_pr, each path that would not print as written refused, and quoted (citer) in every message."""
+    """ruche-0088: _check_pr, each path that would not print as written refused, and quoted (cite) in every message."""
     problems_found, natures = _check_pr(reg, base, head, *args, **kwargs)
     for c in sorted({c for c in git(reg.root, "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}") if cite(c) != c},
                     key=len, reverse=True):  # the longest first: a path never rewritten inside a longer one
@@ -5693,11 +5693,11 @@ def check_pr(reg, base, head, *args, **kwargs):
 
 
 def _check_pr(reg, base, head, author, account_created_on=None, instant=None, pr_authors=None, github_id=None):
-    """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR.
+    """Returns (problems, natures). `reg` must reflect the state of the PR's head.
 
-    pr_authors : {adresse de PR: login GitHub de son auteur}, relevé par auto-merge auprès de l'API pour chaque PR
-    déclarée dans une contribution ajoutée ou modifiée ; s'il est fourni, chacune doit appartenir à l'auteur de la
-    contribution (ou à son compte d'agent déclaré), et une PR absente de la liste est refusée (échec fermé).
+    pr_authors: {adresse de PR: login GitHub de son auteur} (PR address: GitHub login of its author), read by auto-merge
+    from the API for each PR declared in an added or modified contribution; if given, each must belong to the
+    contribution's author (or to their declared agent account), and a PR missing from the list is refused (fail closed).
 
     ruche-0089: a declared agent account (AGENT_ACCOUNTS, read in the base: a PR never declares its own author) is checked
     as its person, without the person's council, guardian or robot status. If that fails or is not all self-service, it is
@@ -5730,7 +5730,7 @@ def _check_pr(reg, base, head, author, account_created_on=None, instant=None, pr
 
 
 def check_pr_for(reg, base, head, author, account_created_on, instant, pr_authors, agents, agent=None, with_status=True, github_id=None):
-    """check_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
+    """check_pr for `author`, who is the person of the agent account `agent` if there is one. `with_status`: whether the
     author's council, guardian and robot status count."""
     changes = git(reg.root, "diff", "-z", "--name-status", "--no-renames", f"{base}...{head}")
     # ruche-0040: a file over its bound is refused here, from its size in git, and nothing below reads it.
@@ -5746,28 +5746,28 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
     is_robot = with_status and author in reg.robots
     is_guardian = with_status and author in reg.guardians
     decides_as_guardian, linkable = is_guardian and author in guardians_in_office(reg), {}  # ruche-0137: a report a council member filed
-    for s, c in changes if decides_as_guardian else ():  # the two member files a guardian links by deciding « lies »
+    for s, c in changes if decides_as_guardian else ():  # the two member files a guardian links by deciding « linked »
         if s == "M" and PATH_REPORT.match(c) and isinstance(x := read_or_none(reg.root, base, c), dict) and reported_by_council(reg, x):
             if isinstance(d := (read_or_none(reg.root, head, c) or {}).get("decision"), dict) and d.get("outcome") == "linked" and isinstance(x.get("accounts"), list):
                 for k, other in zip(x["accounts"], x["accounts"][::-1]):  # {member file: the numbers of the other side, its link}
                     for f in {str(k).casefold(), str(reg.identities.account(reg.identities.name(k))).casefold()}:
                         linkable.setdefault(f, set()).update(reg.identities.numbers_of.get(str(n).casefold()) for n in (other, reg.identities.name(other)))
-    known = author in reg.members or author in reg.council  # a known person (bee valider: an agent's person is one)
+    known = author in reg.members or author in reg.council  # a known person (bee validate: an agent's person is one)
     bootstrap = setting(reg, "bootstrap")
     levels = compute_levels(reg)
     level = level_of(levels, author)
     problems_found, natures = [bytes_problem(c, t) for c, t in too_big.items()], []
-    if any(c == PATH_REMOVALS for _, c in changes):  # ruche-0048 : un retrait demandé se juge à part, en entier
+    if any(c == PATH_REMOVALS for _, c in changes):  # ruche-0048: a requested removal is judged apart, as a whole
         return problems_found + check_removal(reg, base, head, changes, author, is_council, instant), ["requested_removal"]
-    if good := other_spelling(reg, author):  # ruche-0028 (revue, N1)
+    if good := other_spelling(reg, author):  # ruche-0028 (review, N1)
         problems_found.append(f"PR author « {author} »: their member file is {good}; a login is written as its file is, case included")
-    # Contributions créées par la PR : une soumission (du titulaire ou d'un inscrit en parallèle) en crée une, et une seule.
+    # Contributions created by the PR: a submission (by the holder or a parallel registrant) creates one, and only one.
     added = {pathlib.PurePosixPath(c).stem for s, c in changes if s == "A" and c.startswith("contributions/")}
     modified = {pathlib.PurePosixPath(c).stem: c for s, c in changes if s == "M" and c.startswith("contributions/")}
-    # Agora : les débats ajoutés prennent les numéros qui suivent le plus grand de la base, sans trou ; les arguments
-    # ajoutés par la PR, tous débats confondus, sont plafonnés (agora.arguments_max_par_pr).
-    # Liens symboliques : refusés partout. Un lien ferait lire à l'outil un autre fichier que celui que montre la PR (au
-    # pire, un fichier de la machine de CI, dont un message d'erreur pourrait citer le contenu).
+    # Agora: the added debates take the numbers that follow the base's highest, with no gap; the arguments
+    # added by the PR, across all debates, are capped (agora.arguments_max_per_pr).
+    # Symbolic links: refused everywhere. A link would make the tool read a file other than the one the PR shows (at
+    # worst, a file of the CI machine, whose content an error message could quote).
     links, modes = set(), {}
     for meta, path in git(reg.root, "diff", "-z", "--raw", "--no-renames", f"{base}...{head}"):
         fields = meta.split()
@@ -5783,9 +5783,9 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         numbers_of = [int(m[1][2:]) for n in git(reg.root, "ls-tree", "-z", "--name-only", base, "debates/", replace_with=True)
                    if (m := PATH_DEBATE.match(n))]
         expected_debates = {c: f"debates/D-{max(numbers_of, default=0) + 1 + k:04d}.yaml" for k, c in enumerate(added_debates)}
-    # Numérotation (T5, T6) : une tâche ou une proposition de règle ajoutée porte le numéro qui suit le plus grand de la
-    # base, sans trou (plusieurs à la suite) ; les numéros 9000 et plus, réservés aux tests, restent hors du libre-service
-    # et n'entrent pas dans le compte.
+    # Numbering (T5, T6): an added task or rule proposal bears the number that follows the highest of the
+    # base, with no gap (several in a row); the numbers 9000 and above, reserved for tests, stay outside self-service
+    # and do not enter the count.
     expected_items = {}
     added_tasks = defaultdict(list)
     for s, c in changes:
@@ -5800,20 +5800,20 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                                          next_number(numbers_in(reg, base, "proposals", PATH_PROPOSAL))))
     added_invitations = [(int(m["n"]), c, "invitations/I-{:04d}.yaml") for s, c in changes
                             if s == "A" and c not in links and (m := PATH_INVITATION.match(c))]
-    if added_invitations:  # R13 : comme les propositions, au numéro suivant, sans trou
+    if added_invitations:  # R13: like the proposals, at the next number, with no gap
         expected_items.update(expected_numbers(added_invitations, next_number(numbers_in(reg, base, "invitations", PATH_INVITATION))))
     if reports := [(int(m["n"]), c, "reports/S-{:04d}.yaml") for s, c in changes if s == "A" and c not in links
                         and (m := PATH_REPORT.match(c))]:  # ruche-0118, likewise
         expected_items.update(expected_numbers(reports, next_number(numbers_in(reg, base, "reports", PATH_REPORT))))
     added_arguments = 0
-    dates_arguments = []    # instants des arguments ajoutés (plafond tous débats confondus, R12)
-    added_notes = 0      # notes ajoutées par la PR, toutes tâches confondues
-    # Tâches proposées, propositions de règle (B1) et invitations (R13) ajoutées par la PR.
+    dates_arguments = []    # instants of the added arguments (cap across all debates, R12)
+    added_notes = 0      # notes added by the PR, across all tasks
+    # Proposed tasks, rule proposals (B1) and invitations (R13) added by the PR.
     creations = {"tasks": 0, "proposals": 0, "invitations": 0, "reports": 0}
-    dates_notes = []        # instants des notes ajoutées bien datées (plafond sur 24 h glissantes)
+    dates_notes = []        # instants of the well-dated added notes (cap over a rolling 24 h)
     computed_brake = []
-    # R13, échec fermé (revue adverse, G1) : si la liste de non-contact ou une invitation est illisible sur la base, aucun geste
-    # d'invitation ne passe ; le conseil répare d'abord (hors du libre-service, en reprenant la dernière version lisible).
+    # R13, fail closed (adversarial review, G1): if the do-not-contact list or an invitation is unreadable in the base, no
+    # invitation gesture passes; the council repairs first (outside self-service, from the last readable version).
     base_unreadables = []
     if any(c.startswith("invitations/") for _, c in changes):
         for name in git(reg.root, "ls-tree", "-z", "-r", "--name-only", base, "--", "invitations/", replace_with=True):
@@ -5829,7 +5829,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
     linked_removals = justified_removals(reg, base, head, changes) if any(c.startswith("invitations/") for _, c in changes) else set()
 
     def brake():
-        """L'état du frein de R13 (brake_state), calculé une fois, et seulement si un geste vers le contact le demande."""
+        """R13's brake state (brake_state), computed once, and only if a gesture towards contact needs it."""
         if not computed_brake:
             computed_brake.append(brake_state(reg, now_instant()))  # ruche-0091: the brake as it is at the check
         return computed_brake[0]
@@ -5840,8 +5840,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         return condition
 
     def expected_number(path, what_it, command):
-        """La numérotation d'un fichier ajouté (attendus) : vrai si le numéro est le bon. Un numéro réservé aux tests n'est
-        permis qu'au conseil, jamais en libre-service."""
+        """The numbering of an added file (expected_items): true if the number is the right one. A number reserved for
+        tests is allowed only to the council, never in self-service."""
         expected = expected_items.get(path, path)
         if expected is None:
             return require(is_council, f"{path}: numbers 9000 and above are reserved for the tool's tests: outside "
@@ -5872,8 +5872,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         part_of = path.split("/")
         expected_here = SELF_SERVICE_FILES.get(part_of[0])
         if expected_here and not expected_here[1].match(path):
-            # T7, T8 : dans un dossier du libre-service, seuls les fichiers qu'écrit bee, à leur place (ni autre extension,
-            # ni binaire, ni sous-dossier) ; le reste revient au conseil.
+            # T7, T8: in a self-service folder, only the files bee writes, in their place (no other extension,
+            # no binary, no subfolder); the rest is for the council.
             natures.append("governance")
             require(is_council, f"{path}: unexpected file in {part_of[0]}/: only the files {expected_here[0]} are self-service there "
                                 "(no other name or extension, no binary, no subfolder); the rest is for the council")
@@ -5887,12 +5887,12 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         try:
             old = read_yaml_ref(reg.root, base, path) if git_status != "A" and path.endswith(".yaml") else None
         except BeeError:
-            old = None  # illisible dans la base : les transitions qui le lisent le refusent (fichier illisible)
+            old = None  # unreadable in the base: the transitions that read it refuse it (unreadable file)
         if expected_here and git_status != "D" and not isinstance(new, dict):
             natures.append("governance")
             problems_found.append(f"{path}: the file must be a YAML object (key: value), as bee writes it")
             continue
-        already = misspelt_logins(reg, old)  # ruche-0028 (revue, N1) : aucun pseudo nouvellement écrit hors de son orthographe
+        already = misspelt_logins(reg, old)  # ruche-0028 (review, N1): no newly written login outside its spelling
         problems_found += [f"{path}: {k} « {v} » is written {b} (its member file): a login is written as its file is, case included"
                       for k, v, b in misspelt_logins(reg, new) if (k, v, b) not in already]
         problems_found += (personal_ones := personal_texts(reg, path, old, new))[0]  # ruche-0047: every free text the PR adds
@@ -5900,26 +5900,26 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
 
         if part_of[0] == "tasks" and len(part_of) == 3:
             if git_status == "A":
-                if expected_items.get(path, path) is None:  # numéro réservé aux tests : le conseil seul, jamais en libre-service
+                if expected_items.get(path, path) is None:  # number reserved for tests: the council alone, never in self-service
                     natures.append("governance")
                     expected_number(path, "task", "bee propose-task")
                     continue
                 if new.get("status") == "proposed":
-                    # L'essaim propose ; un gardien, le conseil ou un Confirmé valide (proposee → ouverte).
+                    # The swarm proposes; a guardian, the council or a Confirmed member validates (proposed → open).
                     natures.append("task_proposal")
                     require(known, f"{path}: {author} must register first (bee register)")
                     require(new.get("created_by") == author, f"{path}: created_by must be the PR's author ({author})")
                     require(not new.get("reservation") and not new.get("contribution"),
                            f"{path}: a proposed task has neither reservation nor contribution")
                     expected_number(path, "proposed task", "bee propose-task")
-                    # Une date déclarée qui pèse dans le cap est celle de la PR (UTC, à 2 h près autour de minuit).
+                    # A declared date that weighs in the balance is the PR's (UTC, within 2 h around midnight).
                     days = pr_days(instant)
                     require(str(new.get("created_on")) in days,
                            f"{path}: created_on ({new.get('created_on')}) is the date of the PR ({' or '.join(days)}): bee propose-task writes it")
-                    # I2 : des champs courts et lisibles ; B1 : des créations plafonnées (après la boucle).
+                    # I2: short, readable fields; B1: capped creations (after the loop).
                     problems_found.extend(check_proposed_task(reg, path, new))
                     creations["tasks"] += 1
-                    # T1 : les notes d'une tâche proposée sont contrôlées comme celles d'une tâche existante.
+                    # T1: a proposed task's notes are checked like those of an existing task.
                     notes = new.get("notes") or []
                     if require(isinstance(notes, list), f"{path}: unreadable notes (a list of by, at, text)"):
                         refusal, instants = check_added_notes(reg, path, [], notes, author, instant)
@@ -5957,7 +5957,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 elif require(new_notes[:len(former_notes)] == former_notes,
                             f"{path}: notes are append-only: a note is neither changed nor removed"):
                     added_here = new_notes[len(former_notes):]
-                    if not is_robot:  # les robots signent « bee » ou github-actions[bot] et datent de leur passage
+                    if not is_robot:  # the robots sign « bee » or github-actions[bot] and date from their run
                         refusal, instants = check_added_notes(reg, path, former_notes, added_here, author, instant)
                         problems_found.extend(refusal)
                         added_notes += len(added_here)
@@ -5967,7 +5967,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             pa, pn = parallels_of(old), parallels_of(new)
             tid = new.get("id")
             if before == after and before in ("reserved", "in_review") and differences & {"parallel", "reservation", "contribution"}:
-                # Travail en parallèle (R11) : inscription, retrait, soumission d'un inscrit, promotion.
+                # Parallel work (R11): registration, withdrawal, a registrant's submission, promotion.
                 nature, refusal = check_engagements(reg, path, old, new, differences, author, is_council=is_council,
                                                      is_robot=is_robot, instant=instant, added=added, level=level,
                                                      bootstrap=bootstrap, base=base)
@@ -5984,7 +5984,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 require(known, f"{path}: {author} must register first (bee register)")
                 judged_ones = judged_by(reg, new.get("id"), author)
                 require(not judged_ones, f"{path}: {judge_message(new.get('id'), author, judged_ones)}")
-                # R7 (T13) : rendre puis reprendre une tâche ne renouvelle pas la réservation.
+                # R7 (T13): releasing then retaking a task does not renew the reservation.
                 refusal = refused_retake(reg, base, path, author, instant, history_required=True)
                 require(refusal is None, f"{path}: {refusal}")
                 try:
@@ -6001,8 +6001,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                            f"{path}: splitting is reserved for Confirmed members")
             elif (before, after) == ("reserved", "open") or (
                     (before, after) == ("reserved", "in_review") and new.get("contribution") not in added):
-                # Libération par le titulaire (ou expiration constatée par le robot). Vers « ouverte » s'il ne reste
-                # personne ; vers « en_relecture » s'il reste des contributions en course et aucun inscrit en parallèle.
+                # Release by the holder (or expiry noted by the robot). To « open » if no one
+                # remains; to « in_review » if contributions remain in the race and no parallel registrant.
                 natures.append("release")
                 holder = (old.get("reservation") or {}).get("user")
                 expired = False
@@ -6058,14 +6058,14 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                         require(problem_text is None, f"{problem_text}: a summary fits in one sentence")
                     require(new.get("status") == "in_review" and not new.get("reviews") and "verdict" not in new,
                            f"{path}: a contribution is born in_review, without review or verdict")
-                    # Liste blanche (revue adverse de ruche-0012, L1) : rien de ce que seuls la CI ou le conseil écrivent (verdict,
-                    # levees, statut final, fusion…) ne naît avec la contribution ; bee soumettre écrit exactement ces clés.
+                    # Allow list (adversarial review of ruche-0012, L1): nothing that only the CI or the council write (verdict,
+                    # lifts, final status, merge…) is born with the contribution; bee submit writes exactly these keys.
                     extra_items = sorted(set(new) - BIRTH_KEYS)
                     require(not extra_items, f"{path}: a contribution is born with only the keys bee submit writes; refused: "
                                         f"{', '.join(extra_items)}")
-                    # Pas de soumission sans engagement : la même PR fait passer la tâche, réservée par l'auteur, en
-                    # relecture avec cette contribution ; ou, pour un inscrit en parallèle, le retire de la liste et
-                    # pointe la tâche sur cette contribution (contrôlé aussi côté tâche).
+                    # No submission without an engagement: the same PR moves the task, reserved by the author, to
+                    # review with this contribution; or, for a parallel registrant, removes them from the list and
+                    # points the task to this contribution (checked on the task's side too).
                     t = reg.tasks.get(new.get("task") or "", (None, {}))[1]
                     t_base = read_yaml_ref(reg.root, base, f"tasks/{part_of[1]}/{new.get('task')}.yaml")
                     t_base = t_base if isinstance(t_base, dict) else {}
@@ -6074,35 +6074,35 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     by_parallel = (t.get("status") in ("reserved", "in_review") and t.get("status") == t_base.get("status")
                                      and any(p.get("user") == author for p in parallels_of(t_base))
                                      and not any(p.get("user") == author for p in parallels_of(t)))
-                    # Le conseil peut réserver et soumettre dans une même PR (tâche ouverte dans la base) ; la transition
-                    # de la tâche reste une « decision », jamais fusionnée automatiquement.
+                    # The council may reserve and submit in one PR (task open in the base); the transition
+                    # of the task stays a « decision », never merged automatically.
                     by_council = is_council and t_base.get("status") == "open" and t.get("status") == "in_review"
                     require(t.get("contribution") == cid and (by_holder or by_parallel or by_council),
                            f"{path}: the PR must also move the task {cite(new.get('task'))} (reserved by {author}) to review with the contribution {cid}, "
                            f"or, for a parallel registrant, remove them from the list of registrants and point the task to {cid}: bee submit does it")
-                    # Numérotation : le numéro suivant le plus grand déjà pris pour la tâche, jamais un trou (bee soumettre).
+                    # Numbering: the number after the highest already taken for the task, never a gap (bee submit).
                     m = ID_CONTRIBUTION.match(cid)
                     expected = 1 + max(contribution_numbers(reg, new.get("task"), except_for=cid), default=0)
                     require(bool(m) and m["task"] == new.get("task") and int(m["n"]) == expected,
                            f"{path}: the next contribution of {cite(new.get('task'))} is {cite(new.get('task'))}-c{expected}: bee submit numbers it")
                     project = reg.projects.get(t.get("project"), (None, {}))[1] or {}
                     require(bool(project.get("fork")), f"{path}: the project {t.get('project')} has no fork: no contribution is possible there")
-                    # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
+                    # R3's opening window starts from submitted_at: it must be the real time.
                     try:
                         submitted = read_instant(new.get("submitted_at"), path)
                         require(instant - dt.timedelta(hours=2) <= submitted <= instant + LEAD_MAX,
                                f"{path}: submitted_at must be the time of the submission (within 2 h, never in the future); rerun bee submit")
-                        # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes. Une
-                        # soumission est postérieure à tout ce qui est déjà sur la tâche dans la base (réservation, toutes
-                        # les inscriptions en parallèle) et à toute soumission déjà en course : sinon, antidatée dans la
-                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1). On ne
-                        # compare qu'aux dates déjà passées : une inscription datée dans le futur ne bloque personne.
+                        # Race (R3): the order of the submissions and engagements breaks ties and bounds the waits. A
+                        # submission comes after everything already on the task in the base (reservation, all the
+                        # parallel registrations) and every submission already in the race: otherwise, backdated within
+                        # the 2 h tolerance, it would escape the wait for those engaged before it (race_causes, 1). Only
+                        # dates already past are compared: a registration dated in the future blocks no one.
                         earlier = ([(t_base.get("reservation") or {}).get("since")] + [p.get("since") for p in parallels_of(t_base)]
                                       + [e.get("submitted_at") for c, e in racing_contributions(reg, new.get("task")) if c != cid])
                         require(all(submitted >= i for i in (_instant_or_none(x) for x in earlier) if i and i <= instant),
                                f"{path}: submitted_at cannot precede {author}'s engagement on the task, nor any other "
                                "engagement (reservation, parallel registration) or submission already there; rerun bee submit")
-                        # Début de l'engagement de l'auteur (R3, course) : celui de la base, tel quel.
+                        # Start of the author's engagement (R3, race): the base's, as it is.
                         expected = ((t_base.get("reservation") or {}).get("since") if by_holder else
                                    next((p.get("since") for p in parallels_of(t_base) if p.get("user") == author), None)
                                    if by_parallel else None)
@@ -6110,14 +6110,14 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                         if by_holder or by_parallel:
                             require(new.get("engaged_since") == expected,
                                    f"{path}: engaged_since must be the start of {author}'s engagement on the task ({expected}); bee submit writes it")
-                        else:  # le conseil réserve et soumet dans la même PR
+                        else:  # the council reserves and submits in the same PR
                             require(engaged is not None and submitted - dt.timedelta(hours=2) <= engaged <= submitted,
                                    f"{path}: engaged_since must be the time of the reservation, just before the submission")
                     except BeeError as e:
                         problems_found.append(str(e))
-                    # La PR déclarée doit avoir pour auteur GitHub l'auteur de la contribution (le pseudo d'un membre est
-                    # son login) : sinon on squatterait la PR d'un autre. fusion-auto fournit ces auteurs (--auteurs-pr) ;
-                    # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
+                    # The declared PR must have the contribution's author as its GitHub author (a member's login is
+                    # their GitHub login): otherwise one would squat another's PR. auto-merge provides these authors
+                    # (--pr-authors); when they are given, a PR missing from the list is refused (fail closed).
                     if pr_authors is not None:
                         require(account_pr(reg.identities, agents, pr_authors, new),
                                f"{path}: the PR {cite(new.get('pr'))} must have been opened by {cite(new.get('author'))} on GitHub "
@@ -6135,15 +6135,15 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             if not (isinstance(old, dict) and isinstance(new, dict)):
                 problems_found.append(f"{path}: unreadable file")
                 continue
-            # Une clé ajoutée ou retirée est une différence, même à null (revue adverse de ruche-0012, M2).
+            # A key added or removed is a difference, even at null (adversarial review of ruche-0012, M2).
             differences = {k for k in set(old) | set(new) if (k in old) != (k in new) or old.get(k) != new.get(k)}
             if pr_authors is not None:
                 require(account_pr(reg.identities, agents, pr_authors, new),
                        f"{path}: the PR {new.get('pr')} must have been opened by {new.get('author')} on GitHub "
                        f"(author found: {(pr_authors.get(new.get('pr')) or ('',))[0] or 'unknown'})")
-            # Confirmation d'un défaut (N11) : toujours par un tiers, l'auteur de la PR, nommé dans confirme_par : la CI, le
-            # conseil, un gardien ou un Confirmé, ni le relecteur qui l'a signalé, ni un participant à la course de la
-            # tâche (avant ou après la PR), ni l'auteur de la contribution.
+            # Confirmation of a defect (N11): always by a third party, the PR's author, named in confirmed_by: the CI,
+            # the council, a guardian or a Confirmed member, neither the reviewer who reported it, nor a participant in
+            # the race of the task (before or after the PR), nor the contribution's author.
             former_ones, new_ones_list = old.get("reviews") or [], new.get("reviews") or []
             if isinstance(former_ones, list) and isinstance(new_ones_list, list):
                 t_base = read_yaml_ref(reg.root, base, f"tasks/{part_of[1]}/{new.get('task')}.yaml")
@@ -6166,8 +6166,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                            and author not in base_engaged,
                            f"{path}: {author} is in the race on task {new.get('task')}: they confirm no defect there (commandment 3)")
             if "lifts" in differences:
-                # Recours (ruche-0012, revue adverse) : le conseil seul lève, en motivant, les relectures bloquantes d'un relecteur
-                # sur cette contribution (jusqu'à ce qu'il relise) ; jamais un robot ni un membre, jamais en libre-service.
+                # Appeal (ruche-0012, adversarial review): the council alone lifts, with a reason, a reviewer's blocking reviews
+                # on this contribution (until they review again); never a robot nor a member, never in self-service.
                 natures.append("decision")
                 former_lines, new_lines_l = old.get("lifts") or [], new.get("lifts") or []
                 require(is_council, f"{path}: a lift (lifts) is written by the council alone, with a reason, in a reviewed PR")
@@ -6184,7 +6184,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 natures.append("review")
                 require(old.get("status") == "in_review",
                        f"{path}: you review only a contribution in review (status: {old.get('status')})")
-                if new_ones_list[len(former_ones):]:  # comme une mesure : un compte inscrit (revue adverse, V1)
+                if new_ones_list[len(former_ones):]:  # as a measurement: a registered account (adversarial review, V1)
                     require(known, f"{path}: {author} must register first (bee register)")
                     require(with_status or author not in reg.privileged_ones(), f"{path}: {agent} acts for {author}, whose review weighs as "
                                                                       "the council's or a guardian's (R3): their own account publishes it")
@@ -6192,8 +6192,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 if require(len(new_ones_list) >= len(former_ones) and all(is_confirmation(former_ones[i], new_ones_list[i]) for i in changed_ones),
                           f"{path}: reviews are append-only; none is changed, except to confirm the defect another reported (bee confirm-defect)"):
                     rivals = rivals_of(reg, new)
-                    # Une relecture par relecteur et par commit jugé (ruche-0012) : elle porte exactement le commit du verdict de
-                    # la base (inchangé par la PR), ou aucun s'il n'y en a pas ; jamais un sha inventé ni un commit déjà relu.
+                    # One review per reviewer and per judged commit (ruche-0012): it bears exactly the base's verdict commit
+                    # (unchanged by the PR), or none if there is none; never an invented sha nor a commit already reviewed.
                     verdict_base = old.get("verdict") if isinstance(old.get("verdict"), dict) else {}
                     sha_base = verdict_base.get("sha")
                     for k, r in enumerate(new_ones_list[len(former_ones):]):
@@ -6213,24 +6213,24 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                         problem_text = pr_date_problem(r.get("at") if isinstance(r, dict) else None, f"{path}: review by {author}, at", instant)
                         require(problem_text is None, f"{problem_text}: rerun bee review")
                         require(not reg.identities.same_one(r.get("reviewer"), new.get("author")), f"{path}: you do not review your own contribution")
-                        # Un motif est court, comme une note, et rien n'y est caché (tour 2 : aucun plafond jusque-là).
+                        # A reason is short, like a note, and nothing is hidden in it (round 2: no cap until then).
                         problem_text = admissible_text(r.get("reason") if isinstance(r, dict) else None,
                                                    f"{path}: reason of {author}'s review", config_notes(reg)["text_max"])
                         require(problem_text is None, f"{problem_text} (notes.text_max): the detail goes in a note or a debate")
                         require(not any(k in r for k in CONFIRMATION_KEYS),
                                f"{path}: a review does not confirm its own defect: the confirmation comes from a third party "
                                "(the CI, the council, a guardian or a Confirmed member, bee confirm-defect)")
-                        # Ajoutée maintenant, par un concurrent : seul un avis favorable sans défaut (sa date déclarée
-                        # n'y change rien).
+                        # Added now, by a rival: only a favorable opinion without a defect (its declared date
+                        # changes nothing).
                         require(r.get("reviewer") not in rivals or (
                                    r.get("opinion") == "favorable" and not r.get("reported_defect") and not r.get("confirmed_defect")),
                                f"{path}: {r.get('reviewer')} is in the race on the same task: their unfavorable opinion on a "
                                "rival would not count (commandment 3); only a favorable opinion is admissible")
             elif differences and differences <= {"summary", "summary_sha"} and (new.get("author") == author or not (is_council or is_robot)):
-                # L'auteur actualise le résumé de sa contribution après un nouveau commit (bee soumettre --mettre-a-jour,
-                # ruche-0012) : lui seul, ces seuls champs, court et sans caractère caché, tant qu'elle est en relecture, et une
-                # fois par commit jugé : resume_sha est exactement le verdict.sha de la base, et pas celui de la mise à jour
-                # précédente (revue adverse, M4).
+                # The author updates their contribution's summary after a new commit (bee submit --update, ruche-0012):
+                # they alone, these fields alone, short and without a hidden character, while it is in review, and once
+                # per judged commit: summary_sha is exactly the base's verdict.sha, and not that of the previous update
+                # (adversarial review, M4).
                 natures.append("update")
                 require(new.get("author") == author, f"{path}: only the contribution's author ({new.get('author')}) updates its summary")
                 require(old.get("status") == "in_review", f"{path}: only the summary of a contribution in "
@@ -6247,10 +6247,10 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 natures.append("decision")
                 require(is_council or is_robot, f"{path}: verdict, status and defect confirmation are written by the CI or the council")
                 if new.get("status") == "set_aside" and old.get("status") != "set_aside":
-                    # R3 : une concurrente n'est écartée que dans le même commit que l'intégration de la contribution
-                    # retenue, par le robot d'intégration, ou par le conseil quand il intègre lui-même (tâches de la
-                    # ruche, jamais intégrées automatiquement) ; et alors toutes les concurrentes en course sont écartées
-                    # au profit de la même retenue. Jamais un écartement seul, à la main.
+                    # R3: a rival is set aside only in the same commit as the integration of the kept
+                    # contribution, by the integration robot, or by the council when it integrates itself (the hive's
+                    # tasks, never integrated automatically); and then all the rivals in the race are set aside
+                    # in favour of the same kept one. Never a setting aside alone, by hand.
                     kept = new.get("kept") or ""
                     kept_path = modified.get(kept)
                     before_r = read_yaml_ref(reg.root, base, kept_path) if kept_path else None
@@ -6272,7 +6272,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             continue
 
         if git_status == "A" and len(part_of) == (2 if part_of[0] == "members" else 3) and part_of[0] in ("votes", "measurements", "members"):
-            # Revue adverse de ruche-0028 (S4) : une fiche nommée par un pseudo n'a pas de double qui n'en diffère que par la casse.
+            # Adversarial review of ruche-0028 (S4): a file named by a login has no duplicate that differs from it only by case.
             name = pathlib.PurePosixPath(path).stem
             duplicates = sorted(c.stem for c in (reg.root / pathlib.PurePosixPath(path).parent).glob("*.yaml") if c.stem != name and reg.identities.same_one(c.stem, name))
             linked = [d for d in duplicates if part_of[0] != "members" and reg.identities.account(d).casefold() != reg.identities.account(name).casefold()]
@@ -6284,8 +6284,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             natures.append("vote")
             require(pathlib.PurePosixPath(path).stem == author, f"{path}: you vote only in your own name ({author})")
             require(known, f"{path}: {author} must register first (bee register)")
-            # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie un vote qu'il y avait déposé (le
-            # dossier du vote nomme son sujet).
+            # Race (R3): an engaged participant does not vote on a rival, nor changes a vote they had cast there (the
+            # vote's folder names its subject).
             if part_of[1] in reg.records:
                 require(author not in rivals_of(reg, reg.records[part_of[1]][1]),
                        f"{path}: {author} is in the race on the same task as {part_of[1]}: you do not vote on a rival, "
@@ -6295,7 +6295,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 require(False, f"{path}: a published vote is never withdrawn (commandment 10); while its vote is open, bee vote replaces it")
             elif require(isinstance(new, dict), f"{path}: unreadable file"):
                 require(new.get("voter") == author, f"{path}: declared voter differs from {author}")
-                subject_rec = (reg.records.get(part_of[1]) or (None, {}))[1]  # ruche-0051: bee valider judges history by account
+                subject_rec = (reg.records.get(part_of[1]) or (None, {}))[1]  # ruche-0051: bee validate judges history by account
                 require(not (isinstance(subject_rec, dict) and reg.identities.same_one(subject_rec.get("author"), author)),
                        f"{path}: you do not vote for your own contribution, nor for a linked account's (commandment 3)")
                 if "reason" in new:
@@ -6374,7 +6374,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 additions = nl[len(al):] + [new.get("account_of")] * (new.get("account_of") != old.get("account_of"))
                 require(len(additions) == 1 and type(additions[0]) is int and additions[0] in linkable[pathlib.PurePosixPath(path).stem.casefold()] - {None},
                        f"{path}: a guardian's decision writes one link, to the other account of the pair it links")
-                oneself, saved = new.get("github_id"), {}  # the other file's compte_de, confirmed by this PR, is judged on its own
+                oneself, saved = new.get("github_id"), {}  # the other file's account_of, confirmed by this PR, is judged on its own
                 for n, (c, f) in list(reg.members.items()) if nl != al else ():
                     if n.casefold() in linkable and isinstance(f, dict) and f.get("account_of") == oneself and (read_or_none(reg.root, base, reg.rel(c)) or {}).get("account_of") != oneself:
                         saved[n], reg.members[n] = (c, f), (c, {k: v for k, v in f.items() if k != "account_of"})
@@ -6395,8 +6395,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     continue
                 require("former_logins" not in new, f"{path}: a new member file has no former login: a renamed account moves its file (bee rename)")
                 minimum = setting(reg, "min_account_age_days")
-                # Each date of the file is checked at the time of the PR: inscrit_le is the PR's day (jours_de_la_pr), and
-                # compte_cree_le is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
+                # Each date of the file is checked at the time of the PR: registered_on is the PR's day (pr_days), and
+                # account_created_on is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
                 days = pr_days(instant)
                 require(str(new.get("registered_on")) in days, f"{path}: registered_on ({new.get('registered_on')}) must be the "
                                                                  f"date of the PR ({' or '.join(days)}): delete {path}, then rerun bee register")
@@ -6432,8 +6432,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 for field in ("proposed_text", "reason"):  # ruche-0040: like every free text the gate reads
                     problem_text = admissible_text(new.get(field), f"{path}: {field}", text_bound("proposals", field))
                     require(problem_text is None, str(problem_text))
-                # T4 : à la naissance, le vote s'ouvre (R10 : 7 jours depuis ouverte_le) et personne n'en écrit l'issue ;
-                # seul le conseil change ensuite statut et resultat.
+                # T4: at birth, the vote opens (R10: 7 days from opened_at) and no one writes its outcome;
+                # only the council then changes status and result.
                 require(new.get("status") == "open", f"{path}: a proposal is born open (status « open », not "
                                                            f"« {new.get('status')} »): only the council then writes its outcome")
                 require("result" not in new, f"{path}: a proposal is born without a result: the tally computes it (bee "
@@ -6451,7 +6451,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                                 "is not withdrawn: only the council writes its outcome")
             continue
 
-        if part_of[0] == "reports":  # ruche-0118: a member reports two accounts (bee signaler) ; the council decides (bee signalement)
+        if part_of[0] == "reports":  # ruche-0118: a member reports two accounts (bee report); the council decides (bee decide-report)
             natures.append("report" if git_status == "A" and expected_items.get(path, path) else "governance")
             if git_status != "A":
                 guardian = decides_as_guardian and git_status == "M" and isinstance(old, dict) and reported_by_council(reg, old)  # ruche-0137
@@ -6479,7 +6479,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             added_arguments += n
             continue
 
-        if part_of[0] == "invitations":  # R13 : seuls I-<nnnn>.yaml et la liste de non-contact arrivent ici
+        if part_of[0] == "invitations":  # R13: only I-<nnnn>.yaml and the do-not-contact list arrive here
             if base_unreadables:
                 natures.append("governance")
                 problems_found.append(f"{path}: unreadable on main: {', '.join(base_unreadables)}: no invitation gesture until "
@@ -6488,7 +6488,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             if git_status == "A" and path != PATH_NO_CONTACT:
                 creations["invitations"] += 1
                 expected_number(path, "invitation", "bee invite")
-                if expected_items.get(path, path) is None:  # numéro réservé aux tests : le conseil seul, contrôlé quand même
+                if expected_items.get(path, path) is None:  # number reserved for tests: the council alone, checked anyway
                     natures.append("governance")
             raw = None
             if git_status != "D":
@@ -6502,14 +6502,14 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
             continue
 
         if path == "governance/incidents.yaml" and not is_council and with_status and author in guardians_in_office(reg):
-            # R13, frein : un gardien en fonction à l'heure de la PR ajoute un incident ouvert, tel que l'écrit bee incident (revue
-            # de ruche-0052, B) : en fin de liste, au numéro suivant, id, titre et ouvert_le seulement, un titre d'une ligne ni
-            # caché ni personnel, daté de l'heure de la PR, le fichier sous sa forme canonique (ni commentaire ni remplissage).
-            # Le conseil fusionne.
+            # R13, brake: a guardian in office at the time of the PR adds an open incident, as bee incident writes it
+            # (review of ruche-0052, B): at the end of the list, at the next number, id, title and opened_at only, a
+            # one-line title neither hidden nor personal, dated at the time of the PR, the file in its canonical form
+            # (no comment, no padding). The council merges.
             natures.append("incident")
             before, after = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (old, new))
-            # Sur la base, le fichier est absent, ou lisible et tient une liste (revue de ruche-0052) : sinon le conseil le répare
-            # d'abord, comme bee incident le dit ; « incidents: » vide ou illisible ne se remplace pas par un seul incident.
+            # In the base, the file is absent, or readable and holds a list (review of ruche-0052): otherwise the council repairs
+            # it first, as bee incident says; an empty or unreadable « incidents: » is not replaced by a single incident.
             require(git_status == "A" or isinstance(before, list), f"{path} unreadable on main: the council repairs it first (bee incident)")
             addition = after[-1] if isinstance(after, list) and after and isinstance(after[-1], dict) else {}
             following = next_incident(before if isinstance(before, list) else [])
@@ -6530,9 +6530,9 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                    "write it with bee incident")
             continue
         if not is_council and matches(path, TOOLING_PATHS):
-            # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
-            # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
-            # ou le conseil la relit, le conseil la fusionne.
+            # The hive's tasks (projects/ruche.yaml): any member may propose a tooling PR for the registry.
+            # It is never merged automatically (« tooling » is not self-service): a guardian
+            # or the council reviews it, the council merges it.
             natures.append("tooling")
             require(author in reg.members, f"{path}: {author} must register first (bee register) to propose tooling")
             continue
@@ -6549,8 +6549,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
     require(added_arguments <= maximum, f"cap: {added_arguments} arguments added by this PR, at most {maximum} "
                                          "(agora.arguments_max_per_pr): publish them in several goes, and let the others answer")
     if dates_arguments:
-        # R12 (T9) : en plus du plafond par débat, un plafond par utilisateur tous débats confondus, sur 24 h glissantes
-        # (la fenêtre court du plus tôt des arguments ajoutés moins 24 h jusqu'à aujourd'hui, comme par débat).
+        # R12 (T9): besides the cap per debate, a cap per user across all debates, over a rolling 24 h
+        # (the window runs from the earliest of the added arguments minus 24 h up to today, as per debate).
         beginning = min(dates_arguments) - CAP_WINDOW
         n = sum(arguments_since(d, author, beginning, reg.identities) for _, d in reg.debates.values() if isinstance(d, dict))
         require(n <= conf["arguments_max_per_24h_all_debates"],
@@ -6558,8 +6558,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                f"{conf['arguments_max_per_24h_all_debates']} per user over a rolling 24 h "
                "(agora.arguments_max_per_24h_all_debates): let the others answer")
     if not (is_council or is_robot):
-        # B1 : une seule PR ne prend plus tous les numéros, ni ne fait basculer le cap ; plafonds par PR et par utilisateur
-        # sur 24 h glissantes, d'après l'instant de fusion dans main (le conseil et les robots ne sont pas plafonnés).
+        # B1: a single PR no longer takes all the numbers, nor tips the balance; caps per PR and per user
+        # over a rolling 24 h, from the instant of the merge into main (the council and the robots are not capped).
         conf_creations = config_creations(reg)
         for folder, what_it, command in (("tasks", "proposed tasks", "bee propose-task"), ("proposals", "rule proposals",
                                                                                                "bee propose"),
@@ -6575,8 +6575,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                    f"cap: {author} would have {n} {what_it} over a rolling 24 h, at most {conf_creations[f'{folder}_max_per_24h']} "
                    f"(creations.{folder}_max_per_24h)")
     if added_notes and not (is_council or is_robot):
-        # T2, T3 : des notes en nombre noient l'essaim et faussent le cap ; plafonds par PR et sur 24 h glissantes, toutes
-        # tâches confondues (le conseil et les robots ne sont pas plafonnés en nombre).
+        # T2, T3: notes in numbers drown the swarm and skew the balance; caps per PR and over a rolling 24 h, across all
+        # tasks (the council and the robots are not capped in number).
         conf_notes = config_notes(reg)
         require(added_notes <= conf_notes["max_per_pr"],
                f"cap: {added_notes} notes added by this PR, at most {conf_notes['max_per_pr']} (notes.max_per_pr): "
@@ -6591,12 +6591,12 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
         m = r8_maximum(reg, author, tids := [tid for tid, _ in engagements_of(reg, author)], instant)  # said here when only the end refuses
         require(not m < len(tids) <= r8_maximum(reg, author, tids, PASS_REF), f"rule R8: {author} takes an engagement after the end of "
                f"r8_bootstrap: {len(tids)} reservations or parallel registrations, maximum {m} (a new engagement is judged at the time of the PR)")
-        # ruche-0051: bee valider counts accounts; the gate, persons
+        # ruche-0051: bee validate counts accounts; the gate, persons
         require(len(reg.identities.accounts_of(author)) < 2 or len(tids) <= r8_maximum(reg, author, tids, PASS_REF),
                f"rule R8: {author} has {len(tids)} reservations or parallel registrations with their linked accounts (one person), "
                f"maximum {m}")
     require("rename" not in natures or set(natures) == {"rename"}, "a rename (bee rename) is published alone in its PR (ruche-0022)")
-    # L'arbre du sens (ruche-0010) : aucun commentaire YAML ajouté au libre-service, et un noeud introduit qui existe.
+    # The tree of meaning (ruche-0010): no YAML comment added to self-service, and an introduced node that exists.
     tree_refusal, tree_natures = check_pr_tree(reg, base, head, changes, links, is_council)
     problems_found += tree_refusal
     natures += tree_natures
@@ -6607,18 +6607,18 @@ BIRTH_KEYS = frozenset({"id", "task", "author", "pr", "summary", "status", "subm
 
 SELF_SERVICE = {"reservation", "release", "submission", "update", "note", "review", "vote", "measurement", "registration", "profile", "proposal",
                  "task_proposal", "task_validation", "rename",
-                 # Travail en parallèle (R11) : chacune de ces transitions est contrôlée par verifier_engagements.
+                 # Parallel work (R11): each of these transitions is checked by check_engagements.
                  "parallel_registration", "parallel_withdrawal", "parallel_submission", "promotion",
-                 # Agora (docs/agora.md) : chacune de ces transitions est contrôlée par verifier_debat.
+                 # Agora (docs/agora.md): each of these transitions is checked by check_debate.
                  "debate_opening", "argument", "pen_takeover", "synthesis", "duplicate", "debate_closing",
-                 # R13 (verifier_invitation) : l'accord d'un gardien, écarter. Proposer une invitation (phase de lancement, seconde
-                 # revue adverse F1), l'accord du conseil, l'envoi, la relance, la réponse et la liste de non-contact n'y sont pas :
-                 # le conseil les fusionne lui-même.
+                 # R13 (check_invitation): a guardian's approval, dismissing. Proposing an invitation (launch phase, second
+                 # adversarial review F1), the council's approval, the sending, the reminder, the answer and the do-not-contact
+                 # list are not there: the council merges them itself.
                  "guardian_approval", "invitation_dismissal", "report"}
 
 
 # --------------------------------------------------------------------------
-# Vérification d'une branche de contribution sur un fork (règle R1, commandement 3)
+# Checking a contribution branch on a fork (rule R1, commandment 3)
 # --------------------------------------------------------------------------
 
 # ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json) are read in either
@@ -6659,12 +6659,12 @@ def fork_document(kind, data, where):
 
 
 def manifest_path(task_identifier):
-    """Emplacement du manifeste d'une contribution dans le fork."""
+    """The place of a contribution's manifest in the fork."""
     return f"manifests/{task_identifier}.yaml"
 
 
 def check_fork(reg, repo, base, head, task_identifier, author=None):
-    """Renvoie (problèmes, lignes modifiées, avertissements) pour une branche de contribution."""
+    """Returns (problems, changed lines, warnings) for a contribution branch."""
     _, task = reg.task(task_identifier)
     _, project = reg.projects[task["project"]]
     old_places = before_date_d()  # ruche-0145: manifestes/ and CONTRIBUTION.yaml, until DATE_D (plan, R-s)
@@ -6699,8 +6699,8 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
         for path in git(repo, "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}"):
             if matches(path, judges):
                 problems_found.append(f"{cite(path)}: a task of type {task['type']} cannot modify what judges it (commandment 3)")
-    # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
-    # l'ancien emplacement CONTRIBUTION.yaml à la racine. ruche-0145: manifests/<task>.yaml, else, until DATE_D, manifestes/<task>.yaml
+    # Manifest: manifestes/<task>.yaml (one file per task, hence no conflict between two PRs), else
+    # the former place CONTRIBUTION.yaml at the root. ruche-0145: manifests/<task>.yaml, else, until DATE_D, manifestes/<task>.yaml
     # (both: refused), else CONTRIBUTION.yaml; a French manifest is translated until DATE_D (fork_document).
     manifest_name, before_switch = manifest_path(task_identifier), f"manifestes/{task_identifier}.yaml"
     manifest, old, refused = read_yaml_ref(repo, head, manifest_name), None, False
@@ -6736,13 +6736,13 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
     if others:
         problems_found.append(f"the branch modifies the manifest of another task ({', '.join(map(cite, others[:3]))}): one PR, one task")
     if total == 0 and not problems_found and task["type"] == "optimization":
-        # Normal pour une tâche de mesure ou d'outillage, qui ne touche que bee/ et tests/.
+        # Normal for a measurement or tooling task, which touches only bee/ and tests/.
         warnings.append("no line of code changed outside tests and benches for an optimization: is it really the right branch?")
     return problems_found, total, warnings
 
 
 # --------------------------------------------------------------------------
-# Site statique (voir site_bee.py)
+# Static site (see site_bee.py)
 # --------------------------------------------------------------------------
 
 def generate_site(reg, output_text):
@@ -6751,7 +6751,7 @@ def generate_site(reg, output_text):
 
 
 # --------------------------------------------------------------------------
-# Commandes
+# Commands
 # --------------------------------------------------------------------------
 
 def show_table(headers, lines):
@@ -6832,7 +6832,7 @@ def _pct(x):
 
 
 def cmd_cap(args):
-    """R11 : cible et part réelle de chaque poste sur la fenêtre, et des pistes pour le poste le plus en retard."""
+    """R11: target and actual share of each area over the window, and leads for the area furthest behind."""
     reg = Registry(args.registry)
     state = balance_state(reg, days=args.days)
     leads = {"tasks": [], "to_review": [], "proposals": [], "to_validate": [], "debates": []}
@@ -6883,7 +6883,7 @@ def cmd_cap(args):
 
 
 def cmd_swarm(args):
-    """Tableau de l'essaim (R11, coordination) : qui travaille sur quoi en ce moment."""
+    """The swarm's table (R11, coordination): who works on what right now."""
     reg = Registry(args.registry)
     table_of = swarm_table(reg)
     if args.json:
@@ -6928,7 +6928,7 @@ def cmd_swarm(args):
             print(f"  - {cite(n['task'])}, {cite(n['by'])}, {cite(n['at'])}: {cite(text)}")
     if table_of.get("debates"):
         print("\nOpen debates of the agora (bee debates --show <debate>, synthesis first):")
-        # Les débats encore sans argument tiennent sur une ligne (tour 2 : 17 lignes vides noyaient les autres).
+        # The debates still without an argument fit on one line (round 2: 17 empty lines drowned the others).
         silent = [x["id"] for x in table_of["debates"] if not x["arguments"] and not x["synthesis_at"]]
         if silent:
             print(f"  - {len(silent)} debate(s) wait for a first argument: {', '.join(sorted(map(cite, silent)))}; their questions: "
@@ -6968,8 +6968,8 @@ def cmd_swarm(args):
 
 
 def task_computed_lines(reg, t):
-    """Ce que bee calcule pour une tâche (bee show, bee context) : jamais tiré du texte de la tâche, que bee imprime à
-    part, encadré comme de la donnée (task_data_frame)."""
+    """What bee computes for a task (bee show, bee context): never drawn from the task's text, which bee prints
+    apart, framed as data (task_data_frame)."""
     lines = ["# --- computed by bee ---"]
     blocked = reg.blocked_by(t)
     lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'nothing'}")  # ruche-0088: each text quoted
@@ -6982,7 +6982,7 @@ def task_computed_lines(reg, t):
         lines.append(f"# fork: {cite(project['fork'])}")
     for name, command in (project.get("commands") or {}).items():
         lines.append(f"# command {cite(name)}: {cite(command)}")
-    # Travail en parallèle et course (R3, R7, R11) : qui travaille encore, quelles contributions sont en concurrence.
+    # Parallel work and race (R3, R7, R11): who still works, which contributions are rivals.
     instant = now_instant()
     race = race_state(reg, t["id"], compute_levels(reg), instant)
     for e in race["engaged"]:
@@ -7002,24 +7002,24 @@ def task_computed_lines(reg, t):
                           f"protected until {cite(c['protected_until'])}, no more waiting after {cite(c['waits_until'])}")
     if t.get("status") in ("reserved", "in_review"):
         lines.append(f"# join in parallel: bee take {cite(t['id'])} --user <login> --parallel")
-    # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
+    # The number of notes, said outside the data: « none » is told apart from an omitted list (round 2).
     notes = t.get("notes") if isinstance(t.get("notes"), list) else []
     lines.append(f"# notes: {len(notes) or 'none'}")
     return lines
 
 
 def cmd_show(args):
-    # Ce que bee calcule d'abord, puis la tâche telle que bee l'a relue (jamais le fichier brut : ni commentaire, ni mise en
-    # forme qui imite une ligne de bee), encadrée comme de la donnée (commandement 5, docs/arbre.md).
+    # What bee computes first, then the task as bee read it back (never the raw file: no comment, no
+    # formatting that imitates a line of bee), framed as data (commandment 5, docs/tree.md).
     reg = Registry(args.registry)
     if ID_INVITATION.match(str(args.task)):
-        # Une invitation (R13) : son état calculé, ses identités déclarées et la consigne d'accord, puis ses données.
+        # An invitation (R13): its computed state, its declared identities and the approval instruction, then its data.
         _, inv = reg.invitation(args.task)
         conf = growth_config(reg)
         summary = invitation_summary(inv, conf, brake=brake_state(reg))
         print(show_line(f"{summary['id']}: {summary['status']}; request: {summary['request']}; awaits: {summary['awaits']}"))
         print("\n".join(identity_lines(inv) + invitation_debate_lines(reg, inv)))
-        # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
+        # The dates as bee reads them back (never the file's raw value: review of ruche-0052, C); the gate's deadline.
         date = lambda m: en_iso(m) if m else "?"  # noqa: E731
         print(f"proposed on {date(_instant_or_none(inv.get('proposed_at')))}"
               + (f" (deadline without a decision: {date(expiration(inv, conf))})" if invitation_state(inv) == "proposed" else "")
@@ -7043,7 +7043,7 @@ def cmd_show(args):
 
 def cmd_register(args):
     reg = Registry(args.registry)
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.login):  # le motif du schéma membre, avant toute comparaison
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.login):  # the member schema's pattern, before any comparison
         raise BeeError(f"invalid login: {args.login!r} (a GitHub login: ASCII letters, digits and hyphens, 39 characters at most)")
     if refusal := reserved_login(reg.config, args.login):
         raise BeeError(refusal)
@@ -7068,7 +7068,7 @@ def cmd_register(args):
 
 
 def rename_refusal(reg, entry_card, new, agents, instant):
-    """ruche-0022: why a member file may not move to `nouveau` (None if it may): governance/, work in flight, 30 days, 5 logins."""
+    """ruche-0022: why a member file may not move to `new` (None if it may): governance/, work in flight, 30 days, 5 logins."""
     old = entry_card.get("login")
     if any(x in s for x in (old, new) for s in (reg.council, reg.guardians, reg.guarantors, Logins(agents.values(), reg.identities))):
         return f"{old} or {new} is named in governance/: the council renames it, the list and the member file in one PR"
@@ -7084,7 +7084,7 @@ LINKS = ("other_accounts", "account_of")
 
 
 def held_tasks(reg, who_is):
-    """The tasks `qui` holds: an engagement (R8), or a contribution in the race (R3)."""
+    """The tasks `who_is` holds: an engagement (R8), or a contribution in the race (R3)."""
     return {t for t, _ in engagements_of(reg, who_is)} | {e.get("task") for _, e in reg.records.values() if isinstance(e, dict)
                                                        and e.get("status") == "in_review" and reg.identities.same_one(e.get("author"), who_is)}
 
@@ -7151,7 +7151,7 @@ def reported_pair(reg, accounts):
 
 
 def report_refusal(reg, s, author, instant, oneself=None):
-    """ruche-0118: None if `auteur` may file the report `s` (any other report: `soi` is its own name), else why : by persons (identities.key),
+    """ruche-0118: None if `author` may file the report `s` (any other report: `oneself` is its own name), else why: by persons (identities.key),
     never one of the two nor a linked pair, one open per pair, none 30 days after a dismissal, open reports capped (bee.yaml, creations)."""
     accounts, conf = s.get("accounts"), config_creations(reg)
     if set(s) != {"by", "at", "accounts", "reason"} or s["reason"] not in REPORT_REASONS:
@@ -7185,7 +7185,7 @@ def report_refusal(reg, s, author, instant, oneself=None):
 
 
 def named_at_cap(reg, accounts, oneself=None):
-    """ruche-0137: the persons of `comptes` already named in reports_naming_max open reports (bee.yaml, creations). Past that cap
+    """ruche-0137: the persons of `accounts` already named in reports_naming_max open reports (bee.yaml, creations). Past that cap
     a report is not refused, so the cap shields no one: it waits for the council, who merges it itself (never automatically)."""
     m, open_items = config_creations(reg)["reports_naming_max"], [reported_pair(reg, x.get("accounts")) or () for name, (_, x)
                                                                       in reg.reports.items() if name != oneself and isinstance(x, dict) and "decision" not in x]
@@ -7208,7 +7208,7 @@ def reported_by_council(reg, s):  # ruche-0137: filed by a council member, under
 
 
 def decider_refusal(reg, s, who_is):
-    """ruche-0137: None if `qui` may decide the report `s`, else why: the council, or a guardian in office for a report a council member
+    """ruche-0137: None if `who_is` may decide the report `s`, else why: the council, or a guardian in office for a report a council member
     filed ; never one of the two accounts nor the person who filed it, under any of their accounts (linked, agent)."""
     if not (who_is in reg.council or (who_is in guardians_in_office(reg) and reported_by_council(reg, s))) or any(
             same_person(reg, who_is, c) for c in s.get("accounts") or ()):
@@ -7255,7 +7255,7 @@ def already_named(reg):
 
 
 def decision_refusal(reg, before, after, author, instant):
-    """ruche-0118: None if the council member `auteur` may add `apres`'s decision to the open report `avant` by this PR, else why."""
+    """ruche-0118: None if the council member `author` may add `after`'s decision to the open report `before` by this PR, else why."""
     d, accounts = after.get("decision"), before.get("accounts") if isinstance(before, dict) and "decision" not in before else None
     if not (isinstance(accounts, list) and len(accounts) == 2 and isinstance(d, dict) and after == {**before, "decision": d}):
         return "the council adds its decision to an open report, nothing else (bee decide-report)"
@@ -7294,7 +7294,7 @@ def cmd_decide_report(args):
     refusal = "the council alone decides an open report" if not isinstance(s, dict) or "decision" in s or not isinstance(s.get("accounts"), list) else None
     if refusal := refusal or decider_refusal(reg, s, args.user):
         raise BeeError(f"{args.report}: {refusal} (bee swarm)")
-    if args.link:  # ruche-0137: the file of --lier's person (an account already linked: its person's), as the gate links them
+    if args.link:  # ruche-0137: the file of --link's person (an account already linked: its person's), as the gate links them
         names = [reg.identities.account(c) for c in s["accounts"]]
         person = reg.identities.account(reg.identities.name(next((n for n in names if reg.identities.same_one(n, args.link)), args.link)))
         if sum(reg.identities.same_one(n, args.link) for n in names) != 1 or len(set(names)) != 2 or not all(n in reg.members for n in [*names, person]):
@@ -7333,9 +7333,9 @@ def cmd_rename(args):
 
 
 def require_retake_allowed(reg, path, task, user):
-    """R7, dit avant d'écrire : qui a quitté la tâche sans contribution ne la reprend pas avant retake_after_release_hours.
-    check-pr le contrôle sur l'historique de main ; ici, sur celui du clone, plus une libération faite dans le clone mais
-    pas encore publiée. Sans historique git, rien à dire ici : check-pr tranchera."""
+    """R7, said before writing: whoever left the task without a contribution does not retake it before
+    retake_after_release_hours. check-pr checks it on main's history; here, on the clone's, plus a release made in the
+    clone but not yet published. Without git history, nothing to say here: check-pr will decide."""
     if not history_available(reg.root):
         return
     relative_one, instant = reg.rel(path), now_instant()
@@ -7347,7 +7347,7 @@ def require_retake_allowed(reg, path, task, user):
 
 
 def require_r8(reg, user, task):
-    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus."""
+    """R8: reservations and parallel registrations count together, across all agents."""
     already = engagements_of(reg, user)
     maximum = r8_maximum(reg, user, [tid for tid, _ in already] + [task], now_instant())
     if len(already) >= maximum:
@@ -7356,7 +7356,7 @@ def require_r8(reg, user, task):
 
 
 def take_in_parallel(reg, args, path, t):
-    """S'inscrire en parallèle sur une tâche réservée ou en relecture (R11) : au su de tous, sans toucher au titulaire."""
+    """Registers in parallel on a task reserved or in review (R11): in everyone's sight, without touching the holder."""
     status, u = t.get("status"), args.user
     if status == "open":
         raise BeeError(f"{args.task} is open: reserve it normally (bee take {args.task} --user {u}); "
@@ -7427,7 +7427,7 @@ def cmd_take(args):
 
 
 def require_creation_allowed(reg, folder, user):
-    """Plafond des créations sur 24 h glissantes (bee.yaml, creations), dit avant d'écrire ; le conseil n'est pas plafonné."""
+    """The cap on creations over a rolling 24 h (bee.yaml, creations), said before writing; the council is not capped."""
     if user in reg.council:
         return
     maximum = config_creations(reg)[f"{folder}_max_per_24h"]
@@ -7438,14 +7438,14 @@ def require_creation_allowed(reg, folder, user):
 
 
 def cmd_propose_task(args):
-    """Prépare une proposition de tâche (status « proposed ») à partir de templates/task.yaml."""
+    """Prepares a task proposal (status « proposed ») from templates/task.yaml."""
     reg = Registry(args.registry)
     reg.require_member(args.user)
     if args.project not in reg.projects:
         raise BeeError(f"unknown project: {args.project} (see projects/)")
     project = reg.projects[args.project][1]
-    # Numérotation (verifier-pr l'exige) : le plus grand numéro + 1, hors des numéros réservés aux tests ; les fichiers
-    # présents comptent, même illisibles, et aucun n'est jamais écrasé (T6).
+    # Numbering (check-pr requires it): the highest number + 1, outside the numbers reserved for tests; the files
+    # present count, even unreadable, and none is ever overwritten (T6).
     folder = reg.root / "tasks" / args.project
     reason = re.compile(re.escape(args.project) + r"-(?P<n>\d{4})\.yaml")
     numbers_of = [int(m["n"]) for f in (folder.iterdir() if folder.is_dir() else []) if (m := reason.fullmatch(f.name))]
@@ -7459,8 +7459,8 @@ def cmd_propose_task(args):
         raise BeeError(f"{reg.rel(path)} already exists: nothing was overwritten")
     require_creation_allowed(reg, "tasks", args.user)
     metrics = [m["id"] for m in project.get("metrics") or [] if isinstance(m, dict)]
-    # Type par défaut : une optimisation là où il y a des métriques, un test ailleurs (la ruche n'a rien à optimiser ; au
-    # tour 2, une tâche de la ruche était née avec des critères R4 et R5 sans objet).
+    # Default type: an optimization where there are metrics, a test elsewhere (the hive has nothing to optimize; in
+    # round 2, a task of the hive was born with R4 and R5 criteria that had no object).
     args.type = args.type or ("optimization" if metrics else "test")
     if args.type == "optimization" and not metrics:
         raise BeeError(f"{args.project} has no metric: an optimization has no judge there (--type test, measurement or review)")
@@ -7480,7 +7480,7 @@ def cmd_propose_task(args):
     if metric:
         text = text.replace("debit_compression_n6", metric)
     else:
-        # Hors optimisation, les critères de R4 et R5 n'ont pas d'objet : un critère vérifiable à écrire à la place.
+        # Outside optimization, the criteria of R4 and R5 have no object: a verifiable criterion to write instead.
         text = re.sub(r"(acceptance_criteria:\n)(?:  - .*\n)+",
                        lambda m: m.group(1) + '  - "Critère vérifiable : une commande, un test ou un fichier attendu"\n', text)
     load_yaml_text(text, str(path))
@@ -7504,7 +7504,7 @@ def cmd_release(args):
     if args.note:
         require_admissible_note(reg, args.user, args.note, instant)
     if any(p.get("user") == args.user for p in parallel):
-        # Un inscrit en parallèle se retire lui-même ; personne d'autre n'est touché.
+        # A parallel registrant withdraws themselves; no one else is touched.
         note = {"by": args.user, "at": en_iso(instant), "text": args.note} if args.note else None
         modify_task(path, parallel=without_it(parallel, args.user), note=note)
         print(f"✓ {args.user}'s parallel registration on {args.task} withdrawn." + tip)
@@ -7518,7 +7518,7 @@ def cmd_release(args):
         try:
             require_admissible_note(reg, args.user, sentence, instant)
         except BeeError:
-            sentence = ""  # plafond des notes atteint : la phrase automatique ne bloque pas une libération
+            sentence = ""  # notes cap reached: the automatic sentence does not block a release
     text = " ".join(x for x in (args.note, sentence) if x)
     if args.note and text != args.note:
         require_admissible_note(reg, args.user, text, instant)
@@ -7532,8 +7532,8 @@ def cmd_release(args):
 
 
 def require_admissible_note(reg, user, text, instant):
-    """Ce que check-pr refuserait d'une note, dit avant de l'écrire : texte trop long ou maquillé, plafond sur 24 h
-    glissantes atteint (le conseil et les robots ne sont pas plafonnés en nombre)."""
+    """What check-pr would refuse in a note, said before writing it: text too long or disguised, cap over a rolling 24 h
+    reached (the council and the robots are not capped in number)."""
     conf = config_notes(reg)
     problem_text = admissible_text(text, "note", conf["text_max"])
     if problem_text:
@@ -7559,9 +7559,9 @@ def cmd_note(args):
 
 
 def cmd_release_expired(args):
-    """R7, appliquée par le robot : réservations et inscriptions en parallèle sans contribution prennent fin après 72 h.
-    Les inscriptions expirées sont retirées d'abord ; puis, si la réservation du titulaire a expiré, le plus ancien
-    inscrit restant devient titulaire (à la date de son inscription), sinon la tâche passe en relecture ou est rouverte."""
+    """R7, applied by the robot: reservations and parallel registrations without a contribution end after 72 h. Expired
+    registrations are withdrawn first; then, if the holder's reservation has expired, the oldest remaining registrant
+    becomes the holder (at the date of their registration), else the task moves to review or is reopened."""
     reg = Registry(args.registry)
     instant = now_instant()
     limit_value = dt.timedelta(hours=setting(reg, "reservation_max_hours"))
@@ -7603,7 +7603,7 @@ def cmd_manifest(args):
         f"  {TO_FILL_IN_EN}: what was changed, and why it is better.",
     ]
     if t["type"] in ("optimization", "measurement"):
-        # R4 se juge sur le décompte d'instructions de la métrique visée (clé instructions de projets/*.yaml, ruche-0017).
+        # R4 is judged on the instruction count of the targeted metric (key instructions of projects/*.yaml, ruche-0017).
         instructions = reg.metrics(t["project"]).get(t.get("metric"), {}).get("instructions")
         metrics = ([t["metric"]] if t.get("metric") else []) + ([instructions] if isinstance(instructions, str) else [])
         metrics += [m for m in reg.metrics(t["project"]) if m not in metrics]
@@ -7628,10 +7628,10 @@ def cmd_manifest(args):
     if args.output:
         output_text = pathlib.Path(args.output)
         if output_text.is_dir():
-            # Un dossier (la racine du fork) : le manifeste va à sa place, manifestes/<tâche>.yaml.
+            # A folder (the fork's root): the manifest goes to its place, manifests/<task>.yaml.
             output_text = output_text / manifest_path(t["id"])
         if output_text.parent.name == "manifests":
-            # Le dossier manifestes/ du fork peut ne pas exister encore (premier manifeste par tâche).
+            # The fork's manifests/ folder may not exist yet (first manifest per task).
             output_text.parent.mkdir(parents=True, exist_ok=True)
         if output_text.exists():
             raise BeeError(f"{output_text} already exists: delete it or choose another file (nothing was overwritten)")
@@ -7659,8 +7659,8 @@ def cmd_validate_manifest(args):
 
 
 def update_summary(reg, args):
-    """bee submit --update (ruche-0012) : après un nouveau commit, l'auteur actualise le résumé de sa contribution
-    en relecture ; rien d'autre ne change (check-pr le contrôle : l'auteur seul, ce seul champ, court, sans caractère caché)."""
+    """bee submit --update (ruche-0012): after a new commit, the author updates the summary of their contribution
+    in review; nothing else changes (check-pr checks it: the author alone, this field alone, short, no hidden character)."""
     if args.pr or not args.summary:
         raise BeeError("--update changes only the summary: --summary, without --pr (a contribution's PR does not change)")
     problem_text = admissible_text(args.summary, "--summary", SUMMARY_MAX)
@@ -7670,7 +7670,7 @@ def update_summary(reg, args):
     if not own_items_f:
         raise BeeError(f"{args.user} has no contribution in review on {args.task}")
     path, rec = reg.records[own_items_f[-1]]
-    # Une mise à jour par commit jugé (revue adverse) : après le verdict du nouveau commit, jamais deux fois pour le même.
+    # One update per judged commit (adversarial review): after the new commit's verdict, never twice for the same one.
     sha = (rec.get("verdict") or {}).get("sha")
     if not sha:
         raise BeeError(f"{own_items_f[-1]} has no verdict yet: the summary is updated after the new commit's verdict (bee show)")
@@ -7684,7 +7684,7 @@ def update_summary(reg, args):
 def cmd_submit(args):
     reg = Registry(args.registry)
     reg.require_member(args.user)
-    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "the summary")):  # avant d'écrire (ruche-0029)
+    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "the summary")):  # before writing (ruche-0029)
         raise BeeError(problem_text)
     if args.update:
         return update_summary(reg, args)
@@ -7707,7 +7707,7 @@ def cmd_submit(args):
         raise BeeError(f"the PR must be opened on the project's fork: {fork}/pull/<number> (received: {args.pr})")
     if already := [c for c, (_, e) in reg.records.items() if canonical_pr(e.get("pr")) == canonical_pr(args.pr)]:
         raise BeeError(f"PR {args.pr} is already linked to {', '.join(already)}")  # ruche-0041: one PR, one contribution
-    # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
+    # The number after the highest already taken (check_pr requires it): never an existing file overwritten.
     rank = 1 + max(contribution_numbers(reg, args.task), default=0)
     identifier = f"{args.task}-c{rank}"
     data = {"id": identifier, "task": args.task, "author": args.user, "pr": f"{fork}/pull/{canonical_pr(args.pr)[2]}"}
@@ -7716,18 +7716,18 @@ def cmd_submit(args):
         if problem_text:
             raise BeeError(f"{problem_text}: a summary fits in one sentence")
         data["summary"] = args.summary
-    # Début de l'engagement de l'auteur (sa réservation ou son inscription en parallèle) : R3 s'en sert pour savoir s'il
-    # travaillait déjà sur la tâche avant la soumission d'une concurrente (raisons_course, 2) ; verifier-pr le contrôle.
+    # Start of the author's engagement (their reservation or their parallel registration): R3 uses it to know whether
+    # they were already working on the task before a rival's submission (race_causes, 2); check-pr checks it.
     engagement = (next(p.get("since") for p in parallel if p.get("user") == args.user) if parallel_mode
                   else (t.get("reservation") or {}).get("since"))
     data.update({"status": "in_review", "submitted_at": en_iso(now_instant()), "engaged_since": engagement, "reviews": []})
     target = reg.root / "contributions" / t["project"] / f"{identifier}.yaml"
-    if target.exists():  # un fichier illisible n'est pas dans le registre chargé : on ne l'écrase pas pour autant
+    if target.exists():  # an unreadable file is not in the loaded registry: it is not overwritten for all that
         raise BeeError(f"{reg.rel(target)} already exists: nothing was overwritten")
     write_yaml(target, data)
     if parallel_mode:
-        # Soumission d'un inscrit en parallèle : il quitte la liste, sa contribution entre en course ; la réservation
-        # du titulaire et le statut de la tâche ne changent pas (R3, course entre contributions concurrentes).
+        # Submission by a parallel registrant: they leave the list, their contribution enters the race; the reservation
+        # of the holder and the task's status do not change (R3, race between rival contributions).
         modify_task(path, parallel=without_it(parallel, args.user), contribution=identifier)
         others = [c for c, _ in racing_contributions(reg, args.task)]
         print(f"✓ contribution {identifier} recorded, in the race on {args.task}"
@@ -7753,11 +7753,11 @@ def cmd_review(args):
         raise BeeError("you do not review your own contribution (commandment 3)")
     if rec.get("status") != "in_review":
         raise BeeError(f"{args.contribution} is no longer in review (status: {rec.get('status')})")
-    # Une relecture par relecteur et par commit jugé (ruche-0012) : relire le correctif, c'est en ajouter une nouvelle, sur un
-    # autre commit que sa plus récente (X, Y, puis X redevient possible).
+    # One review per reviewer and per judged commit (ruche-0012): reviewing the fix means adding a new one, on a
+    # commit other than one's most recent (X, Y, then X becomes possible again).
     sha = (rec.get("verdict") or {}).get("sha")
-    # ruche-0028 (3) : le commit que le relecteur a lu, jamais celui du verdict au moment d'écrire (l'auteur a pu pousser entre-temps).
-    # Le sha entier, égal (revue adverse, S2 : une collision sur 7 caractères se fabrique en deux minutes).
+    # ruche-0028 (3): the commit the reviewer read, never the verdict's at the time of writing (the author may have pushed meanwhile).
+    # The full sha, equal (adversarial review, S2: a collision on 7 characters is made in two minutes).
     if sha and args.commit != sha:
         raise BeeError(f"the current verdict of {args.contribution} is on commit {sha}: " + (
             "give the full sha of the commit you read (40 characters): a prefix can designate another commit" if args.commit
@@ -7783,9 +7783,9 @@ def cmd_review(args):
                         if sha else "no verdict yet; wait for it, or leave a note (bee note)"))
     review = {"reviewer": args.user, "opinion": args.opinion, "reason": args.reason, "at": en_iso(now_instant())}
     if sha:
-        review["sha"] = sha  # la relecture porte sur ce commit ; un nouveau commit jugé la rend caduque (R3)
+        review["sha"] = sha  # the review is on this commit; a new judged commit makes it lapse (R3)
     if (rec.get("verdict") or {}).get("tree"):
-        review["tree"] = rec["verdict"]["tree"]  # et sur ce contenu (même arbre : un commit amendé ne l'efface pas)
+        review["tree"] = rec["verdict"]["tree"]  # and on this content (same tree: an amended commit does not erase it)
     if args.defect:
         review["reported_defect"] = True
     rec = dict(rec)
