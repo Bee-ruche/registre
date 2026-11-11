@@ -2482,8 +2482,8 @@ class TestTree(BaseTest):
         folder = self.node("projects/lossless-compression/miniz").parent / "tinfl"
         folder.mkdir()
         (folder / "MEANING.md").write_text(ZONE_NODE, encoding="utf-8")
-        self.replace_with("projects/lossless-compression/miniz", "## Enfants\n",
-                       "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n")
+        self.replace_with("projects/lossless-compression/miniz", "## Children\n",
+                       "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n")
 
     def test_delivered_tree_valid_and_tasks_attached(self):
         self.valid_one()
@@ -2566,7 +2566,7 @@ class TestTree(BaseTest):
         folder.mkdir()
         (folder / "MEANING.md").write_text(ZONE_NODE.replace("parent: projects/lossless-compression/miniz",
                                                             "parent: projects/lossless-compression"), encoding="utf-8")
-        self.replace_with("projects/lossless-compression", "## Enfants\n", "## Enfants\n- `projects/lossless-compression/zstd` : zstd\n")
+        self.replace_with("projects/lossless-compression", "## Children\n", "## Children\n- `projects/lossless-compression/zstd`: zstd\n")
         self.refuse("« zstd » is not a project of the category lossless-compression")
 
     def test_symbolic_link_refused(self):
@@ -2922,7 +2922,7 @@ class TestTree(BaseTest):
         for role in ("optimize", "review", "measure", "debate", "guard", "propose", "invite"):
             with self.subTest(role=role):
                 self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commands: ")
-        self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
+        self.assertIn("python3 <registry>/outils/juge/juge.py --outillage . --source-a <base> --source-b <your copy>",
                       self.flat(self.node("projects/lossless-compression/miniz").read_text(encoding="utf-8")))
 
     def test_site_and_api_show_the_tree(self):
@@ -3054,7 +3054,7 @@ class TestTreePullRequests(BaseTest):
         (zone / "MEANING.md").write_text(ZONE_NODE, encoding="utf-8")
         miniz = self.dir / "tree/projects/lossless-compression/miniz/MEANING.md"
         before = miniz.read_text(encoding="utf-8")
-        miniz.write_text(re.sub(r"## Enfants\n.*", "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n", before, flags=re.S),
+        miniz.write_text(re.sub(r"## Children\n.*", "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n", before, flags=re.S),
                          encoding="utf-8")
         task = self.dir / "tasks/miniz/miniz-0099.yaml"
         task.write_text(task.read_text(encoding="utf-8").replace("status: open", "node: projects/lossless-compression/miniz/tinfl\nstatus: open"),
@@ -15855,7 +15855,7 @@ class TestBilingualReaders(BaseAgora):
         parent = self.dir / bee.node_file("projects/lossless-compression/miniz")
         if "miniz/tinfl`" not in parent.read_text(encoding="utf-8"):
             parent.write_text(parent.read_text(encoding="utf-8").replace(
-                "## Enfants\n", "## Enfants\n- `projects/lossless-compression/miniz/tinfl` : la décompression\n", 1), encoding="utf-8")
+                "## Children\n", "## Children\n- `projects/lossless-compression/miniz/tinfl`: decompression\n", 1), encoding="utf-8")
         (self.dir / self.ZONE).parent.mkdir(exist_ok=True)
         (self.dir / self.ZONE).write_text(text, encoding="utf-8")
 
