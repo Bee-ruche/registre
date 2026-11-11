@@ -19,7 +19,7 @@ reach: 0.8
 metric: null
 acceptance_criteria:
   - "CI is green on the base and on the PR, and the common judge is called at a pinned version (by tag or by SHA, as minizBee has done since its PR #16)"
-  - "verdict.json contains the judge section (version, common, outputs_compared, suspicious_constructs) and bee record-verdict reads it"
+  - "verdict.json contains the judge section (version, common, outputs_compared, suspicious_constructs), in the verdict's own vocabulary: while libyamlBee's verdict.json is French (until libyaml-0021), the French keys juge, commun, sorties_comparees, constructions_suspectes, which bee reads only before 2027-01-01, since bee refuses a document that mixes the two; and bee record-verdict reads it"
   - "the threat model in bee/README.md also says what remains out of reach"
 out_of_scope:
   - "libyaml's sources"
