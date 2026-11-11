@@ -3014,7 +3014,7 @@ class TestTreePullRequests(BaseTest):
         self.assertIn("FUSION_AUTO=non", text)
 
     def test_a_hive_task_is_not_born_optimization(self):
-        """Tour 2 : bee propose-task ruche sortait un gabarit d'optimisation (métrique, critères R4 et R5)."""
+        """Round 2: bee propose-task ruche produced an optimization template (metric, R4 and R5 criteria)."""
         code, text = self.bee("propose-task", "ruche", "--user", "alice")
         self.assertEqual(code, 0, text)
         task = bee.read_yaml(max(self.dir.glob("tasks/ruche/ruche-0*.yaml")))
@@ -3082,8 +3082,8 @@ class TestTreePullRequests(BaseTest):
         self.assertIn("node « projects/lossless-compression/miniz/tinfl » not found", text)
 
     def test_m1_a_node_removed_afterwards_does_not_block_main(self):
-        """La course de la revue adverse : une tâche vise une zone, une PR d'outillage relue retire la zone. Fusionnées
-        toutes deux, main reste valide (un avertissement, repli sur le projet) et une réservation honnête passe."""
+        """The adversarial review's race: a task targets an area, a reviewed tooling PR removes the area. With both merged,
+        main stays valid (a warning, fallback on the project) and an honest reservation passes."""
         zone = self.dir / "tree/projects/lossless-compression/miniz/tinfl"
         zone.mkdir()
         (zone / "MEANING.md").write_text(ZONE_NODE, encoding="utf-8")
@@ -3094,7 +3094,7 @@ class TestTreePullRequests(BaseTest):
         task = self.dir / "tasks/miniz/miniz-0099.yaml"
         task.write_text(task.read_text(encoding="utf-8").replace("status: open", "node: projects/lossless-compression/miniz/tinfl\nstatus: open"),
                          encoding="utf-8")
-        self.commit()  # sur main : la zone et une tâche qui la vise
+        self.commit()  # on main: the area and a task that targets it
         git(self.dir, "switch", "-qc", "tooling")
         shutil.rmtree(zone)
         miniz.write_text(before, encoding="utf-8")
@@ -3418,7 +3418,7 @@ class TestPullRequests(BaseTest):
         self.assertIn("human review", text)
 
     def test_tooling_proposed_by_a_member_never_merged_alone(self):
-        """Tâches de la ruche : un membre peut proposer de l'outillage ; seule une relecture puis le conseil le fusionnent."""
+        """Hive tasks: a member may propose tooling; only a review and then the council merge it."""
         git(self.dir, "switch", "-qc", "tool")
         path = self.dir / "tools" / "site_bee.py"
         path.write_text(path.read_text(encoding="utf-8") + "\n# amélioration proposée\n", encoding="utf-8")
@@ -3646,8 +3646,8 @@ class TestPullRequests(BaseTest):
         self.assertEqual(code, 0, text)
 
     def test_short_reasons_without_hidden_character(self):
-        """Tour 2 (farid) : le motif d'une relecture n'avait aucun plafond, contrairement aux notes ; ni ceux d'un vote ou
-        d'une mesure. Ils suivent maintenant notes.text_max, et rien n'y est caché."""
+        """Round 2 (farid): a review's reason had no cap, unlike notes; nor did those of a vote or a measurement. They now
+        follow notes.text_max, and nothing is hidden in them."""
         cid = self.submit_0099()
         self.commit("submission")
         long = "Relu en entier. " + "x" * 1500
@@ -3674,7 +3674,7 @@ class TestPullRequests(BaseTest):
             self.assertIn(expected, text)
         git(self.dir, "switch", "-q", "main")
 
-    # --- Tests adverses (revue du 27/10) : chaque contournement connu doit être refusé. ---
+    # --- Adversarial tests (review of 27 Oct): every known workaround must be refused. ---
 
     def test_adverse_submission_without_reservation(self):
         git(self.dir, "switch", "-qc", "sans-reservation")
@@ -3702,7 +3702,7 @@ class TestPullRequests(BaseTest):
         self.assertEqual(code, 0, f"the legitimate path must pass: {text}")
         path = self.dir / "contributions/miniz/miniz-0099-c1.yaml"
         rec = bee.read_yaml(path)
-        rec["submitted_at"] = "2020-01-01T00:00:00Z"  # pour faire croire la fenêtre de R3 écoulée
+        rec["submitted_at"] = "2020-01-01T00:00:00Z"  # to make R3's window look elapsed
         bee.write_yaml(path, rec)
         self.commit("antidatée")
         code, text = self.verify("alice", "--auto-merge")
@@ -3855,7 +3855,7 @@ class TestPullRequests(BaseTest):
         self.assertEqual(code, 1, text)
         self.assertIn("only a contribution in review", text)
 
-    # --- L'essaim propose, les gardiens valident (27/10) ---
+    # --- The swarm proposes, the guardians validate (27 Oct) ---
 
     def test_task_proposal_by_a_member(self):
         git(self.dir, "switch", "-qc", "proposal")
@@ -3921,7 +3921,7 @@ class TestPullRequests(BaseTest):
                                        "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True,
                                                      "sign_test": {"b_wins": 9, "useful_pairs": 10}}}}), encoding="utf-8")
         self.bee("record-measurement", cid, "--ab", str(report), "--user", "bruno")
-        report.unlink()  # ne pas committer le JSON brut
+        report.unlink()  # do not commit the raw JSON
         self.commit()
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 0, text)
@@ -3952,7 +3952,7 @@ class TestPullRequests(BaseTest):
 
 
 class BasePublish(BaseTest):
-    """bee publish avec de vrais dépôts git locaux et un faux gh qui journalise ses appels."""
+    """bee publish with real local git repositories and a fake gh that logs its calls."""
 
     def setUp(self):
         super().setUp()
@@ -3987,7 +3987,7 @@ class BasePublish(BaseTest):
 
 
 class TestPublish(BasePublish):
-    """bee publish, une PR à la fois."""
+    """bee publish, one PR at a time."""
 
     def test_reservation_published_and_merged(self):
         self.bee("take", "miniz-0099", "--user", "alice")
@@ -4225,11 +4225,11 @@ class TestPublish(BasePublish):
 
 
 class TestPublishBySession(BasePublish):
-    """ruche-0129 (E7) : bee publish met les gestes indépendants d'une session dans une seule PR, sous les plafonds par PR de la
-    porte ; un engagement préparé avec la soumission qui le suit part d'abord, seul, puis la soumission, rejouée sur le main
-    qu'il a laissé. Le faux gh numérote ses PR et, selon gh.mode, les fusionne comme GitHub (un commit « squash » sur le main du
-    dépôt distant, par une fusion à trois), les ferme sans fusion ou les laisse ouvertes ; la porte juge ensuite chaque commit
-    fusionné contre son parent, comme elle juge une PR fusionnée avec le main du moment."""
+    """ruche-0129 (E7): bee publish puts a session's independent gestures in a single PR, under the gate's per-PR caps; an
+    engagement prepared with the submission that follows it goes first, alone, then the submission, replayed on the main it
+    left. The fake gh numbers its PRs and, according to gh.mode, merges them like GitHub (a « squash » commit on the remote
+    repository's main, by a three-way merge), closes them without merging or leaves them open; the gate then judges each
+    merged commit against its parent, as it judges a PR merged with the main of the moment."""
 
     SUBMISSION = "contributions/miniz/miniz-0099-c1.yaml"
     TASK = "tasks/miniz/miniz-0099.yaml"
@@ -4276,18 +4276,18 @@ class TestPublishBySession(BasePublish):
         return text
 
     def on_main(self, message):
-        """Ce que le test prépare avant la session, sur main, publié tel quel sur le dépôt distant ; renvoie ce commit."""
+        """What the test prepares before the session, on main, published as is on the remote repository; returns that commit."""
         git(self.dir, "add", "-A")
         git(self.dir, "commit", "-qm", message)
         git(self.dir, "push", "-q", "origin", "main")
         return git(self.dir, "rev-parse", "HEAD").strip()
 
     def prs(self):
-        """Les titres des PR ouvertes, dans l'ordre."""
+        """The titles of the opened PRs, in order."""
         return re.findall(r"-X POST -f title=(.*?) -f head=", self.log_text.read_text(encoding="utf-8")) if self.log_text.exists() else []
 
     def merges(self, since):
-        """Les commits ajoutés à main depuis `depuis`, du plus ancien au plus récent ; le main local doit être celui du distant."""
+        """The commits added to main since `since`, from oldest to newest; the local main must be the remote's."""
         self.assertEqual(git(self.dir, "rev-parse", "main"), git(self.dir, "rev-parse", "origin/main"))
         return git(self.dir, "rev-list", "--reverse", f"{since}..main").split()
 
@@ -4295,7 +4295,7 @@ class TestPublishBySession(BasePublish):
         return sorted(git(self.dir, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).split())
 
     def gate(self, sha, author):
-        """La porte juge le commit fusionné `sha` contre son parent, au nom de l'auteur de la PR."""
+        """The gate judges the merged commit `sha` against its parent, in the name of the PR's author."""
         parent = git(self.dir, "rev-parse", f"{sha}~1").strip()
         git(self.dir, "switch", "-q", "--detach", sha)
         try:
@@ -4318,7 +4318,7 @@ class TestPublishBySession(BasePublish):
                 "--summary", "Essai.")
         return reserved
 
-    # --- Critère 1 : une session de gestes indépendants, une PR que la porte accepte ---
+    # --- Criterion 1: a session of independent gestures, one PR that the gate accepts ---
 
     def test_two_reviews_two_votes_and_a_note_in_one_pr_the_gate_accepts(self):
         self.submit_0099("alice")
@@ -4346,8 +4346,8 @@ class TestPublishBySession(BasePublish):
                          ("", "main"))
 
     def test_a_session_beyond_a_per_pr_cap_is_refused_before_any_pr(self):
-        """Onze notes : plus que le plafond par PR de la porte (notes.max_per_pr, 10). bee publish refuse avant tout appel à git ou
-        gh, comme la porte refuserait la PR ; dix passent ; le conseil n'est plafonné ni ici ni à la porte."""
+        """Eleven notes: more than the gate's per-PR cap (notes.max_per_pr, 10). bee publish refuses before any call to git or
+        gh, as the gate would refuse the PR; ten pass; the council is capped neither here nor at the gate."""
         self.a("2026-10-27T12:30:00Z")
         for i in range(11):
             self.ok("note", "miniz-9002", "--user", "chloe", "--text", f"Note de session numéro {i + 1}.")
@@ -4370,12 +4370,12 @@ class TestPublishBySession(BasePublish):
                 self.ok("publish", "--title", f"Session {who_is}", "--dry-run")
                 git(self.dir, "checkout", "-q", "--", ".")
 
-    # --- Critère 2 : une réservation et sa soumission préparées ensemble, deux PR dans l'ordre ---
+    # --- Criterion 2: a reservation and its submission prepared together, two PRs in order ---
 
     def test_reservation_and_submission_prepared_together_two_prs_in_order(self):
-        """La réservation part seule, telle que bee take l'a écrite, puis, fusionnée, la soumission avec la note de la session ;
-        la porte accepte chacune sur le main que laisse la précédente, et refuse les deux en une PR. Main a bougé pendant la
-        session (une note de bruno sur la même tâche, fusionnée ailleurs) : la soumission est rejouée dessus, la note reste."""
+        """The reservation goes alone, as bee take wrote it, then, once merged, the submission with the session's note; the gate
+        accepts each on the main the previous one leaves, and refuses both in one PR. Main moved during the session (a note by
+        bruno on the same task, merged elsewhere): the submission is replayed on it, the note stays."""
         base = git(self.dir, "rev-parse", "HEAD").strip()
         elsewhere = self.root / "elsewhere"
         subprocess.run(["git", "clone", "-q", str(self.root / "distant.git"), str(elsewhere)], check=True)
@@ -4408,8 +4408,8 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(git(self.dir, "status", "--porcelain"), "")
 
     def test_parallel_registration_and_submission_prepared_together(self):
-        """L'autre engagement : bruno s'inscrit en parallèle sur la tâche d'alice et soumet sans publier entre les deux ; son
-        inscription part d'abord, seule, puis sa soumission ; la porte accepte chacune, dans l'ordre."""
+        """The other engagement: bruno registers in parallel on alice's task and submits without publishing in between; his
+        registration goes first, alone, then his submission; the gate accepts each, in order."""
         self.ok("take", "miniz-0099", "--user", "alice")
         base = self.on_main("alice réserve")
         self.a("2026-10-27T12:10:00Z")
@@ -4426,9 +4426,9 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(self.task("miniz-0099")["reservation"]["user"], "alice")
 
     def test_engagement_refused_or_pending_nothing_else_goes(self):
-        """Refusé ou pas encore fusionné, l'engagement part seul : la soumission ne part pas, et les changements de la session
-        reviennent sur le disque, tels quels. En attente, la recette imprimée mène, une fois la fusion faite, à la soumission
-        seule, que la porte accepte. Sans attendre, des gestes dépendants ne partent pas ; à blanc, les deux PR sont annoncées."""
+        """Refused or not merged yet, the engagement goes alone: the submission does not go, and the session's changes come back
+        to disk, as they are. While waiting, the printed recipe leads, once the merge is done, to the submission alone, which
+        the gate accepts. Without waiting, dependent gestures do not go; in a dry run, both PRs are announced."""
         self.prepare_reservation_and_submission()
         before = ({c: (self.dir / c).read_bytes() for c in (self.SUBMISSION, self.TASK)}, git(self.dir, "status", "--porcelain"))
         on_disk = lambda: ({c: (self.dir / c).read_bytes() for c in (self.SUBMISSION, self.TASK)},  # noqa: E731
@@ -4466,18 +4466,18 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(submission, "alice", "submission")
         self.assertEqual(git(self.dir, "status", "--porcelain"), "")
 
-    # --- Revue de ruche-0129 : rien ne reste caché sur une branche locale ; une date hors de la fenêtre ; les plafonds ---
+    # --- Review of ruche-0129: nothing stays hidden on a local branch; a date outside the window; the caps ---
 
     def disk_state(self, *others):
-        """Les changements de la session sur le disque : le contenu des fichiers (None : absent), et git status."""
+        """The session's changes on disk: the files' content (None: absent), and git status."""
         paths = (self.SUBMISSION, self.TASK, *others)
         return ({c: (self.dir / c).read_bytes() if (self.dir / c).exists() else None for c in paths},
                 git(self.dir, "status", "--porcelain"))
 
     def test_interrupted_while_waiting_nothing_is_hidden_and_the_rerun_follows_the_same_pr(self):
-        """Bloquant : interrompu pendant l'attente de l'engagement, bee publish laisse les changements de la session sur le disque,
-        pas sur une branche locale ; relancé pendant que la PR attend, il la suit sans en ouvrir une seconde ; elle fusionnée, il
-        publie le reste, que la porte accepte."""
+        """Blocking: interrupted while waiting for the engagement, bee publish leaves the session's changes on disk, not on a
+        local branch; rerun while the PR waits, it follows it without opening a second one; once that one is merged, it
+        publishes the rest, which the gate accepts."""
         self.prepare_reservation_and_submission()
         before = self.disk_state()
         self.mode.write_text("ouverte", encoding="utf-8")
@@ -4500,9 +4500,9 @@ class TestPublishBySession(BasePublish):
         self.assertEqual((git(self.dir, "status", "--porcelain"), self.task("miniz-0099")["status"]), ("", "in_review"))
 
     def test_conflict_after_the_engagement_the_changes_come_back_to_disk(self):
-        """Bloquant : l'engagement fusionné, le reste ne s'applique plus sur main (une note de bruno, fusionnée ailleurs, au même
-        endroit que celle de la session) : rien d'autre ne part, les changements de la session reviennent sur le disque, tels
-        quels, et bee publish dit lesquels ; main est à jour, avec l'engagement."""
+        """Blocking: with the engagement merged, the rest no longer applies on main (a note by bruno, merged elsewhere, at the
+        same place as the session's): nothing else goes, the session's changes come back to disk, as they are, and bee publish
+        says which; main is up to date, with the engagement."""
         note = "tasks/miniz/miniz-9002.yaml"
         elsewhere = self.root / "elsewhere"
         subprocess.run(["git", "clone", "-q", str(self.root / "distant.git"), str(elsewhere)], check=True)
@@ -4527,8 +4527,8 @@ class TestPublishBySession(BasePublish):
         self.assertIn("bruno", git(self.dir, "show", f"HEAD:{note}"))
 
     def test_push_refused_the_changes_come_back_to_disk(self):
-        """À chaque échec, pas seulement pendant l'attente : une poussée refusée laisse la session sur le disque, listée, et non sur
-        la branche locale de la PR, une seule PR comme deux."""
+        """On every failure, not only while waiting: a refused push leaves the session on disk, listed, and not on the PR's
+        local branch, with one PR as with two."""
         for take in (False, True):
             with self.subTest(engagement=take):
                 git(self.dir, "switch", "-qf", "main")
@@ -4550,8 +4550,8 @@ class TestPublishBySession(BasePublish):
                                  ([], before, "main"))
 
     def test_a_change_made_while_waiting_is_not_lost(self):
-        """Pendant que l'engagement attend, la session est sur le disque : un geste ajouté là (une note) n'est pas écrasé quand
-        main se met à jour ; bee publish s'arrête, le laisse sur le disque, et relancé, publie la session avec lui."""
+        """While the engagement waits, the session is on disk: a gesture added there (a note) is not overwritten when main
+        updates; bee publish stops, leaves it on disk, and, rerun, publishes the session with it."""
         note = "tasks/miniz/miniz-9002.yaml"
         self.prepare_reservation_and_submission()
         self.mode.write_text("ouverte", encoding="utf-8")
@@ -4574,10 +4574,10 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(submission, "alice", "submission", "note")
 
     def test_a_date_outside_the_gate_window_is_refused_with_the_command_to_redate_it(self):
-        """Chaque date déclarée est l'heure de la PR, à 2 h près, jamais dans le futur : une session plus vieille est refusée avant
-        toute PR, avec la commande qui la redate ; la seconde PR d'un engagement compte avec l'attente (--timeout). Redatées, les
-        dates de la session suivent ensemble (engaged_since avec sa réservation) et la porte accepte les deux PR."""
-        self.prepare_reservation_and_submission()  # réservée à 12 h, soumise à 12 h 30
+        """Each declared date is the time of the PR, within 2 h, never in the future: an older session is refused before any
+        PR, with the command that redates it; an engagement's second PR counts the wait in (--timeout). Once redated, the
+        session's dates move together (engaged_since with its reservation) and the gate accepts both PRs."""
+        self.prepare_reservation_and_submission()  # reserved at 12:00, submitted at 12:30
         before = self.disk_state()
         self.a("2026-10-27T13:55:00Z")
         for options in ([], ["--redate"]):
@@ -4587,7 +4587,7 @@ class TestPublishBySession(BasePublish):
                           "never in the future; for the second PR, --timeout minutes later)", text)
             self.assertIn('bee publish --title "Soumission miniz-0099-c1" --redate', text)
         self.assertEqual((self.prs(), self.disk_state()), ([], before))
-        self.ok("publish", "--title", "Soumission miniz-0099-c1", "--dry-run", "--timeout", "4")  # 13 h 59 - 2 h <= 12 h
+        self.ok("publish", "--title", "Soumission miniz-0099-c1", "--dry-run", "--timeout", "4")  # 13:59 - 2 h <= 12:00
         self.a("2026-10-27T14:30:00Z")
         base = git(self.dir, "rev-parse", "HEAD").strip()
         text = self.ok("publish", "--title", "Soumission miniz-0099-c1", "--redate", "--interval", "0")
@@ -4600,15 +4600,15 @@ class TestPublishBySession(BasePublish):
         contribution = bee.read_yaml(self.dir / self.SUBMISSION)
         self.assertEqual((contribution["engaged_since"], contribution["submitted_at"]), ("2026-10-27T14:30:00Z",) * 2)
 
-    # --- ruche-0138 : redater, un second engagement, la PR retrouvée par sa branche, un état illisible, les fichiers de bee seuls ---
+    # --- ruche-0138: redating, a second engagement, the PR found by its branch, an unreadable state, bee's files only ---
 
     def state_file(self):
         return self.dir / ".git" / "bee-publish.json"
 
     def test_redate_leaves_an_existing_line_of_the_same_second(self):
-        """Critère 1 : la note de bruno, déjà sur main, et celle d'alice, de la même seconde : --redate ne change que la ligne
-        d'alice, et la porte accepte ; dans l'autre sens, la date d'alice, identique à celle de bruno, est vérifiée : sans
-        --redate, elle est refusée hors de la fenêtre."""
+        """Criterion 1: bruno's note, already on main, and alice's, from the same second: --redate changes only alice's line,
+        and the gate accepts; the other way round, alice's date, identical to bruno's, is checked: without --redate, it is
+        refused outside the window."""
         note = "tasks/miniz/miniz-9002.yaml"
         self.a("2026-10-27T12:00:00Z")
         self.ok("note", "miniz-9002", "--user", "bruno", "--text", "Piste : regarder la table de hachage.")
@@ -4628,9 +4628,9 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(notes, {"bruno": "2026-10-27T12:00:00Z", "alice": "2026-10-27T14:30:00Z"})
 
     def test_a_second_engagement_prepared_while_waiting_goes_after_in_its_own_pr(self):
-        """Critère 2 : pendant que la réservation de miniz-0099 attend, alice réserve et soumet miniz-9001 ; la relance suit la
-        première PR, sans en ouvrir une autre ni rien y ajouter ; elle fusionnée, la seconde réservation part seule, dans sa PR,
-        puis le reste ; la porte accepte chacune, dans l'ordre."""
+        """Criterion 2: while the reservation of miniz-0099 waits, alice reserves and submits miniz-9001; the rerun follows the
+        first PR, without opening another or adding anything to it; once that one is merged, the second reservation goes alone,
+        in its own PR, then the rest; the gate accepts each, in order."""
         self.prepare_reservation_and_submission()
         self.mode.write_text("ouverte", encoding="utf-8")
         self.a("2026-10-27T12:40:00Z")
@@ -4662,8 +4662,8 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(git(self.dir, "status", "--porcelain"), "")
 
     def test_without_state_file_the_rerun_finds_the_pr_by_its_branch(self):
-        """Critère 3 : le fichier d'état perdu (réponse au POST perdue, interruption avant son écriture), la relance retrouve sur
-        GitHub la PR d'engagement ouverte par sa branche, la suit et n'en ouvre aucune autre ; fusionnée, le reste part."""
+        """Criterion 3: with the state file lost (response to the POST lost, interruption before it was written), the rerun
+        finds on GitHub the open engagement PR by its branch, follows it and opens no other; once it is merged, the rest goes."""
         self.prepare_reservation_and_submission()
         self.mode.write_text("ouverte", encoding="utf-8")
         self.assertEqual(self.bee("publish", "--title", "Soumission miniz-0099-c1", "--timeout", "0", "--interval", "0")[0], 2)
@@ -4683,8 +4683,8 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(submission, "alice", "submission")
 
     def test_an_unreadable_state_file_stops_everything_before_writing(self):
-        """Critère 4 : un fichier d'état illisible arrête bee publish avec un message clair, sans trace : rien d'écrit (pas même
-        les dates qu'aurait remises --redate), rien de poussé, aucun appel à gh ; supprimé, la publication suit son cours."""
+        """Criterion 4: an unreadable state file stops bee publish with a clear message, without a trace: nothing written (not
+        even the dates --redate would have reset), nothing pushed, no call to gh; once it is deleted, publishing runs its course."""
         self.prepare_reservation_and_submission()
         before = self.disk_state()
         self.a("2026-10-27T14:31:00Z")
@@ -4707,9 +4707,9 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(self.prs(), ["Reservation miniz-0099", "Soumission miniz-0099-c1"])
 
     def test_a_foreign_file_is_never_published(self):
-        """Critère 5 : un fichier que bee n'a pas écrit (une tâche retouchée à la main, un brouillon dans measurements/) n'est ni
-        indexé ni publié, une PR comme deux, y compris quand l'attente de l'engagement se termine ; il reste sur le disque, tel
-        quel, et bee publish le nomme ; après un échec, rien ne reste dans l'index."""
+        """Criterion 5: a file bee did not write (a task touched up by hand, a draft in measurements/) is neither staged nor
+        published, with one PR as with two, including when the wait for the engagement ends; it stays on disk, as it is, and bee
+        publish names it; after a failure, nothing is left in the index."""
         foreign_ones = {"tasks/miniz/miniz-9002.yaml": None, "measurements/brouillon.txt": b"mes essais\n"}
         foreign_ones["tasks/miniz/miniz-9002.yaml"] = (self.dir / "tasks/miniz/miniz-9002.yaml").read_bytes() + b"# brouillon\n"
         for c, bytes_count in foreign_ones.items():
@@ -4733,8 +4733,8 @@ class TestPublishBySession(BasePublish):
                           "--untracked-files=all").splitlines())), ("", [" M tasks/miniz/miniz-9002.yaml", "?? measurements/brouillon.txt"]))
 
     def test_an_already_indexed_file_is_never_published(self):
-        """Revue de ruche-0138 (bloquant) : un fichier étranger déjà dans l'index (un brouillon ajouté, une suppression indexée)
-        n'entre dans aucun commit de bee publish, une PR comme deux ; il reste sur le disque."""
+        """Review of ruche-0138 (blocking): a foreign file already in the index (an added draft, a staged deletion) enters no
+        commit of bee publish, with one PR as with two; it stays on disk."""
         note, draft = "tasks/miniz/miniz-9002.yaml", "measurements/brouillon.txt"
         for engagement in (False, True):
             with self.subTest(engagement=engagement):
@@ -4760,9 +4760,9 @@ class TestPublishBySession(BasePublish):
                 self.assertEqual(((self.dir / draft).read_bytes(), (self.dir / note).exists()), (b"mes essais\n", False))
 
     def test_lost_state_and_second_engagement_the_first_is_never_in_two_prs(self):
-        """Revue de ruche-0138 : la réservation de miniz-0099 attend, alice prépare celle de miniz-9001, le fichier d'état est
-        perdu ; la relance retrouve la PR de la première par sa branche (une par engagement) et la suit, sans en ouvrir une autre ;
-        fusionnée, la seconde part seule, puis le reste."""
+        """Review of ruche-0138: the reservation of miniz-0099 waits, alice prepares that of miniz-9001, the state file is lost;
+        the rerun finds the first one's PR by its branch (one per engagement) and follows it, without opening another; once that
+        one is merged, the second goes alone, then the rest."""
         self.prepare_reservation_and_submission()
         self.mode.write_text("ouverte", encoding="utf-8")
         self.assertEqual(self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")[0], 2)
@@ -4785,8 +4785,8 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(rest_of, "alice", "submission")
 
     def test_lost_state_and_redated_the_waiting_pr_is_found(self):
-        """Revue de ruche-0138 : la PR de l'engagement attend, le fichier d'état est perdu, et la relance redate la session
-        trois heures plus tard : la PR qui attend est retrouvée par sa branche, jamais doublée ; fusionnée, le reste part."""
+        """Review of ruche-0138: the engagement's PR waits, the state file is lost, and the rerun redates the session three
+        hours later: the waiting PR is found by its branch, never duplicated; once it is merged, the rest goes."""
         self.prepare_reservation_and_submission()
         self.mode.write_text("ouverte", encoding="utf-8")
         self.assertEqual(self.bee("publish", "--title", "Session alice", "--timeout", "0", "--interval", "0")[0], 2)
@@ -4801,8 +4801,8 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(self.prs(), ["Reservation miniz-0099", "Session alice"])
 
     def test_a_touched_up_file_that_main_changes_stops_with_a_message(self):
-        """Revue de ruche-0138 : l'engagement fusionné, main change aussi un fichier retouché à la main : bee publish le dit,
-        sans toucher au fichier, garde le fichier d'état et les changements de la session ; le fichier mis de côté, il reprend."""
+        """Review of ruche-0138: with the engagement merged, main also changes a file touched up by hand: bee publish says so,
+        without touching the file, and keeps the state file and the session's changes; once the file is set aside, it resumes."""
         note = "tasks/miniz/miniz-9002.yaml"
         self.prepare_reservation_and_submission()
         touched_up = (self.dir / note).read_bytes() + b"# brouillon\n"
@@ -4827,8 +4827,8 @@ class TestPublishBySession(BasePublish):
         self.assertEqual(self.prs(), ["Reservation miniz-0099", "Session alice"])
 
     def test_a_symbolic_link_is_never_followed(self):
-        """Revue de ruche-0138 : un lien symbolique à un chemin que bee écrirait (un fichier de la session, un de ses dossiers, le
-        fichier d'état) est refusé avant toute écriture ; un fichier devenu lien pendant l'attente n'est pas réécrit à travers."""
+        """Review of ruche-0138: a symbolic link at a path bee would write (a file of the session, one of its folders, the state
+        file) is refused before any write; a file that became a link during the wait is not rewritten through it."""
         self.prepare_reservation_and_submission()
         outside_one = self.root / "dehors"
         outside_one.mkdir()
@@ -4852,7 +4852,7 @@ class TestPublishBySession(BasePublish):
                 self.assertEqual(code, 1, text)
                 self.assertIn(f"symbolic link refused, bee neither writes nor reads through one: {link if '.git' not in link else ''}", text)
                 self.assertEqual((after, self.log_text.exists()), (before, False))
-        self.mode.write_text("ouverte", encoding="utf-8")  # pendant l'attente, la tâche devient un lien : rien n'est écrit à travers
+        self.mode.write_text("ouverte", encoding="utf-8")  # during the wait, the task becomes a link: nothing is written through it
         target = outside_one / "task.yaml"
 
         def while_waiting(_):
@@ -4868,7 +4868,7 @@ class TestPublishBySession(BasePublish):
         self.assertIn("status: in_review", target.read_text(encoding="utf-8"))
 
     def test_the_address_of_a_state_file_prints_neutralized(self):
-        """Revue de ruche-0138 : l'adresse de la PR lue dans le fichier d'état passe par montrer : aucune commande de workflow."""
+        """Review of ruche-0138: the PR's address read from the state file goes through show_error: no workflow command."""
         self.prepare_reservation_and_submission()
         self.a("2026-10-27T12:40:00Z")
         self.mode.write_text("ouverte", encoding="utf-8")
@@ -4882,10 +4882,10 @@ class TestPublishBySession(BasePublish):
         self.assertNotIn("\n::error", text)
 
     def test_argument_and_creation_caps_as_at_the_gate(self):
-        """bee publish compte les plafonds par PR comme la porte : les arguments, pour tous, le conseil compris
-        (agora.arguments_max_per_pr, ramené ici à 3 : à 20, les plafonds sur 24 h d'un auteur mordent avant) ; les tâches
-        proposées, pour chacun sauf le conseil. Au-delà, bee publish refuse avant toute PR, comme la porte ; au plafond, les deux
-        acceptent."""
+        """bee publish counts the per-PR caps as the gate does: the arguments, for everyone, the council included
+        (agora.arguments_max_per_pr, brought down to 3 here: at 20, an author's 24 h caps bite first); the proposed tasks, for
+        everyone but the council. Beyond them, bee publish refuses before any PR, as the gate does; at the cap, both
+        accept."""
         config = self.dir / "bee.yaml"
         config.write_text(config.read_text(encoding="utf-8").replace("arguments_max_per_pr: 20", "arguments_max_per_pr: 3"),
                           encoding="utf-8")
@@ -5082,7 +5082,7 @@ class TestFork(BaseTest):
         path.write_text(path.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")
         (self.fork / "manifests").mkdir()
         (self.fork / "manifests/miniz-0099.yaml").write_text(FILLED_MANIFEST, encoding="utf-8")
-        # Un ancien manifeste à la racine, d'une autre tâche déjà intégrée, ne gêne pas.
+        # An old manifest at the root, from another task already integrated, does not get in the way.
         (self.fork / "CONTRIBUTION.yaml").write_text(FILLED_MANIFEST.replace("miniz-0099", "miniz-0016"), encoding="utf-8")
         self.commit()
         code, text = self.verify()
@@ -5124,7 +5124,7 @@ class TestFork(BaseTest):
 
 
 class BaseParallel(BaseTest):
-    """Outils communs aux tests du travail en parallèle déclaré et de la course entre contributions (ruche-0001)."""
+    """Tools shared by the tests of declared parallel work and of the race between contributions (ruche-0001)."""
 
     def a(self, instant):
         os.environ["BEE_NOW"] = instant
@@ -5166,8 +5166,8 @@ class BaseParallel(BaseTest):
         return self.bee("check-acceptance", cid)
 
     def race_of_two(self, parallel_gain, holder_gain):
-        """alice réserve à 12 h ; bruno s'inscrit en parallèle à 13 h et soumet c1 à 14 h ; alice soumet c2 à 17 h.
-        Clôture de la course : 14 h + 96 h = 2026-10-31T14:00:00Z."""
+        """alice reserves at 12:00; bruno registers in parallel at 13:00 and submits c1 at 14:00; alice submits c2 at 17:00.
+        Close of the race: 14:00 + 96 h = 2026-10-31T14:00:00Z."""
         self.close_gate()
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         self.a("2026-10-27T13:00:00Z")
@@ -5182,7 +5182,7 @@ class BaseParallel(BaseTest):
 
 
 class TestParallelWork(BaseParallel):
-    """ruche-0001 : s'inscrire en parallèle, se retirer, soumettre, promotion, expiration (R7, R8, R11)."""
+    """ruche-0001: registering in parallel, withdrawing, submitting, promotion, expiry (R7, R8, R11)."""
 
     def test_parallel_registration_on_a_reserved_task(self):
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
@@ -5214,13 +5214,13 @@ class TestParallelWork(BaseParallel):
             self.assertEqual(self.bee("take", t, "--user", "alice" if t != "miniz-0090" else "chloe")[0], 0, t)
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "bruno")[0], 0)
         self.parallel_one("miniz-0090", "bruno")
-        self.parallel_one("miniz-0091", "bruno")  # 1 réservation + 2 inscriptions = 3
+        self.parallel_one("miniz-0091", "bruno")  # 1 reservation + 2 registrations = 3
         self.assertIn("R8", self.parallel_one("miniz-0092", "bruno", expected=1))
         code, text = self.bee("take", "miniz-9001", "--user", "bruno")
         self.assertEqual(code, 1, "a parallel registration also counts against a new reservation")
         self.assertIn("R8", text)
         self.valid_one()
-        # Une inscription écrite à la main au-delà de R8 rend le registre invalide.
+        # A registration written by hand beyond R8 makes the registry invalid.
         bee.modify_task(self.dir / "tasks/miniz/miniz-0092.yaml",
                            parallel=[{"user": "bruno", "since": "2026-10-27T12:00:00Z"}])
         code, text = self.bee("validate")
@@ -5264,7 +5264,7 @@ class TestParallelWork(BaseParallel):
         self.valid_one()
 
     def test_deterministic_promotion(self):
-        # À date égale, la première inscrite de la liste ; sinon la plus ancienne, où qu'elle soit dans la liste.
+        # At equal dates, the first registered in the list; otherwise the oldest, wherever it is in the list.
         self.assertEqual(bee.oldest([{"user": "b", "since": "2026-10-27T13:00:00Z"},
                                           {"user": "c", "since": "2026-10-27T13:00:00Z"}])["user"], "b")
         self.assertEqual(bee.oldest([{"user": "b", "since": "2026-10-27T13:00:00Z"},
@@ -5272,19 +5272,19 @@ class TestParallelWork(BaseParallel):
         self.assertIsNone(bee.oldest([]))
 
     def test_r7_expiration_of_registrations_and_promotion(self):
-        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27/10 12 h
+        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27 Oct 12:00
         self.a("2026-10-27T13:00:00Z")
         self.parallel_one("miniz-0099", "chloe")
         self.a("2026-10-27T22:00:00Z")
         self.parallel_one("miniz-0099", "bruno")
-        self.a("2026-10-30T12:30:00Z")  # alice : 72,5 h ; chloe : 71,5 h
+        self.a("2026-10-30T12:30:00Z")  # alice: 72.5 h; chloe: 71.5 h
         self.assertEqual(self.bee("release-expired")[0], 0)
         t = self.task("miniz-0099")
         self.assertEqual(t["reservation"], {"user": "chloe", "since": "2026-10-27T13:00:00Z"})
         self.assertEqual([p["user"] for p in t["parallel"]], ["bruno"])
         self.assertIn("R7", t["notes"][-1]["text"])
         self.valid_one()
-        self.a("2026-10-30T13:30:00Z")  # chloe, titulaire à la date de son inscription, expire à 13 h
+        self.a("2026-10-30T13:30:00Z")  # chloe, holder as of her registration date, expires at 13:00
         self.bee("release-expired")
         t = self.task("miniz-0099")
         self.assertEqual(t["reservation"], {"user": "bruno", "since": "2026-10-27T22:00:00Z"})
@@ -5296,7 +5296,7 @@ class TestParallelWork(BaseParallel):
         self.valid_one()
 
     def test_expiration_of_a_lone_registration(self):
-        cid = self.submit_0099()  # alice ; la tâche passe en relecture
+        cid = self.submit_0099()  # alice; the task moves to review
         self.parallel_one("miniz-0099", "bruno")
         self.a("2026-10-30T11:59:00Z")
         self.bee("release-expired")
@@ -5358,7 +5358,7 @@ class TestParallelWork(BaseParallel):
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         self.parallel_one("miniz-0099", "bruno")
         c1 = self.submit("miniz-0099", "bruno", 99101)
-        # La PR de bruno est fermée pendant que le titulaire travaille : la tâche reste à alice.
+        # bruno's PR is closed while the holder works: the task stays with alice.
         self.assertEqual(self.bee("close", c1, "--reason", "PR closed without merge.")[0], 0)
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["reservation"]["user"]), ("reserved", "alice"))
@@ -5380,7 +5380,7 @@ class TestParallelWork(BaseParallel):
         self.valid_one()
 
     def test_swarm_show_and_balance_show_the_parallel_work(self):
-        os.environ["BEE_NOW"] = "2027-06-01T12:00:00Z"  # seule l'activité du test compte dans la fenêtre du cap
+        os.environ["BEE_NOW"] = "2027-06-01T12:00:00Z"  # only the test's activity counts in the balance's window
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         self.parallel_one("miniz-0099", "bruno")
         table_of = json.loads(self.bee("swarm", "--json")[1])
@@ -5451,19 +5451,19 @@ class TestParallelWork(BaseParallel):
 
 
 class TestRace(BaseParallel):
-    """R3, contributions concurrentes : la meilleure seulement, choix déterministe, attentes bornées, écartées non pénalisées."""
+    """R3, competing contributions: the best one only, a deterministic choice, bounded waits, set-aside ones not penalized."""
 
     def test_the_best_ranked_is_integrated_and_the_other_set_aside(self):
         c1, c2 = self.race_of_two(0.03, 0.05)
         self.review(c1, "chloe", "bidji29")
         self.review(c2, "chloe", "bidji29")
-        self.a("2026-10-28T18:00:00Z")  # les deux fenêtres sont écoulées
+        self.a("2026-10-28T18:00:00Z")  # both windows have elapsed
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn(f"the rival {c2} is ranked better", text)
         code, text = self.acceptance(c2)
         self.assertEqual(code, 0, text)
-        # Faire intégrer la moins bonne : refusé, rien n'est écrit.
+        # Having the worse one integrated: refused, nothing is written.
         code, text = self.bee("integrate", c1)
         self.assertEqual(code, 1, text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
@@ -5477,7 +5477,7 @@ class TestRace(BaseParallel):
         self.assertEqual((t["status"], t["contribution"]), ("integrated", c2))
         self.assertIn(f"Contribution kept: {c2}", t["notes"][-1]["text"])
         self.valid_one()
-        # Écartée n'est pas refusée : ni l'auteur ni ses relecteurs ne perdent quoi que ce soit.
+        # Set aside is not refused: neither the author nor its reviewers lose anything.
         levels = bee.compute_levels(bee.Registry(self.dir))
         self.assertEqual(levels["chloe"]["reviews"], 1, "+1 for c2 integrated, 0 for c1 set aside (a cancelled one would have cost 1)")
         self.assertEqual(levels["bruno"]["integrated"], 0)
@@ -5489,7 +5489,7 @@ class TestRace(BaseParallel):
 
     def test_an_engaged_one_before_the_submission_delays_until_its_expiry(self):
         self.close_gate()
-        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27/10 12 h
+        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27 Oct 12:00
         self.a("2026-10-27T13:00:00Z")
         self.parallel_one("miniz-0099", "bruno")
         self.a("2026-10-27T14:00:00Z")
@@ -5501,7 +5501,7 @@ class TestRace(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn("alice (holder)", text)
         self.assertIn("before this submission", text)
-        self.a("2026-10-30T12:01:00Z")  # la réservation d'alice a expiré (R7), même avant le passage du robot
+        self.a("2026-10-30T12:01:00Z")  # alice's reservation has expired (R7), even before the robot's pass
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
         self.bee("release-expired")
@@ -5511,7 +5511,7 @@ class TestRace(BaseParallel):
 
     def test_a_registration_after_the_submission_does_not_delay(self):
         self.close_gate()
-        c1 = self.submit_0099()  # alice, 27/10 12 h
+        c1 = self.submit_0099()  # alice, 27 Oct 12:00
         self.a("2026-10-27T13:00:00Z")
         self.parallel_one("miniz-0099", "chloe")
         self.verdict(c1, 0.05)
@@ -5528,21 +5528,21 @@ class TestRace(BaseParallel):
         self.valid_one()
 
     def test_a_ci_that_never_concludes_delays_at_most_96_h(self):
-        # Revues adverses I4 et N3 : une concurrente sans verdict dont l'auteur travaillait déjà sur la tâche avant la
-        # soumission de c1 est attendue (une CI lente ne fait pas perdre la course) jusqu'à soumission de c1 + 96 h ;
-        # ensuite, sans verdict, elle n'est pas intégrable : elle ne retient plus c1.
+        # Adversarial reviews I4 and N3: a competitor without a verdict whose author was already working on the task before
+        # c1's submission is waited for (a slow CI does not lose the race) until c1's submission + 96 h;
+        # after that, without a verdict, it is not integrable: it no longer holds c1 back.
         self.close_gate()
         self.a("2026-10-27T11:00:00Z")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         self.a("2026-10-27T11:30:00Z")
-        self.parallel_one("miniz-0099", "chloe")  # engagée avant la soumission de c1
+        self.parallel_one("miniz-0099", "chloe")  # engaged before c1's submission
         self.a("2026-10-27T12:00:00Z")
-        c1 = self.submit("miniz-0099", "alice", 99007)  # protégée jusqu'au 31/10 à 12 h
+        c1 = self.submit("miniz-0099", "alice", 99007)  # protected until 31 Oct at 12:00
         self.a("2026-10-27T13:00:00Z")
-        c2 = self.submit("miniz-0099", "chloe", 99102)  # jamais de verdict
+        c2 = self.submit("miniz-0099", "chloe", 99102)  # never a verdict
         self.verdict(c1, 0.05)
         self.review(c1, "bruno", "bidji29")
-        self.a("2026-10-29T12:00:00Z")  # les deux fenêtres sont écoulées
+        self.a("2026-10-29T12:00:00Z")  # both windows have elapsed
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn(f"the rival {c2} awaits the verdict of its CI", text)
@@ -5558,14 +5558,14 @@ class TestRace(BaseParallel):
 
     def test_repeated_submissions_do_not_delay_beyond_96_h(self):
         self.close_gate()
-        c1 = self.submit_0099()  # alice, 27/10 12 h : protégée jusqu'au 31/10 à 12 h (soumission + 96 h)
+        c1 = self.submit_0099()  # alice, 27 Oct 12:00: protected until 31 Oct at 12:00 (submission + 96 h)
         self.verdict(c1, 0.05)
         self.review(c1, "bruno", "bidji29")
         previous_value = None
         for number_of, instant in enumerate(("2026-10-27T13:00:00Z", "2026-10-28T12:55:00Z", "2026-10-29T12:55:00Z",
                                           "2026-10-30T12:55:00Z", "2026-10-31T11:00:00Z"), start=99200):
             self.a(instant)
-            if previous_value:  # chloe ferme sa PR (sans verdict), se réinscrit et soumet de nouveau
+            if previous_value:  # chloe closes her PR (without a verdict), registers again and submits again
                 self.assertEqual(self.bee("close", previous_value, "--reason", "PR closed without merge.")[0], 0)
             self.parallel_one("miniz-0099", "chloe")
             previous_value = self.submit("miniz-0099", "chloe", number_of)
@@ -5578,7 +5578,7 @@ class TestRace(BaseParallel):
         self.assertEqual(code, 0, f"c1's protection ends at its submission + 96 h, whatever happens\n{text}")
 
     def test_the_bounds_of_a_contribution_depend_only_on_it(self):
-        # Revue adverse N9 : plus de clôture commune à la tâche ; une soumission plus récente ne déplace rien.
+        # Adversarial review N9: no more close shared by the whole task; a more recent submission moves nothing.
         c1, c2 = self.race_of_two(0.03, 0.05)
         bounds = lambda c: tuple(bee.en_iso(x) for x in bee.wait_bounds(bee.Registry(self.dir), self.rec(c)))  # noqa: E731
         self.assertEqual(bounds(c1), ("2026-10-31T14:00:00Z", "2026-11-01T14:00:00Z"))
@@ -5591,15 +5591,15 @@ class TestRace(BaseParallel):
     def test_after_the_closure_only_the_integrable_ones_stay_in_the_race(self):
         c1, c2 = self.race_of_two(0.03, 0.20)
         self.review(c1, "chloe", "bidji29")
-        self.review(c2, "chloe", vote=False)  # une seule relecture, pas de vote : c2 ne remplit pas R3
+        self.review(c2, "chloe", vote=False)  # a single review, no vote: c2 does not meet R3
         self.a("2026-10-28T18:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn(f"{c2} is ranked better", text)
-        self.a("2026-10-31T14:00:00Z")  # clôture de la course
+        self.a("2026-10-31T14:00:00Z")  # close of the race
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
-        # Si c2 devient intégrable, c'est elle, mieux classée, qui passe.
+        # If c2 becomes integrable, it is c2, ranked higher, that passes.
         self.review(c2, "bidji29")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
@@ -5632,7 +5632,7 @@ class TestRace(BaseParallel):
         self.assertIn("in the race", text)
         self.assertEqual(self.bee("vote", c2, "--user", "bruno", "--value", "-1")[0], 1)
         self.assertEqual(self.bee("review", c2, *self.read_value(c2), "--user", "bruno", "--opinion", "favorable", "--reason", "Bonne approche, je la reconnais.")[0], 0)
-        # Écrits à la main, l'avis défavorable d'une gardienne concurrente et son vote ne comptent pas.
+        # Written by hand, a competing guardian's unfavorable opinion and her vote do not count.
         path = self.dir / f"contributions/miniz/{c1}.yaml"
         rec = bee.read_yaml(path)
         rec["reviews"].append({"reviewer": "alice", "opinion": "unfavorable", "reason": "Bloquée par la concurrente.", "at": "2026-10-27T18:00:00Z"})
@@ -5645,8 +5645,8 @@ class TestRace(BaseParallel):
 
 
     def test_an_unfavorable_opinion_does_not_count_while_its_author_is_in_the_race(self):
-        # Revue adverse I1 : l'avis défavorable d'un participant engagé est ignoré quelle que soit sa date ; il recompte
-        # dès qu'il quitte la course.
+        # Adversarial review I1: an engaged participant's unfavorable opinion is ignored whatever its date; it counts again
+        # as soon as they leave the race.
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: chloe\n", encoding="utf-8")
         c1, c2 = self.race_of_two(0.03, 0.05)
         self.a("2026-10-27T18:00:00Z")
@@ -5655,9 +5655,9 @@ class TestRace(BaseParallel):
         blocked = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), c1)[2] if "unfavorable review by chloe" in r]  # noqa: E731
         self.assertTrue(blocked(), "not engaged yet: her opinion blocks")
         self.a("2026-10-27T19:00:00Z")
-        self.parallel_one("miniz-0099", "chloe", expected=1)  # qui a jugé la course n'y entre plus
+        self.parallel_one("miniz-0099", "chloe", expected=1)  # whoever has judged the race no longer enters it
         self.assertTrue(blocked(), "still out of the race: her opinion blocks")
-        # Engagée malgré tout (inscription écrite hors de l'outil) : son avis défavorable, même antérieur, ne compte plus.
+        # Engaged anyway (registration written outside the tool): her unfavorable opinion, even an earlier one, no longer counts.
         bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",
                            parallel=[{"user": "chloe", "since": "2026-10-27T19:00:00Z"}])
         self.assertFalse(blocked(), "engaged in the race: her unfavorable opinion, even an earlier one, no longer counts")
@@ -5668,7 +5668,7 @@ class TestRace(BaseParallel):
 
 
 class TestParallelPullRequests(BaseParallel):
-    """check_pr : chaque transition du travail en parallèle est en libre-service et contrôlée ; chaque attaque est refusée."""
+    """check_pr: each transition of parallel work is self-service and checked; each attack is refused."""
 
     def setUp(self):
         super().setUp()
@@ -5700,14 +5700,14 @@ class TestParallelPullRequests(BaseParallel):
         return self.dir / f"tasks/miniz/{task}.yaml"
 
     def main_reserved_with_registered(self, *registered_ones):
-        """Sur main : alice titulaire depuis 12 h, puis chaque inscrit une heure après le précédent."""
+        """On main: alice holder since 12:00, then each registrant one hour after the previous one."""
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         for i, who_is in enumerate(registered_ones, start=1):
             self.a(f"2026-10-27T{12 + i}:00:00Z")
             self.parallel_one("miniz-0099", who_is)
         self.commit("état de départ")
 
-    # --- Transitions légitimes : fusion automatique ---
+    # --- Legitimate transitions: automatic merge ---
 
     def test_parallel_registration_self_service_and_forged_entry(self):
         self.main_reserved_with_registered()
@@ -5732,7 +5732,7 @@ class TestParallelPullRequests(BaseParallel):
         self.submit("miniz-0099", "bruno", 99101)
         self.commit()
         self.self_service("bruno", "parallel_submission")
-        self.refused("chloe", "is not registered in parallel")  # soumettre au nom d'un autre
+        self.refused("chloe", "is not registered in parallel")  # submitting in someone else's name
 
     def test_self_service_promotion(self):
         self.main_reserved_with_registered("bruno", "chloe")
@@ -5741,7 +5741,7 @@ class TestParallelPullRequests(BaseParallel):
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "alice")[0], 0)
         self.commit()
         self.self_service("alice", "promotion")
-        self.refused("bruno", "only the holder (alice) releases their reservation")  # se promouvoir soi-même
+        self.refused("bruno", "only the holder (alice) releases their reservation")  # promoting oneself
 
     def test_promotion_by_the_robot_after_expiry(self):
         self.main_reserved_with_registered("bruno")
@@ -5751,7 +5751,7 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.assertEqual(self.task("miniz-0099")["reservation"]["user"], "bruno")
         self.assertEqual(self.verify("github-actions[bot]")[0], 0)
-        self.refused("bruno", "only the holder (alice)")  # même après l'expiration, seul le robot la constate
+        self.refused("bruno", "only the holder (alice)")  # even after the expiry, only the robot records it
 
     def test_submission_by_the_holder_and_release_to_review(self):
         self.main_reserved_with_registered("bruno")
@@ -5772,7 +5772,7 @@ class TestParallelPullRequests(BaseParallel):
         self.self_service("alice", "submission")
         self.assertEqual([p["user"] for p in self.task("miniz-0099")["parallel"]], ["chloe"])
 
-    # --- Attaques ---
+    # --- Attacks ---
 
     def test_attack_backdate_own_registration(self):
         self.main_reserved_with_registered("chloe")
@@ -5783,7 +5783,7 @@ class TestParallelPullRequests(BaseParallel):
         self.refused("bruno", "dated at the time of the PR")
 
     def test_attack_register_before_the_reservation_within_the_tolerance(self):
-        # Dans la tolérance de 2 h, mais avant la réservation d'alice : bruno paraîtrait engagé avant elle.
+        # Within the 2 h tolerance, but before alice's reservation: bruno would appear engaged before her.
         self.main_reserved_with_registered()
         self.branch()
         self.a("2026-10-27T12:30:00Z")
@@ -5792,13 +5792,13 @@ class TestParallelPullRequests(BaseParallel):
         self.refused("bruno", "cannot be earlier than the reservation")
 
     def test_attack_submission_earlier_than_own_registration(self):
-        self.main_reserved_with_registered("bruno")  # bruno inscrit à 13 h
+        self.main_reserved_with_registered("bruno")  # bruno registered at 13:00
         self.branch()
         self.a("2026-10-27T13:30:00Z")
         cid = self.submit("miniz-0099", "bruno", 99101)
         path = self.dir / f"contributions/miniz/{cid}.yaml"
         rec = bee.read_yaml(path)
-        rec["submitted_at"] = "2026-10-27T11:45:00Z"  # avant la réservation d'alice : pour ne pas l'attendre (R3)
+        rec["submitted_at"] = "2026-10-27T11:45:00Z"  # before alice's reservation: so as not to wait for her (R3)
         bee.write_yaml(path, rec)
         self.commit()
         self.refused("bruno", "cannot precede bruno's engagement")
@@ -5876,7 +5876,7 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), status="open", reservation=None, parallel=[])
         self.commit()
         self.refused("bruno", "only the holder (alice) releases their reservation")
-        # Même le titulaire ne libère pas en emportant les inscrits : le plus ancien prend sa place.
+        # Even the holder does not release taking the registrants along: the oldest takes their place.
         self.refused("alice", "the oldest becomes the holder")
 
     def test_attack_reserve_by_registering_others(self):
@@ -5917,7 +5917,7 @@ class TestParallelPullRequests(BaseParallel):
         self.refused("alice", "only the integration robot sets aside a rival contribution")
         self.refused("bidji29", "in the same commit as the integration")
         self.refused("github-actions[bot]", "in the same commit as the integration")
-        # Écartée au profit d'une contribution qui n'est pas intégrée : le registre lui-même est invalide.
+        # Set aside in favor of a contribution that is not integrated: the registry itself is invalid.
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
         self.assertIn("which is not an integrated contribution of the same task", text)
@@ -5938,7 +5938,7 @@ class TestParallelPullRequests(BaseParallel):
         code, text = self.verify("github-actions[bot]")
         self.assertNotIn("only the integration robot", text)
         self.assertNotIn("in the same commit", text)
-        # Revue adverse I3 : le conseil, qui intègre lui-même (tâches de la ruche), écarte aussi, dans la même PR.
+        # Adversarial review I3: the council, which integrates itself (hive tasks), also sets aside, in the same PR.
         code, text = self.verify("bidji29")
         self.assertEqual(code, 0, text)
         self.refused("alice", "only the integration robot sets aside")
