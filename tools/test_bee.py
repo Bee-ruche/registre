@@ -216,7 +216,7 @@ class TestFrozenFixture(unittest.TestCase):
 
     def test_nothing_imports_or_runs_it(self):
         codes = [ROOT / "tools" / n for n in ("bee.py", "site_bee.py", "marker_inventory.py")]
-        codes += [p for p in (ROOT / "outils/juge").rglob("*.py") if not p.name.startswith("test_")]  # one literal: the judge stays (ruche-0153)
+        codes += [p for p in (ROOT / "tools" / "judge").rglob("*.py") if not p.name.startswith("test_")]
         codes += list((ROOT / "tools" / "rehearsal").rglob("*")) + list((ROOT / ".github").rglob("*.yml"))
         for path in sorted(c for c in codes if c.is_file() and "__pycache__" not in c.parts):
             with self.subTest(file=path.relative_to(ROOT).as_posix()):
@@ -540,7 +540,7 @@ class TestCiScope(unittest.TestCase):
         steps = suite["jobs"]["tests"]["steps"]
         self.assertEqual(steps[0], {"uses": "actions/checkout@v4", "with": {"ref": "${{ inputs.commit }}", "fetch-depth": 0}})
         self.assertEqual([e.get("run") for e in steps[2:]], ["pip install -r tools/requirements.txt",
-                                                             "python3 tools/test_bee.py --processes 4", "python3 outils/juge/test_juge.py"])
+                                                             "python3 tools/test_bee.py --processes 4", "python3 tools/judge/test_judge.py"])
         self.assertFalse([e for e in steps if "if" in e or "env" in e or "${{" in str(e.get("run", ""))])
         for name in ("validation.yml", "suite.yml"):
             text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
@@ -15741,8 +15741,7 @@ class TestBilingualReaders(BaseAgora):
     def test_inventory_reports_a_forgotten_marker(self):
         """The script fails on a French literal compared with text and not classified, and on a missing English form."""
         fake = pathlib.Path(self.temp.name) / "faux"
-        (fake / "outils/juge").mkdir(parents=True)
-        (fake / "tools").mkdir()  # the judge stays in outils/juge/ (ruche-0153), the tool moves
+        (fake / "tools/judge").mkdir(parents=True)
         (fake / "tools/site_bee.py").write_text("", encoding="utf-8")
         (fake / "tools/bee.py").write_text(
             'import re\nA_REMPLIR = "À REMPLIR"\nTITRES = {"Clé à part": 1}\n\n\ndef f(ligne):\n'
@@ -19770,7 +19769,7 @@ class TestParallelSuite(unittest.TestCase):
         files and on altered copies of them."""
         read = lambda name: yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))  # noqa: E731
         per_job = {"checks": ("python3 tools/bee.py validate", "python3 tools/bee.py check-pr"),
-                   "tests": ("python3 tools/test_bee.py --processes", "python3 outils/juge/test_juge.py")}
+                   "tests": ("python3 tools/test_bee.py --processes", "python3 tools/judge/test_judge.py")}
 
         def gaps(stream, suite):
             jobs = {**stream["jobs"], **suite["jobs"]}
@@ -22359,10 +22358,11 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
         names = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))
         self.assertEqual(list(bee.RETIRED_NAMES), names["retired"])
         for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md", "COMMANDEMENTS.md", "outils/bee.py", "outils/migration/names.yaml",
-                     "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md"):
+                     "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md",
+                     "outils/juge/juge.py"):  # ruche-0148: the common judge's old folder
             self.assertIn(f"{path}: a name retired by the switch to English", bee.retired_name(path) or "", path)
         for path in ("tasks/miniz/miniz-0099.yaml", "RULES.md", "COMMANDMENTS.md", "tools/bee.py", "tools/migration/names.yaml",
-                     "outils/juge/juge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
+                     "tools/judge/judge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
             self.assertIsNone(bee.retired_name(path), path)
         tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True).stdout.decode().split("\0")
         self.assertEqual([p for p in tracked if p and bee.retired_name(p)], [])  # the switch left none

@@ -71,6 +71,7 @@ retired:
 - modeles/
 - outils/bee.py
 - outils/inventaire_marqueurs.py
+- outils/juge/
 - outils/migration/
 - outils/repetition/
 - outils/requirements.txt

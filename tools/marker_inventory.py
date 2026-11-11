@@ -3,7 +3,7 @@
 
     python3 tools/marker_inventory.py [--all | --names]
 
-Reads tools/bee.py, tools/site_bee.py and outils/juge/*.py (tests excluded) with the ast module, and collects every
+Reads tools/bee.py, tools/site_bee.py and tools/judge/*.py (tests excluded) with the ast module, and collects every
 string literal that text is compared against: operands of ==, !=, in and not in; the first argument of (or the literal
 calling) startswith, endswith, find, split, partition, replace, get…; patterns given to re.<function>, pattern= included;
 indexes, the constant indexed or the keys of a dict literal indexed; match/case values; the iterable of a loop; literals
@@ -65,7 +65,7 @@ BY_CONSTANT = {
     "REMOVED": "data", "VOTE_WEIGHT": "data", "SIZES_BY_LEVEL": "data",
     "FORMER_ENGAGEMENT_TITLES": "data",  # ruche-0155: titles bee wrote itself (bee-publish.json, branch hash), read until DATE_D
     "TYPES_JSON": "message", "SELF_SERVICE_FILES": "message", "SUITE_INVITATION": "message", "VERDICT_WAIT": "message",
-    "MNEMONIQUES_SUSPECTS": "message", "MOTS_SOURCE": "message", "STATES": "message", "CONTRIBUTION_STATUSES": "message",
+    "SUSPICIOUS_MNEMONICS": "message", "SOURCE_WORDS": "message", "STATES": "message", "CONTRIBUTION_STATUSES": "message",
     "DEBATE_POSITIONS": "message", "DEBATE_OUTCOMES": "message", "SHORT_SECTIONS": "message", "MONTHS": "message",
     "SETTINGS": "message", "_POSITIVE": "message", "_FRACTION": "message",  # ruche-0144: the forms of bee.yaml's settings, in bee's messages
 }
@@ -97,7 +97,7 @@ def inventory(root=ROOT):
     """[(literal, class, English form or None, places)], data names, unclassified French-looking literals, missing
     English forms, other literals."""
     files = [root / "tools/bee.py", root / "tools/site_bee.py"] + sorted(
-        p for p in (root / "outils/juge").glob("*.py") if not p.name.startswith("test_"))
+        p for p in (root / "tools/judge").glob("*.py") if not p.name.startswith("test_"))
     found_items, used_names, constants = {}, set(), []
     for f in files:
         tree = ast.parse(f.read_text(encoding="utf-8"))

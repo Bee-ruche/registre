@@ -19,7 +19,7 @@ adverse du 27/10 l'a montré : une faille du juge se corrige une fois, ou elle r
 
 ## Le partage
 
-| Dans le registre (`outils/juge/`, étiqueté `juge-vN`) | Dans chaque fork (`bee/juge/`) |
+| Dans le registre (`tools/judge/`, étiqueté `juge-vN`) | Dans chaque fork (`bee/juge/`) |
 | --- | --- |
 | `Dockerfile.base` (image épinglée, paquets communs) et l'isolement (`isoler.sh`) | Les paquets propres au projet (une ligne `RUN` ajoutée à l'image commune) |
 | `chrono.c` : lanceur, mesures par `wait4`, jeton, relevé du résumé de Valgrind | `execution.c` : le harnais, qui lit `entrees/liste` et écrit `sorties/` |
@@ -32,7 +32,7 @@ adverse du 27/10 l'a montré : une faille du juge se corrige une fois, ou elle r
 
 Une classe `Projet` sans état propre (elle reçoit les options `--option CLE=VALEUR` à sa création),
 lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèle complet et commenté :
-`outils/juge/jouet/bee/juge/projet.py` (projet jouet des méta-tests).
+`tools/judge/jouet/bee/juge/projet.py` (projet jouet des méta-tests).
 
 | Élément | Rôle |
 | --- | --- |
@@ -162,8 +162,8 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
   to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
   still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
   the new version and every fork is pinned to it (each fork moves by a tooling PR); raised earlier, the forks' verdicts go to a
-  guardian until they move. It checks the version of the judge's code (the label, `VERSION_COMMUNE` in `outils/juge/juge.py`),
-  not the commit a fork pins: the council bumps `VERSION_COMMUNE` whenever a change to the judge or to its workflow's
+  guardian until they move. It checks the version of the judge's code (the label, `COMMON_VERSION` in `tools/judge/judge.py`),
+  not the commit a fork pins: the council bumps `COMMON_VERSION` whenever a change to the judge or to its workflow's
   protections ships, then raises the minimum. `bee validate` reports a missing or malformed minimum.
 
 ## Le workflow `juge.yml`, version 2 (ruche-0024)
@@ -181,7 +181,7 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
   (`github.event.pull_request.base.sha`, `.head.sha`, 40 hexadecimal digits), `repetitions` 10 to 50, `sans_instructions`
   false (a verdict needs the instruction count); otherwise the job fails before anything is checked out or judged.
 - **Job outputs tied to the report** (ruche-0038): `code`, `empreinte` (SHA-256 of `juge.json`), `suspectes` (all of them),
-  `sorties_comparees`, `greffon`, `graine`, `base`, `tete` (`outils/juge/rapport.py`; empty without a report). The verdict
+  `sorties_comparees`, `greffon`, `graine`, `base`, `tete` (`tools/judge/report.py`; empty without a report). The verdict
   job reads `juge.json` from the artifact « juge » and checks it against them, `python3 rapport.py juge.json --verifier
   sorties.json --base <the PR's base> --tete <its head>` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any
   difference, a code other than 0 or other commits than the PR's (ruche-0117); any non-zero exit blocks the verdict. The judging
