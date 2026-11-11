@@ -22967,6 +22967,14 @@ class TestMetricIdsRuche0149(BaseTest):
         self.assertEqual(task["metric"], "decompression_throughput")
         self.assertIn("gain >= 2% on decompression_throughput, beyond the noise (R4)", task["acceptance_criteria"])
         self.valid_one()
+        self.spell("fr")  # review of #342: from D on, without --metric, the project's first id is taken, never refused as typed
+        with self.after_d():
+            code, text = self.bee("propose-task", "miniz", "--user", "alice")
+            self.assertEqual(code, 0, text)
+            self.assertEqual(bee.read_yaml(max(self.dir.glob("tasks/miniz/miniz-0*.yaml")))["metric"], bee.METRIC_IDS_FR["compression_throughput_n1"])
+            code, text = self.bee("propose-task", "miniz", "--user", "alice", "--metric", bee.METRIC_IDS_FR["decompression_throughput"])
+            self.assertEqual(code, 1, text)
+            self.assertIn(f"--metric: French metric ids ({bee.METRIC_IDS_FR['decompression_throughput']}): read until {bee.DATE_D} only", text)
 
 
 class TestMetricIdsScriptRuche0149(unittest.TestCase):

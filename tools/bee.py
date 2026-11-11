@@ -7576,7 +7576,7 @@ def cmd_propose_task(args):
     if args.type == "optimization" and not metrics:
         raise BeeError(f"{args.project} has no metric: an optimization has no judge there (--type test, measurement or review)")
     metric = (args.metric or (metrics[0] if metrics else None)) if args.type == "optimization" else None
-    metric_vocabulary([metric], "--metric")  # ruche-0149: in either vocabulary until DATE_D, written in the project's spelling
+    metric_vocabulary([args.metric], "--metric")  # ruche-0149: the id typed, in either vocabulary until DATE_D; written as the project spells it
     metric = reg.metric(args.project, metric)
     if metric and metric not in metrics:
         raise BeeError(f"unknown metric for {args.project}: {metric} ({', '.join(metrics)})")
