@@ -548,11 +548,12 @@ link to some headings, so their English names are fixed here; every PR uses them
 | --- | --- | --- | --- |
 | docs/contributions.md « Relire par commit » | Review by commit | `#review-by-commit` | balance.md, evaluation.md, guardians.md, reputation.md, tasks.md |
 | docs/contributions.md « Travail en parallèle et contributions concurrentes » | Parallel work and competing contributions | `#parallel-work-and-competing-contributions` | the same, and a comment of tools/bee.py |
+| docs/contributions.md « Forme des fichiers » (a bold label) | File shape | | |
 | docs/governance.md « Dossiers du libre-service » | Self-service folders | `#who-can-change-what-in-the-registry` (the table's row) | bee's messages (bytes_problem and the gate) |
 | docs/balance.md « Le cap de la ruche (R11) » | The hive's balance (R11) | | |
 | docs/balance.md « Les postes » | The areas | `#the-areas` | bee's messages, docs/agora.md |
 | docs/agora.md « Contre le bruit » | Against noise | `#against-noise` | a docstring of tools/bee.py |
-| Tree nodes « Pourquoi cette branche existe », « Ce qui compte ici », « Ce qu'on peut ignorer ici », « Enfants » | Why this branch exists, What matters here, What you can ignore here, Children (NODE_SECTIONS_EN) | | bee context, bee validate, the site |
+| Tree nodes « Pourquoi cette branche existe », « Ce qui compte ici », « Ce qu'on peut ignorer ici », « Enfants » | Why this branch exists, What matters here, What you can ignore here, Children (NODE_SECTIONS; the French reader: NODE_SECTIONS_FR) | | bee context, bee validate, the site |
 | Their short forms « Pourquoi », « Ce qui compte », « À ignorer », « Enfants » | Why, What matters, To ignore, Children | | bee context |
 
 Voice: precise, dry, generous with numbers, sparing with adjectives, no hype words, no exclamation marks, US spelling.
