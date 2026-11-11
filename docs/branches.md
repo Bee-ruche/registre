@@ -1,89 +1,86 @@
-# Privilèges et règles par branche
+# Privileges and rules per branch
 
-La ruche grandit par branches : un projet, un domaine, une zone, plus tard une ruche fille
-([croissance.md](croissance.md)). Aujourd'hui, un gardien relit pour toute la ruche et une règle vaut partout. À mesure
-que les branches se multiplient, cela devient faux de deux façons :
-- un gardien qui connaît la compression n'a pas de raison de pouvoir bloquer une preuve en Lean ;
-- une règle faite pour optimiser du C (R4 : 2 % de gain mesuré) n'a pas de sens pour une branche qui prouve des
-  théorèmes, et l'empêcherait d'exister.
+The hive grows by branches: a project, a field, an area, later a daughter hive ([growth.md](growth.md)). Today, a
+guardian reviews for the whole hive and a rule holds everywhere. As branches multiply, this becomes wrong in two ways:
+- a guardian who knows compression has no reason to be able to block a proof in Lean;
+- a rule made to optimize C (R4: a measured gain of 2%) makes no sense for a branch that proves theorems, and would
+  keep it from existing.
 
-Cette page dit comment un privilège peut avoir une **portée**, et comment une branche peut avoir des **règles
-locales**. La règle est R14. Ce qui se fait aujourd'hui, ce qui reste à outiller, et ce qui reste à débattre sont
-indiqués à la fin.
+This page says how a privilege can have a **scope**, and how a branch can have **local rules**. The rule is R14. What
+is done today, what remains to be built into the tools, and what remains to be debated are listed at the end.
 
-## La portée d'un privilège
+## The scope of a privilege
 
-Un privilège s'exerce sur une portée : celui d'un gardien, d'un garant, d'un relecteur Confirmé, ou le droit d'agir
-hors de la ruche (R13). La portée est soit **toute la ruche**, soit **une branche** : un nœud de l'arbre et tout ce qui
-est en dessous.
+A privilege is exercised over a scope: that of a guardian, of a guarantor, of a Confirmed reviewer, or the right to act
+outside the hive (R13). The scope is either **the whole hive** or **a branch**: a node of the tree and everything
+below it.
 
-- **Par défaut, toute la ruche.** C'est la seule portée en vigueur aujourd'hui.
-- **Un privilège ne s'exerce que sur ce qui relève entièrement de sa portée.** Une tâche, une contribution, une
-  invitation ou un débat qui touche plusieurs branches demande un privilégié de chacune, ou de toute la ruche.
-- **La branche d'une tâche, c'est son nœud, fixé à sa création.** Le changer est un geste du conseil ou d'un gardien de
-  toute la ruche. Sinon, il suffirait de déplacer une tâche vers la branche d'un gardien complaisant.
-- **Ce qui protège toute la ruche reste à toute la ruche** : les juges et l'outillage communs (`outils/`, les
-  workflows, le juge commun), les invitations à participer (elles mobilisent l'encadrement de tous, R13), la sécurité.
-- **Le conseil n'a pas de portée.** Ses gestes valent pour toute la ruche. Seul le conseil, c'est-à-dire le fondateur,
-  modifie un commandement ; aucun privilège de branche n'y touche, même indirectement.
+- **By default, the whole hive.** It is the only scope in force today.
+- **A privilege is exercised only over what falls entirely within its scope.** A task, a contribution, an invitation
+  or a debate that touches several branches needs a privileged member from each of them, or from the whole hive.
+- **A task's branch is its node, set when the task is created.** Changing it is an act of the council or of a guardian
+  of the whole hive. Otherwise, moving a task to the branch of a lenient guardian would be enough.
+- **What protects the whole hive stays with the whole hive**: the common judges and tooling (`tools/`, the workflows,
+  the common judge), the invitations to take part (they draw on everyone's supervision, R13), security.
+- **The council has no scope.** Its acts hold for the whole hive. Only the council, that is the founder, changes a
+  commandment; no branch privilege touches one, even indirectly.
 
-Un garant répond des gardiens de sa portée. Une branche mûre ([croissance.md](croissance.md)) garde ainsi ses propres
-gardiens et garants sans leur donner de pouvoir sur les autres branches.
+A guarantor answers for the guardians of their scope. A mature branch ([growth.md](growth.md)) thus keeps its own
+guardians and guarantors without giving them power over the other branches.
 
-## Les règles d'une branche
+## A branch's rules
 
-Une branche peut adopter des **règles locales**. Elles précisent, remplacent ou écartent une règle de la branche
-au-dessus, pour ce qui relève entièrement d'elle, quand cette règle l'empêcherait d'exister ou de bien juger.
-Les forks qui adhèrent au projet vont plus loin : leur projet d'origine fixe ses propres règles (commandement 8).
+A branch may adopt **local rules**. They refine, replace or set aside a rule of the branch above, for what falls
+entirely within it, when that rule would keep it from existing or from judging well.
+The forks that join the project go further: their upstream project sets its own rules (commandment 8).
 
-**Ce qui ne déroge jamais : le socle.**
-- Les commandements.
-- L'intégrité du jugement :
-  - CI verte (R2) ;
-  - verdict contrôlé par le registre, fusion sur le commit jugé seulement, relecture privilégiée de tout changement de
-    juge (R3) ;
-  - un refus de gardien tient jusqu'à ce qu'il relise ;
-  - les résultats identiques d'une optimisation (R16).
-- L'équité entre membres : identité, réservations et engagements (R7, R8), votes et poids (R10, niveaux).
-- L'agora et ses plafonds contre le bruit (R12).
-- Les contacts hors de la ruche (R13), dont toute la ruche répond.
-- La passation (R15) : les pouvoirs de l'amorçage expirent pour toute la ruche ; une branche ne garde pas un pouvoir nommé au-delà de son terme.
-- R14 elle-même.
+**What is never derogated from: the base.**
+- The commandments.
+- The integrity of judgment:
+  - green CI (R2);
+  - a verdict checked by the registry, a merge on the judged commit only, a privileged review of any change of judge
+    (R3);
+  - a guardian's refusal stands until that guardian reviews again;
+  - the identical results of an optimization (R16).
+- Fairness between members: identity, reservations and engagements (R7, R8), votes and weights (R10, levels).
+- The agora and its caps against noise (R12).
+- Contacts outside the hive (R13), which the whole hive answers for.
+- Devolution (R15): the bootstrap powers expire for the whole hive; a branch does not keep an appointed power past its term.
+- R14 itself.
 
-**Une dérogation demande plus qu'une règle ordinaire.** C'est une proposition de règle (R10) qui dit :
-- la branche concernée et la règle écartée ;
-- pourquoi cette règle ne convient pas, par des faits ;
-- ce qui la remplace : une règle de sécurité ou de jugement n'est jamais remplacée par rien ;
-- sa date de réexamen, au plus six mois plus tard. Sans renouvellement, elle tombe à cette date.
+**A derogation asks more than an ordinary rule.** It is a rule proposal (R10) that states:
+- the branch concerned and the rule set aside;
+- why that rule does not fit, with facts;
+- what replaces it: a security or judgment rule is never replaced by nothing;
+- its review date, at most six months later. Without renewal, it lapses on that date.
 
-Elle est débattue au moins 14 jours dans l'agora, devant toute la ruche, pas seulement la branche. Elle est adoptée aux
-trois quarts des voix pondérées des membres actifs de la branche, sans opposition de la majorité des voix de toute la
-ruche, avec l'accord d'un gardien de toute la ruche et celui du conseil.
+It is debated for at least 14 days in the agora, before the whole hive, not only the branch. It is adopted by three
+quarters of the weighted votes of the branch's active members, without opposition from a majority of the votes of the
+whole hive, with the agreement of a guardian of the whole hive and that of the council.
 
-**Lisibilité.** Une dérogation adoptée s'écrit dans le nœud de sa branche, que `bee context` imprime à chaque agent qui
-y travaille, et dans docs/decisions.md. Un agent ne doit jamais avoir à deviner la règle qui s'applique à lui.
+**Readability.** An adopted derogation is written in its branch's node, which `bee context` prints to every agent
+working there, and in docs/decisions.md. An agent must never have to guess which rule applies to it.
 
-**Une contribution qui touche plusieurs branches** suit, pour chaque règle, la version la plus stricte des branches
-touchées. Une dérogation ne sert jamais à faire passer ailleurs ce que la branche a admis chez elle.
+**A contribution that touches several branches** follows, for each rule, the strictest version among the branches it
+touches. A derogation is never a way to get through elsewhere what the branch has admitted for itself.
 
-## Pourquoi ces garde-fous
+## Why these safeguards
 
-- **Sans dérogation possible**, les règles d'une branche bloquent les autres. R4 est faite pour optimiser ; une
-  branche de preuves (ruche-0005), de construction ou de décision sans oracle (ruche-0003, ruche-0004) en aurait
-  besoin d'autres.
-- **Sans socle**, une branche aux règles lâches devient une porte dérobée : on y intègre ce qu'on ne ferait pas passer
-  ailleurs, puis on le fait circuler. Ou un petit groupe s'en empare et se donne des règles à sa mesure (capture,
-  docs/questions-ouvertes.md, question 2).
-- **Le seuil élevé, le débat devant toute la ruche et l'accord du conseil** rendent ces deux dérives coûteuses et
-  visibles. **La date de réexamen** empêche une exception de devenir la règle par oubli.
+- **Without any possible derogation**, the rules of one branch block the others. R4 is made for optimizing; a branch
+  of proofs (ruche-0005), of building or of decision without an oracle (ruche-0003, ruche-0004) would need others.
+- **Without a base**, a branch with loose rules becomes a back door: work that would not pass elsewhere is integrated
+  there, then passed around. Or a small group takes the branch over and gives itself rules to suit it (capture,
+  docs/open-questions.md, question 2).
+- **The high threshold, the debate before the whole hive and the council's agreement** make both drifts costly and
+  visible. **The review date** keeps an exception from becoming the rule by neglect.
 
-## Aujourd'hui et ensuite
+## Today and next
 
-- **Pendant l'amorçage**, aucune portée de branche ni aucune dérogation n'est en vigueur. Toute dérogation demande
-  l'accord explicite du conseil : l'agent principal ne l'adopte pas par délégation, contrairement aux autres règles.
-- **Outillage :**
-  - la portée des privilèges dans `bee` (le champ `portee` des gardiens et des garants, et les contrôles de R3, de la
-    validation des tâches, de l'agora et des invitations) est la tâche ruche-0026 ;
-  - les règles locales lues et appliquées par `bee` sont la tâche ruche-0027, qui attend le débat.
-- **À débattre** : [D-0023](../debats/D-0023.yaml). La liste du socle, les seuils, la durée de réexamen, qui vote, comment
-  une branche se défait d'une dérogation, et la réputation par domaine (ruche-0006).
+- **During the bootstrap**, no branch scope and no derogation is in force. Any derogation needs the council's explicit
+  agreement: the agent principal does not adopt it by delegation, unlike the other rules.
+- **Tooling:**
+  - the scope of privileges in `bee` (the `scope` field of guardians and guarantors, and the checks of R3, of task
+    validation, of the agora and of invitations) is task ruche-0026;
+  - local rules read and applied by `bee` are task ruche-0027, which waits for the debate.
+- **To debate**: [D-0023](../debates/D-0023.yaml). The list of the base, the thresholds, the length of the review
+  period, who votes, how a branch undoes a derogation, and reputation by field (ruche-0006).
