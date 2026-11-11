@@ -21887,14 +21887,33 @@ class TestLoadTestInTheSuite(unittest.TestCase):
 
 class TestRehearsalKitRuche0157(unittest.TestCase):
     """ruche-0157: the README that setup.sh generates names what the kit has. Its template said $BEE_SIMU, which setup.sh's
-    sed (it replaces $BEE_SIM) turned into paths ending in U/etat/..., and commands the switch had renamed."""
+    sed (it replaces $BEE_SIM) turned into paths ending in U/etat/..., and commands the switch had renamed. The usages and
+    messages say what the code reads (--rerun, merge|refuse, a manifest's task field)."""
 
-    def test_the_readme_template_names_the_kits_variable_paths_and_commands(self):
-        kit = ROOT / "tools/rehearsal"
+    KIT = ROOT / "tools/rehearsal"
+
+    def test_the_readme_template_says_bee_sim_whole(self):
+        template = (self.KIT / "README-template.md").read_text(encoding="utf-8")
+        self.assertNotRegex(template, r"\$BEE_SIM\w")  # each $BEE_SIM is replaced whole: no $BEE_SIMU
+        self.assertIn("export BEE_SIM=$BEE_SIM PATH=$BEE_SIM/tools:$PATH", template)
+        self.assertIn('sed -e "s#\\$BEE_SIM#$S#g"', (self.KIT / "setup.sh").read_text(encoding="utf-8"))
+
+    def test_the_usages_say_what_the_code_reads(self):
+        text = {n: (self.KIT / n).read_text(encoding="utf-8") for n in ("simulated-ci", "simulated_ci.py", "council-decide", "push-fork-pr")}
+        self.assertIn('"$url" --rerun\n', text["simulated-ci"])
+        self.assertIn("Usage: python3 simulated_ci.py <fork_pr_url> [--rerun]\n", text["simulated_ci.py"])
+        self.assertIn("echo 'usage: council-decide <number> merge|refuse \"<reason>\"'", text["council-decide"])
+        self.assertIn('case "$decision" in merge|refuse) ;;', text["council-decide"])
+        self.assertIn('isinstance(m.get("task"), str)', text["push-fork-pr"])
+        self.assertIn("manifest refused: a YAML file with at least a task field", text["push-fork-pr"])
+        for name, old in (("simulated-ci", "--relance"), ("simulated_ci.py", "--relance"), ("council-decide", "fusionner"),
+                          ("push-fork-pr", "champ tache")):
+            self.assertNotIn(old, text[name], name)
+
+    def test_the_readme_template_names_the_kits_paths_and_commands(self):
+        kit = self.KIT
         template, setup = (kit / "README-template.md").read_text(encoding="utf-8"), (kit / "setup.sh").read_text(encoding="utf-8")
-        self.assertIn('sed -e "s#\\$BEE_SIM#$S#g"', setup)
         self.assertIn('> "$S/README.md"', setup)
-        self.assertNotRegex(template, r"\$BEE_SIM\w")  # each $BEE_SIM is replaced whole
         paths = set(re.findall(r"\$BEE_SIM/([\w./-]*)", template))
         self.assertLessEqual({"state/clock", "state/announcements.md", "bees/", "state/journals/", "tools"}, paths)
         for path in paths:  # setup.sh creates each one
