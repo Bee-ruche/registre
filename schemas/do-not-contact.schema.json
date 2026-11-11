@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/do-not-contact.schema.json",
-  "title": "Liste de non-contact (R13)",
-  "description": "Fichier : invitations/ne-plus-contacter.yaml (docs/croissance.md). Les personnes qui ont refusé, qui n'ont pas répondu à la relance, ou qui ont demandé le retrait de leur dossier : seulement les empreintes de leurs identifiants (SHA-256, en hexadécimal, de la clé canonique : identifiant, canal, profils cités), jamais un nom en clair. En ajout seul, par le conseil ; une entrée ne se retire jamais (un refus est définitif). Limite : l'empreinte d'un pseudo public se retrouve en essayant des pseudos ; elle empêche la lecture en passant, pas une recherche obstinée.",
+  "title": "Do-not-contact list (R13)",
+  "description": "File: invitations/do-not-contact.yaml (docs/growth.md). The people who refused, who did not answer the reminder, or who asked for their file to be withdrawn: only the fingerprints of their identifiers (SHA-256, in hexadecimal, of the canonical key: identifier, channel, cited profiles), never a name in plain text. Append-only, by the council; an entry is never removed (a refusal is final). Limit: the fingerprint of a public login can be found by trying logins; it prevents reading in passing, not a determined search.",
   "type": "object",
   "additionalProperties": false,
   "required": ["fingerprints"],

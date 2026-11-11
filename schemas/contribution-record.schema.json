@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/contribution-record.schema.json",
-  "title": "Enregistrement d'une contribution dans le registre",
-  "description": "Fichier : contributions/<projet>/<tache>-c<n>.yaml. Créé par `bee soumettre`, complété par la CI (verdict), les relecteurs (relectures) et le workflow de confiance qui intègre automatiquement (R3, sans humain) et écarte les contributions concurrentes de la même tâche (statut « ecartee »).",
+  "title": "Record of a contribution in the registry",
+  "description": "File: contributions/<project>/<task>-c<n>.yaml. Created by `bee submit`, completed by the CI (verdict), the reviewers (reviews) and the trusted workflow that integrates automatically (R3, no human) and sets aside the competing contributions of the same task (status « set_aside »).",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "task", "author", "pr", "status", "submitted_at", "reviews"],
@@ -12,10 +12,10 @@
     "author": {"type": "string", "minLength": 1},
     "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_][A-Za-z0-9_.-]*/pull/[0-9]{1,9}$(?!\\n)"},
     "summary": {"type": "string"},
-    "summary_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé (verdict.sha) pour lequel l'auteur a actualisé son résumé (bee soumettre --mettre-a-jour) : une mise à jour par commit jugé"},
+    "summary_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Judged commit (verdict.sha) for which the author updated their summary (bee submit --update): one update per judged commit"},
     "status": {"enum": ["in_review", "integrated", "refused", "cancelled", "set_aside"]},
     "submitted_at": {"type": "string"},
-    "engaged_since": {"type": "string", "description": "Début de l'engagement de l'auteur sur la tâche (sa réservation ou son inscription en parallèle), contrôlé à la soumission ; R3 s'en sert dans les courses"},
+    "engaged_since": {"type": "string", "description": "Start of the author's engagement on the task (their reservation or their parallel registration), checked at submission; R3 uses it in races"},
     "verdict": {
       "type": "object",
       "additionalProperties": false,
@@ -29,8 +29,8 @@
         "declared_gap": {"type": ["number", "null"]},
         "bootstrap": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
-        "tree": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre git du commit jugé (verdicts.yml, API GitHub) : un commit amendé a le même contenu"},
-        "base": {"type": "string", "pattern": "^[0-9a-f]{40}$", "description": "Base vérifiée du verdict (ruche-0028) : le relecteur lit compare/<base>...<sha>"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Git tree of the judged commit (verdicts.yml, GitHub API): an amended commit has the same content"},
+        "base": {"type": "string", "pattern": "^[0-9a-f]{40}$", "description": "Checked base of the verdict (ruche-0028): the reviewer reads compare/<base>...<sha>"},
         "run": {"type": "string", "pattern": "^https://"},
         "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
@@ -52,7 +52,7 @@
     },
     "verdicts": {
       "type": "array", "maxItems": 20,
-      "description": "Historique des verdicts (ruche-0028), du plus ancien au plus récent, écrit par la CI avec chaque verdict : R4 et le classement jugent chaque verdict vert du même contenu (même arbre, sinon même sha), relancer la CI ne peut que nuire",
+      "description": "History of the verdicts (ruche-0028), from oldest to newest, written by the CI with each verdict: R4 and the ranking judge every green verdict of the same content (same tree, otherwise same sha); rerunning the CI can only hurt",
       "items": {"type": "object", "additionalProperties": false, "required": ["ci"], "properties": {
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}, "tree": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
         "ci": {"enum": ["green", "red"]}, "gain": {"type": ["number", "null"]}, "beyond_noise": {"type": "boolean"},
@@ -60,15 +60,15 @@
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
           "properties": {"A": {"type": ["number", "null"]}, "B": {"type": ["number", "null"]}, "gain": {"type": ["number", "null"]}}}}}}
     },
-    "dropped_verdicts": {"type": "integer", "minimum": 1, "description": "Verdicts sortis de l'historique (au-delà de 20) : R4 exige alors une mesure d'une autre configuration"},
+    "dropped_verdicts": {"type": "integer", "minimum": 1, "description": "Verdicts dropped from the history (beyond 20): R4 then requires a measurement from another configuration"},
     "declared": {
       "type": ["object", "null"],
       "additionalProperties": false,
       "required": ["model", "gain", "tested", "untested", "doubts"],
-      "description": "Recopié par la CI au verdict (bee enregistrer-verdict --manifeste, ruche-0017) depuis le manifeste de la tâche et de l'auteur au commit jugé : données du fork, bornées et typées (une ligne, l'invisible et ce que YAML échapperait montrés <U+XXXX>, gain fini, 12 000 caractères écrits au plus : bee valider) ; null si rien n'a été recopié pour ce verdict ; jamais écrit par un membre",
+      "description": "Copied by the CI at the verdict (bee record-verdict --manifest, ruche-0017) from the manifest of the task and the author at the judged commit: fork data, bounded and typed (one line, invisible characters and what YAML would escape shown as <U+XXXX>, a finite gain, 12,000 characters written at most: bee validate); null if nothing was copied for this verdict; never written by a member",
       "properties": {
         "model": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
-        "gain": {"type": ["number", "null"], "minimum": -1000000, "maximum": 1000000, "description": "Gain déclaré sur la métrique visée (0.05 pour 5 %)"},
+        "gain": {"type": ["number", "null"], "minimum": -1000000, "maximum": 1000000, "description": "Declared gain on the target metric (0.05 for 5%)"},
         "tested": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 800}},
         "untested": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 800}},
         "doubts": {"type": ["string", "null"], "minLength": 1, "maxLength": 1600}
@@ -82,20 +82,20 @@
         "required": ["reviewer", "opinion", "reason", "at"],
         "properties": {
           "reviewer": {"type": "string", "minLength": 1},
-          "opinion": {"enum": ["favorable", "unfavorable", "abstention"], "description": "abstention : motivée (diff hors d'atteinte, conflit d'intérêts, approche seulement) ; ni pour ni contre (R3, score), aucun point"},
+          "opinion": {"enum": ["favorable", "unfavorable", "abstention"], "description": "abstention: with a reason (diff out of reach, conflict of interest, approach only); neither for nor against (R3, score), no point"},
           "reason": {"type": "string", "minLength": 10},
           "at": {"type": "string"},
           "reported_defect": {"type": "boolean"},
           "confirmed_defect": {"type": "boolean"},
-          "confirmed_by": {"type": "string", "minLength": 1, "description": "Qui a confirmé le défaut : la CI, le conseil, un gardien ou un Confirmé, jamais le relecteur qui l'a signalé"},
-          "tree": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre du commit jugé relu (verdict.arbre au moment de la relecture), s'il est connu"},
-          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé relu (verdict.sha au moment de la relecture) ; absent avant le verdict : la relecture ne compte pas pour R3. Une relecture par relecteur et par commit"}
+          "confirmed_by": {"type": "string", "minLength": 1, "description": "Who confirmed the defect: the CI, the council, a guardian or a Confirmed member, never the reviewer who reported it"},
+          "tree": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Tree of the judged commit reviewed (verdict.tree at the time of the review), if known"},
+          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Judged commit reviewed (verdict.sha at the time of the review); absent before the verdict: the review does not count for R3. One review per reviewer and per commit"}
         }
       }
     },
     "lifts": {
       "type": "array",
-      "description": "Recours du conseil (ruche-0012) : les relectures de ce relecteur publiées avant la levée ne pèsent plus sur cette contribution, jusqu'à ce qu'il relise. Écrit par le conseil seul, dans une PR relue",
+      "description": "The council's recourse (ruche-0012): the reviews of this reviewer published before the lift no longer weigh on this contribution, until they review again. Written by the council alone, in a reviewed PR",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -112,12 +112,12 @@
     "decided_at": {"type": "string"},
     "merge_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
     "awaiting_verdict": {"type": "object", "additionalProperties": false, "required": ["reason", "sha"],
-                        "description": "Écrit par verdicts.yml (ruche-0025) : pourquoi la tête sha n'a reçu aucun verdict (code d'ATTENTE_VERDICT de bee, dont la phrase se rend à l'affichage) ; pas rejugée avant une autre tête",
+                        "description": "Written by verdicts.yml (ruche-0025): why the head sha received no verdict (a code of bee's VERDICT_WAIT, whose sentence is rendered on display); not judged again before another head",
                         "properties": {"reason": {"type": "string"}, "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}}},
     "never_integrated": {"const": true,
-                        "description": "Statut « annulee » : close sans avoir jamais été intégrée (PR fermée sans fusion) ; ses relecteurs favorables ne perdent pas de point"},
+                        "description": "Status « cancelled »: closed without ever being integrated (PR closed without merge); its favorable reviewers lose no point"},
     "kept": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}-c[0-9]+$",
-                "description": "Statut « ecartee » : la contribution concurrente de la même tâche retenue à sa place par R3"}
+                "description": "Status « set_aside »: the competing contribution of the same task that R3 kept in its place"}
   },
   "allOf": [
     {

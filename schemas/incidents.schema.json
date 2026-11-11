@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/incidents.schema.json",
-  "title": "Incidents (R13, frein)",
-  "description": "Fichier : gouvernance/incidents.yaml, écrit par le conseil (docs/croissance.md). Un incident est ouvert tant qu'il n'a pas de clos_le ; tant qu'un incident est ouvert, le frein de R13 est serré : ni accord, ni envoi, ni relance d'invitation.",
+  "title": "Incidents (R13, brake)",
+  "description": "File: governance/incidents.yaml, written by the council (docs/growth.md). An incident is open as long as it has no closed_at; while an incident is open, R13's brake is on: no approval, no sending, no reminder of an invitation.",
   "type": "object",
   "additionalProperties": false,
   "required": ["incidents"],
@@ -18,7 +18,7 @@
           "title": {"type": "string", "minLength": 1, "maxLength": 300},
           "opened_at": {"type": "string"},
           "closed_at": {"type": "string"},
-          "outcome": {"type": "string", "maxLength": 1500, "description": "Ce qui a été fait, à la clôture"}
+          "outcome": {"type": "string", "maxLength": 1500, "description": "What was done, at closing"}
         }
       }
     }

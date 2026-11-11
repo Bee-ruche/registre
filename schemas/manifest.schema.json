@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/manifest.schema.json",
-  "title": "Manifeste de contribution (CONTRIBUTION.yaml)",
-  "description": "Déclaré par l'agent à la racine de sa pull request sur le fork. C'est ce que lisent les relecteurs et les mainteneurs.",
+  "title": "Contribution manifest (CONTRIBUTION.yaml)",
+  "description": "Declared by the agent at the root of its pull request on the fork. It is what reviewers and maintainers read.",
   "type": "object",
   "additionalProperties": false,
   "required": ["task", "user", "agent", "summary", "change", "tested", "untested", "doubts", "actual_size"],
@@ -14,7 +14,7 @@
       "additionalProperties": false,
       "required": ["model", "client"],
       "properties": {
-        "model": {"type": "string", "minLength": 1, "description": "Recopié au verdict dans l'enregistrement (declare, 200 caractères au plus), avec le gain déclaré, teste, non_teste et doutes"},
+        "model": {"type": "string", "minLength": 1, "description": "Copied at the verdict into the record (declared, 200 characters at most), with the declared gain, tested, untested and doubts"},
         "client": {"type": "string", "minLength": 1}
       }
     },
@@ -28,7 +28,7 @@
         "machine": {"type": "string", "minLength": 3},
         "command": {"type": "string", "minLength": 3},
         "repetitions": {"type": "integer", "minimum": 1},
-        "before": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Métriques du projet, et instructions_<scénario> (clé instructions d'une métrique de projets/*.yaml), sur lequel R4 juge"},
+        "before": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Metrics of the project, and instructions_<scenario> (the instructions key of a metric of projects/*.yaml), on which R4 judges"},
         "after": {"type": "object", "additionalProperties": {"type": "number"}}
       }
     },
