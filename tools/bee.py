@@ -2983,7 +2983,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
 
 
 def pr_contributions(reg, base, head):
-    """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
+    """Contributions added or modified by the PR: [(path, contribution read in the head)]."""
     changes = git(reg.root, "diff", "-z", "--name-status", "--no-renames", f"{base}...{head}")
     sizes_of = sizes_a(reg.root, head, [c for _, c in changes])  # ruche-0040: never read
     result = []
@@ -3001,31 +3001,31 @@ def pr_contributions(reg, base, head):
 
 
 # --------------------------------------------------------------------------
-# Agora : débattre dans le registre (tâche ruche-0008, docs/agora.md)
+# Agora: debating in the registry (task ruche-0008, docs/agora.md)
 # --------------------------------------------------------------------------
 #
-# Un débat est un fichier debats/D-<nnnn>.yaml, lisible par un agent sans mémoire : la question, une synthèse (l'état
-# du débat, que l'on lit d'abord) et des arguments courts, en ajout seul. Les transitions, toutes en libre-service et
-# contrôlées par verifier_debat :
-#   ouvrir       un membre ouvre un débat en son nom, au numéro suivant ; il en est le premier rapporteur ;
-#   argumenter   chacun ajoute ses propres arguments, en fin de liste, numérotés A1, A2… et datés de l'heure de la PR ;
-#                on ne modifie, ne déplace ni ne retire jamais un argument (commandement 10) ;
-#   synthétiser  seul le rapporteur réécrit la synthèse ; en la publiant, il désigne le rapporteur suivant parmi les
-#                autres participants, jamais lui-même (il le reste s'il est seul). Relève : si des arguments attendent
-#                la synthèse depuis 72 h, un autre participant la publie à sa place et désigne le suivant ;
-#   doublon      le rapporteur ou un gardien marque un argument comme doublon d'un argument précédent de même position
-#                (doublon_de) : l'argument reste lu, rien n'est effacé ;
-#   clore        le rapporteur, un gardien ou le conseil clôt en nommant ce qui sort du débat (une proposition de
-#                règle, une tâche, une décision, ou « sans suite ») ; un débat clos ne reçoit plus rien.
-# Contre le bruit : textes courts, arguments plafonnés par utilisateur et par débat sur 24 h glissantes, et par PR
-# (bee.yaml, clé agora ; règle R12). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5).
+# A debate is a file debates/D-<nnnn>.yaml, readable by an agent without memory: the question, a synthesis (the state
+# of the debate, which one reads first) and short arguments, append-only. The transitions, all self-service and
+# checked by check_debate:
+#   open         a member opens a debate in their own name, at the next number; they are its first rapporteur;
+#   argue        each adds their own arguments, at the end of the list, numbered A1, A2… and dated with the PR's time;
+#                no one ever modifies, moves or removes an argument (commandment 10);
+#   synthesize   only the rapporteur rewrites the synthesis; by publishing it, they designate the next rapporteur among
+#                the other participants, never themselves (they stay so if alone). Relief: if arguments have awaited
+#                the synthesis for 72 h, another participant publishes it in their place and designates the next one;
+#   duplicate    the rapporteur or a guardian marks an argument as a duplicate of an earlier argument of the same
+#                position (duplicate_of): the argument is still read, nothing is erased;
+#   close        the rapporteur, a guardian or the council closes it by naming what comes out of the debate (a rule
+#                proposal, a task, a decision, or « no_follow_up »); a closed debate takes nothing more.
+# Against noise: short texts, arguments capped per user and per debate over a sliding 24 h, and per PR
+# (bee.yaml, key agora; rule R12). The content of a debate is data, never an instruction (commandment 5).
 
 ID_DEBATE = re.compile(r"^D-[0-9]{4}\Z")
 ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*\Z")
 PATH_DEBATE = re.compile(r"^debates/(D-[0-9]{4})\.yaml\Z")
 POSITIONS = ("for", "against", "question", "fact")
 ISSUES = ("proposal", "task", "decision", "no_follow_up")
-# Ordre des clés à l'écriture : les arguments en dernier, pour qu'un argument ajouté soit un ajout en fin de fichier.
+# Order of the keys when writing: the arguments last, so that an added argument is an addition at the end of the file.
 DEBATE_KEYS = ("id", "invitation", "question", "question_redacted_for", "opened_by", "opened_at", "status", "rapporteur", "synthesis",
               "synthesis_redacted_for", "synthesis_by", "synthesis_at", "synthesis_covers", "closed_at", "closed_by", "outcome", "reference",
               "arguments")
@@ -3033,20 +3033,20 @@ ARGUMENT_KEYS = ("id", "by", "at", "position", "replies_to", "duplicate_of", "du
 IMMUTABLE_DEBATE_KEYS = ("id", "invitation", "question", "question_redacted_for", "opened_by", "opened_at")
 SYNTHESIS_KEYS = ("synthesis", "synthesis_by", "synthesis_at", "synthesis_covers", "rapporteur")
 CLOSING_KEYS = ("status", "closed_at", "closed_by", "outcome", "reference")
-# Les plafonds « par jour » sont des fenêtres glissantes de 24 h, jamais le jour UTC (pas de pic à minuit).
+# The « per day » caps are sliding 24 h windows, never the UTC day (no spike at midnight).
 CAP_WINDOW = dt.timedelta(hours=24)
-# Sauts de ligne que YAML réinterprète (NEL, séparateurs de ligne et de paragraphe), refusés en plus des catégories Cc
-# et Cf : écrits dans un débat, ils rendraient le fichier impossible à réécrire fidèlement par l'outil.
+# Line breaks that YAML reinterprets (NEL, line and paragraph separators), refused on top of the categories Cc
+# and Cf: written in a debate, they would make the file impossible for the tool to rewrite faithfully.
 YAML_JUMPS = frozenset(map(chr, (0x85, 0x2028, 0x2029)))
-# Une date déclarée dans un débat est l'heure de la PR : au plus 2 h avant la vérification, jamais dans le futur.
+# A date declared in a debate is the time of the PR: at most 2 h before the check, never in the future.
 TOLERANCE_DATE = dt.timedelta(hours=2)
-# Une levée (écrite par le conseil, jamais en libre-service) datée dans le futur neutraliserait d'avance les relectures publiées
-# avant sa date : bee valider ne lui laisse que 5 min d'avance (une relecture : 2 h, pour les horloges décalées).
+# A lift (written by the council, never self-service) dated in the future would neutralise in advance the reviews
+# published before its date: bee validate allows it only 5 min ahead (a review: 2 h, for skewed clocks).
 LIFT_TOLERANCE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
-    """Plafonds de l'agora : bee.yaml (clé agora ; docs/agora.md, « Contre le bruit »), tous exigés (ruche-0144)."""
+    """The agora's caps: bee.yaml (key agora; docs/agora.md, « Contre le bruit »), all required (ruche-0144)."""
     return setting(reg, "agora")
 
 
@@ -3056,7 +3056,7 @@ def arguments_of(debate):
 
 
 def debate_participants(debate):
-    """Celui qui a ouvert le débat, puis les auteurs d'arguments, dans l'ordre de leur première intervention."""
+    """The one who opened the debate, then the authors of arguments, in the order of their first intervention."""
     seen_items = []
     for who_is in [(debate or {}).get("opened_by")] + [a.get("by") for a in arguments_of(debate)]:
         if isinstance(who_is, str) and who_is and who_is not in seen_items:
@@ -3065,13 +3065,13 @@ def debate_participants(debate):
 
 
 def turn_participants(debate, council=()):
-    """Ceux entre qui la plume tourne : les participants (debate_participants), sauf un membre du conseil qui a ouvert le
-    débat sans y argumenter ni en écrire la dernière synthèse (bee debate import-questions). Il n'y a pas pris part :
-    lui passer la plume la laissait 72 h en attente, et un argumenteur seul devait la lui rendre à chaque synthèse
-    (répétition générale, tour 2)."""
+    """Those among whom the pen rotates: the participants (debate_participants), except a council member who opened the
+    debate without arguing in it or writing its last synthesis (bee debate import-questions). They took no part in it:
+    passing them the pen left it waiting 72 h, and a lone arguer had to hand it back to them at every synthesis
+    (dress rehearsal, round 2)."""
     took_part = {a.get("by") for a in arguments_of(debate) if isinstance(a.get("by"), str)}
     took_part.add((debate or {}).get("synthesis_by"))
-    opener, who_is = (debate or {}).get("opened_by"), getattr(council, "who_is", None)  # reg.conseil carries who is who (adopter)
+    opener, who_is = (debate or {}).get("opened_by"), getattr(council, "who_is", None)  # reg.council carries who is who (adopt)
 
     def off_turn(p):  # ruche-0050: an invitation's debate is opened by its proposer, who never holds the pen there (ruche-0051:
         if (debate or {}).get("invitation"):  # nor under a linked account)
@@ -3081,8 +3081,8 @@ def turn_participants(debate, council=()):
 
 
 def next_rapporteur(debate, author, council=()):
-    """Rapporteur suivant proposé par défaut : celui qui suit l'auteur dans le tour de rôle (turn_participants, dans
-    l'ordre des interventions), jamais l'auteur lui-même ; l'auteur s'il est seul."""
+    """Next rapporteur proposed by default: the one who follows the author in the rotation (turn_participants, in
+    the order of interventions), never the author themselves; the author if alone."""
     order = turn_participants(debate, council)
     if not [p for p in order if p != author]:
         return author
@@ -3100,7 +3100,7 @@ def last_debate_activity(debate):
 
 
 def arguments_after_synthesis(debate):
-    """Arguments que la synthèse ne couvre pas encore (postérieurs à elle, ou tous s'il n'y en a pas)."""
+    """Arguments the synthesis does not cover yet (later than it, or all of them if there is none)."""
     synthesis = _instant_or_none(debate.get("synthesis_at")) if debate.get("synthesis") else None
     result = []
     for a in arguments_of(debate):
@@ -3111,7 +3111,7 @@ def arguments_after_synthesis(debate):
 
 
 def contested(debate):
-    """ruche-0050: the ids whose duplicate marking an argument contests (conteste: a list of ids)."""
+    """ruche-0050: the ids whose duplicate marking an argument contests (contested_by: a list of ids)."""
     return {str(c) for a in arguments_of(debate) for c in (a.get("contested_by") if isinstance(a.get("contested_by"), list) else [])}
 
 
@@ -3135,12 +3135,12 @@ def synthesis_up_to_date(debate):
     return bool(debate.get("synthesis")) and not arguments_to_cover(debate)
 
 
-# Affichage d'un débat né sans rapporteur (bee debattre importer-questions).
+# Display of a debate born without a rapporteur (bee debate import-questions).
 RAPPORTEUR_ABSENT = "none yet (the first to argue becomes the rapporteur)"
 
 
 def debate_summary(debate):
-    """L'état d'un débat en une ligne de données (bee debates, bee swarm, site, API)."""
+    """The state of a debate as one line of data (bee debates, bee swarm, site, API)."""
     args = arguments_of(debate)
     last_one = last_debate_activity(debate)
     last = args[-1] if args else None
@@ -3155,10 +3155,10 @@ def debate_summary(debate):
 
 
 def forbidden_character(c):
-    """Caractère refusé dans tout texte d'un débat (question, argument, synthèse, source) : les catégories Unicode Cc
-    (contrôle) et Cf (format : invisibles, inversions du sens de lecture), sauf le saut de ligne et la tabulation, et les
-    sauts de ligne que YAML réinterprète (SAUTS_YAML). Ils cacheraient ou maquilleraient un texte à l'affichage, ou
-    rendraient le fichier impossible à réécrire par l'outil. Le schéma (debat.schema.json) en porte la même liste."""
+    """Character refused in any text of a debate (question, argument, synthesis, source): the Unicode categories Cc
+    (control) and Cf (format: invisibles, reading-direction reversals), except the line break and the tab, and the
+    line breaks that YAML reinterprets (YAML_JUMPS). They would hide or disguise a text on display, or
+    make the file impossible for the tool to rewrite. The schema (debate.schema.json) carries the same list."""
     return c not in "\n\t" and (c in YAML_JUMPS or unicodedata.category(c) in ("Cc", "Cf"))
 
 
@@ -3167,8 +3167,8 @@ def first_forbidden_character(text):
 
 
 def admissible_text(text, what_it, maximum):
-    """None si le texte d'utilisateur est recevable : non vide, au plus `maximum` caractères, sans caractère invisible ni
-    de contrôle (forbidden_character) ; sinon la raison du refus."""
+    """None if the user's text is admissible: not empty, at most `maximum` characters, with no invisible or
+    control character (forbidden_character); otherwise the reason for the refusal."""
     if not isinstance(text, str) or not text.strip():
         return f"{what_it} is empty"
     c = first_forbidden_character(text)
@@ -3206,8 +3206,8 @@ def _marked_shape(c):
 
 
 def frame_markers(text):
-    """Les étendues [début, fin) de `texte` où se lit une marque d'encadré (« === DONNÉES », « === FIN DES DONNÉES ») : sans
-    casse ni accent, espaces tolérées, chaque caractère lu par _marked_shape (« ＝ » pleine chasse est « = »)."""
+    """The spans [start, end) of `text` where a frame marker reads (« === DONNÉES », « === FIN DES DONNÉES »):
+    without case or accent, spaces tolerated, each character read by _marked_shape (full-width « ＝ » is « = »)."""
     text = str(text)
     if "=" not in (n := unicodedata.normalize("NFKC", text)) and not any(map(_symbol, set(text + n))):
         return []
@@ -3219,20 +3219,20 @@ def frame_markers(text):
 
 
 def neutralise_markers(text):
-    """Chaque marque d'encadré cassée de façon visible (NEUTRALISED_MARKER) ; point fixe."""
+    """Each frame marker broken visibly (NEUTRALISED_MARKER); a fixed point."""
     for beginning, end in reversed(frame_markers(text)):
         text = text[:beginning] + NEUTRALISED_MARKER + text[end:]
     return text
 
 
 def free_text_problem(text, what_it, one_line=None):
-    """Le contrôle commun de tout texte libre du registre (ruche-0029) : sur une ligne si `one_line` le nomme (« le résumé »),
-    aucun caractère que forbidden_outgoing_character refuse, aucune marque d'encadré ; None, ou la raison, qui nomme le point
-    de code, jamais le caractère."""
+    """The common check of every free text of the registry (ruche-0029): on one line if `one_line` names it
+    (« the summary »), no character that forbidden_outgoing_character refuses, no frame marker; None, or the reason,
+    which names the code point, never the character."""
     text = str(text)
     if one_line and ("\n" in text or "\t" in text):
         return f"{what_it}: {one_line} fits on one line (no line break or tab)"
-    refused_items = {c for c in set(text) if forbidden_outgoing_character(c)}  # chacun une fois
+    refused_items = {c for c in set(text) if forbidden_outgoing_character(c)}  # each once
     c = next((c for c in text if c in refused_items), None) if refused_items else None
     if c is not None:
         return (f"{what_it}: invisible character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): "
@@ -3245,8 +3245,8 @@ def free_text_problem(text, what_it, one_line=None):
 
 
 def texts_by(value, place_of="", depth=0):
-    """(lieu, texte) pour chaque texte d'une donnée lue, valeurs et clés, récursivement ; une clé refusée n'est pas recopiée.
-    Past 20 levels, (lieu, None): the caller refuses it (fail closed), nothing is skipped silently."""
+    """(place, text) for each text of a datum read, values and keys, recursively; a refused key is not copied.
+    Past 20 levels, (place, None): the caller refuses it (fail closed), nothing is skipped silently."""
     if isinstance(value, str):
         yield place_of or "(root)", value
     elif isinstance(value, (list, dict)) and depth >= 20:
@@ -3262,8 +3262,9 @@ def texts_by(value, place_of="", depth=0):
 
 
 def text_problems(data, prefix_text, sort_kind=None):
-    """Each refusal of the common check in `donnees` (values and keys), as bee validate reports it, so that a command can refuse
-    before writing what bee validate would refuse after: a title, a summary and a key fit on one line; with `sorte`, its bounds."""
+    """Each refusal of the common check in `data` (values and keys), as bee validate reports it, so that a command can
+    refuse before writing what bee validate would refuse after: a title, a summary and a key fit on one line; with
+    `sort_kind`, its bounds."""
     for place_of, text in texts_by(data):
         one_line = "the key" if place_of.endswith(" (key)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
@@ -3285,8 +3286,8 @@ def self_service_text_problems(data, relative_one):
 
 
 def show_error(text, one_line=False):
-    """Un message tel qu'on peut l'imprimer (bee validate, check-pr) : chaque caractère que refuse forbidden_outgoing_character
-    écrit « <U+XXXX> », même cité par le message d'un schéma. No GitHub Actions workflow command survives: « ##[ » anywhere,
+    """A message made printable (bee validate, check-pr): each character that forbidden_outgoing_character refuses is
+    written « <U+XXXX> », even quoted by a schema's message. No GitHub Actions workflow command survives: « ##[ » anywhere,
     « :: » at the start of a line, after any spaces (the runner trims them). Every line after the first is indented (ruche-0088):
     a text quoted in the message never prints a line of its own that would pass for one of bee's."""
     text = "".join(f"<U+{ord(c):04X}>" if forbidden_outgoing_character(c) else c for c in str(text)).replace("##[", "# #[")
@@ -3295,8 +3296,8 @@ def show_error(text, one_line=False):
 
 
 def show_line(text):
-    """montrer, sur une seule ligne : un saut de ligne s'écrit « \\n » ; un champ d'une ligne (identifiant, canal, demande) ne
-    fabrique pas une ligne qui imiterait bee (revue de ruche-0052)."""
+    """show_error, on a single line: a line break is written « \\n »; a one-line field (identifier, channel, request)
+    does not make up a line that would imitate bee (review of ruche-0052)."""
     return show_error(text, one_line=True)
 
 
@@ -3310,9 +3311,10 @@ VERDICT_KEY = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 
 def showable_verdict(verdict):
-    """Les chaînes que record-verdict recopie du verdict.json, données du fork (ruche-0029, S2) : chaque texte sur une ligne,
-    borné, l'invisible montré, la marque cassée (declared_text) ; une clé de scénario ou de métrique hors de VERDICT_KEY est
-    remplacée (refused_key_<n>, un nom qu'aucune clé honnête du même champ ne porte), jamais le verdict perdu. Renvoie le nombre de clés remplacées."""
+    """The strings record-verdict copies from verdict.json, the fork's data (ruche-0029, S2): each text on one line,
+    bounded, the invisible shown, the marker broken (declared_text); a scenario or metric key outside VERDICT_KEY is
+    replaced (refused_key_<n>, a name no honest key of the same field bears), never the verdict lost. Returns the number
+    of keys replaced."""
     replaced = 0
     if "failed_step" in verdict:
         verdict["failed_step"] = declared_text(verdict["failed_step"], 200) or "inconnue"
@@ -3329,9 +3331,9 @@ def showable_verdict(verdict):
 
 
 def free_texts_problem(value, place_of, maximum, depth=0):
-    """Premier texte d'utilisateur trop long ou maquillé dans `valeur` (textes, clés et éléments, récursivement), ou None.
-    Pour les champs libres du libre-service qui n'ont pas de contrôle propre : résumé d'une soumission, description de la
-    machine d'une mesure, catégories d'un profil (revue adverse du tour 2 : 5 000 caractères et U+202E passaient)."""
+    """First user text too long or disguised in `value` (texts, keys and items, recursively), or None.
+    For the self-service free fields without a check of their own: a submission's summary, the description of a
+    measurement's machine, a profile's categories (round 2's adversarial review: 5,000 characters and U+202E passed)."""
     if depth > 5:
         return f"{place_of}: structure too deep"
     if isinstance(value, str):
@@ -3353,12 +3355,12 @@ def free_texts_problem(value, place_of, maximum, depth=0):
     return None
 
 
-SUMMARY_MAX = 500           # caractères du résumé d'une soumission (le plus long du registre au 30/10 : 326)
-SHORT_TEXT_MAX = 200      # caractères d'un champ descriptif court (machine d'une mesure, catégorie d'un profil)
+SUMMARY_MAX = 500           # characters of a submission's summary (the longest in the registry on 30/10: 326)
+SHORT_TEXT_MAX = 200      # characters of a short descriptive field (machine of a measurement, category of a profile)
 
 
 def source_form(source):
-    """None si la source a la forme d'une adresse https:// ou d'un chemin relatif du registre ; sinon la raison."""
+    """None if the source is shaped like an https:// address or a relative registry path; otherwise the reason."""
     s = str(source)
     c = first_forbidden_character(s)
     if c is not None:
@@ -3375,10 +3377,10 @@ def source_form(source):
 
 
 def source_problem(reg, source):
-    """source_form, plus l'existence du chemin dans le registre (vérifiée quand l'argument est ajouté)."""
+    """source_form, plus the existence of the path in the registry (checked when the argument is added)."""
     problem_text = source_form(source)
     if not problem_text and str(source).startswith("https://"):
-        # Les détecteurs de données personnelles de R13 valent aussi dans l'agora (troisième revue adverse de ruche-0020, C2).
+        # R13's personal-data detectors also apply in the agora (third adversarial review of ruche-0020, C2).
         if on_hosts(host_of(source), PERSONAL_HOSTS):
             return f"{host_of(source)} leads to a personal messaging service: no personal data in the agora (R13)"
         datum = personal_datum(decode_url(str(source)))
@@ -3394,30 +3396,30 @@ def source_problem(reg, source):
 
 
 def agora_datum(text, what_it):
-    """Les détecteurs de données personnelles de R13 sur un argument ou une synthèse de l'agora (troisième revue adverse de
-    ruche-0020, C2) : None, ou la raison. Dans l'agora, une invitation se désigne par son numéro, jamais par la personne."""
+    """R13's personal-data detectors on an argument or a synthesis of the agora (third adversarial review of
+    ruche-0020, C2): None, or the reason. In the agora, an invitation is named by its number, never by the person."""
     datum = personal_datum(text) if isinstance(text, str) else None
     return (f"{what_it}: {datum}: no personal data in the agora; an invitation is named there by its number (I-0001), "
             "never by the person's name nor by facts about them (R13)" if datum else None)
 
 
 REDACTION_REASONS = ("refusal", "request", "no_answer")
-# Ce qui se caviarde dans un débat, hors des arguments : le texte, et la clé qui dit pour quelle invitation (vérification de
-# cdbcf36, D1b).
+# What is redacted in a debate, outside the arguments: the text, and the key that says for which invitation
+# (verification of cdbcf36, D1b).
 REDACTABLE = {"question": "question_redacted_for", "synthesis": "synthesis_redacted_for"}
 
 
 def redacted(argument, reason, invitation):
-    """Un argument caviardé (commandement 10, phrase ajoutée ; R12) pour une invitation refusée ou retirée : son texte devient
-    « retiré : <reason> », ses sources « retiré », et redacted_for nomme l'invitation ; son identifiant, son auteur, sa date, sa
-    position et ses liens demeurent."""
+    """An argument redacted (commandment 10, added sentence; R12) for an invitation refused or withdrawn: its text
+    becomes « withdrawn: <reason> », its sources « retiré », and redacted_for names the invitation; its identifier, its
+    author, its date, its position and its links remain."""
     return {**argument, "redacted_for": invitation, "text": REMOVED[reason],
             **({"sources": ["retiré"]} if "sources" in argument else {})}
 
 
 def redactions(old, new):
-    """[(ce qui est caviardé, invitation, motif)] si la seule différence entre deux états d'un débat est le caviardage
-    d'arguments, de la question ou de la synthèse (sous la forme qu'écrit bee debate redact), sinon None."""
+    """[(what is redacted, invitation, reason)] if the only difference between two states of a debate is the redaction
+    of arguments, of the question or of the synthesis (in the form bee debate redact writes), otherwise None."""
     if not (isinstance(old, dict) and isinstance(new, dict)):
         return None
     free_ones = {"arguments", *REDACTABLE, *REDACTABLE.values()}
@@ -3448,8 +3450,9 @@ def redactions(old, new):
 
 
 def redaction_refusal(reg, invitation, reason):
-    """None si l'on peut caviarder pour `invitation` avec ce motif : une invitation refusée, restée sans réponse ou retirée, et
-    le motif de son retrait (vérification de cdbcf36, D1 : sans invitation retirée, le conseil ne fait taire personne)."""
+    """None if one can redact for `invitation` with this reason: an invitation refused, left unanswered or withdrawn,
+    and the reason for its withdrawal (verification of cdbcf36, D1: without a withdrawn invitation, the council
+    silences no one)."""
     inv = reg.invitations.get(str(invitation), (None, None))[1]
     if not withdrawn(inv):
         return (f"redacted_for « {_clean(invitation)} »: an invitation refused, left unanswered or withdrawn; without one, "
@@ -3472,7 +3475,7 @@ def reference_form(outcome, reference):
 
 
 def reference_problem(reg, outcome, reference):
-    """reference_form, plus l'existence de ce qui sort du débat (vérifiée à la clôture)."""
+    """reference_form, plus the existence of what comes out of the debate (checked at the closing)."""
     problem_text = reference_form(outcome, reference)
     if problem_text or outcome == "no_follow_up":
         return problem_text
@@ -3489,32 +3492,32 @@ def reference_problem(reg, outcome, reference):
 
 
 def openings_since(reg, user, beginning):
-    """Débats ouverts par l'utilisateur après `debut` (fenêtre glissante des plafonds)."""
+    """Debates opened by the user after `beginning` (the caps' sliding window)."""
     return sum(1 for _, d in reg.debates.values() if isinstance(d, dict) and reg.identities.same_one(d.get("opened_by"), user)
                and (moment := _instant_or_none(d.get("opened_at"))) and moment > beginning)
 
 
 def arguments_since(debate, user, beginning, who_is):
-    """Arguments de l'utilisateur dans le débat après `debut` (fenêtre glissante des plafonds)."""
+    """The user's arguments in the debate after `beginning` (the caps' sliding window)."""
     return sum(1 for a in arguments_of(debate) if who_is.same_one(a.get("by"), user)
                and (moment := _instant_or_none(a.get("at"))) and moment > beginning)
 
 
 def next_room(instants, maximum):
-    """Quand une place se libère dans une fenêtre glissante de 24 h pleine : le plus ancien des `maximum` derniers + 24 h."""
+    """When a slot frees up in a full sliding 24 h window: the oldest of the last `maximum` + 24 h."""
     recent_items = sorted(instants)[-maximum:]
     return en_iso(recent_items[0] + CAP_WINDOW) if recent_items else "-"
 
 
 def refused_survey(debate, user, instant, hours, council=()):
-    """Relève d'un rapporteur absent (docs/agora.md) : None si `utilisateur` peut publier la synthèse à sa place, sinon la
-    raison. Il faut des arguments arrivés depuis la dernière synthèse, dont le premier a plus de `heures` heures, et un
-    participant du débat autre que le rapporteur et, s'il y en a un autre, que l'auteur de la dernière synthèse (jamais
-    deux synthèses de suite par le même)."""
+    """Relief of an absent rapporteur (docs/agora.md): None if `user` can publish the synthesis in their place,
+    otherwise the reason. It takes arguments arrived since the last synthesis, the first of which is more than `hours`
+    hours old, and a participant of the debate other than the rapporteur and, if there is another one, than the author
+    of the last synthesis (never two syntheses in a row by the same one)."""
     rapporteur = debate.get("rapporteur")
     participants = debate_participants(debate)
-    # Le tour de rôle (participants_tour) : le conseil importateur n'est pas « un autre participant » qui obligerait à
-    # alterner les relèves (revue adverse du tour 2 : la seconde relève restait bloquée).
+    # The rotation (turn_participants): the importing council is not « another participant » that would force the
+    # reliefs to alternate (adversarial review of round 2: the second relief stayed blocked).
     candidates = [p for p in turn_participants(debate, council) if p != rapporteur]
     eligible = [p for p in candidates if p != debate.get("synthesis_by")] or candidates
     if user not in participants:
@@ -3536,10 +3539,10 @@ def refused_survey(debate, user, instant, hours, council=()):
 
 
 def check_agora_registry(reg, add_to, per_schema, valid_instant):
-    """Cohérence de l'agora dans tout le registre (bee validate ; ses plafonds : settings_problems) : débats conformes à leur schéma,
-    arguments numérotés et datés dans l'ordre, renvois vers des arguments précédents, rapporteur participant. Les
-    plafonds eux-mêmes (longueurs, nombre sur 24 h) se contrôlent à l'écriture, dans check_pr : un plafond abaissé
-    par une règle ne rend pas invalides les débats déjà écrits."""
+    """Consistency of the agora across the registry (bee validate; its caps: settings_problems): debates conforming to
+    their schema, arguments numbered and dated in order, references to earlier arguments, rapporteur a participant. The
+    caps themselves (lengths, number over 24 h) are checked when writing, in check_pr: a cap lowered by a rule does
+    not make the debates already written invalid."""
     known_items = set(reg.members) | set(reg.council) | {x for _, m in reg.members.values() if isinstance(m, dict) for x in logins_of(m)}  # ruche-0022
     for stem, (path, d) in reg.debates.items():
         if not per_schema("debate", path, d):
@@ -3555,7 +3558,7 @@ def check_agora_registry(reg, add_to, per_schema, valid_instant):
         if proposing_member and reg.invitations.get(d["invitation"], (None, {}))[1].get("debate") != stem:
             add_to(f"{place_of}: invitation « {d['invitation']} » does not name this debate back (its debate)")
         if "rapporteur" not in d:
-            # Débat né sans rapporteur (importer-questions) : le premier qui argumente le devient, dans la même PR.
+            # Debate born without a rapporteur (import-questions): the first to argue becomes it, in the same PR.
             if [a for a in d["arguments"] if a["by"] != proposing_member] or d.get("synthesis"):
                 add_to(f"{place_of}: debate without a rapporteur, but with arguments or a synthesis: the first to argue becomes "
                         "rapporteur (bee debate argue)")
@@ -3563,7 +3566,7 @@ def check_agora_registry(reg, add_to, per_schema, valid_instant):
             add_to(f"{place_of}: the rapporteur « {d['rapporteur']} » must be a participant of the debate (the one who opened it or "
                     "the author of an argument), never the proposer of its invitation")
         valid_instant(path, d["opened_at"], "opened_at")
-        # Un caviardage dit pour quelle invitation, et le texte est « retiré : <motif> » (commandement 10, R12).
+        # A redaction says for which invitation, and the text is « withdrawn: <reason> » (commandment 10, R12).
         for field, marker in REDACTABLE.items():
             if marker in d and d.get(field) not in REMOVED.values():
                 add_to(f"{place_of}: {marker}, but {field} is not redacted (« withdrawn: … »)")
@@ -3616,12 +3619,12 @@ def check_agora_registry(reg, add_to, per_schema, valid_instant):
 
 def check_debate(reg, path, git_status, old, new, author, *, is_council, instant, expected=None, raw=None,
                    added_dates=None, with_status=True):
-    """Transitions d'un débat de l'agora dans une PR (docs/agora.md) : toutes en libre-service, toutes contrôlées ici.
+    """Transitions of a debate of the agora in a PR (docs/agora.md): all self-service, all checked here.
 
-    attendu : le chemin que doit avoir un débat ajouté (numéro suivant le plus grand de la base, sans trou).
-    brut : les octets du fichier dans la tête de la PR, qui doivent être exactement le rendu canonique de ses données.
-    added_dates : liste où ajouter l'instant de chaque argument ajouté (plafond tous débats confondus, dans check_pr).
-    Renvoie (natures, problèmes, nombre d'arguments ajoutés)."""
+    expected: the path an added debate must have (the number after the highest of the base, no gap).
+    raw: the bytes of the file in the head of the PR, which must be exactly the canonical rendering of its data.
+    added_dates: list to which the instant of each added argument is appended (cap across all debates, in check_pr).
+    Returns (natures, problems, number of added arguments)."""
     natures, problems_found = [], []
     conf = config_agora(reg)
 
@@ -3631,7 +3634,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         return condition
 
     def recent_date(value, what_it):
-        """Une date déclarée est l'heure de la PR, à 2 h près, jamais dans le futur."""
+        """A declared date is the time of the PR, within 2 h, never in the future."""
         try:
             moment = read_instant(value, f"{path} ({what_it})")
         except BeeError as e:
@@ -3652,9 +3655,9 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
     if not require(isinstance(new, dict), "unreadable file"):
         return natures, problems_found, 0
     if raw is not None:
-        # Forme canonique, octet pour octet : ce que la machine lit est exactement ce que voit un humain ou un agent qui
-        # lit le fichier brut (pas de commentaire glissé dans l'argument d'un autre, pas d'autre mise en forme), et
-        # l'outil saura toujours réécrire le débat.
+        # Canonical form, byte for byte: what the machine reads is exactly what a human or an agent reading the
+        # raw file sees (no comment slipped into someone else's argument, no other formatting), and
+        # the tool will always be able to rewrite the debate.
         try:
             canonical = debate_render(new, path).encode("utf-8")
         except BeeError:
@@ -3662,7 +3665,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         require(raw == canonical, "the file is not exactly in the form bee debate writes (a comment, other "
                                   "formatting, or content the tool cannot rewrite): write it with bee debate")
     member = author in reg.members or author in reg.council
-    privileged = with_status and author in reg.privileged_ones()  # status: see verifier_pr (ruche-0089)
+    privileged = with_status and author in reg.privileged_ones()  # status: see check_pr (ruche-0089)
 
     def check_synthesis(previous_value=None):
         text = new.get("synthesis")
@@ -3678,8 +3681,9 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         require(not new.get("invitation") or new.get("synthesis_covers") == last, f"synthesis_covers: an invitation's synthesis "
                f"covers the last argument of the debate as merged ({_clean(last)}): update main and synthesize again (ruche-0050)")
 
-    # Caviardage (commandement 10, phrase ajoutée ; R12) : le conseil seul retire d'un débat, même clos, le texte d'un argument
-    # qui désigne ou décrit une personne extérieure, à son refus ou à sa demande ; c'est la seule modification d'un argument.
+    # Redaction (commandment 10, added sentence; R12): the council alone removes from a debate, even closed, the text of
+    # an argument that names or describes an outside person, on their refusal or at their request; it is the only
+    # modification of an argument.
     if git_status == "M" and redactions(old, new):
         natures.append("redaction")
         for what_it, in_favour, reason in redactions(old, new):
@@ -3706,7 +3710,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         if "rapporteur" in new:
             require(new.get("rapporteur") == author, f"the first rapporteur is the one who opens the debate ({author}), or nobody")
         else:
-            # Né sans rapporteur (bee debattre importer-questions) : le premier qui argumente le deviendra.
+            # Born without a rapporteur (bee debate import-questions): the first to argue will become rapporteur.
             require(not new.get("arguments") and not new.get("synthesis"),
                    "a debate born without a rapporteur is born without an argument or a synthesis: the first to argue becomes rapporteur")
         require(new.get("status") == "open", "a debate is born open")
@@ -3718,8 +3722,8 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         require(not any(c in new for c in REDACTABLE.values()), "a debate is born without a redaction")
         open = recent_date(new.get("opened_at"), "opened_at")
         if open and not is_council:
-            # Fenêtre glissante : tout ce que l'auteur a ouvert depuis 24 h avant cette ouverture, y compris après elle
-            # (une ouverture antidatée dans la tolérance ne fait pas sortir de la fenêtre une ouverture récente).
+            # Sliding window: everything the author has opened since 24 h before this opening, including after it
+            # (an opening backdated within the tolerance does not push a recent opening out of the window).
             n = openings_since(reg, author, open - CAP_WINDOW)
             require(n <= conf["openings_max_per_24h"],
                    f"cap: {author} would have {n} debates opened in 24 h (since {en_iso(open - CAP_WINDOW)}), at most "
@@ -3741,14 +3745,14 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             return natures, problems_found, 0
         for key in IMMUTABLE_DEBATE_KEYS:
             require(old.get(key) == new.get(key), f"{key} never changes: a debate keeps its question, its author and its date")
-        # La marque d'une synthèse caviardée ne s'ajoute que par un caviardage ; elle tombe avec la synthèse suivante.
+        # The mark of a redacted synthesis is added only by a redaction; it falls with the next synthesis.
         marker = "synthesis_redacted_for"
         require(new.get(marker) in (None, old.get(marker)) and (new.get(marker) is None
                                                                      or new.get("synthesis") == old.get("synthesis")),
                f"{marker}: only the council sets it, by redacting (bee debate redact); it falls with the next synthesis")
         base = old
 
-    # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
+    # --- Arguments: append-only; only duplicate_of can be set on an existing argument. ---
     rapporteur = base.get("rapporteur")
     proposing_member = new.get("opened_by") if new.get("invitation") else None  # ruche-0050
     finished = expected_no_follow_up(reg, old) if git_status == "M" else None  # ruche-0139: judged on main; frozen but for its closing
@@ -3812,7 +3816,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         if arg.get("position") == "fact":
             require(bool(sources), f"{ident}: a fact cites its sources (an https:// address or a registry path): we argue from "
                                   "evidence (commandment 12)")
-        # Les sources ne sont pas un second texte : peu nombreuses et courtes (sinon le plafond du texte se contourne).
+        # The sources are not a second text: few and short (otherwise the text's cap is circumvented).
         require(len(sources) <= conf["sources_per_argument_max"],
                f"{ident}: {len(sources)} sources, at most {conf['sources_per_argument_max']} (agora.sources_per_argument_max)")
         for s in sources:
@@ -3824,8 +3828,8 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
     if added_dates is not None:
         added_dates.extend(dates)
     if dates:
-        # Fenêtre glissante de 24 h qui finit au plus tôt des arguments ajoutés et court jusqu'au dernier (les arguments
-        # sont dans l'ordre : ceux d'avant sont déjà comptés, ceux d'après sont ceux de la PR).
+        # Sliding 24 h window that ends at the earliest of the added arguments and runs to the last one (the arguments
+        # are in order: those before are already counted, those after are the PR's).
         beginning = min(dates) - CAP_WINDOW
         n = arguments_since(new, author, beginning, reg.identities)
         require(n <= conf["arguments_max_per_24h"],
@@ -3839,8 +3843,8 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                "proposer of the invitation never holds the pen of its debate, nor under an agent account or a linked account")
     if git_status == "M":
         if "rapporteur" not in old:
-            # --- Prise de plume : dans un débat né sans rapporteur, le premier qui argumente le devient, dans la même PR,
-            # pour lui-même seulement ; personne d'autre ne le désigne. La synthèse vient dans une PR suivante. ---
+            # --- Pen takeover: in a debate born without a rapporteur, the first to argue becomes rapporteur, in the
+            # same PR, for themselves only; nobody else designates them. The synthesis comes in a later PR. ---
             if added_items and not (proposing_member and same_person(reg, author, proposing_member)):
                 natures.append("pen_takeover")
                 require(new.get("rapporteur") == author,
@@ -3852,12 +3856,12 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             require(all(old.get(c) == new.get(c) for c in ("synthesis", "synthesis_by", "synthesis_at", "synthesis_covers")),
                    "the synthesis is published in a later PR, once rapporteur (bee debate synthesize)")
         else:
-            # --- Synthèse : le rapporteur seul, qui désigne le suivant parmi les autres participants. ---
+            # --- Synthesis: the rapporteur alone, who designates the next one among the other participants. ---
             changed_ones = [c for c in SYNTHESIS_KEYS if old.get(c) != new.get(c)]
             if changed_ones:
                 others = [p for p in turn_participants(new, reg.council) if p != author]
-                # Relève d'un rapporteur absent : jugée sur la base (participants et arguments déjà publiés), jamais sur ce que
-                # la PR ajoute, pour qu'on ne devienne pas participant le temps de prendre la plume.
+                # Relief of an absent rapporteur: judged on the base (participants and arguments already published),
+                # never on what the PR adds, so that no one becomes a participant just long enough to take the pen.
                 survey = None if author == rapporteur else refused_survey(old, author, instant, conf["rapporteur_relief_hours"], reg.council)
                 if author == rapporteur or (survey is None and "synthesis_at" in changed_ones):
                     natures.append("synthesis")
@@ -3870,7 +3874,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                     else:
                         require(new.get("rapporteur") == author, "the only participant, the rapporteur remains rapporteur")
                 elif is_council and changed_ones == ["rapporteur"]:
-                    # Relève d'un rapporteur absent par le conseil : jamais fusionnée automatiquement.
+                    # Relief of an absent rapporteur by the council: never merged automatically.
                     natures.append("governance")
                     require(new.get("rapporteur") in debate_participants(new),
                            "the new rapporteur is a participant of the debate (the one who opened it or the author of an argument)")
@@ -3880,7 +3884,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                                   f"{survey or 'it is done by publishing the synthesis'}; {author} can add an argument "
                                   "(bee debate argue)")
 
-        # --- Clôture : le rapporteur, un gardien ou le conseil, en nommant ce qui sort du débat. ---
+        # --- Closing: the rapporteur, a guardian or the council, naming what comes out of the debate. ---
         changed_ones = [c for c in CLOSING_KEYS if old.get(c) != new.get(c)]
         if changed_ones:
             natures.append("debate_closing")
@@ -3901,7 +3905,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                 problem_text = reference_problem(reg, new.get("outcome"), new.get("reference"))
                 require(problem_text is None, f"{problem_text}")
             if author == rapporteur and not privileged:
-                # Le rapporteur ne clôt pas en hâte pour couper court : synthèse à jour, et un temps de silence.
+                # The rapporteur does not close hastily to cut short: an up-to-date synthesis, and a period of silence.
                 last_one = previous_one
                 synthesis = _instant_or_none(new.get("synthesis_at")) if new.get("synthesis") else None
                 require(synthesis is not None and last_one is not None and synthesis >= last_one,
@@ -3915,37 +3919,40 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
 
 
 # --------------------------------------------------------------------------
-# Croissance et contacts extérieurs (R13, commandement 13 ; tâche ruche-0020, docs/croissance.md)
+# Growth and outside contacts (R13, commandment 13; task ruche-0020, docs/growth.md)
 # --------------------------------------------------------------------------
 #
-# Une invitation est un fichier invitations/I-<nnnn>.yaml : la personne (son identifiant public et le canal qu'elle publie
-# elle-même, rien d'autre), pourquoi elle (faits publics et sources), ce qui lui est demandé, le message exact, le débat de
-# l'agora où elle se discute, qui la propose. Ses gestes de suivi s'ajoutent, un par PR, sans jamais rien modifier ni retirer :
-#   proposer        tout membre, en son nom, au numéro suivant (bee inviter ; libre-service) ;
-#   accord_gardien  un gardien nommé, autre que le proposant, debat_min_heures après sa publication (libre-service) ;
-#   accord_conseil  le conseil, après le gardien et autre que lui (le conseil fusionne) ;
-#   envoi           le conseil consigne le message qu'un humain du conseil a envoyé lui-même, hors de l'outil (idem) ;
-#   relance         le conseil, une fois, delai_relance_jours après l'envoi : le même message (idem) ;
-#   reponse         le conseil : acceptee, refusee (à tout moment avant la fin) ou sans_reponse (delai_relance_jours après
-#                   le dernier message) ; refusee et sans_reponse inscrivent la personne dans ne-plus-contacter.yaml (idem) ;
-#   ecartee         le proposant, un gardien ou le conseil, avant l'envoi, avec un motif (libre-service) ;
-#   retrait         le conseil, à la demande de la personne, à tout moment (idem).
-# La liste de non-contact ne garde que des empreintes (SHA-256 de la clé canonique de chaque identifiant), jamais un nom. Les
-# données d'une personne extérieure ne sont pas du commun (commandement 10) : à son refus (reponse refusee) ou à sa demande
-# (retrait), bee remplace dans le fichier ce qui la désigne ou la décrit par « retiré : refus » ou « retiré : demande » ; le
-# numéro, les dates, la demande, le statut et le proposant restent. L'historique git garde l'ancien contenu.
-# Ce qui mène au contact (accords, envoi, relance) s'arrête quand la personne est sur la liste de non-contact, ou quand le frein
-# est serré (etat_frein), sauf pour une invitation qui renforce l'encadrement (devenir garant ou gardien) ; les envois sont
-# plafonnés par semaine pour toute la ruche. Aucun code n'envoie de message :
-# l'outil ne fait aucune requête réseau et n'appelle jamais gh pour contacter quelqu'un ; il lit et écrit le registre.
+# An invitation is a file invitations/I-<nnnn>.yaml: the person (their public identifier and the channel they publish
+# themselves, nothing else), why them (public facts and sources), what is asked of them, the exact message, the debate
+# of the agora where it is discussed, who proposes it. Its follow-up gestures are added, one per PR, never modifying or
+# removing anything:
+#   propose            any member, in their own name, at the next number (bee invite; self-service);
+#   guardian_approval  a named guardian, other than the proposer, debate_min_hours after its publication (self-service);
+#   council_approval   the council, after the guardian and other than them (the council merges);
+#   sent               the council records the message that a human of the council sent themselves, outside the tool
+#                      (likewise);
+#   reminder           the council, once, reminder_delay_days after the sending: the same message (likewise);
+#   answer             the council: accepted, refused (at any time before the end) or no_answer (reminder_delay_days
+#                      after the last message); refused and no_answer add the person to do-not-contact.yaml (likewise);
+#   set_aside          the proposer, a guardian or the council, before the sending, with a reason (self-service);
+#   withdrawal         the council, at the person's request, at any time (likewise).
+# The do-not-contact list keeps only fingerprints (SHA-256 of the canonical key of each identifier), never a name. The
+# data of an outside person are not part of the commons (commandment 10): on their refusal (answer refused) or at their
+# request (withdrawal), bee replaces in the file what names or describes them with « withdrawn: refusal » or
+# « withdrawn: request »; the number, the dates, the request, the status and the proposer remain. The git history keeps
+# the old content.
+# What leads to contact (approvals, sending, reminder) stops when the person is on the do-not-contact list, or when the
+# brake is tight (brake_state), except for an invitation that strengthens oversight (becoming guarantor or guardian);
+# sendings are capped per week for the whole hive. No code sends a message:
+# the tool makes no network request and never calls gh to contact anyone; it reads and writes the registry.
 
 WEEK = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}\Z")
 ID_REPORT = re.compile(r"^S-[0-9]{4}\Z")
-# Identifiant public : <plateforme>:<nom>, d'une liste fermée (revue adverse de ruche-0020, A1 et A2 : github.com:x, gh:x, x/.,
-# x/repositories désignaient la même personne). Plateforme canonique -> (alias acceptés à l'écriture, adresse du profil, qui
-# est le canal). Le nom d'une forge est un seul segment (aucun /) ; « site » désigne un domaine, et son canal est une page de ce
-# domaine. Ni courriel, ni téléphone, ni messagerie : aucune de ces plateformes n'existe ici.
+# Public identifier: <platform>:<name>, from a closed list (adversarial review of ruche-0020, A1 and A2: github.com:x,
+# gh:x, x/., x/repositories designated the same person). Canonical platform -> (aliases accepted when writing, profile
+# address, which is the channel). A forge's name is a single segment (no /); « site » designates a domain, and its
+# channel is a page of that domain. No email, no phone, no messaging: none of these platforms exists here.
 PLATFORMS = {"github": (("github", "github.com", "www.github.com", "gh"), "https://github.com/{}"),
                "gitlab": (("gitlab", "gitlab.com", "www.gitlab.com", "gl"), "https://gitlab.com/{}"),
                "codeberg": (("codeberg", "codeberg.org", "www.codeberg.org"), "https://codeberg.org/{}"),
@@ -3954,25 +3961,26 @@ PLATFORMS = {"github": (("github", "github.com", "www.github.com", "gh"), "https
 PLATFORM_ALIASES = {alias: name for name, (alias, _) in PLATFORMS.items() for alias in alias}
 FORGE_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_-]|\.(?=[A-Za-z0-9_-])){0,99}$")
 DOMAIN = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
-# Hôtes des forges (un profil est le premier segment du chemin) et de leurs pages (<nom>.github.io…) : ramenés à la forge, la
-# même personne (seconde revue adverse, A1).
+# Hosts of the forges (a profile is the first segment of the path) and of their pages (<name>.github.io…): mapped to
+# the forge, the same person (second adversarial review, A1).
 FORGE_HOSTS = {"github.com": "github", "gitlab.com": "gitlab", "codeberg.org": "codeberg", "sr.ht": "sourcehut",
                 "git.sr.ht": "sourcehut"}
-# Tout sous-domaine d'une forge (gist.github.com, raw.githubusercontent.com, todo.sr.ht…) se ramène au profil du premier
-# segment du chemin (troisième revue adverse, C5) ; l'API désigne le profil après users/, repos/ ou orgs/.
+# Any subdomain of a forge (gist.github.com, raw.githubusercontent.com, todo.sr.ht…) maps to the profile of the first
+# segment of the path (third adversarial review, C5); the API designates the profile after users/, repos/ or orgs/.
 FORGE_DOMAINS = {"github.com": "github", "githubusercontent.com": "github", "github.dev": "github", "gitlab.com": "gitlab",
                    "codeberg.org": "codeberg", "sr.ht": "sourcehut"}
 # GitHub-owned hosts whose path does not name the owner (ruche-0049): a shortener, an editor (vscode.dev/github/<owner>/…).
 OPAQUE_GITHUB_HOSTS = ("git.io", "vscode.dev")
 FORGE_PAGES = {"github.io": "github", "gitlab.io": "gitlab", "codeberg.page": "codeberg", "srht.site": "sourcehut"}
-# Un site se compare sur son domaine enregistrable : les deux derniers labels, trois sous ces suffixes à deux niveaux courants.
-# Limite (docs/croissance.md) : sans la liste publique des suffixes, un suffixe à deux niveaux absent d'ici n'est pas reconnu.
+# A site is compared on its registrable domain: the last two labels, three under these common two-level suffixes.
+# Limit (docs/growth.md): without the public suffix list, a two-level suffix missing from here is not recognised.
 DOUBLE_SUFFIXES = ("co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "com.au", "net.au", "org.au", "edu.au", "co.nz", "org.nz",
                     "co.jp", "ne.jp", "or.jp", "ac.jp", "com.br", "org.br", "com.cn", "org.cn", "com.mx", "co.in", "org.in",
                     "co.za", "org.za", "com.tr", "co.kr", "com.ar", "com.sg", "com.tw", "com.hk", "co.il", "com.ua", "gouv.fr",
                     "asso.fr", "com.es", "co.at", "or.at")
-# Messageries et réseaux partagés (seconde revue adverse, A2) : un site: y désignerait la plateforme, pas la personne ; une
-# personne qui n'est que là passe par une forge ou son propre domaine. Les messageries sont aussi refusées comme canal ou source.
+# Messaging services and shared networks (second adversarial review, A2): a site: there would designate the platform,
+# not the person; a person who is only there goes through a forge or their own domain. Messaging services are also
+# refused as a channel or source.
 PERSONAL_HOSTS = ("wa.me", "whatsapp.com", "t.me", "telegram.me", "telegram.org", "signal.me", "signal.group", "m.me",
                     "messenger.com", "line.me", "viber.com", "skype.com", "threema.id", "wechat.com", "discord.gg",
                     "discord.com", "discordapp.com", "matrix.to", "item.io", "slack.com", "keybase.io")
@@ -3981,16 +3989,17 @@ SHARED_PLATFORMS = ("facebook.com", "fb.com", "instagram.com", "linkedin.com", "
                          "blogspot.com", "tumblr.com", "netlify.app", "vercel.app", "pages.dev", "herokuapp.com", "gitlab.io",
                          "github.io", "codeberg.page", "srht.site", "sourceforge.net", "sourceforge.io", "bitbucket.org")
 REQUESTS = ("guarantor", "guardian", "participate", "project")
-# Ce qui renforce l'encadrement : les raisons d'encadrement du frein ne l'arrêtent jamais (sinon un gardien sans garant
-# bloquerait l'invitation d'un garant) ; un plafond propre s'applique alors (croissance.encadrement_par_semaine_sous_frein).
+# What strengthens oversight: the brake's oversight reasons never stop it (otherwise a guardian without a guarantor
+# would block the invitation of a guarantor); a cap of its own then applies (growth.oversight_per_week_under_brake).
 STRENGTHEN_FRAMING = ("guarantor", "guardian")
 INVITATION_GESTURES = ("guardian_approval", "council_approval", "renewal", "sent", "reminder", "answer", "set_aside", "withdrawal")
-# Gestes contrôlés avant le contact (frein, incident, liste, plafond). L'envoi n'y est pas : c'est un fait, consigné après coup
-# (seconde revue adverse, B1 et B2) ; l'accord du conseil est le feu vert qui le précède.
+# Gestures checked before the contact (brake, incident, list, cap). The sending is not among them: it is a fact,
+# recorded after the event (second adversarial review, B1 and B2); the council's approval is the green light that
+# precedes it.
 TOWARDS_CONTACT = ("guardian_approval", "council_approval", "renewal", "reminder")
-# Ce qui fait d'un membre un membre actif pour le frein (troisième revue adverse, C9 ; vérification de cdbcf36, D5) : une
-# contribution soumise, une relecture ou une mesure ; jamais une inscription, ni un argument, trop bon marché pour mesurer ce
-# qu'il faut encadrer.
+# What makes a member an active member for the brake (third adversarial review, C9; verification of cdbcf36, D5): a
+# submitted contribution, a review or a measurement; never a registration, nor an argument, too cheap to measure what
+# needs oversight.
 ACTIVE_KINDS = ("contributions", "reviews", "measurements")
 ANSWERS = ("accepted", "refused", "no_answer")
 INVITATION_KEYS = ("id", "status", "person", "other_identities", "request", "why", "message", "debate", "namesake",
@@ -4000,20 +4009,21 @@ NATURES_INVITATION = {"guardian_approval": "guardian_approval", "council_approva
                       "renewal": "invitation_renewal", "sent": "invitation_sending",
                       "reminder": "invitation_reminder", "answer": "invitation_answer", "set_aside": "invitation_dismissal",
                       "withdrawal": "invitation_withdrawal"}
-# Retirer le dossier d'une personne (commandement 10, répétition générale n° 3) : ces champs la désignent ou la décrivent ; à son
-# refus ou à sa demande, ils deviennent « retiré : refus » ou « retiré : demande » (le motif d'un écart aussi). Le reste demeure.
+# Removing a person's record (commandment 10, dress rehearsal no. 3): these fields name or describe them; on their
+# refusal or at their request, they become « withdrawn: refusal » or « withdrawn: request » (the reason for a set-aside
+# too). The rest remains.
 REMOVED = {"refusal": "withdrawn: refusal", "request": "withdrawn: request", "no_answer": "withdrawn: no answer"}
 PERSON_FIELDS = ("person", "other_identities", "why", "message", "namesake")
 FINGERPRINT = re.compile(r"^[0-9a-f]{64}$")
 WHY_MAX, FACT_MAX, ADDRESS_MAX = 5, 300, 200
-# Données personnelles (revues adverses, C1 à C3 puis F1) : un premier filtre, cherché dans tout ce qui sort de la ruche après
-# normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés ; URL décodée). Les faux positifs
-# sont acceptés : la relecture humaine reste le vrai contrôle.
+# Personal data (adversarial reviews, C1 to C3 then F1): a first filter, searched for in everything that leaves the hive
+# after normalisation (NFKC: full-width ＠ and digits, non-breaking spaces; unified dashes; decoded URL). False
+# positives are accepted: human review remains the real check.
 EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:[.,;:~\x02][A-Za-z0-9-]+)*[.,;:~\x02][A-Za-z]{2,}")
 # ruche-0044: "at the point where", "at some point soon" are English prose, not "<name> at <domain> point <tld>". Fail-closed,
 # such a match is skipped only if all hold: the word is "at" (never "arobase"), the would-be domain is a determiner, the
 # separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations; a test checks that none is a
-# top-level domain of a dated Public Suffix List snapshot), and nothing carries an address on (SUITE_D_ADRESSE): dots right
+# top-level domain of a dated Public Suffix List snapshot), and nothing carries an address on (ADDRESS_TAIL): dots right
 # after that word, or within 60 characters a spelled or bracketed dot, an @, words joined by odd signs (example‧com), a spaced
 # dot before a letter or a dot then a lowercase word (example. com). Left to ruche-0047: bare words with no dot ("at the point
 # where example org") and capitalised words after a dot ("Example. Com"), which read as sentences. Refused on purpose: "at
@@ -4028,14 +4038,14 @@ ADDRESS_TAIL = (r"\s*" + POINTS + r"+[^\S\n]*[^\W_]|[\s\S]{0,60}?(?:\b(?:dot|poi
 DISGUISED_EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+\s+(?:at|arobase)"
                               rf"(?!(?<=at)\s+(?:{EN_DETERMINERS})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!{ADDRESS_TAIL}))"
                               r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
-# ruche-0047: every free text of the registry is checked for contact details, however written (decoder_courriel): "<name> at
+# ruche-0047: every free text of the registry is checked for contact details, however written (decode_email): "<name> at
 # <domain>" with any top-level domain after a dot (a file extension aside), a common one after another sign or a blank, a common
 # mail provider alone, or a bare domain later after an "at"; a dot followed by a blank (\x02) takes only a common one.
 LOOKALIKES = str.maketrans("аеорсухіјѕԁԛԝАВЕКМНОРСТХІЈЅοανικρτυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "aeopcyxijsdqwABEKMHOPCTXIJSoavikptuxABEZHIKMNOPTYX")
 AT_WORDS, DOT_WORDS = r"arobase|arroba|chiocciola|klammeraffe", r"dot|point|punto|punkt|ponto|nokta|te[cč]ka|kropka|piste|punt|d0t"
 EMPTY_WORDS = rf"{EN_DETERMINERS}|{CONTINUATIONS_EN}|in|into|to|by|at|is|are|be|not|or|so|as|our|my|your|his|her|their|its"
 TLD = (r"(?:com|org|net|edu|gov|biz|io|co|eu|uk|fr|de|es|nl|ch|ca|au|nz|jp|cn|ru|br|pt|se|dk|fi|ie|lu|cz|gr|hu|ro|mx|za|kr|tw|hk|sg|tr|"
-       r"ua|email|online)(?![\w-]|[./]\w)")  # any case right after the at sign (COURRIEL_DECODE), lower case later (DOMAINE_NU)
+       r"ua|email|online)(?![\w-]|[./]\w)")  # any case right after the at sign (DECODED_EMAIL), lower case later (BARE_DOMAIN)
 EXTENSIONS = (r"py|pyc|cc|cpp|hpp|cs|go|rs|rb|js|ts|sh|md|rst|txt|ya?ml|json|toml|ini|cfg|conf|lock|log|html?|css|xml|csv|patch|diff|gz|"
               r"zip|tar|so|exe|dll|bin|in|am|mk|cmake|java|kt|lua|sql|php|out|tmp|bak|orig|swp|asm|obj|lib|dylib|wasm|dat|raw")
 PROVIDERS = r"gmail|googlemail|hotmail|outlook|yahoo|icloud|aol|protonmail|proton|gmx|laposte|wanadoo|orange|sfr|yandex|zoho|fastmail|posteo"
@@ -4052,13 +4062,14 @@ POSTAL_ADDRESS = re.compile(rf"(?i:\b\d{{1,5}}\s*(?:bis|ter|[a-z])?\s*,?\s+(?:{F
                              r"av|blvd|ln)\b|\b[^\W\d_]+(?:stra(?:ß|ss)e|gasse|platz)\s+\d{1,4}\b|\bp\.?\s?o\.?\s?box\s+\d+|\b(?:rue|avenue|boulevard|"
                              r"impasse|all[ée]e)\s+(?:[^\W\d_][\w'’-]*\s+){1,4}\d{1,4}\b)|\b(?:Via|Piazza|Calle|Plaza|Rua|Avenida|Carrer)\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){1,3}\d{1,4}\b"
                              r"|\b\d{5}\s+[A-ZÀ-Ý][a-zà-ÿ-]{2,}|\b[A-ZÀ-Ý][a-zà-ÿ-]{2,}\s+\d{5}\b")
-# Caractères refusés en plus de caractere_interdit dans ce qui sort de la ruche (revue adverse, B1 et B2) : sélecteurs de variante,
-# autres Default_Ignorable_Code_Point, remplissages et braille vide, qui ne s'affichent pas et portent une charge cachée.
+# Characters refused on top of forbidden_character in what leaves the hive (adversarial review, B1 and B2): variation
+# selectors, other Default_Ignorable_Code_Point, fillers and blank braille, which are not displayed and carry a hidden
+# payload.
 OUTGOING_INVISIBLES = ((0x034F, 0x034F), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x2800, 0x2800), (0x3164, 0x3164),
                        (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF))
-# La mention que porte tout message, mot pour mot (bee inviter l'ajoute) : la ruche, qui la mène, comment refuser, et ce qui est
-# demandé, par une phrase fixe pour chaque demande (seconde revue adverse, C1 : un appel à participer ne s'étiquette pas
-# « garant » sans le dire au destinataire).
+# The mention every message bears, word for word (bee invite adds it): the hive, who runs it, how to decline, and what
+# is asked, by a fixed sentence for each request (second adversarial review, C1: a call to participate is not labelled
+# « guarantor » without telling the recipient).
 MENTION_INVITATION = {
     "fr": ("Ce message vient de Bee ({address}), une ruche de logiciels libres menée par des agents d'IA sous un conseil "
            "humain, qui l'a décidé publiquement selon sa règle R13. Pour refuser, répondez simplement « non » : vous ne serez "
@@ -4080,12 +4091,12 @@ REQUEST_SENTENCE = {
 
 
 def growth_config(reg):
-    """Valeurs de R13, par branches (ruche-0023) : bee.yaml (clé croissance), toutes exigées (ruche-0144)."""
+    """Values of R13, by branch (ruche-0023): bee.yaml (key growth), all required (ruche-0144)."""
     return setting(reg, "growth")
 
 
 def mentions_invitation(reg, request="guarantor"):
-    """{language: mention} pour cette demande : la mention de R13, suivie de la phrase fixe de ce qui est demandé."""
+    """{language: mention} for this request: the mention of R13, followed by the fixed sentence of what is asked."""
     organization = setting(reg, "organization")
     address, doc = f"https://github.com/{organization}", f"https://github.com/{organization}/registre/blob/main/"
     return {language: m.format(address=address) + " " + REQUEST_SENTENCE[language].get(request, REQUEST_SENTENCE[language]["guarantor"]).format(doc=doc)
@@ -4093,15 +4104,15 @@ def mentions_invitation(reg, request="guarantor"):
 
 
 def compared_form(text):
-    """Un texte ramené à sa forme de comparaison (troisième revue adverse, C6) : NFKC, sans accent, sans casse, chaque suite
-    d'espaces (insécables comprises) réduite à une espace, aucune espace autour des deux-points."""
+    """A text brought to its comparison form (third adversarial review, C6): NFKC, no accent, no case, each run
+    of spaces (non-breaking ones included) reduced to one space, no space around colons."""
     text = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", str(text or "")))
     text = "".join(c for c in text if not unicodedata.combining(c)).casefold()
     text = re.sub(r"\s+", " ", text)
     return re.sub(r" ?: ?", ":", text)
 
 
-# Le début de chaque phrase fixe, sous sa forme comparée : un message n'en porte qu'une, celle de sa demande.
+# The start of each fixed sentence, in its compared form: a message bears only one, that of its request.
 REQUEST_STARTS = tuple(sorted({compared_form(sentence.split(":")[0]).strip() for language in REQUEST_SENTENCE.values()
                                for sentence in language.values()}))
 
@@ -4110,8 +4121,9 @@ UNICODE_CI = "15.0.0"  # the Unicode table of the workflows' python-version (3.1
 
 
 def unicode_table_suffices(version=unicodedata.unidata_version):
-    """Vrai si cette table Unicode connaît tout ce que connaît celle de la CI : un caractère non attribué (Cn) ici l'est aussi en
-    CI (un caractère attribué ne l'est jamais plus). Sinon la clause Cn est sautée et la CI tranche (ruche-0029, B2)."""
+    """True if this Unicode table knows everything the CI's knows: a character unassigned (Cn) here is unassigned in
+    CI too (an assigned character is never unassigned again). Otherwise the Cn clause is skipped and the CI decides
+    (ruche-0029, B2)."""
     return tuple(map(int, version.split("."))) >= tuple(map(int, UNICODE_CI.split(".")))
 
 
