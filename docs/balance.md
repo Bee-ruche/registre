@@ -60,7 +60,7 @@ Robots do not count. These weights are a first setting: l'essaim adjusts them li
 **A gesture counts at the date of its merge**, not at its declared date: at the instant of the commit that merged it into
 `main` (git history, first parent: the commit GitHub creates when it merges the PR). A backdated note does not
 slip into the window without showing in `bee swarm`, and a date of 2099 does not keep a gesture in the window:
-`bee balance` and the « recent notes » of `bee swarm` count and sort this way (dress rehearsal of 29/10). Without
+`bee balance` and the « recent notes » of `bee swarm` count and sort this way (dress rehearsal of 29 October). Without
 git history (a copy without `.git`, a shallow clone), a gesture counts at its declared date, and not at all if that date
 is in the future; `bee swarm` likewise ignores a note dated in the future. The site is built on a full clone
 (`fetch-depth: 0`). Declared dates remain checked at writing by `bee check-pr` (the PR's time, within
