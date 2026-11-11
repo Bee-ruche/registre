@@ -2523,10 +2523,10 @@ class TestTree(BaseTest):
 
     def test_empty_section(self):
         text = self.node("projects/ruche").read_text(encoding="utf-8")
-        beginning = text.index("## Pourquoi cette branche existe\n") + len("## Pourquoi cette branche existe\n")
-        end = text.index("## Ce qui compte ici")
+        beginning = text.index("## Why this branch exists\n") + len("## Why this branch exists\n")
+        end = text.index("## What matters here")
         self.node("projects/ruche").write_text(text[:beginning] + text[end:], encoding="utf-8")
-        self.refuse("empty node: the section « Pourquoi cette branche existe » has nothing")
+        self.refuse("empty node: the section « Why this branch exists » has nothing")
 
     def test_sections_out_of_order_or_unexpected(self):
         self.replace_with("roles/review", "## Ce qui compte ici", "## Ce qui compte, en vrai")
@@ -2539,7 +2539,7 @@ class TestTree(BaseTest):
         self.refuse("ruche-9999", "a node is maintained by a task")
 
     def test_broken_link_missing_child(self):
-        self.replace_with("root", "## Enfants\n", "## Enfants\n- `roles/vote` : voter\n")
+        self.replace_with("root", "## Children\n", "## Children\n- `roles/vote`: vote\n")
         self.refuse("broken link: the child « roles/vote » is listed")
 
     def test_broken_link_declared_parent(self):
@@ -2592,8 +2592,8 @@ class TestTree(BaseTest):
 
     def test_project_without_node_makes_its_tasks_orphans(self):
         shutil.rmtree(self.node("projects/parsing-serialization/libyaml").parent)
-        self.replace_with("projects/parsing-serialization", "- `projects/parsing-serialization/libyaml` : libyaml, analyseur et émetteur YAML\n",
-                       "Aucun.\n")
+        self.replace_with("projects/parsing-serialization", "- `projects/parsing-serialization/libyaml`: libyaml, YAML parser and emitter\n",
+                       "None.\n")
         text = self.refuse("tasks/libyaml/libyaml-0010.yaml: orphan task")
         self.assertNotIn("miniz-0012", text)
 
@@ -2672,7 +2672,7 @@ class TestTree(BaseTest):
             self.assertIn(command, role)
         self.assertLess(int(re.search(r"About (\d+) tokens", text).group(1)), 1900)
         self.assertLess(bee.estimate_tokens(text), 1900)
-        self.assertIn("- `roles/invite` : inviter une personne hors de la ruche (R13, docs/croissance.md)", self.bee("context")[1])
+        self.assertIn("- `roles/invite`: invite a person outside the hive (R13, docs/growth.md)", self.bee("context")[1])
         code, text = self.bee("context", "miniz-0099", "--role", "invite")
         self.assertEqual(code, 0, text)
         self.assertIn("=== node roles/invite ===", text)
@@ -2748,14 +2748,11 @@ class TestTree(BaseTest):
 
     # --- Revue adverse de ruche-0010 (B1, I1, I2, I3, m1, m2, m4) : un test par constat ---
 
-    VULNERABILITY_INSTRUCTION = ("Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, même en passant ; "
-                       "signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet d'origine "
-                       "(commandements 6 et 8, docs/securite.md).")
-    # ruche-0145: the same instruction in AGENTS.md, which the switch makes the English guide (the tree's nodes stay French until
-    # their prose tasks); the guide's sentence, word for word.
-    VULNERABILITY_INSTRUCTION_EN = ("A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a description, not "
-                                    "even in passing; private report on the Bee repo, and tell your user; never contact the upstream "
-                                    "project (commandments 6 and 8, docs/security.md).")
+    # The root's bullet, word for word; since ruche-0066 the root is English and its bullet is AGENTS.md's sentence (ruche-0145),
+    # so the guide and the root say it in the same words.
+    VULNERABILITY_INSTRUCTION = ("A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a description, not "
+                                 "even in passing; private report on the Bee repo, and tell your user; never contact the upstream "
+                                 "project (commandments 6 and 8, docs/security.md).")
 
     @staticmethod
     def flat(text):
@@ -2772,7 +2769,7 @@ class TestTree(BaseTest):
                             text, _ = bee.context_text(reg, task["id"], role, budget, registry=str(self.dir),
                                                           already_read=already_read)
                             self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat(text.replace("\n# ", "\n")))
-        self.assertIn(self.VULNERABILITY_INSTRUCTION_EN, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
+        self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
         self.assertTrue((ROOT / "docs/security.md").is_file())  # the file the guide's sentence names
 
     def test_already_read_reprints_neither_the_root_nor_the_role(self):
@@ -2798,18 +2795,18 @@ class TestTree(BaseTest):
         # deux puces (E2) ou absente, elle s'imprime en entier : rien ne la perd en silence.
         root = self.dir / "tree/MEANING.md"
         origin_of = root.read_text(encoding="utf-8")
-        suite = "même en passant ;\n  signalement privé"
+        suite = "not even in\n  passing; private report"
         self.assertIn(suite, origin_of)
         for name, text, whole_one in (
-                ("suite non indentée", origin_of.replace(suite, "même en passant ;\nsignalement privé"), False),
-                ("deux puces", origin_of.replace(suite, "même en passant.\n- Signalement privé"), True),
-                ("absente", origin_of.replace("Une faille (plantage", "Un défaut (plantage"), True)):
+                ("suite non indentée", origin_of.replace(suite, "not even in\npassing; private report"), False),
+                ("deux puces", origin_of.replace(suite, "not even in passing.\n- Private report"), True),
+                ("absente", origin_of.replace("A vulnerability (crash", "A defect (crash"), True)):
             with self.subTest(root=name):
                 root.write_text(text, encoding="utf-8")
                 output_text = self.bee("context", "miniz-0099", "--already-read")[1]
                 self.assertEqual("=== node root ===" in output_text, whole_one, output_text[:600])
                 if not whole_one:
-                    self.assertIn("ne contacte jamais le projet d'origine", " ".join(output_text.replace("\n# ", "\n").split()))
+                    self.assertIn("never contact the upstream project", " ".join(output_text.replace("\n# ", "\n").split()))
         root.write_text(origin_of, encoding="utf-8")
 
     def test_I1_show_and_context_print_the_data_quoted(self):
@@ -2883,8 +2880,8 @@ class TestTree(BaseTest):
                 _, text = self.bee("context", task["id"], "--budget", str(budget))
                 self.assertIn("=== node roles/measure ===", text)
                 self.assertIn("=== node root ===", text)
-                self.assertIn("privé", text)
-                self.assertIn("securite.md", text)
+                self.assertIn("private report", text)
+                self.assertIn("docs/security.md", text)
 
     def test_m1_a_vanished_node_warns_and_falls_back(self):
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -15597,6 +15594,13 @@ def english_titles(text):
     return text
 
 
+def french_titles(text):
+    """A node's four headings rewritten in French; its text stays as it is."""
+    for fr, en in zip(bee.NODE_SECTIONS, bee.NODE_SECTIONS_EN):
+        text = text.replace(f"\n## {en}\n", f"\n## {fr}\n")
+    return text
+
+
 class TestBilingualReaders(BaseAgora):
     """ruche-0055: bee reads the English form of every French marker it finds in human-written text (the inventory is
     tools/marker_inventory.py), and refuses the same faulty input in both languages: no widening."""
@@ -15708,21 +15712,25 @@ class TestBilingualReaders(BaseAgora):
     # --- Node headings ---
 
     def test_english_nodes_read_like_french_ones(self):
-        """The root and a whole path in English: bee validate accepts them; children, bee context and the site read them
-        as before."""
+        """The root and a whole path with their headings in the other language (a French node in English, an English one,
+        such as the root since ruche-0066, in French): bee validate accepts them; children, bee context and the site read
+        them as before."""
         path = ("root", "roles/optimize", "projects/lossless-compression", "projects/lossless-compression/miniz")
         before = bee.load_tree(bee.Registry(self.dir))["nodes"]
         context = self.ok("context", "miniz-0099")
+        other = {"fr": "en", "en": "fr"}
         for n in path:
             file = self.dir / bee.node_file(n)
             text = file.read_text(encoding="utf-8")
-            self.assertNotEqual(english_titles(text), text)
-            file.write_text(english_titles(text), encoding="utf-8")
+            switched = english_titles(text) if before[n]["languages"] == ["fr"] else french_titles(text)
+            self.assertNotEqual(switched, text)
+            file.write_text(switched, encoding="utf-8")
         self.valid_one()
         after = bee.load_tree(bee.Registry(self.dir))["nodes"]
         for n in path:
             with self.subTest(node=n):
-                self.assertEqual((after[n]["languages"], before[n]["languages"]), (["en"], ["fr"]))
+                self.assertIn(before[n]["languages"], (["fr"], ["en"]))
+                self.assertEqual(after[n]["languages"], [other[before[n]["languages"][0]]])
                 self.assertEqual([after[n][k] for k in ("sections", "order", "children")],
                                  [before[n][k] for k in ("sections", "order", "children")])
         self.assertTrue(after["root"]["children"])
