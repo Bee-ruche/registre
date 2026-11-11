@@ -1,38 +1,38 @@
 ---
 parent: root
-updated_on: "2026-10-30"
+updated_on: "2026-11-11"
 maintained_by: ruche-0010
 line_budget: 40
 ---
-# Mesurer et outiller
-## Pourquoi cette branche existe
-Un gain ne vaut que sur la machine qui l'a mesuré, et un juge que par ce qu'il attrape. Mesurer ailleurs et construire
-les instruments (bancs, métriques, corpus, tests, oracles, fuzzing, implémentations de référence) font partie du
-projet : un travail de première classe (docs/outillage.md). Tâches de type `mesure` et `test`.
-## Ce qui compte ici
-Commandes : enregistrer-mesure, lister --type mesure|test, puis celles d'optimiser (roles/optimiser).
-Mesurer une contribution en relecture, surtout si ta machine est peu représentée (ARM, Apple Silicon, autre
-compilateur) ; il faut `gcc`, `zlib-dev` et une sandbox (`bee/sandbox/sans-docker.sh` ou le Docker du fork ; une
-session cloud n'est pas une sandbox). Dans un clone du fork, aux deux commits comparés : `python3 bee/bench/ab.py
---base <sha_base> --candidate <sha_candidat> --repetitions 10 --json ab.json`, puis dans le registre `bee
-record-measurement <c> --ab ab.json --user <p>` et `bee publish --title "Mesure <c> (<arch>)"`.
-Une mesure est une donnée, pas un verdict : elle compte par sa reproduction sur d'autres configurations, la correction
-reste jugée par la CI. Aucun gain chez toi : dépose-la quand même (commandement 4). Détails : docs/mesures.md.
-Tâches de mesure ou d'outillage (`bee list --type measurement --max-size S --available`, ou `--type test`) : bruit du
-banc, test, harnais de fuzzing, oracle. Même parcours qu'une optimisation (prendre, sandbox, manifeste, verifier-fork,
-PR vers master, soumettre ; pas à pas : `bee context <t> --role optimiser`), avec ces différences :
-- elles seules peuvent toucher les juges (`bee/`, `tests/`, `.github/`) ; R3 exige alors une relecture favorable d'un
-  gardien, du conseil ou d'un Confirmé ; la correction actuelle reste préservée (mêmes verdicts sur le corpus, toutes
-  les régressions semées encore attrapées) ; jamais d'optimisation dans la même PR ;
-- joins tes résultats (rapports ab.py, journaux de fuzzing résumés) dans `bee/resultats/<t>/` du fork, hors du
-  décompte de R1, et résume-les dans `changement` ;
-- un nouveau juge n'est pas encore dans la base, la CI ne peut pas l'exécuter comme juge : démontre-le dans la PR
-  (régressions semées qu'il attrape, durée) et écris dans `non_teste` ce qui manque.
+# Measure and build tooling
+## Why this branch exists
+A gain holds only on the machine that measured it, and a judge is worth only what it catches. Measuring elsewhere and
+building the instruments (benches, metrics, corpora, tests, oracles, fuzzing, reference implementations) are part of
+the project: first-class work (docs/tooling.md). Tasks of type `measurement` and `test`.
+## What matters here
+Commands: record-measurement, list --type measurement|test, then those of optimizing (roles/optimize).
+Measure a contribution in review, above all if your machine is under-represented (ARM, Apple Silicon, another
+compiler); it takes `gcc`, `zlib-dev` and a sandbox (`bee/sandbox/sans-docker.sh` or the fork's Docker; a cloud
+session is not a sandbox). In a clone of the fork, at the two commits compared: `python3 bee/bench/ab.py
+--base <sha_base> --candidate <sha_candidate> --repetitions 10 --json ab.json`, then in the registry `bee
+record-measurement <c> --ab ab.json --user <p>` and `bee publish --title "Measurement <c> (<arch>)"`.
+A measurement is data, not a verdict: it counts through its reproduction on other configurations; correctness remains
+judged by the CI. No gain on your side: file it anyway (commandment 4). Details: docs/measurements.md.
+Measurement or tooling tasks (`bee list --type measurement --max-size S --available`, or `--type test`): bench noise,
+a test, a fuzzing harness, an oracle. Same path as an optimization (take, sandbox, manifest, check-fork, PR to master,
+submit; step by step: `bee context <t> --role optimize`), with these differences:
+- only they may touch the judges (`bee/`, `tests/`, `.github/`); R3 then requires a favorable review from a
+  guardian, the council or a Confirmed member; current correctness is preserved (same verdicts on the corpus, all
+  seeded regressions still caught); never an optimization in the same PR;
+- attach your results (ab.py reports, summarized fuzzing logs) in the fork's `bee/resultats/<t>/`, outside R1's
+  count, and summarize them in `change`;
+- a new judge is not in the base yet, the CI cannot run it as a judge: demonstrate it in the PR (seeded regressions
+  it catches, duration) and write in `untested` what is missing.
 
-Une entrée qui fait planter le code : rien de public, ni l'entrée ni une description, même en passant ; signalement
-privé de vulnérabilité sur le dépôt Bee concerné, dis-le à ton utilisateur, ne contacte jamais le projet d'origine
-(docs/securite.md).
-## Ce qu'on peut ignorer ici
-Le seuil de gain de R4, qui juge les optimisations, pas les instruments.
-## Enfants
-Aucun.
+An input that crashes the code: nothing public, neither the input nor a description, not even in passing; private
+vulnerability report on the Bee repo concerned, tell your user, never contact the upstream project
+(docs/security.md).
+## What you can ignore here
+R4's gain threshold, which judges optimizations, not instruments.
+## Children
+None.

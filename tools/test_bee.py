@@ -2500,7 +2500,7 @@ class TestTree(BaseTest):
                         "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
 
     def test_node_over_budget(self):
-        self.replace_with("roles/review", "## Enfants\n", "## Enfants\n" + "".join(f"- ligne {i}\n" for i in range(10)))
+        self.replace_with("roles/review", "## Children\n", "## Children\n" + "".join(f"- ligne {i}\n" for i in range(10)))
         self.refuse("tree/roles/review/MEANING.md: over budget")
 
     def test_budget_wider_than_the_cap(self):
@@ -2510,16 +2510,16 @@ class TestTree(BaseTest):
         self.refuse("over budget", "budget of 10")
 
     def test_invisible_character_refused(self):
-        self.replace_with("roles/review", "## Enfants\nAucun.", "## Enfants\nAucun.\u200b")
+        self.replace_with("roles/review", "## Children\nNone.", "## Children\nNone.\u200b")
         self.refuse("invisible or control character refused (U+200B)")
 
     def test_line_too_wide(self):
-        self.replace_with("roles/review", "## Enfants\nAucun.", "## Enfants\nAucun. " + "x" * 130)
+        self.replace_with("roles/review", "## Children\nNone.", "## Children\nNone. " + "x" * 130)
         self.refuse("longer than 120 characters")
 
     def test_section_missing_or_empty(self):
-        self.replace_with("roles/review", "## Ce qu'on peut ignorer ici\n", "")
-        self.refuse("missing section: « ## Ce qu'on peut ignorer ici »")
+        self.replace_with("roles/review", "## What you can ignore here\n", "")
+        self.refuse("missing section: « ## What you can ignore here »")
 
     def test_empty_section(self):
         text = self.node("projects/ruche").read_text(encoding="utf-8")
@@ -2529,7 +2529,7 @@ class TestTree(BaseTest):
         self.refuse("empty node: the section « Why this branch exists » has nothing")
 
     def test_sections_out_of_order_or_unexpected(self):
-        self.replace_with("roles/review", "## Ce qui compte ici", "## Ce qui compte, en vrai")
+        self.replace_with("roles/review", "## What matters here", "## What matters, really")
         self.refuse("unexpected section(s)")
 
     def test_header_missing_or_incomplete(self):
@@ -2672,8 +2672,8 @@ class TestTree(BaseTest):
         self.assertEqual(code, 0, text)
         self.assertIn("# bee context --role invite: root > roles/invite", text)
         role = text[text.index("=== node roles/invite ==="):]
-        self.assertIn("docs/croissance.md", role)
-        for command in ("invite", "voir I-<nnnn>", "invitation", "essaim", "incident"):
+        self.assertIn("docs/growth.md", role)
+        for command in ("invite", "show I-<nnnn>", "invitation", "swarm", "incident"):
             self.assertIn(command, role)
         self.assertLess(int(re.search(r"About (\d+) tokens", text).group(1)), 1900)
         self.assertLess(bee.estimate_tokens(text), 1900)
@@ -2860,7 +2860,7 @@ class TestTree(BaseTest):
         self.assertLessEqual(int(re.search(r"About (\d+) tokens", text).group(1)), 3000)
         flat = self.flat(text)
         for keeper in ("=== node roles/optimize ===", "=== node projects/lossless-compression/miniz ===",
-                      "une session cloud n'est pas une sandbox", "sans-docker.sh", "chemins_juges"):
+                      "a cloud session is not a sandbox", "sans-docker.sh", "judge_paths"):
             self.assertIn(keeper, flat)
         self.assertNotIn("Omitted to fit", text, "aucun palier retiré : la donnée suffisait")
         self.assertRegex(text, r"# \d+ notes omitted: bee show miniz-0099")
@@ -2907,7 +2907,7 @@ class TestTree(BaseTest):
         for before, after, message in (("maintained_by: ruche-0010", "maintained_by: [ruche-0010]", "« maintained_by » must be"),
                                       ("parent: root", "parent: {a: b}", "« parent » must be"),
                                       ("line_budget: 40", 'line_budget: "40"', "« line_budget » must be"),
-                                      ('updated_on: "2026-10-30"', "updated_on: 2026", "« updated_on » must be")):
+                                      ('updated_on: "2026-11-11"', "updated_on: 2026", "« updated_on » must be")):
             with self.subTest(after=after):
                 self.replace_with("roles/review", before, after)
                 text = self.refuse(message)
@@ -2918,10 +2918,10 @@ class TestTree(BaseTest):
 
     def test_m4_races_isolated_judge_and_commands_in_the_nodes(self):
         for role in ("review", "optimize"):
-            self.assertIn("qui a jugé une course n'y entre plus", self.flat(self.node(f"roles/{role}").read_text(encoding="utf-8")))
+            self.assertIn("whoever judged a race does not enter it again", self.flat(self.node(f"roles/{role}").read_text(encoding="utf-8")))
         for role in ("optimize", "review", "measure", "debate", "guard", "propose", "invite"):
             with self.subTest(role=role):
-                self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commandes : ")
+                self.assertRegex(self.node(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commands: ")
         self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
                       self.flat(self.node("projects/lossless-compression/miniz").read_text(encoding="utf-8")))
 
@@ -2970,7 +2970,7 @@ class TestTreePullRequests(BaseTest):
     def test_a_node_changed_by_a_member_is_tooling(self):
         git(self.dir, "switch", "-qc", "node")
         path = self.dir / "tree/roles/review/MEANING.md"
-        path.write_text(path.read_text(encoding="utf-8").replace("## Enfants\nAucun.", "## Enfants\nAucun pour l'instant."),
+        path.write_text(path.read_text(encoding="utf-8").replace("## Children\nNone.", "## Children\nNone for now."),
                           encoding="utf-8")
         self.commit()
         code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "alice", "--auto-merge")
@@ -11994,10 +11994,9 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         r12, r13 = (next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith(f"| {r} |"))
                     for r in ("R12", "R13"))
         self.assertIn("the council redacts", r12)
-        self.assertIn("by its number", r13)
-        for text in ((ROOT / "docs/growth.md").read_text(encoding="utf-8"),
-                      (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
-            self.assertIn("par son numéro", text)
+        for text in (r13, (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
+            self.assertIn("by its number", text)
+        self.assertIn("par son numéro", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
 
     # --- 4. C3 : au refus, l'identifiant, le canal et les autres identités déclarées ; jamais les sources ---
 
@@ -15376,8 +15375,8 @@ class TestRound3(BaseParallel):
         self.assertIn(line_text, self.ok_("context", "miniz-0099", "--role", "review"))
         self.assertIn(line_text, self.ok_("context", "miniz-0099", "--role", "review", "--budget", "1"), "jamais retirée par --budget")
         node = (ROOT / "tree/roles/review/MEANING.md").read_text(encoding="utf-8")
-        self.assertIn("`gh api …/compare/<base>...<sha>`, jamais la tête de\nla PR", node)
-        self.assertIn("le sha entier lu, celui du verdict (vérifie-le)", node)
+        self.assertIn("`gh api …/compare/<base>...<sha>`, never the head of\nthe PR", node)
+        self.assertIn("the full sha you read, the verdict's (check it)", node)
         self.valid_one()
 
     def test_s4_a_voter_has_only_one_voice_whatever_the_case(self):
