@@ -1,8 +1,8 @@
-"""Juge commun Bee : image, conteneurs isolés et exécution sous le lanceur chrono.
+"""Bee's common judge: image, isolated containers and execution under the chrono launcher.
 
-Toute exécution de code issu de la PR passe par `Docker.lancer` : pas de réseau, système de fichiers en
-lecture seule, aucune capacité, pas d'élévation de privilège, utilisateur 65534, /tmp non exécutable,
-nombre de processus et mémoire bornés. Le conteneur ne voit que ce qui lui est monté.
+Every execution of code from the PR goes through `Docker.launch`: no network, a read-only file
+system, no capability, no privilege escalation, user 65534, a non-executable /tmp, a bounded
+number of processes and memory. The container sees only what is mounted for it.
 """
 
 import contextlib
@@ -109,7 +109,7 @@ class Docker:
         # not run to its end, or whose code is not its process's is a failure of the machine, never a refusal (ruche-0136).
         state = survey(nom)
         if (state.get("Status"), state.get("Error"), state.get("ExitCode")) != ("exited", "", p.returncode):
-            journal("erreurs de docker run (hors du motif) : " + propre(bytes(read_items[1]), 500))
+            journal("docker run's errors (kept out of the reason): " + propre(bytes(read_items[1]), 500))
             raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode})")
         return subprocess.CompletedProcess(cmd, p.returncode, bytes(read_items[0]), bytes(read_items[1]))
 
@@ -128,7 +128,7 @@ def survey(nom, kill_it=False):
 
 
 def dockerfile(packages):
-    """Texte du Dockerfile : l'image commune, les paquets du projet, l'utilisateur sans privilège."""
+    """The Dockerfile's text: the common image, the project's packages, the unprivileged user."""
     with open(os.path.join(HERE, "Dockerfile.base"), encoding="utf-8") as f:
         text = f.read().rstrip("\n") + "\n"
     packages = list(packages or [])
@@ -149,7 +149,7 @@ def build_image(packages, network_on=None):
     label = "bee-juge-commun:" + hashlib.sha256(text.encode()).hexdigest()[:16]
     if subprocess.run(["docker", "image", "inspect", label], capture_output=True).returncode == 0:
         return label
-    journal(f"construction de l'image {label} (seule étape avec réseau, avant tout fichier de la PR)")
+    journal(f"building the image {label} (the only step with network, before any file of the PR)")
     context = tempfile.mkdtemp(prefix="bee-image-")
     try:
         with open(os.path.join(context, "Dockerfile"), "w", encoding="utf-8") as f:
@@ -179,14 +179,14 @@ def _keep(stream, keeper, maximum, end):
 
 
 def open_folder(path):
-    """Dossier que le conteneur (utilisateur 65534) peut écrire."""
+    """A folder the container (user 65534) can write to."""
     os.makedirs(path, exist_ok=True)
     os.chmod(path, 0o777)
     return path
 
 
 def compile_stopwatch(docker, travail):
-    """Compile le lanceur chrono du JUGE COMMUN (jamais une ligne du projet ni de la PR), dans le conteneur."""
+    """Compiles the COMMON JUDGE's chrono launcher (never a line of the project or of the PR), in the container."""
     source = os.path.join(travail, "chrono-source")
     os.makedirs(source)
     shutil.copyfile(os.path.join(HERE, "chrono.c"), os.path.join(source, "chrono.c"))
@@ -204,13 +204,13 @@ def compile_stopwatch(docker, travail):
 
 
 class Execution:
-    """Lance un plan de commandes dans un conteneur, sous le lanceur chrono du juge commun."""
+    """Runs a plan of commands in a container, under the common judge's chrono launcher."""
 
     def __init__(self, docker, stopwatch, constructs, travail):
         self.docker, self.stopwatch, self.constructs, self.workdir = docker, stopwatch, constructs, travail
 
     def launch(self, variant, entrees, outputs, plan, valgrind=False, timeout_seconds=1800):
-        """plan : [(étiquette, [programme, arguments…])], HARNAIS among them. Renvoie {étiquette: mesure}.
+        """plan: [(label, [program, arguments…])], HARNESS among them. Returns {label: measurement}.
         Plan, options and the harness's arguments go through standard inputs: same argv and files in every mode."""
         lines = []
         for label, command in plan:

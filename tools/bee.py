@@ -737,6 +737,17 @@ class Registry:
             return {}
         return {m["id"]: m for m in self.projects[project][1].get("metrics") or [] if isinstance(m, dict)}
 
+    def spelling(self, project):
+        """ruche-0149: the vocabulary of a project's metric ids, « fr » or « en »; None without a renamed id, or with both (refused
+        by bee validate)."""
+        ids = [i for m in self.metrics(project).values() for i in (m.get("id"), m.get("instructions")) if isinstance(i, str)]
+        french, english = any(i in METRIC_IDS for i in ids), any(i in METRIC_IDS_FR for i in ids)
+        return None if french == english else "fr" if french else "en"
+
+    def metric(self, project, name):
+        """ruche-0149: a metric id (a task's, a measurement's) in its project's spelling."""
+        return metric_spelling(name, self.spelling(project))
+
 
 # --------------------------------------------------------------------------
 # Declared parallel work and race between competing contributions (R3, R7, R8, R11)
@@ -2201,6 +2212,10 @@ def check_accounts(reg):
             add_to(f"{reg.rel(path)}: duplicate metrics")
         if not ids and project["category"] != "ruche":
             add_to(f"{reg.rel(path)}: a project to optimize declares at least one metric (only the hive itself has none)")
+        try:  # ruche-0149: one vocabulary of metric ids per project, French until DATE_D only
+            metric_vocabulary([i for m in project["metrics"] for i in (m["id"], m.get("instructions"))], reg.rel(path))
+        except BeeError as e:
+            add_to(str(e))
 
     seen_logins, logins, numbers_of = {}, {}, {}  # ruche-0022: one member file per login, current or former, and per number
     for stem, (path, member) in sorted(reg.members.items()):
@@ -2243,8 +2258,12 @@ def check_accounts(reg):
         else:
             if project[1].get("category") != task["category"]:
                 add_to(f"{place_of}: category « {task['category']} » differs from the project's « {project[1].get('category')} »")
-            if task["metric"] is not None and task["metric"] not in reg.metrics(task["project"]):
+            if task["metric"] is not None and reg.metric(task["project"], task["metric"]) not in reg.metrics(task["project"]):
                 add_to(f"{place_of}: metric « {task['metric']} » missing from projects/{task['project']}.yaml")
+            try:  # ruche-0149: a task may name its metric in French until DATE_D, read in its project's spelling
+                metric_vocabulary([task["metric"]], place_of)
+            except BeeError as e:
+                add_to(str(e))
         if task.get("area") and known_areas and task["area"] not in known_areas:
             add_to(f"{place_of}: area « {task['area']} » missing from the hive's balance (bee.yaml, balance.areas: {', '.join(sorted(known_areas))})")
         if task.get("project") == "ruche" and task.get("type") == "optimization":
@@ -2468,7 +2487,11 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
     if task.get("type") in ("optimization", "measurement") and "measurements" not in data:
         problems_found.append(f"{origin_of}: a task of type {task['type']} requires the measurements block (commandment 2). "
                          "Without a real measurement, do not submit: release the task with a note.")
-    measurements = raw_measurements
+    try:  # ruche-0149: its metric ids in either vocabulary until DATE_D, one per manifest, read in the project's spelling
+        measurements = fork_metrics("manifest", {"measurements": raw_measurements}, reg.spelling(task.get("project")), origin_of)["measurements"]
+    except BeeError as e:
+        problems_found.append(str(e))
+        measurements = {}
     known_ones = reg.metrics(task.get("project"))
     # And a metric's instruction count (instructions_<scenario>), on which R4 judges (ruche-0017).
     known_ones = list(known_ones) + [m["instructions"] for m in known_ones.values() if isinstance(m.get("instructions"), str)]
@@ -2477,7 +2500,7 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
         for key in block:
             if known_ones and key not in known_ones:
                 problems_found.append(f"{origin_of}: measurements/{quoted_side}/{key}: metric unknown to the project ({', '.join(known_ones)})")
-    metric = task.get("metric")
+    metric = reg.metric(task.get("project"), task.get("metric"))
     if task.get("type") == "optimization" and measurements and metric:
         for quoted_side in ("before", "after"):
             block = measurements.get(quoted_side) if isinstance(measurements.get(quoted_side), dict) else {}
@@ -6358,9 +6381,15 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 require(new.get("contribution") in reg.records, f"{path}: unknown contribution « {new.get('contribution')} »")
                 # ruche-0047: a metric is one of the project's (or its instruction count), and no number in it holds 9 digits or more.
                 rec = reg.records.get(new.get("contribution"), (None, {}))[1]
-                known_ones = reg.metrics(reg.tasks.get(rec.get("task"), (None, {}))[1].get("project") if isinstance(rec, dict) else None)
+                project = reg.tasks.get(rec.get("task"), (None, {}))[1].get("project") if isinstance(rec, dict) else None
+                known_ones = reg.metrics(project)
                 known_ones = {*known_ones, *(m["instructions"] for m in known_ones.values() if isinstance(m.get("instructions"), str))}
-                metrics = new.get("metrics") if isinstance(new.get("metrics"), dict) else {}
+                try:  # ruche-0149: in either vocabulary until DATE_D, one per measurement, read in the project's spelling
+                    metrics = fork_metrics("metrics", new, reg.spelling(project), path).get("metrics")
+                except BeeError as e:
+                    metrics = None
+                    require(False, str(e))
+                metrics = metrics if isinstance(metrics, dict) else {}
                 unknowns = sorted(str(k) for k in metrics if k not in known_ones) if known_ones else []
                 require(not unknowns, f"{path}: metrics: {', '.join(unknowns)}: metric unknown to the project ({', '.join(sorted(known_ones))})")
                 require(all(abs(v) < 1e8 for m in metrics.values() if isinstance(m, dict) for v in m.values()
@@ -6646,8 +6675,8 @@ SELF_SERVICE = {"reservation", "release", "submission", "update", "note", "revie
 # --------------------------------------------------------------------------
 
 # ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json, the ab.py report
-# bee record-measurement reads) are read in either
-# vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or CONTRIBUTION.yaml; from DATE_D on, English only.
+# bee record-measurement reads) are read in either vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or
+# CONTRIBUTION.yaml; from DATE_D on, English only.
 # The switch's merge plus six weeks, 2027-01-01 at the earliest: the council sets it at the freeze, and moves it only by a PR.
 DATE_D = "2027-01-01"
 # The forks' French keys and their English names (tools/migration/names.yaml, families manifest, fork_verdict and ab_report; the
@@ -6696,6 +6725,64 @@ def fork_document(kind, data, where):
         raise BeeError(f"{where}: French keys ({', '.join(french[:3])}): read until {DATE_D} only (the switch to English, ruche-0145); "
                        "write it again in English (bee manifest writes English)")
     return walk(data, (), lambda k: table.get(k, k)) if french else data
+
+
+# ruche-0149 (plan, section 6): the metric ids, French -> English (names.yaml, domain metric_id). A project's are in one vocabulary
+# (French until tools/migration/metric_ids.py renames the data). Until DATE_D a fork document, a measurement or a task may use either,
+# one per document, read and recorded in its project's spelling; from DATE_D on, French is refused.
+METRIC_IDS = {"debit_compression_n1": "compression_throughput_n1", "debit_compression_n6": "compression_throughput_n6",
+              "debit_compression_n9": "compression_throughput_n9", "debit_decompression": "decompression_throughput",
+              "memoire_max_ko": "max_memory_kb", "debit_analyse": "parse_throughput", "debit_chargement": "load_throughput",
+              "debit_emission": "emit_throughput", "instructions_analyse": "instructions_parse", "instructions_chargement": "instructions_load",
+              "instructions_emission": "instructions_emit", "pire_cas_tri": "sort_worst_case", "debit_serialisation": "serialize_throughput",
+              "debit_decodage": "decode_throughput", "debit_animation": "animation_throughput", "latence_icones": "icon_latency"}
+METRIC_IDS_FR = {english: french for french, english in METRIC_IDS.items()}
+TEMPLATE_METRIC = "compression_throughput_n6"  # the metric templates/task.yaml names, replaced by the new task's own (bee propose-task)
+# The mappings keyed by metric ids in each kind of document (a verdict's metric too).
+METRIC_PLACES = {"verdict": ("instructions", "degradations"), "manifest": ("measurements/before", "measurements/after"), "metrics": ("metrics",)}
+
+
+def metric_vocabulary(names, where):
+    """« fr », « en » or None (no renamed id) for the metric ids of one document; BeeError if it names both, or French from DATE_D on."""
+    french = sorted({n for n in names if isinstance(n, str) and n in METRIC_IDS})
+    english = sorted({n for n in names if isinstance(n, str) and n in METRIC_IDS_FR})
+    if french and english:
+        raise BeeError(f"{where}: French metric ids ({', '.join(french[:3])}) and English ones ({', '.join(english[:3])}): one "
+                       "vocabulary per document")
+    if french and not before_date_d():
+        raise BeeError(f"{where}: French metric ids ({', '.join(french[:3])}): read until {DATE_D} only (the English metric ids, "
+                       f"ruche-0149); write {', '.join(METRIC_IDS[n] for n in french[:3])}")
+    return "fr" if french else "en" if english else None
+
+
+def metric_spelling(name, vocabulary):
+    """A metric id in a vocabulary (« fr » or « en »; None: as it is)."""
+    table = METRIC_IDS if vocabulary == "en" else METRIC_IDS_FR if vocabulary == "fr" else {}
+    return table.get(name, name) if isinstance(name, str) else name
+
+
+def fork_metrics(kind, data, vocabulary, where):
+    """A document from outside the registry (kind: verdict, manifest or metrics, its keys already English) with its metric ids in its
+    project's spelling (vocabulary), at METRIC_PLACES; both vocabularies in it, or French from DATE_D on: BeeError (metric_vocabulary).
+    A document that is not a mapping is left to its checks."""
+    if not isinstance(data, dict):
+        return data
+
+    def place(d, path):
+        return d if not path or not isinstance(d, dict) else place(d.get(path[0]), path[1:])
+
+    named = [k for p in METRIC_PLACES[kind] if isinstance(m := place(data, p.split("/")), dict) for k in m]
+    if metric_vocabulary(named + [data.get("metric")] * (kind == "verdict"), where) in (None, vocabulary):
+        return data
+
+    def respelled(d, path):  # d with the mapping at path keyed in the project's spelling
+        if not isinstance(d, dict) or not path:
+            return {metric_spelling(k, vocabulary): v for k, v in d.items()} if isinstance(d, dict) else d
+        return {**d, path[0]: respelled(d[path[0]], path[1:])} if path[0] in d else d
+
+    for p in METRIC_PLACES[kind]:
+        data = respelled(data, p.split("/"))
+    return {**data, "metric": metric_spelling(data["metric"], vocabulary)} if kind == "verdict" and "metric" in data else data
 
 
 def manifest_path(task_identifier):
@@ -7505,6 +7592,8 @@ def cmd_propose_task(args):
     if args.type == "optimization" and not metrics:
         raise BeeError(f"{args.project} has no metric: an optimization has no judge there (--type test, measurement or review)")
     metric = (args.metric or (metrics[0] if metrics else None)) if args.type == "optimization" else None
+    metric_vocabulary([args.metric], "--metric")  # ruche-0149: the id typed, in either vocabulary until DATE_D; written as the project spells it
+    metric = reg.metric(args.project, metric)
     if metric and metric not in metrics:
         raise BeeError(f"unknown metric for {args.project}: {metric} ({', '.join(metrics)})")
     lines = []
@@ -7518,7 +7607,7 @@ def cmd_propose_task(args):
         lines.append(f"{key}: {values_of[key]}" if key in values_of and not line_text.startswith(" ") else line_text)
     text = "\n".join(lines) + "\n"
     if metric:
-        text = text.replace("debit_compression_n6", metric)
+        text = text.replace(TEMPLATE_METRIC, metric)
     else:
         # Outside optimization, the criteria of R4 and R5 have no object: a verifiable criterion to write instead.
         text = re.sub(r"(acceptance_criteria:\n)(?:  - .*\n)+",
@@ -7644,8 +7733,9 @@ def cmd_manifest(args):
     ]
     if t["type"] in ("optimization", "measurement"):
         # R4 is judged on the instruction count of the targeted metric (key instructions of projects/*.yaml, ruche-0017).
-        instructions = reg.metrics(t["project"]).get(t.get("metric"), {}).get("instructions")
-        metrics = ([t["metric"]] if t.get("metric") else []) + ([instructions] if isinstance(instructions, str) else [])
+        aimed = reg.metric(t["project"], t.get("metric"))  # ruche-0149: in the project's spelling
+        instructions = reg.metrics(t["project"]).get(aimed, {}).get("instructions")
+        metrics = ([aimed] if aimed else []) + ([instructions] if isinstance(instructions, str) else [])
         metrics += [m for m in reg.metrics(t["project"]) if m not in metrics]
         values_of = [f"    {m}: \"{TO_FILL_IN_EN}" + (": Cachegrind count (ab.py --instructions), or remove the line"
                                                  if m == instructions else "") + "\"" for m in metrics]
@@ -9212,7 +9302,7 @@ def declared_gain(reg, manifest, task):
     """Relative gain the agent declares on the targeted metric (positive = better), or None. The manifest comes from the
     fork: any unexpected form (list, text, non-finite or outsized number) gives None, never an exception that would lose
     the verdict, nor a NaN gap the alert would not see (adversarial review of round 2)."""
-    metric = task.get("metric")
+    metric = reg.metric(task.get("project"), task.get("metric"))  # ruche-0149: the manifest's ids are in the project's spelling
     measurements = manifest.get("measurements") if isinstance(manifest, dict) else None
     if not metric or not isinstance(measurements, dict):
         return None
@@ -9420,7 +9510,9 @@ def cmd_record_verdict(args):
     verdict = {"ci": "green" if ci in ("green", "success", "verte", "vert", "succes", "succès") else "red"}  # both languages, for good
     # ruche-0145 (plan, section 12, change 4): a green verdict that names its metric names the task's, or its gain is another metric's;
     # from DATE_D on, it must name it when the task has one. A red one is recorded as it is: it integrates nothing.
-    want = reg.task(rec["task"])[1].get("metric")
+    project = reg.task(rec["task"])[1].get("project")
+    # ruche-0149: the verdict's metric ids in either vocabulary until DATE_D, one per verdict, recorded in the project's spelling.
+    raw, want = fork_metrics("verdict", raw, reg.spelling(project), args.verdict), reg.metric(project, reg.task(rec["task"])[1].get("metric"))
     if verdict["ci"] == "green" and ("metric" in raw or want is not None and not before_date_d()) and raw.get("metric") != want:
         said = "absent" if "metric" not in raw else raw["metric"] if raw["metric"] is None or isinstance(raw["metric"], str) and re.fullmatch(
             r"[a-z0-9_]{1,60}", raw["metric"]) else "unreadable"
@@ -9502,7 +9594,7 @@ def cmd_record_verdict(args):
         except Exception:
             too_big, manifest = False, None
         try:  # ruche-0145: a French manifest, until DATE_D; refused (mixed, or French after it): ignored, as an unreadable one
-            manifest = fork_document("manifest", manifest, "manifest")
+            manifest = fork_metrics("manifest", fork_document("manifest", manifest, "manifest"), reg.spelling(project), "manifest")  # and ruche-0149
         except BeeError:
             manifest = None
         # The manifest of another task (a CONTRIBUTION.yaml left on master) says nothing about this contribution: a gap
@@ -9585,12 +9677,14 @@ def cmd_record_measurement(args):
     """Turns an ab.py report (--json) into a measurement file measurements/<contribution>/<login>.yaml."""
     reg = Registry(args.registry)
     reg.require_member(args.user)
-    reg.record(args.contribution)  # raises an error if the contribution is unknown
+    _, rec = reg.record(args.contribution)  # raises an error if the contribution is unknown
     if (already := reg.root / "measurements" / args.contribution / f"{args.user}.yaml").exists():  # ruche-0042, as check-pr
         raise BeeError(f"{reg.rel(already)} already exists: one measurement per person and per contribution, never changed once "
                         "published (commandment 10); if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
         raw = fork_document("ab_report", json.load(f), args.ab)  # ruche-0145: the forks' ab.py writes French until F2, read until DATE_D
+    # ruche-0149: then the report's metric ids, in either vocabulary until DATE_D, one per report, recorded in the project's spelling.
+    raw = fork_metrics("metrics", raw, reg.spelling(reg.tasks.get(rec.get("task"), (None, {}))[1].get("project")), args.ab)
     machine = raw.get("machine") or {}
     config = {k: machine[k] for k in ("processor", "architecture", "cores", "system", "compiler") if machine.get(k) is not None}
     if not config.get("architecture"):
@@ -9768,12 +9862,14 @@ def r3_causes(reg, cid, assessment=None):
            f"R1: {lines} changed lines at the verdict, at most {maximum} for a task of size {task.get('size')}")
     metrics = reg.metrics(task.get("project"))
     proxies = {m: d.get("instructions") for m, d in metrics.items() if d.get("instructions")}
+    # ruche-0149: a measurement's metric ids, in either vocabulary until DATE_D, read in the project's spelling.
+    measured = lambda m: {reg.metric(task.get("project"), k): x for k, x in m["metrics"].items()} if isinstance(m.get("metrics"), dict) else {}  # noqa: E731
     # ruche-0028 (1): R4 judges each green verdict of the same measured content, in the thread (content_verdicts): a rerun can only hurt.
     forgotten = sum(int(e.get("dropped_verdicts") or 0) for _, e in thread_of(reg, rec))
     for rank, (v, or_else) in enumerate(content_verdicts(reg, rec) if task.get("type") == "optimization" else []):
         before = len(reasons)
         threshold = float(setting(reg, "min_gain"))
-        metric = task.get("metric")
+        metric = reg.metric(task.get("project"), task.get("metric"))  # ruche-0149: records are in the project's spelling
         gain, noise = v.get("gain"), bool(v.get("beyond_noise"))
         proxy = proxies.get(metric)
         gain_inst = ((v.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
@@ -9782,8 +9878,7 @@ def r3_causes(reg, cid, assessment=None):
             """Measurements from other configurations (a person other than the author, who states their configuration:
             reproduces_for_r4) that see the gain on the stopwatch, beyond the noise."""
             return [m for _, m in reg.measurements if m.get("contribution") == cid and reproduces_for_r4(reg, m, author)
-                    and ((m.get("metrics") or {}).get(metric) or {}).get("beyond_noise")
-                    and (((m.get("metrics") or {}).get(metric) or {}).get("gain") or 0) > minimum]
+                    and (aimed := measured(m).get(metric) or {}).get("beyond_noise") and (aimed.get("gain") or 0) > minimum]
 
         if isinstance(gain_inst, (int, float)) and gain_inst >= threshold:
             # The instruction count establishes the size of the gain; the stopwatch must CONFIRM it (gain beyond
@@ -9814,7 +9909,8 @@ def r3_causes(reg, cid, assessment=None):
     # R5. A throughput metric's stopwatch alone is too noisy to block: its instruction count is what is
     # judged. The other metrics (ratio, memory) are judged directly.
     tolerance = float(setting(reg, "max_other_degradation"))
-    ignored = set(proxies) | {task.get("metric"), proxies.get(task.get("metric"))}
+    metric = reg.metric(task.get("project"), task.get("metric"))
+    ignored = set(proxies) | {metric, proxies.get(metric)}
     out_of_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
                       if m not in ignored and (g is None or g < -tolerance)}
     require(not out_of_tolerance, "R5: metric(s) degraded beyond the tolerance: "

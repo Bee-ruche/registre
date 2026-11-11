@@ -1,13 +1,13 @@
-"""Juge commun Bee : entrées données au harnais d'un projet.
+"""Bee's common judge: inputs given to a project's harness.
 
-Une entrée a un côté (« f », « z »…), un nom, des octets, un entier passé au harnais (souvent la
-taille, ou la taille du tampon à fournir) et ce que l'hôte attend d'elle (connu du seul greffon).
-Chaque côté a son propre conteneur : un harnais ne voit jamais les entrées d'un autre côté (pour
-miniz, une décompression ne voit jamais les originaux qu'elle pourrait recopier).
+An input has a side (« f », « z »…), a name, bytes, an integer passed to the harness (often the
+size, or the size of the buffer to provide) and what the host expects of it (known to the plugin alone).
+Each side has its own container: a harness never sees the inputs of another side (for
+miniz, a decompression never sees the originals it could copy).
 
-Format lu par le harnais (dossier monté sur /entrees) :
-  liste            une ligne par entrée : « <côté> <nom> <entier> »
-  <côté>/<nom>     les octets de l'entrée
+Format read by the harness (folder mounted on /entrees):
+  liste            one line per input: « <side> <name> <integer> »
+  <side>/<name>    the input's bytes
 """
 
 import collections
@@ -21,7 +21,7 @@ from lecture import Erreur
 Entree = collections.namedtuple("Entree", "cote nom donnees taille attendu")
 Entree.__new__.__defaults__ = (None,)
 
-NOM_PERMIS = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}")  # 63 caractères au plus : « %63s » des harnais
+NOM_PERMIS = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}")  # 63 characters at most: the harnesses' « %63s »
 COTE_PERMIS = re.compile(r"[a-z]")
 
 
@@ -38,7 +38,7 @@ def verifier_entrees(entrees, cotes):
 
 
 def ecrire(dossier, entrees, cotes):
-    """Écrit les entrées d'UN côté (déjà filtrées) ; tous les sous-dossiers de côté existent, même vides."""
+    """Writes the inputs of ONE side (already filtered); every side's subfolder exists, even empty."""
     for c in cotes:
         os.makedirs(os.path.join(dossier, c), exist_ok=True)
     lignes = []
@@ -51,9 +51,9 @@ def ecrire(dossier, entrees, cotes):
 
 
 def perturber(rng, fichiers, prefixe=None):
-    """Copie de fichiers [(nom, octets)] avec quelques octets changés au hasard (un par 64 Kio, au moins un).
+    """Copy of files [(name, bytes)] with a few bytes changed at random (one per 64 KiB, at least one).
 
-    Mêmes formes que le corpus, réponses imprévisibles : rien ne peut être mis en cache d'une répétition à l'autre."""
+    The same shapes as the corpus, unpredictable answers: nothing can be cached from one repetition to the next."""
     resultat = []
     for nom, d in fichiers:
         b = bytearray(d[:prefixe] if prefixe else d)
@@ -64,9 +64,9 @@ def perturber(rng, fichiers, prefixe=None):
 
 
 def charger_corpus(outillage, generateur, dossier, prefixe_nom="k"):
-    """Lance le générateur de corpus de la BASE (python, sur l'hôte), puis lit les fichiers produits, triés.
+    """Runs the BASE's corpus generator (python, on the host), then reads the files produced, sorted.
 
-    Renvoie [(nom, octets)] avec des noms neutres (k000, k001…) : le harnais ne voit pas les noms d'origine."""
+    Returns [(name, bytes)] with neutral names (k000, k001…): the harness does not see the original names."""
     if generateur:
         r = subprocess.run([sys.executable, os.path.join(outillage, generateur)], capture_output=True, text=True, cwd=outillage)
         if r.returncode != 0:

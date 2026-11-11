@@ -37,6 +37,7 @@
 #                 A tree node family with commands: true, the same for its text. A schema of schemas/ is translated
 #                 with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
 #   new           globs of files the switch may add.
+#   metric_step   ruche-0149 (step 5): the domain metric_id in data already English, by tools/migration/metric_ids.py (P2).
 version: 1
 date_d: '2027-01-01'
 retired:
@@ -604,11 +605,12 @@ families:
       poste: area
       categorie: category
       noeud: node
+      metrique: metric_id
     schema_strings:
       https://bee.local/schemas/tache.schema.json: https://bee.local/schemas/task.schema.json
       ^(racine|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$: ^(root|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$
   contributions:
-    note: contribution records; metric ids (keys under instructions and degradations) stay until the metric-id step
+    note: contribution records; metric ids (keys under instructions and degradations) are the domain metric_id (ruche-0149)
     files:
     - contributions/*/*.yaml
     - outils/tests/registre/contributions/*/*.yaml
@@ -683,10 +685,10 @@ families:
       relectures[]/avis: opinion
       attente_verdict/motif: wait_code
     key_values:
-      verdict/instructions: null
-      verdict/degradations: null
-      verdicts[]/instructions: null
-      verdicts[]/degradations: null
+      verdict/instructions: metric_id
+      verdict/degradations: metric_id
+      verdicts[]/instructions: metric_id
+      verdicts[]/degradations: metric_id
     schema_strings:
       https://bee.local/schemas/enregistrement.schema.json: https://bee.local/schemas/contribution-record.schema.json
   debates:
@@ -791,7 +793,7 @@ families:
     values:
       '**/votant': login
   measurements:
-    note: metric ids (keys under metriques) stay until the metric-id step
+    note: metric ids (keys under metriques) are the domain metric_id (ruche-0149)
     files:
     - mesures/*/*.yaml
     writer: text
@@ -819,7 +821,7 @@ families:
     values:
       '**/soumise_par': login
     key_values:
-      metriques: null
+      metriques: metric_id
     schema_strings:
       https://bee.local/schemas/mesure.schema.json: https://bee.local/schemas/measurement.schema.json
   invitations:
@@ -995,7 +997,7 @@ families:
     schema_strings:
       https://bee.local/schemas/retraits.schema.json: https://bee.local/schemas/removals.schema.json
   projects:
-    note: metric ids (metriques[]/id and instructions) stay until the metric-id step; fork paths are not registry
+    note: metric ids (metriques[]/id and instructions) are the domain metric_id (ruche-0149); fork paths are not registry
       paths
     files:
     - projets/*.yaml
@@ -1034,6 +1036,8 @@ families:
       categorie: category
       metriques[]/sens: direction
       metriques[]/unite: unit
+      metriques[]/id: metric_id
+      metriques[]/instructions: metric_id
       chemins_juges[]: path
       chemins_hors_decompte[]: path
       commandes/tests: command
@@ -1177,8 +1181,8 @@ families:
       '**/utilisateur': login
       taille_reelle: size
     key_values:
-      mesures/avant: null
-      mesures/apres: null
+      mesures/avant: metric_id
+      mesures/apres: metric_id
     schema_strings:
       https://bee.local/schemas/contribution.schema.json: https://bee.local/schemas/manifest.schema.json
   fork_verdict:
@@ -1218,9 +1222,10 @@ families:
     values:
       ci: ci
       base_juge/regle: fork_judge_base_rule
+      metrique: metric_id
     key_values:
-      instructions: null
-      degradations: null
+      instructions: metric_id
+      degradations: metric_id
       mesures: null
   judge_report:
     note: 'juge.json of the common judge, judge.json from judge-v4 on (ruche-0148, J2b): what judge.py writes, report.py reads (until
@@ -1342,7 +1347,7 @@ families:
       au_dela_du_bruit: beyond_noise
       commit: commit
     key_values:
-      metriques: null
+      metriques: metric_id
   out_list:
     note: 'bee lister --json: task records plus computed keys'
     files: []
@@ -2025,6 +2030,28 @@ domains:
     partenaire: partner
     integration: integration
     refus: refusal
+  metric_id:  # ruche-0149 (step 5; docs/english-names.md, section 4): every project's metric ids and R4's instruction ids; closed
+    debit_compression_n1: compression_throughput_n1
+    debit_compression_n6: compression_throughput_n6
+    debit_compression_n9: compression_throughput_n9
+    debit_decompression: decompression_throughput
+    ratio_n6: ratio_n6
+    memoire_max_ko: max_memory_kb
+    instructions_n1: instructions_n1
+    instructions_n6: instructions_n6
+    instructions_n9: instructions_n9
+    instructions_decompression: instructions_decompression
+    debit_analyse: parse_throughput
+    debit_chargement: load_throughput
+    debit_emission: emit_throughput
+    instructions_analyse: instructions_parse
+    instructions_chargement: instructions_load
+    instructions_emission: instructions_emit
+    pire_cas_tri: sort_worst_case
+    debit_serialisation: serialize_throughput
+    debit_decodage: decode_throughput
+    debit_animation: animation_throughput
+    latence_icones: icon_latency
   node_section:
     Pourquoi cette branche existe: Why this branch exists
     Ce qui compte ici: What matters here
@@ -2234,3 +2261,17 @@ hand:
   same: true
   why: 'P7''s approvals (ruche-0153, review of b2245cf), moved: check-migration reads them from the base'
 new: []
+metric_step:
+  families:  # the families whose files hold metric ids, with their English globs; only the domain metric_id is applied there
+    tasks: [tasks/*/*.yaml, tools/tests/registry/tasks/*/*.yaml]
+    contributions: [contributions/*/*.yaml, tools/tests/registry/contributions/*/*.yaml]
+    measurements: [measurements/*/*.yaml]
+    projects: [projects/*.yaml]
+  prose:  # live tasks: the ids as whole words in these keys' texts; closed tasks, tasks in review, notes: as written (section 8)
+    family: tasks
+    status: [proposed, open]
+    keys: [title, context, acceptance_criteria, out_of_scope]
+  code:  # the ids written as whole words in the string literals and comments of these files, token for token
+  - tools/test_bee.py
+  - tools/rehearsal/load_test.py
+  - tools/rehearsal/simulated_ci.py

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Exécute une commande dans le conteneur du juge (bee/juge/Dockerfile), sans réseau, sur un dossier de
-# travail jetable : c'est ainsi que la CI lance tout ce qui exécute le code de la PR (tests d'origine,
-# tests différentiels, fuzzing). Mêmes protections que bee/juge/juge.py : réseau coupé, système de
-# fichiers en lecture seule, aucun privilège, utilisateur 65534. Le seul dossier visible est <travail>,
-# monté sur /travail ; l'hôte ne réexécute jamais rien de ce que le conteneur y laisse.
+# Runs a command in the judge's container (tools/judge/Dockerfile.base), without network, on a disposable
+# work folder: this is how the CI runs everything that executes the PR's code (original tests,
+# differential tests, fuzzing). The same protections as tools/judge/judge.py: network cut, read-only
+# file system, no privilege, user 65534. The only visible folder is <workdir>, mounted on
+# /travail; the host never runs again anything the container leaves there.
 #
-# Usage : bee/juge/isoler.sh <image> <travail> [--pids N] [--memoire M] -- <commande> [arguments…]
-#   <image>    étiquette de l'image (python3 bee/juge/juge.py --image-seulement)
-#   <travail>  dossier de travail ; le préparer avec des COPIES fraîches (cp -a base pr …) pour chaque
-#              étape : une étape précédente a pu y écrire n'importe quoi.
-# Le code de sortie est celui de la commande.
+# Usage: tools/judge/isoler.sh <image> <workdir> [--pids N] [--memoire M] -- <command> [arguments…]
+#   <image>    the image's label (python3 tools/judge/judge.py --tooling <base> --image-only)
+#   <workdir>  work folder; prepare it with fresh COPIES (cp -a base pr …) for each
+#              step: a previous step may have written anything there.
+# The exit code is the command's.
 set -euo pipefail
 
 if [ $# -lt 4 ]; then
@@ -25,13 +25,13 @@ while [ $# -gt 0 ] && [ "$1" != "--" ]; do
   case "$1" in
     --pids) pids="$2"; shift 2 ;;
     --memoire) memoire="$2"; shift 2 ;;
-    *) echo "isoler.sh : option inconnue : $1" >&2; exit 2 ;;
+    *) echo "isoler.sh: unknown option: $1" >&2; exit 2 ;;
   esac
 done
-[ "${1:-}" = "--" ] || { echo "isoler.sh : « -- » attendu avant la commande" >&2; exit 2; }
+[ "${1:-}" = "--" ] || { echo "isoler.sh: « -- » expected before the command" >&2; exit 2; }
 shift
 
-# Le conteneur tourne sous l'utilisateur 65534 : il doit pouvoir écrire dans sa copie de travail.
+# The container runs as user 65534: it must be able to write in its work copy.
 chmod -R a+rwX "$travail"
 exec docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
   --user 65534:65534 --pids-limit "$pids" --memory "$memoire" --memory-swap "$memoire" \

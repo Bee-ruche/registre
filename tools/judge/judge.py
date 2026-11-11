@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""Juge commun Bee : exécuter le code d'une PR en conteneur et le juger de l'extérieur, pour tout projet.
+"""Bee's common judge: run a PR's code in containers and judge it from outside, for any project.
 
-Spécification : docs/juge-commun.md du registre. Le juge commun fait ce qui protège et ne dépend
-d'aucun projet ; le GREFFON du projet (bee/juge/projet.py du fork, lu depuis la BASE de la PR, jamais
-depuis la PR) dit comment construire, quelles entrées donner, comment vérifier et que mesurer.
+Specification: the registry's docs/common-judge.md. The common judge does what protects and depends on no
+project; the project's PLUGIN (the fork's bee/judge/project.py or bee/juge/projet.py, read from the PR's BASE, never
+from the PR) says how to build, which inputs to give, how to verify and what to measure.
 
-Ce que garantit le juge commun, quel que soit le greffon :
-- ce programme (l'hôte) n'exécute JAMAIS un fichier issu de la PR. Compilation, exécution et décompte
-  d'instructions ont lieu dans des conteneurs sans réseau, en lecture seule, sans privilège, limités à
-  deux processus pour l'exécution, qui ne voient que leurs entrées et un dossier de sorties ;
-- chaque côté d'entrées (« f », « z »…) a son propre conteneur : un harnais ne voit jamais les entrées
-  d'un autre côté ; chaque scénario a le sien, avec ses seules sorties, figées (SHA-256) dès la fin du
-  conteneur : la comparaison ne lit que ce qui a été figé ; leur ordre est tiré à chaque répétition ;
-- la graine des entrées tirées au hasard est choisie ici, APRÈS la compilation ; le greffon perturbe les
-  entrées des mesures à chaque répétition ;
-- le temps processeur et la mémoire sont mesurés par le noyau (wait4) dans le lanceur chrono du juge
-  commun, compilé à part ; le décompte d'instructions couvre tout le processus du harnais et se lit sur
-  la dernière ligne de Valgrind ;
-- les sorties ne sont lues qu'à travers lecture.py (sans lien, sans fichier spécial, taille bornée) ;
-- une analyse des objets compilés (analysis.py) liste les constructions suspectes.
+What the common judge guarantees, whatever the plugin:
+- this program (the host) NEVER executes a file from the PR. Compilation, execution and instruction
+  counting take place in containers without network, read-only, without privilege, limited to
+  two processes for execution, which see only their inputs and an outputs folder;
+- each side of inputs (« f », « z »…) has its own container: a harness never sees the inputs
+  of another side; each scenario has its own, with its own outputs only, frozen (SHA-256) as soon as the
+  container ends: the comparison reads only what was frozen; their order is drawn at each repetition;
+- the seed of the inputs drawn at random is chosen here, AFTER compilation; the plugin perturbs the
+  measurements' inputs at each repetition;
+- processor time and memory are measured by the kernel (wait4) in the common judge's chrono launcher,
+  compiled apart; the instruction count covers the harness's whole process and is read on
+  Valgrind's last line;
+- the outputs are read only through lecture.py (no link, no special file, bounded size);
+- an analysis of the compiled objects (analysis.py) lists the suspicious constructs.
 
-Usage :
+Usage:
   python3 tools/judge/judge.py --tooling BASE --image-only
-  python3 tools/judge/judge.py --tooling BASE --source-a DOSSIER --source-b DOSSIER [--option CLE=VALEUR]…
+  python3 tools/judge/judge.py --tooling BASE --source-a FOLDER --source-b FOLDER [--option KEY=VALUE]…
                               [--repetitions 10] [--warmup 1] [--no-instructions] [--instructions-prefix 131072]
-                              [--json juge.json] [--seed HEX]
+                              [--json judge.json] [--seed HEX]
                               [--build-network host]
-  --tooling : copie de la BASE de la PR (son bee/juge/projet.py est le greffon)
-  --source-a / --source-b : dépôts de la référence (A, la base) et de la candidate (B, la PR)
-Sortie : rapport JSON au format d'ab.py (mesures, metriques, instructions) plus une section « juge ».
-Code de sortie : 0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement
-ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge mal monté), une panne de la machine
-(Docker, son runtime, l'image) comprise. With --json, judge.json says it in every case (judge.code, judge.outcome: ISSUES); its keys
+  --tooling: copy of the PR's BASE (its bee/judge/project.py or bee/juge/projet.py is the plugin)
+  --source-a / --source-b: repositories of the reference (A, the base) and of the candidate (B, the PR)
+Output: a JSON report in ab.py's format (measurements, metrics, instructions) plus a « judge » section.
+Exit code: 0 if all of B's outputs are correct, 1 if the judge refuses B, 2 if the environment
+is not suitable (Docker missing, a base that does not compile, an invalid plugin, a badly set-up judge), a failure of the machine
+(Docker, its runtime, the image) included. With --json, judge.json says it in every case (judge.code, judge.outcome: ISSUES); its keys
 and values are English from judge-v4 on (ruche-0148: names.yaml, judge_report), juge.json's French before.
 """
 
@@ -63,8 +63,8 @@ import entrees as inputs_module  # noqa: E402
 import stats  # noqa: E402
 from lecture import Erreur, Panne, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
-COMMON_VERSION = 3   # étiquette juge-v3 du registre
-JUDGE_VERSION = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
+COMMON_VERSION = 3   # the registry's tag juge-v3
+JUDGE_VERSION = 3      # verdict.json's numbering: 2 = minizBee's judge (miniz-0031), 3 = the common judge (its tag in « common »)
 ISSUES = {0: "correct", 1: "refusal", 2: "environment_error"}  # judge.json's judge.outcome for each exit code (ruche-0136)
 FAILURE = {}  # what judge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main
 # ruche-0148 (J2): a base holds one plugin, in English (bee/judge/project.py, judge-v4 on) or in French (bee/juge/projet.py, read
@@ -81,15 +81,15 @@ REQUIRED_METHODS = ("corpus", "verification", "verifier", "fixes", "repetition",
 SURVEYS = (("symboles", "symboles.txt"), ("sections", "sections.txt"), ("desassemblage", "desassemblage.txt"))
 OBJECT = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}\.o")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
-PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # un mot suivi de « _ » : frontière d'identifiant
+PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # a word followed by « _ »: an identifier boundary
 ALLOWED_MAX = 64
 SUSPICIOUS_MAX = 100  # juge.json lists at most this many suspicious constructs and counts the rest (constructions_suspectes_omises)
 # Kinds of suspicious construct, the most serious first: juge.json lists them in this order, and counts each kind (ruche-0117).
 SEVERITY = ("analyse_incomplete", "architecture", "appel_interdit", "symbole_interdit", "instruction", "octets", "section", "symbole",
            "symbole_defini", "appel_externe", "source")
 NEVER_ALLOWED = analysis.NEVER_ALLOWED
-UNITS = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
-ANALYSED_ARCHITECTURES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
+UNITS = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # translation units: each must leave its object
+ANALYSED_ARCHITECTURES = ("x86_64", "amd64")  # mnemonics and Valgrind preamble known to analysis.py
 VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=no", "--cachegrind-out-file=/dev/null"]
 COMMIT, HISTORY_MAX, REPO = re.compile(r"[0-9a-f]{40}"), 16, re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")
 
@@ -99,7 +99,7 @@ def common_tag(version=COMMON_VERSION):
     return f"{'juge' if version <= 3 else 'judge'}-v{version}"
 
 
-# ------------------------------------------------------------------ greffon
+# ------------------------------------------------------------------ plugin
 
 class EnglishPlugin:
     """ruche-0148 (J2): an English plugin read under the French contract's names (PLUGIN_NAMES), its METRICS with the French
@@ -116,8 +116,8 @@ class EnglishPlugin:
 
 
 def load_plugin(tooling, options):
-    """Charge le greffon de l'outillage (la BASE) et vérifie qu'il respecte le contrat : bee/judge/project.py, en anglais, ou
-    bee/juge/projet.py, en français (ruche-0148), jamais les deux."""
+    """Loads the tooling's plugin (the BASE) and checks that it keeps the contract: bee/judge/project.py, in English, or
+    bee/juge/projet.py, in French (ruche-0148), never both."""
     found = [p for p in (PLUGIN_PATH, FRENCH_PLUGIN_PATH) if os.path.lexists(os.path.join(tooling, p))]
     if len(found) == 2:
         raise Erreur(f"two plugins in {tooling}, {PLUGIN_PATH} (English) and {FRENCH_PLUGIN_PATH} (French): a base holds one")
@@ -161,8 +161,8 @@ def load_plugin(tooling, options):
             raise Erreur(f"scénario invalide dans le greffon : {s}")
     if any(s not in projet.SCENARIOS for s in projet.INSTRUCTIONS):
         raise Erreur("INSTRUCTIONS du greffon : scénario inconnu")
-    # Espace de noms et fonctions permises : un préfixe vide ou trop court éteindrait deux catégories de
-    # l'analyse des objets (revue adverse du 28/10) ; les fonctions qui trompent la mesure ne sont jamais permises.
+    # Namespace and allowed functions: an empty or too short prefix would switch off two categories of
+    # the objects' analysis (adversarial review of 28 October); the functions that deceive the measurement are never allowed.
     prefixes, allowed_set = tuple(projet.PREFIXES), tuple(getattr(projet, "PERMIS", ()))
     if not prefixes or any(not isinstance(p, str) or not PREFIX.fullmatch(p) for p in prefixes):
         raise Erreur("PREFIXES du greffon invalides : au moins un préfixe, chacun un mot terminé par « _ » (mz_, yaml_…)")
@@ -182,10 +182,10 @@ def load_plugin(tooling, options):
     return projet, fingerprint
 
 
-# ------------------------------------------------------------------ préparation et construction
+# ------------------------------------------------------------------ preparation and build
 
 def _no_link(repo, relative_one):
-    """Vrai si aucun composant de depot/relatif n'est un lien symbolique et si c'est un fichier ordinaire."""
+    """True if no component of repo/relative is a symbolic link and it is a regular file."""
     path = repo
     chunks = relative_one.split(os.sep)
     for i, m in enumerate(chunks):
@@ -199,7 +199,7 @@ def _no_link(repo, relative_one):
 
 
 def copy_sources(repo, destination, reasons, required_items):
-    """Copie les fichiers du projet (motifs glob relatifs à la racine) en refusant tout lien symbolique."""
+    """Copies the project's files (glob patterns relative to the root), refusing any symbolic link."""
     os.makedirs(destination, exist_ok=True)
     repo = os.path.abspath(repo)
     found_items = set()
@@ -221,10 +221,10 @@ def copy_sources(repo, destination, reasons, required_items):
 
 
 def copy_tooling(tooling, source_a, destination, projet):
-    """Ce que la BASE fournit au conteneur : ses dossiers d'outillage (OUTILLAGE) et ses en-têtes (EN_TETES_BASE).
+    """What the BASE gives the container: its tooling folders (OUTILLAGE) and its headers (EN_TETES_BASE).
 
-    Les en-têtes de la base sont copiés dans /outillage/base/ : le harnais se compile avec eux, pas avec
-    ceux de la PR (une macro glissée dans un en-tête de la PR ne peut pas réécrire le harnais)."""
+    The base's headers are copied into /outillage/base/: the harness is compiled with them, not with
+    the PR's (a macro slipped into a header of the PR cannot rewrite the harness)."""
     for relative_one in projet.OUTILLAGE:
         source = os.path.join(tooling, relative_one)
         if os.path.islink(source) or not os.path.isdir(source):
@@ -236,9 +236,9 @@ def copy_tooling(tooling, source_a, destination, projet):
 
 
 def expected_objects(sources):
-    """Un objet obj/<nom>.o par unité de traduction (.c, .S, .cc…) copiée des SOURCES de la variante.
+    """One object obj/<name>.o per translation unit (.c, .S, .cc…) copied from the variant's SOURCES.
 
-    Deux unités de même nom dans deux dossiers ne peuvent pas laisser chacune son objet : refusé (None)."""
+    Two units of the same name in two folders cannot each leave its object: refused (None)."""
     seen_items = {}
     for folder, _, names in os.walk(sources):
         for n in names:
@@ -250,12 +250,12 @@ def expected_objects(sources):
 
 
 def build(docker, projet, sources, tooling, output_text, label, travail):
-    """Compile une variante dans le conteneur (script CONSTRUIRE de la base), puis relève ses objets.
+    """Compiles a variant in the container (the base's CONSTRUIRE script), then surveys its objects.
 
-    Contrat du script : le harnais lié dans <sortie>/execution, et CHAQUE objet du projet dans
-    <sortie>/obj/<nom>.o (un par fichier .c des SOURCES). Les relevés d'analyse (nm, objdump) sont produits
-    ensuite par le juge commun lui-même, sur tous ces objets : un script de construction ne peut ni les
-    omettre ni les vider (revue adverse du 28/10)."""
+    The script's contract: the linked harness in <sortie>/execution, and EACH object of the project in
+    <sortie>/obj/<name>.o (one per .c file of SOURCES). The analysis surveys (nm, objdump) are then produced
+    by the common judge itself, on all these objects: a build script can neither omit
+    nor empty them (adversarial review of 28 October)."""
     container.open_folder(output_text)
     command = ["sh", "/outillage/" + projet.CONSTRUIRE, "/sources", "/outillage", "/sortie"]
     r = docker.launch(command, [(sources, "/sources", True), (tooling, "/outillage", True), (output_text, "/sortie", False)],
@@ -292,7 +292,7 @@ def build(docker, projet, sources, tooling, output_text, label, travail):
     if r.returncode != 0:
         raise failure(f"{label} : relevés d'analyse impossibles : " + propre(r.stderr))
     surveys = {key: exiger(surveys_folder, nom, 256 << 20).decode("utf-8", "replace") for key, nom in SURVEYS}
-    for o in objects_found:  # chaque objet figure dans chaque relevé (objdump : « <objet>:     file format … »)
+    for o in objects_found:  # each object is in each survey (objdump: « <object>:     file format … »)
         if not any(line_text.startswith(o + ":") for line_text in surveys["desassemblage"].splitlines()) or \
            not any(line_text.startswith(o + ":") for line_text in surveys["sections"].splitlines()):
             raise Erreur(f"{label} : {o} absent des relevés d'analyse : juge mal monté")
@@ -311,10 +311,10 @@ def texts_of(folder):
     return result
 
 
-# ------------------------------------------------------------------ exécution
+# ------------------------------------------------------------------ execution
 
 def prepare(travail, nom, entrees, sides_of):
-    """Écrit les entrées, un dossier par côté ; renvoie {côté: dossier}."""
+    """Writes the inputs, one folder per side; returns {side: folder}."""
     inputs_module.verifier_entrees(entrees, sides_of)
     folders = {}
     for c in sides_of:
@@ -328,8 +328,8 @@ def outputs_of(travail, nom, sides_of):
 
 
 def launch_by_side(run, variant, folders, outputs, plans, order, **options):
-    """Un conteneur par scénario, dans l'ordre tiré (ruche-0036), ses sorties sur /sorties comme la vérification (dossier
-    neutre, puis <côté>/<scénario>), figées dès la fin du conteneur. Renvoie (mesures, Sorties qui ne lit que le figé)."""
+    """One container per scenario, in the drawn order (ruche-0036), its outputs on /sorties as in verification (a neutral
+    folder, then <side>/<scenario>), frozen as soon as the container ends. Returns (measurements, a Sorties that reads only the frozen)."""
     measurements, commands, figees = {}, {s: (c, command) for c, plan in plans.items() for s, command in plan}, {c: {} for c in outputs}
     for label in order:
         quoted_side, command = commands[label]
@@ -342,7 +342,7 @@ def launch_by_side(run, variant, folders, outputs, plans, order, **options):
 
 
 def step(nom, variants_of, order, measurements):
-    """Une étape de juge.json : ordre des variantes et des scénarios, temps processeur de chaque scénario (wait4, chrono)."""
+    """A step of judge.json: order of the variants and of the scenarios, processor time of each scenario (wait4, chrono)."""
     return {"step": nom, "variants": "".join(variants_of), "order": list(order), "cpu_time_s": {
         v: {s: round(m[s]["utilisateur_s"] + m[s]["systeme_s"], 6) for s in order} for v, m in sorted(measurements.items())}}
 
@@ -426,7 +426,7 @@ def counted_integer(n):
 
 
 def require_coverage(outputs_b, entrees, step):
-    """Chaque entrée doit avoir eu au moins une sortie de B lue par le greffon pendant l'étape."""
+    """Each input must have had at least one output of B read by the plugin during the step."""
     forgotten_ones = [e.nom for e in entrees if not outputs_b.couvre(e.cote, e.nom)]
     if forgotten_ones:
         raise Erreur(f"{step} : le greffon n'a lu aucune sortie de B pour {len(forgotten_ones)} entrée(s) "
@@ -471,7 +471,7 @@ def fetch_history(tooling, text, token=None, budget=600):
     return commits
 
 
-# ------------------------------------------------------------------ programme
+# ------------------------------------------------------------------ program
 
 def options_of(list_of):
     options = {}
@@ -484,36 +484,36 @@ def options_of(list_of):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Juge commun Bee (voir l'aide du module).")
-    parser.add_argument("--tooling", required=True, help="copie de la BASE de la PR (greffon bee/juge/projet.py)")
+    parser = argparse.ArgumentParser(description="Bee's common judge (see the module's help).")
+    parser.add_argument("--tooling", required=True, help="copy of the PR's BASE (plugin bee/judge/project.py or bee/juge/projet.py)")
     parser.add_argument("--source-a")
     parser.add_argument("--source-b")
     parser.add_argument("--image-only", action="store_true",
-                           help="construit l'image du conteneur (avec réseau, avant la PR) et affiche son étiquette")
+                           help="builds the container's image (with network, before the PR) and prints its label")
     parser.add_argument("--history-only", action="store_true",
                            help="checks and fetches the declared history (--history) into the base, without loading the plugin")
     parser.add_argument("--history", default="", help="with --history-only: commits fetched into the base")
-    parser.add_argument("--judge-source", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
+    parser.add_argument("--judge-source", help="REPO@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
     parser.add_argument("--base", help="commit of A, recorded in juge.json (juge.yml: checked against the event)")
     parser.add_argument("--head", help="commit of B, recorded in juge.json (juge.yml: checked against the event)")
     parser.add_argument("--workdir", help="folder of the work directory (juge.yml: a size-bounded tmpfs)")
-    parser.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
+    parser.add_argument("--option", action="append", default=[], help="plugin option, KEY=VALUE (repeatable)")
     parser.add_argument("--repetitions", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--no-instructions", action="store_true")
     parser.add_argument("--instructions-prefix", type=int, default=131072)
     parser.add_argument("--instructions-threshold", type=float, default=0.002)
     parser.add_argument("--json")
-    parser.add_argument("--seed", help="graine hexadécimale (reproduction locale) ; défaut : tirée au hasard")
-    parser.add_argument("--order-seed", help="graine hexadécimale de l'ordre des scénarios (reproduction locale) ; défaut : tirée au hasard, à part")
-    parser.add_argument("--build-network", help="réseau de docker build (« host » sans pont Docker)")
+    parser.add_argument("--seed", help="hexadecimal seed (local reproduction); default: drawn at random")
+    parser.add_argument("--order-seed", help="hexadecimal seed of the scenarios' order (local reproduction); default: drawn at random, apart")
+    parser.add_argument("--build-network", help="docker build's network (« host » without Docker's bridge)")
     parser.add_argument("--memory", default="4g")
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args(argv)
     if args.repetitions < 1 or args.warmup < 0:
-        parser.error("--repetitions : au moins 1 ; --warmup : au moins 0")
+        parser.error("--repetitions: at least 1; --warmup: at least 0")
     if args.history and not args.history_only:
-        parser.error("--history va avec --history-only")
+        parser.error("--history goes with --history-only")
     if any(c is not None and not COMMIT.fullmatch(c) for c in (args.base, args.head)):
         parser.error("--base, --head : full commits (40 hexadecimal digits)")
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
@@ -536,7 +536,7 @@ def main(argv=None):
         print(container.build_image(getattr(projet, "PAQUETS", ()), args.build_network))
         return 0
     if not (args.source_a and args.source_b):
-        parser.error("--source-a et --source-b sont requis")
+        parser.error("--source-a and --source-b are required")
     sides_of = tuple(projet.COTES)
     travail = tempfile.mkdtemp(prefix="bee-juge-", dir=args.workdir)
     os.chmod(travail, 0o755)
@@ -550,22 +550,22 @@ def main(argv=None):
         constructs = {v: os.path.join(travail, f"construction-{v}") for v in "AB"}
         surveys = {"A": build(docker, projet, source_a, tools, constructs["A"], "A", travail),
                    "B": build(docker, projet, source_b, tools, constructs["B"], "B", travail)}
-        journal("A et B compilés dans le conteneur")
+        journal("A and B compiled in the container")
 
         suspects = analysis.analyse(surveys["A"], surveys["B"], texts_of(source_a), texts_of(source_b),
                                     prefixes=projet.PREFIXES, allowed_set=getattr(projet, "PERMIS", ()))
         architecture = platform.machine().lower()
         if architecture not in ANALYSED_ARCHITECTURES:
-            # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
+            # analysis.py knows only x86-64 instructions: elsewhere, the disassembly is not analyzed.
             suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
                                                                "(analyse.py ne couvre que x86-64)"})
         by_type = dict(sorted(collections.Counter(s["type"] for s in suspects).items()))
         suspects.sort(key=lambda s: SEVERITY.index(s["type"]) if s["type"] in SEVERITY else len(SEVERITY))
         omitted_ones, suspects = max(0, len(suspects) - SUSPICIOUS_MAX), suspects[:SUSPICIOUS_MAX]
         for s in suspects:
-            journal(f"construction suspecte : {propre(s['detail'], 300)}")
+            journal(f"suspicious construct: {propre(s['detail'], 300)}")
 
-        # La graine est tirée maintenant, après la compilation : rien de ce qui a été compilé ne la connaît.
+        # The seed is drawn now, after compilation: nothing that was compiled knows it.
         seed = bytes.fromhex(args.seed) if args.seed else secrets.token_bytes(16)
         rng = random.Random(int.from_bytes(seed, "big"))
         corpus = projet.corpus(tooling)
@@ -573,7 +573,7 @@ def main(argv=None):
                                                          for v in "AB"}, travail)
         compared_ones = 0
 
-        # 1. Vérification : le greffon choisit les entrées (corpus, tirées au hasard, invalides) et la règle.
+        # 1. Verification: the plugin chooses the inputs (corpus, drawn at random, invalid) and the rule.
         entrees = projet.verification(rng, corpus)
         inputs_module.verifier_entrees(entrees, sides_of)
         written_ones, neutral_ones = rename(rng, entrees)  # the plugin keeps its names, read through `noms`
@@ -585,7 +585,7 @@ def main(argv=None):
             roots[v], figees = outputs_of(travail, f"sorties-verification-{v}", sides_of), {}
             for quoted_side in sides_of:
                 run.launch(v, folders[quoted_side], roots[v][quoted_side], [("verifier", command)], timeout_seconds=3600)
-                figees[quoted_side] = figer(roots[v][quoted_side])  # dès la fin du conteneur : seul le figé sera lu
+                figees[quoted_side] = figer(roots[v][quoted_side])  # as soon as the container ends: only the frozen will be read
             roots[v] = Sorties(roots[v], names, figees)
         view_b = Sorties(roots["B"], names)
         compared_ones += counted_integer(projet.verifier(Sorties(roots["A"], names), view_b, entrees))
@@ -597,7 +597,7 @@ def main(argv=None):
             roots[v].controler()
         erase(roots["A"], folders)
         index = outputs_by_input(roots["B"].figees)
-        journal(f"vérification : {compared_ones} sorties de B justes ({len(entrees)} entrées)")
+        journal(f"verification: {compared_ones} outputs of B correct ({len(entrees)} inputs)")
         # Verification inputs mixed into every measurement (ruche-0037), spread over the repetitions.
         by_side = {c: [e for e in entrees if e.cote == c] for c in set(projet.SCENARIOS.values())}
         if not all(by_side.values()):
@@ -609,9 +609,9 @@ def main(argv=None):
         without_shuffle = sorted(s for s in projet.INSTRUCTIONS if not light_ones.get(projet.SCENARIOS[s]))
         interleaved = 0
 
-        # 2. Mesures au chronomètre (temps processeur du fils, lu par le noyau), A et B entrelacés ; l'ordre des
-        #    scénarios est tiré à chaque répétition, le même pour A et B, d'un générateur à part dont la graine (secrets,
-        #    consignée dans juge.scenarios.graine_ordre) ne dépend pas de celle des entrées.
+        # 2. Stopwatch measurements (the child's processor time, read by the kernel), A and B interleaved; the order of the
+        #    scenarios is drawn at each repetition, the same for A and B, from a generator of its own whose seed (secrets,
+        #    recorded in judge.scenarios.order_seed) does not depend on the inputs' seed.
         graine_ordre = bytes.fromhex(args.order_seed) if args.order_seed else secrets.token_bytes(16)
         measurements, draw, unfolding, timed = {"A": [], "B": []}, random.Random(graine_ordre), [], set()
         for i in range(args.warmup + args.repetitions):
@@ -640,7 +640,7 @@ def main(argv=None):
             compared_ones += same_outputs(index, roots["B"], outputs["B"], shuffled, projet.SCENARIOS.items())
             unfolding.append(step("warmup" if i < args.warmup else "measurement", variants_of, order, raw))
             erase(outputs["A"], outputs["B"], folders)
-            journal(f"répétition {i + 1}/{args.warmup + args.repetitions} ({'chauffe' if i < args.warmup else 'mesurée'}) faite")
+            journal(f"repetition {i + 1}/{args.warmup + args.repetitions} ({'warmup' if i < args.warmup else 'measured'}) done")
 
         report = {
             "repetitions": args.repetitions, "warmup": args.warmup, "order": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
@@ -674,7 +674,7 @@ def main(argv=None):
             report["measurements"]["A"][nom] = a["median"]
             report["measurements"]["B"][nom] = b["median"]
 
-        # 3. Décompte d'instructions : Valgrind dans le conteneur, tout le processus, résumé relevé par chrono.
+        # 3. Instruction count: Valgrind in the container, the whole process, its summary read by chrono.
         if not args.no_instructions and projet.INSTRUCTIONS:
             entrees, shuffled = interleave(rng, projet.instructions(rng, corpus, args.instructions_prefix), {c: round_number(rng, l) for c, l
                                      in light_ones.items()}, {c: min(how_many[c], len(l)) for c, l in light_ones.items()}, names)
@@ -740,7 +740,7 @@ def main(argv=None):
         report["duration_s"] = round(time.time() - beginning, 1)
     finally:
         if args.keep:
-            journal(f"dossier de travail conservé : {travail}")
+            journal(f"work folder kept: {travail}")
         else:
             shutil.rmtree(travail, ignore_errors=True)
 
@@ -787,5 +787,5 @@ if __name__ == "__main__":
         sys.exit(stop_it(1, f"juge : REFUS : {propre(str(e), 3000)}"))
     except Erreur as e:
         sys.exit(stop_it(2, f"juge : erreur : {propre(str(e), 3000)}", isinstance(e, Panne)))
-    except Exception:  # noqa: BLE001 — défaut du juge ou du greffon : jamais un succès, jamais une trace brute
+    except Exception:  # noqa: BLE001 — a defect of the judge or of the plugin: never a success, never a raw traceback
         sys.exit(stop_it(2, "juge : erreur interne (juge ou greffon) : " + propre(traceback.format_exc(), 3000)))

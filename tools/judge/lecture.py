@@ -1,9 +1,9 @@
-"""Juge commun Bee : erreurs, journal et lecture sûre des sorties écrites par le conteneur.
+"""Bee's common judge: errors, log and safe reading of the outputs the container wrote.
 
-Tout ce que le conteneur a produit est hostile : un fichier peut être un lien symbolique vers un
-fichier de l'hôte, un tube nommé qui bloque la lecture, un fichier énorme, ou un texte qui contient
-des commandes de workflow GitHub. Rien de ce module ne suit un lien, n'ouvre un fichier spécial ni
-ne lit au-delà d'une taille bornée. Le greffon d'un projet ne voit les sorties qu'à travers `Sorties`.
+Everything the container produced is hostile: a file can be a symbolic link to a file of the
+host, a named pipe that blocks reading, a huge file, or a text that holds GitHub workflow
+commands. Nothing in this module follows a link, opens a special file or reads beyond a
+bounded size. A project's plugin sees the outputs only through `Sorties`.
 """
 
 import hashlib
@@ -16,7 +16,7 @@ TAILLE_MAX_SORTIE = 256 * 1024 * 1024
 
 
 class Erreur(Exception):
-    """L'environnement ne convient pas (Docker absent, base qui ne compile pas, juge mal monté) : code 2."""
+    """The environment is not suitable (Docker missing, a base that does not compile, a badly set-up judge): code 2."""
 
 
 class Panne(Erreur):
@@ -24,24 +24,24 @@ class Panne(Erreur):
 
 
 class Refus(Exception):
-    """Le juge refuse la variante B : code 1."""
+    """The judge refuses variant B: code 1."""
 
 
 def journal(message):
-    print(f"juge : {message}", file=sys.stderr, flush=True)
+    print(f"judge: {message}", file=sys.stderr, flush=True)
 
 
 def propre(octets, maximum=1500):
-    """Texte venu du conteneur, affichable sans risque : tronqué, caractères de contrôle retirés."""
+    """Text from the container, safe to show: truncated, control characters removed."""
     texte = octets.decode("utf-8", "replace") if isinstance(octets, bytes) else str(octets)
     texte = re.sub("[^\x20-\x7e\n\xa0-\ud7ff\ue000-\uffff]", "?", texte[-maximum:])  # nor a lone surrogate
-    return texte.replace("::", ": :")  # pas de commande de workflow GitHub
+    return texte.replace("::", ": :")  # no GitHub workflow command
 
 
 def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
-    """Lit racine/relatif sans jamais suivre un lien symbolique (le conteneur a écrit dans racine).
+    """Reads racine/relatif without ever following a symbolic link (the container wrote in racine).
 
-    Renvoie None si le fichier n'existe pas ; Refus s'il n'est pas un fichier ordinaire ou s'il dépasse maximum (TAILLE_MAX_SORTIE au plus)."""
+    Returns None if the file does not exist; Refus if it is not a regular file or if it exceeds maximum (TAILLE_MAX_SORTIE at most)."""
     maximum, morceaux = min(maximum, TAILLE_MAX_SORTIE), relatif.split("/")
     if any(m in ("", ".", "..") for m in morceaux):
         raise Refus(f"chemin de sortie invalide : {relatif}")
@@ -92,7 +92,7 @@ def exiger(racine, relatif, maximum=TAILLE_MAX_SORTIE):
 
 
 def statut(racine, relatif, texte=None):
-    """Fichier de statut « CODE ENTIER\\n » écrit par un harnais (code de retour, longueur produite)."""
+    """Status file « CODE INTEGER\\n » written by a harness (return code, length produced)."""
     texte = exiger(racine, relatif, 64) if texte is None else texte
     m = re.fullmatch(rb"(-?\d{1,6}) (\d{1,12})\n", texte)
     if not m:
@@ -105,12 +105,12 @@ def _illisible(erreur):
 
 
 def figer(racine):
-    """Empreinte d'un dossier de sorties, relevée dès la fin du conteneur qui l'a écrit (ruche-0036) : {chemin relatif :
-    SHA-256 d'un fichier ordinaire, « dossier », ou « autre » (lien, fichier spécial)}. Ses clés sont la liste du dossier ;
-    aucun lien n'est suivi, chaque fichier est lu par lire_sortie (taille bornée), un dossier illisible est un refus."""
+    """Fingerprint of an outputs folder, taken as soon as the container that wrote it ends (ruche-0036): {relative path:
+    SHA-256 of a regular file, « dossier », or « autre » (link, special file)}. Its keys are the folder's listing;
+    no link is followed, each file is read by lire_sortie (bounded size), an unreadable folder is a refusal."""
     try:
         return _figer(racine)
-    except OSError as e:  # état, liste ou ouverture de ce que le conteneur a laissé : un refus (1), jamais une erreur (2)
+    except OSError as e:  # status, listing or opening of what the container left: a refusal (1), never an error (2)
         _illisible(e)
 
 
@@ -146,26 +146,26 @@ def copier(source, cible):
 
 
 class Sorties:
-    """Les sorties d'une variante (A ou B) pour une étape, un dossier par côté (« f », « z »…).
+    """The outputs of a variant (A or B) for a step, one folder per side (« f », « z »…).
 
-    C'est la seule vue que le greffon d'un projet a sur ce que le conteneur a écrit. Elle retient ce que
-    le greffon a effectivement lu (`lues`) : le juge commun vérifie ensuite que chaque entrée a eu au
-    moins une sortie de B lue, si bien qu'un greffon qui oublie une entrée ou un scénario est arrêté au
-    lieu de laisser passer une sortie que personne n'a regardée (revue adverse du 28/10).
+    It is the only view a project's plugin has of what the container wrote. It keeps what
+    the plugin actually read (`lues`): the common judge then checks that each input had at
+    least one output of B read, so that a plugin that forgets an input or a scenario is stopped
+    instead of letting through an output nobody looked at (adversarial review of 28 October).
 
-    `noms` ({(côté, nom du greffon): nom écrit}) : les entrées ont été écrites sous d'autres noms (ruche-0037) ; le
-    greffon garde les siens, traduits ici dans le dernier composant du chemin (« c/k000.6 » se lit « c/e0012.6 »).
+    `noms` ({(side, the plugin's name): written name}): the inputs were written under other names (ruche-0037); the
+    plugin keeps its own, translated here in the path's last component (« c/k000.6 » reads « c/e0012.6 »).
 
-    Avec `figees` ({côté: empreinte de figer}, toujours passé par le juge), seul ce qui a été figé se lit : un fichier
-    modifié, ajouté ou retiré après son empreinte est un refus (ruche-0036)."""
+    With `figees` ({side: figer's fingerprint}, always passed by the judge), only what was frozen is read: a file
+    changed, added or removed after its fingerprint is a refusal (ruche-0036)."""
 
     def __init__(self, racines, noms=None, figees=None):
-        if isinstance(racines, Sorties):  # une vue neuve sur les mêmes sorties figées : ses lectures comptent à part
+        if isinstance(racines, Sorties):  # a new view of the same frozen outputs: its reads count apart
             racines, noms, figees = racines._racines, racines._noms if noms is None else noms, racines.figees
         self._racines, self._noms, self.figees = dict(racines), dict(noms or {}), figees
         self.lues = set()
 
-    def __iter__(self):  # ses dossiers (juge.effacer)
+    def __iter__(self):  # its folders (judge.erase)
         return iter(self._racines.values())
 
     def _chemin(self, cote, relatif):
@@ -196,7 +196,7 @@ class Sorties:
         return statut(None, relatif, self.exiger(cote, relatif, 64))
 
     def ecrite(self, cote, chemin, maximum=TAILLE_MAX_SORTIE):
-        """La sortie écrite sous ce chemin (sans traduction de noms), telle qu'elle a été figée."""
+        """The output written under this path (no translation of names), as it was frozen."""
         donnees = lire_sortie(self._racine(cote), chemin, maximum)
         empreinte = None if donnees is None else hashlib.sha256(donnees).hexdigest()
         if self.figees is not None and empreinte != self.figees[cote].get(chemin):
@@ -204,13 +204,13 @@ class Sorties:
         return donnees
 
     def controler(self):
-        """Après la comparaison : chaque dossier est encore exactement ce qui a été figé (liste et contenus)."""
+        """After the comparison: each folder is still exactly what was frozen (listing and contents)."""
         for cote, racine in self._racines.items():
             if figer(racine) != self.figees[cote]:
                 raise Refus(f"sorties modifiées, ajoutées ou retirées après leur empreinte (côté {cote})")
 
     def couvre(self, cote, nom):
-        """Vrai si une sortie lue de ce côté porte le nom de l'entrée (« c/k000.6 » couvre k000)."""
+        """True if an output read on this side bears the input's name (« c/k000.6 » covers k000)."""
         for c, relatif in self.lues:
             dernier = relatif.rsplit("/", 1)[-1]
             if c == cote and (dernier == nom or dernier.startswith(nom + ".")):
