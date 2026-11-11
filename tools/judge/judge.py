@@ -63,7 +63,7 @@ import entrees as inputs_module  # noqa: E402
 import stats  # noqa: E402
 from lecture import Erreur, Panne, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
-COMMON_VERSION = 3   # the registry's tag juge-v3
+COMMON_VERSION = 4   # the registry's tag judge-v4
 JUDGE_VERSION = 3      # verdict.json's numbering: 2 = minizBee's judge (miniz-0031), 3 = the common judge (its tag in « common »)
 ISSUES = {0: "correct", 1: "refusal", 2: "environment_error"}  # judge.json's judge.outcome for each exit code (ruche-0136)
 FAILURE = {}  # what judge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main

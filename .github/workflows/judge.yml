@@ -1,26 +1,26 @@
-# Juge commun Bee, workflow réutilisable (docs/juge-commun.md).
+# Bee's common judge, reusable workflow (docs/common-judge.md).
 #
-# Un fork l'appelle depuis sa CI, en épinglant le commit d'une étiquette du registre :
-#   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v3> # juge-v3
-#     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
+# A fork calls it from its CI, pinning the commit of a registry tag:
+#   judge:
+#     uses: Bee-ruche/registre/.github/workflows/judge.yml@<commit of judge-v4> # judge-v4
+#     with: { base_sha: <the PR's base>, head_sha: <the PR's head>, options: "sortie_compressee=identique" }
 # ruche-0148 (J2): from judge-v4 on, each input has its English name (head_sha, history, no_instructions) and, until judge-v5, its
 # French one (tete_sha, historique, sans_instructions): a call gives one of the two. From judge-v4 on too, the artifact is « judge »
 # (judge.json, its keys and values in English, and code), and the outputs have their English names and, until judge-v5, the French.
-# Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
-# et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
-# 1 refusé, 2 environnement, une panne de la machine du juge comprise : jamais un refus de B, ruche-0136).
-# Le job ne devient jamais rouge à cause de B : c'est le verdict du fork qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
+# It judges the head against the base with the BASE's plugin (bee/judge/project.py or bee/juge/projet.py), never the PR's,
+# and publishes an artifact « judge »: judge.json (the report, its « judge » section included) and code (0 correct,
+# 1 refused, 2 environment, a failure of the judge's machine included: never a refusal of B, ruche-0136).
+# The job never turns red because of B: the fork's verdict reads the code and decides. No secret, no write: read-only permissions.
 #
 # The judge's code is read at this workflow's own commit (job.workflow_sha), which must be a commit of
-# Bee-ruche/registre's main, never at a tag or a branch (test_judge.py); juge.json names it (juge.source).
-name: Juge commun
+# Bee-ruche/registre's main, never at a tag or a branch (test_judge.py); judge.json names it (judge.source).
+name: Common judge
 
 on:
   workflow_call:
     inputs:
       base_sha:
-        description: "commit de base (référence A ; son bee/juge/projet.py est le greffon)"
+        description: "base commit (reference A; its bee/judge/project.py or bee/juge/projet.py is the plugin)"
         required: true
         type: string
       head_sha:
@@ -29,12 +29,12 @@ on:
         type: string
         default: ""
       tete_sha:
-        description: "commit jugé (candidate B)"
+        description: "judged commit (candidate B): head_sha's French name, until judge-v5"
         required: false
         type: string
         default: ""
       options:
-        description: "options du greffon, CLE=VALEUR, une par ligne"
+        description: "plugin options, KEY=VALUE, one per line"
         required: false
         type: string
         default: ""
@@ -60,41 +60,41 @@ on:
         default: false
     outputs:
       code:
-        description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas (panne de la machine du juge comprise)"
-        value: ${{ jobs.juge.outputs.code }}
-      fingerprint: {description: "SHA-256 of judge.json (artifact « judge »)", value: "${{ jobs.juge.outputs.fingerprint }}"}
-      suspects: {description: "number of suspicious constructs, those judge.json leaves out included", value: "${{ jobs.juge.outputs.suspects }}"}
-      outputs_compared: {description: "outputs of B compared", value: "${{ jobs.juge.outputs.outputs_compared }}"}
-      plugin: {description: "SHA-256 of the plugin", value: "${{ jobs.juge.outputs.plugin }}"}
-      seed: {description: "seed of the judge", value: "${{ jobs.juge.outputs.seed }}"}
-      base: {description: "commit A judged", value: "${{ jobs.juge.outputs.base }}"}
-      head: {description: "commit B judged", value: "${{ jobs.juge.outputs.head }}"}
+        description: "0 if all of B's outputs are correct, 1 if the judge refuses B, 2 if the environment is not suitable (a failure of the judge's machine included)"
+        value: ${{ jobs.judge.outputs.code }}
+      fingerprint: {description: "SHA-256 of judge.json (artifact « judge »)", value: "${{ jobs.judge.outputs.fingerprint }}"}
+      suspects: {description: "number of suspicious constructs, those judge.json leaves out included", value: "${{ jobs.judge.outputs.suspects }}"}
+      outputs_compared: {description: "outputs of B compared", value: "${{ jobs.judge.outputs.outputs_compared }}"}
+      plugin: {description: "SHA-256 of the plugin", value: "${{ jobs.judge.outputs.plugin }}"}
+      seed: {description: "seed of the judge", value: "${{ jobs.judge.outputs.seed }}"}
+      base: {description: "commit A judged", value: "${{ jobs.judge.outputs.base }}"}
+      head: {description: "commit B judged", value: "${{ jobs.judge.outputs.head }}"}
       # ruche-0148 (J2b): the same outputs under their French names, until judge-v5
-      empreinte: {description: "fingerprint", value: "${{ jobs.juge.outputs.fingerprint }}"}
-      suspectes: {description: "suspects", value: "${{ jobs.juge.outputs.suspects }}"}
-      sorties_comparees: {description: "outputs_compared", value: "${{ jobs.juge.outputs.outputs_compared }}"}
-      greffon: {description: "plugin", value: "${{ jobs.juge.outputs.plugin }}"}
-      graine: {description: "seed", value: "${{ jobs.juge.outputs.seed }}"}
-      tete: {description: "head", value: "${{ jobs.juge.outputs.head }}"}
+      empreinte: {description: "fingerprint", value: "${{ jobs.judge.outputs.fingerprint }}"}
+      suspectes: {description: "suspects", value: "${{ jobs.judge.outputs.suspects }}"}
+      sorties_comparees: {description: "outputs_compared", value: "${{ jobs.judge.outputs.outputs_compared }}"}
+      greffon: {description: "plugin", value: "${{ jobs.judge.outputs.plugin }}"}
+      graine: {description: "seed", value: "${{ jobs.judge.outputs.seed }}"}
+      tete: {description: "head", value: "${{ jobs.judge.outputs.head }}"}
 
 permissions:
   contents: read
 
 jobs:
-  juge:
+  judge:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     outputs:
-      code: ${{ steps.juge.outputs.code }}
-      fingerprint: ${{ steps.juge.outputs.fingerprint }}
-      suspects: ${{ steps.juge.outputs.suspects }}
-      outputs_compared: ${{ steps.juge.outputs.outputs_compared }}
-      plugin: ${{ steps.juge.outputs.plugin }}
-      seed: ${{ steps.juge.outputs.seed }}
-      base: ${{ steps.juge.outputs.base }}
-      head: ${{ steps.juge.outputs.head }}
+      code: ${{ steps.judge.outputs.code }}
+      fingerprint: ${{ steps.judge.outputs.fingerprint }}
+      suspects: ${{ steps.judge.outputs.suspects }}
+      outputs_compared: ${{ steps.judge.outputs.outputs_compared }}
+      plugin: ${{ steps.judge.outputs.plugin }}
+      seed: ${{ steps.judge.outputs.seed }}
+      base: ${{ steps.judge.outputs.base }}
+      head: ${{ steps.judge.outputs.head }}
     steps:
-      - name: Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici)
+      - name: The caller's inputs, before any use (a call that does not leave a complete judgment stops here)
         env:
           BASE: ${{ inputs.base_sha }}
           HEAD_SHA: ${{ inputs.head_sha }}
@@ -112,7 +112,7 @@ jobs:
           [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$TETE" =~ ^[0-9a-f]{40}$ && "$BASE" == "$BASE_EVENEMENT" && "$TETE" == "$TETE_EVENEMENT" ]] || { echo "base_sha, head_sha: the event's pull request's (40 hexadecimal digits)" >&2; exit 1; }
           [[ "$REPETITIONS" =~ ^[1-9][0-9]{0,2}$ ]] && (( REPETITIONS >= 10 && REPETITIONS <= 50 )) || { echo "repetitions: 10 to 50" >&2; exit 1; }
           [[ "$NO_INSTRUCTIONS" == false && "$SANS_INSTRUCTIONS" == false ]] || { echo "no_instructions: a verdict needs the instruction count" >&2; exit 1; }
-      - name: Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)
+      - name: This workflow's commit, on the registry's main branch (the judge's code is read there)
         id: preparation
         env:
           DEPOT: ${{ job.workflow_repository }}
@@ -123,38 +123,38 @@ jobs:
           etat="$(timeout 60 gh api "repos/Bee-ruche/registre/compare/main...$COMMIT" --jq .status)" || etat="API error or timeout"
           [[ "$etat" == identical || "$etat" == behind ]] || { echo "workflow commit $COMMIT is not on the registry's main ($etat)" >&2; exit 1; }
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
-      - name: Juge commun (registre, au commit de ce workflow)
+      - name: Common judge (registry, at this workflow's commit)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Bee-ruche/registre
           ref: ${{ steps.preparation.outputs.commit }}
           path: juge-commun
           persist-credentials: false
-      - name: Base de la PR (greffon, harnais, corpus)
+      - name: Base of the PR (plugin, harness, corpus)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.base_sha }}
           path: base
           persist-credentials: false
-      - name: Historique déclaré (ancêtres de la base ; seul appel de judge.py avec le jeton, avant le greffon et la PR)
+      - name: Declared history (ancestors of the base; the only call of judge.py with the token, before the plugin and the PR)
         env:
           HISTORIQUE: ${{ inputs.history || inputs.historique }}
           GH_TOKEN: ${{ github.token }}
         run: python3 juge-commun/tools/judge/judge.py --tooling base --history-only --history "$HISTORIQUE"
-      - name: Image du juge (avec réseau, avant tout fichier de la PR)
+      - name: The judge's image (with network, before any file of the PR)
         run: python3 juge-commun/tools/judge/judge.py --tooling base --image-only
-      - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
+      - name: Head of the PR (data; nothing of it runs outside a container)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.head_sha || inputs.tete_sha }}
           path: pr
           fetch-depth: 0
           persist-credentials: false
-      - name: Dossier de travail du juge, borné (tmpfs ; tout ce que les conteneurs écrivent y reste)
+      - name: The judge's work folder, bounded (tmpfs; everything the containers write stays there)
         run: |
           mkdir -p "$RUNNER_TEMP/juge" && sudo mount -t tmpfs -o "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev,uid=$(id -u),gid=$(id -g)" tmpfs "$RUNNER_TEMP/juge"
-      - name: Juger
-        id: juge
+      - name: Judge
+        id: judge
         env:
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
@@ -185,11 +185,11 @@ jobs:
           # ruche-0136: the outcome said as what it is; an error of the environment (the judge's machine: Docker, its runtime, the
           # image; or its report) is never a refusal of the judged code, and judges nothing.
           case "$(cat results/code)" in
-            0) echo "::notice title=Juge commun::code 0 : toutes les sorties de B sont justes" ;;
-            1) echo "::warning title=Juge commun::code 1 : refus du code jugé (B)" ;;
-            *) echo "::error title=Juge commun::code 2 : erreur d'environnement (machine du juge ou rapport), pas un refus de B : rien n'est jugé" ;;
+            0) echo "::notice title=Common judge::code 0: all of B's outputs are correct" ;;
+            1) echo "::warning title=Common judge::code 1: refusal of the judged code (B)" ;;
+            *) echo "::error title=Common judge::code 2: error of the environment (the judge's machine or the report), not a refusal of B: nothing is judged" ;;
           esac
-      - name: Conserver le rapport
+      - name: Keep the report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
