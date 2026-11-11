@@ -5719,7 +5719,7 @@ def check_pr(reg, base, head, *args, **kwargs):
 def _check_pr(reg, base, head, author, account_created_on=None, instant=None, pr_authors=None, github_id=None):
     """Returns (problems, natures). `reg` must reflect the state of the PR's head.
 
-    pr_authors: {PR address: its author's GitHub login}, read by auto-merge
+    pr_authors: {PR address: (its author's GitHub login, account number or None)}, read by auto-merge
     from the API for each PR declared in an added or modified contribution; if given, each must belong to the
     contribution's author (or to their declared agent account), and a PR missing from the list is refused (fail closed).
 
