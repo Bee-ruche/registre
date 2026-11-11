@@ -1,0 +1,108 @@
+id: miniz-0045-c1
+task: miniz-0045
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/26
+summary: minizBee's guides (AGENTS.md, CLAUDE.md, bee/README.md) in English, with the registry's current
+  commands and paths
+status: in_review
+submitted_at: '2026-11-11T17:53:46Z'
+engaged_since: '2026-11-11T17:36:49Z'
+reviews: []
+verdict:
+  ci: green
+  base: f5440c3a212a4625a0bd275237e341b6327a3da3
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_n1:
+      A: 171442789.0
+      B: 171442789.0
+      gain: 0.0
+    instructions_n6:
+      A: 335502083.0
+      B: 335502083.0
+      gain: 0.0
+    instructions_n9:
+      A: 483765515.0
+      B: 483765515.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27897574.0
+      B: 27897574.0
+      gain: 0.0
+  degradations: {}
+  judge:
+    version: 3
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 40
+  declared_gap: null
+  sha: 67be709509d0cb3c32453cce694b64178ebf5b7d
+  tree: 5956f2d8e994f1cf36f63288fb9fd2e91214b409
+  checked_files: true
+  modified_judges:
+  - bee/README.md
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/43034328157
+verdicts:
+- sha: 67be709509d0cb3c32453cce694b64178ebf5b7d
+  tree: 5956f2d8e994f1cf36f63288fb9fd2e91214b409
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 40
+  instructions:
+    instructions_n1:
+      A: 171442789.0
+      B: 171442789.0
+      gain: 0.0
+    instructions_n6:
+      A: 335502083.0
+      B: 335502083.0
+      gain: 0.0
+    instructions_n9:
+      A: 483765515.0
+      B: 483765515.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27897574.0
+      B: 27897574.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'Line-for-line literal comparison of old and new files (a token script: code spans, the command part
+    of each code-block line, link targets, numbers normalized from French to English style). bee/README.md:
+    31 lines differ, all intended: COMMANDEMENTS.md and docs/securite.md links, bee verifier-fork, bee
+    enregistrer-verdict, mesure, sortie_compressee: peut_changer, chemins_juges and projets/miniz.yaml,
+    manifestes/<tâche>.yaml, translated placeholders, the médiane() formula, the added job ids, and four
+    dates written out (2/11/2026, 30/10, 27/10). AGENTS.md: 4 lines (COMMANDMENTS.md link, fichiers, the
+    title placeholder, the manifest line). CLAUDE.md: 0. Numbers in code-block comments and code spans:
+    identical.'
+  - 'French-line heuristic of the migration plan: bee/README.md 2 lines left out of 225 non-empty (the
+    two CI messages quoted in French as excerpts, and one false positive), AGENTS.md 0, CLAUDE.md 0. Stale-name
+    check against tools/migration/names.yaml: no registry name left in its pre-switch form; the remaining
+    hits are fork names that stay (bee/juge/, verdict.json keys, job ids, juge-v2, outils/juge/).'
+  - 'Links: every registry URL of the three files exists on registry main (AGENTS.md, COMMANDMENTS.md,
+    docs/security.md; docs/common-judge.md cited in text); bee/README.md is the only relative link; every
+    in-file section reference names an existing heading (Known limits, Common judge and plugin, History
+    for the corpus, Fuzzing).'
+  - 'The fork''s scripts read for each described option and behavior (bee/ci/manifeste.sh, tache.py, verifier_fork.py,
+    vocabulaire.py, juges.sh, differentiel.sh, tests_origine.sh, bee/tests/lancer.sh, bee/fuzz/lancer.sh,
+    bee/bench/ab.py, profil.py, banc.c, bee/corpus/generer.py, bee/sandbox/sans-docker.sh, bee/Makefile,
+    bee-ci.yml) and the pinned judge''s juge.py at dab13a6: every option the guides cite exists as written.'
+  untested:
+  - 'No fork code was run: the PR changes documentation only, so the sandbox was not needed; the fork''s
+    CI runs its full pipeline on this PR.'
+  - 'The parity review both ways by a reviewer who did not translate (first acceptance criterion): not
+    the builder''s part.'
+  doubts: 'Choices a reviewer may weigh: the job ids added beside the translated job names in the CI table;
+    the CI messages and profiler labels kept in French with an English gloss (miniz-0046 or miniz-0050
+    will change what the scripts print, and these quotes with it). Facts noticed and left as written,
+    because they are content, not translation: the README says the Dockerfile has not been built yet,
+    while miniz-0003''s report ran in an image built from it (the digest pin is still missing); the file
+    tree omits bee/sandbox/sans-docker.sh, bee/tests/api.c, bee/bench/test_profil.py, bee/fuzz/ubsan-exclusions.txt
+    and bee/resultats/; bee-ci.yml''s header cites the README section « Juge commun et greffon » (now
+    "Common judge and plugin") and bee/juge/execution.c a section « Juge isolé » that no longer existed
+    before this PR; both files are outside this task.'

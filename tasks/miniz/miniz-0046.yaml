@@ -37,7 +37,8 @@ out_of_scope:
 depends_on:
 - ruche-0145
 node: projects/lossless-compression/miniz/bee
-status: open
+status: in_review
+contribution: miniz-0046-c1
 created_by: council
 created_on: '2026-10-31'
 notes:
