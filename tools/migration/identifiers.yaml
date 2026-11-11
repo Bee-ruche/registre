@@ -32,7 +32,7 @@
 #                tools/migration/judge_move.py; what a fork reads from the judge stays as written until J2 makes it dual:
 #                kept_files (Python moved byte for byte), kept_names (bare names), kept_attributes (after a dot or in an
 #                attribute-name string), kept_data (keyword arguments that are data); judge_move.py check derives the first
-#                two from the code and refuses any difference.
+#                two from the code and refuses any difference; kept_strings (juge.json values, byte for byte).
 version: 1
 english: [
   aaaeeeeiioouuuc, ab, abandon, abandonment, abbrev, abort, about, abs, absent, absolute, abspath, abstention,
@@ -4538,6 +4538,7 @@ judge:
                     lire_sortie, exiger, statut, figer, journal, propre, lire, ecrite, controler, couvre, figees, lues]
   kept_data: [juge, tete, issue, panne_machine, motif, constructions_suspectes, origine_des_graines, au_dela_du_bruit, TETE, BASE_EVENEMENT,
               TETE_EVENEMENT, SANS_INSTRUCTIONS, FAUX_GH_JOURNAL, FAUX_GH_DEPOT]
+  kept_strings: ['(analyse.py ne couvre que x86-64)']
   why: 'the forks'' interface with the judge, as written until J2 (docs/english-migration.md, section 6). A plugin is read from a
     fork''s base and imports entrees.py and lecture.py by name (from lecture import Erreur, Refus): both files, the toy''s plugin
     (jouet/bee/juge/projet.py) and the names they define stay; so do the bare names of those modules and every name a plugin
@@ -4546,4 +4547,5 @@ judge:
     self.ecrire). P1 maps a name, never a role: a local variable of that spelling stays too (projet, entrees, nom). The data
     keywords are juge.json''s keys (juge, tete, issue, motif…), a statistic''s (au_dela_du_bruit), juge.yml''s environment
     variables (TETE…) and the fake gh''s (FAUX_GH_…), kept as their strings are. Strings stay byte for byte, but the judge''s
-    options, its paths and attribute names'
+    options, its paths and attribute names; kept_strings are values juge.json holds that name a file of the judge (the detail of
+    the architecture construct, in constructions_suspectes), byte for byte too'

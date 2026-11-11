@@ -7,10 +7,10 @@ judge stays as written (J2 makes it dual).
 write: the judge's files of REV at their paths in names.yaml (paths), written in this checkout. A Python file the map does not
 keep (identifiers.yaml, judge: kept_files) is renamed: each identifier through identifiers.yaml (after a dot, as an attribute),
 the plugin's names aside (judge: kept_names, kept_attributes, kept_data); in its strings, only the judge's options (names.yaml,
-cli: scripts), the paths of its files and attribute names (getattr, mock.patch.object…). Every other file and string stays byte
-for byte. The workflows that run the judge get the same options and paths.
+cli: scripts), the paths of its files and attribute names (getattr, mock.patch.object…), but a value juge.json holds (judge:
+kept_strings). Every other file and string stays byte for byte. The workflows that run the judge get the same options and paths.
 check: writes again from the base, in memory: the head must hold exactly that; then P1 per renamed file (the syntax tree after is
-the tree before modulo the map), every changed string an option, a path or an attribute name, the kept names derived from the code,
+the tree before modulo the map), every changed string an option, a path or an attribute name, each kept string where it was, the kept names derived from the code,
 no two names of a scope merged, no name defined under one English name and read under another. Maps and code: this checkout's.
 Exit 0: proven, as the last line says; 1: problems, listed.
 """
@@ -52,7 +52,7 @@ def judge_map():
 class Judge:
     def __init__(self):
         self.names, self.cm, self.j, self.kept, self.options, self.files = judge_map()
-        self.new_dir = self.names.path(OLD)
+        self.new_dir, self.kept_strings = self.names.path(OLD), set(self.j.get("kept_strings", []))
         self.option_re = re.compile(r"(?<![\w-])(" + "|".join(map(re.escape, sorted(self.options, key=len, reverse=True))) + r")(?![\w-])")
         self.dir_re = re.compile(r"(?<![\w.-])" + re.escape(OLD.rstrip("/")) + r"(?:/([\w.-]+))?(?![\w-])")
         self.file_re = re.compile(r"(?<![\w./-])(" + "|".join(map(re.escape, self.files)) + r")(?![\w-])")
@@ -90,6 +90,8 @@ class Judge:
                 cm.tokens = cm.base_tokens
             elif tok.type == tokenize.NAME:
                 new = d.get(tok.string, tok.string)
+            elif tok.type == tokenize.STRING and literal(tok.string) in self.kept_strings:
+                pass  # a value the judge writes in juge.json, byte for byte (identifiers.yaml, judge: kept_strings)
             elif tok.type == tokenize.STRING and tok.start in roles:
                 new = re.sub(r"(?<=['\"])\w+(?=['\"])", lambda x: cm.attrs.get(x[0], x[0]), tok.string)
             elif tok.type == tokenize.STRING and tok.start in segments:
@@ -142,7 +144,7 @@ class Judge:
         return names | (mine & attrs), attrs  # a name of a renamed module read after a dot under a kept name (rapport.lire)
 
     def check(self, base, head):
-        problems, counts, cm = [], collections.Counter(), self.cm
+        problems, counts, cm, seen = [], collections.Counter(), self.cm, collections.Counter()
         expected, kept_names, kept_attrs = self.write(base), *self.contract(base)
         for what, declared, found in (("kept_names", self.j["kept_names"], kept_names), ("kept_attributes", self.j["kept_attributes"], kept_attrs)):
             found = {t for t in found if t in rc.CodeMap(self.names, (ROOT / rc.IDS[0]).read_text(encoding="utf-8")).attrs}  # those the map renames
@@ -172,10 +174,24 @@ class Judge:
                     problems.append(f"{q}: the string « {a} » became « {b} »: not an option, a path or an attribute name")
             counts += here
             tree = ast.parse(old)
+            for k in sorted(self.kept_strings):
+                n, m = (sum(1 for t in tokenize.generate_tokens(io.StringIO(x).readline) if t.type == tokenize.STRING
+                            and literal(t.string) == k) for x in (old, new))
+                problems += [f"{q}: the kept string « {k} » is there {m} time(s), {n} in the base"] if n != m else []
+                seen.update([k] * n)
             problems += [f"{q}: {x}" for x in cm.collisions(tree, p)]
             problems += [f"{q}: {x} is defined as {cm.ids.get(x, x)} and read as an attribute as {cm.attrs.get(x, x)}" for x in sorted(top_level(tree))
                          if cm.attrs.get(x, x) != cm.ids.get(x, x)]
+        problems += [f"identifiers.yaml, judge: kept_strings: « {k} » is in none of the judge's files" for k in sorted(self.kept_strings - set(seen))]
         return problems, counts
+
+
+def literal(s):
+    """The value of a string token, None for one that is not a plain literal."""
+    try:
+        return ast.literal_eval(s)
+    except (ValueError, SyntaxError):
+        return None
 
 
 def top_level(tree):
@@ -219,7 +235,7 @@ def main(argv=None):
           f"✓ the head {a.head} holds the judge this script writes from {a.base}; P1 holds: {len(ids)} identifiers and {len(strings)} "
           f"strings (options, paths, attribute names) renamed through the map ({sum(counts.values())} places), nothing else changed; "
           f"kept as written: {len(judge.j['kept_files'])} file globs, {len(judge.j['kept_names'])} names, {len(judge.j['kept_attributes'])} "
-          f"attributes, {len(judge.j['kept_data'])} data keywords.")
+          f"attributes, {len(judge.j['kept_data'])} data keywords, {len(judge.kept_strings)} juge.json value(s).")
     return 1 if problems else 0
 
 
