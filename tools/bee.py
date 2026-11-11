@@ -2586,8 +2586,8 @@ def byte_bound(relative_one):
 
 def bytes_problem(relative_one, size):
     """The refusal of a file over its bound in bytes, the same from bee validate and check-pr."""
-    return (f"{relative_one}: {size} bytes, at most {byte_bound(relative_one)} for this file (docs/governance.md, « Dossiers du "
-            "libre-service »): it is not read")
+    return (f"{relative_one}: {size} bytes, at most {byte_bound(relative_one)} for this file (docs/governance.md, « Self-service "
+            "folders »): it is not read")
 
 
 def require_room(relative_one, text):
@@ -3281,8 +3281,8 @@ def text_problems(data, prefix_text, sort_kind=None):
         one_line = "the key" if place_of.endswith(" (key)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
         problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
-                    else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
-                         "libre-service »)" if bound is not None and len(text) > bound
+                    else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Self-service "
+                         "folders »)" if bound is not None and len(text) > bound
                     else free_text_problem(text, f"{prefix_text}: {place_of}", one_line))
         if problem_text:
             yield problem_text
@@ -3380,7 +3380,7 @@ def source_form(source):
     if s.startswith("https://"):
         return None if re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/\S*)?", s) else "invalid https address"
     if "://" in s or s.startswith(("/", "~", "\\")) or re.search(r"\s", s):
-        return "a source is an https:// address or a path of the registry (docs/balance.md, docs/balance.md#les-postes)"
+        return "a source is an https:// address or a path of the registry (docs/balance.md, docs/balance.md#the-areas)"
     path = s.split("#", 1)[0].rstrip("/")
     parts_of = path.split("/")
     if not path or any(p in ("", ".", "..") for p in parts_of) or parts_of[0] == ".git":
