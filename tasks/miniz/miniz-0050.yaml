@@ -26,6 +26,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-10T15:04:51Z"
     text: "Council, 10 Nov 2026, after the switch (#238): from date D (2027-01-01) the registry refuses a green fork verdict that does not name the task's metric (ruche-0145, wait code metric). The fork's verdict must write the task's metric under `metric` from then on; until D a missing metric passes and only a mismatch is caught."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): minizBee still runs juge-v2: this task comes after miniz-0048 (juge-v3) and the founder's judge-v4 tag (ruche-0148)."
 status: open
 created_by: council
 created_on: '2026-11-08'

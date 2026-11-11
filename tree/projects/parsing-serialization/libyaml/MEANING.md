@@ -1,24 +1,24 @@
 ---
 parent: projects/parsing-serialization
-updated_on: "2026-10-30"
+updated_on: "2026-11-11"
 maintained_by: ruche-0010
 line_budget: 40
 ---
 # libyaml
-## Pourquoi cette branche existe
-libyaml analyse et émet du YAML en C, sous de nombreux outils. Fork : `Bee-ruche/libyamlBee`, branche `master` ; son
-`bee/README.md` décrit l'outillage ; projets/libyaml.yaml. L'outillage passe d'abord : oracle, fuzzing, juge isolé.
-## Ce qui compte ici
-Juge : pour chaque entrée du corpus, exactement le même flux d'événements et le même statut (succès ou erreur) que la
-base, par empreintes SHA-256 (`bee/tests/lancer.sh`) ; l'émetteur, par aller-retour (événements, YAML, événements).
-Références : yaml-test-suite et libfyaml.
-Métriques : `debit_analyse`, `debit_chargement`, `debit_emission` (jugés sur leur décompte d'instructions),
-`memoire_max_ko`. L'analyse est limitée par le processeur : une baisse d'instructions se voit au chronomètre.
-Pas encore de juge isolé (tâche libyaml-0005) : toute contribution attend la relecture d'un gardien ou du conseil
-(porte de R3). Sandbox : `bee/sandbox/sans-docker.sh` ; l'image Docker reste à construire.
-Zones : lecture et décodage UTF-8 `src/reader.c`, scanner `src/scanner.c`, parser `src/parser.c`, chargeur
-`src/loader.c`, émetteur `src/emitter.c`.
-## Ce qu'on peut ignorer ici
-L'API publique (`include/yaml.h`), hors périmètre. Ne contacte jamais le projet d'origine (commandement 8).
-## Enfants
-Aucun pour l'instant : les nœuds des zones s'écriront par la tâche proposée ruche-0015.
+## Why this branch exists
+libyaml parses and emits YAML in C, under many tools. Fork: `Bee-ruche/libyamlBee`, branch `master`; its
+`bee/README.md` describes the tooling; projects/libyaml.yaml. Tooling comes first: oracle, fuzzing, isolated judge.
+## What matters here
+Judge: for each input of the corpus, exactly the same event stream and the same status (success or error) as the
+base, by SHA-256 fingerprints (`bee/tests/lancer.sh`); the emitter, by round trip (events, YAML, events).
+References: yaml-test-suite and libfyaml.
+Metrics: `debit_analyse`, `debit_chargement`, `debit_emission` (judged on their instruction count),
+`memoire_max_ko`. Parsing is CPU-bound: a drop in instructions shows on the stopwatch.
+No isolated judge yet (task libyaml-0005): every contribution waits for the review of a guardian or the council
+(R3's gate). Sandbox: `bee/sandbox/sans-docker.sh`; the Docker image is still to be built.
+Areas: reading and UTF-8 decoding `src/reader.c`, scanner `src/scanner.c`, parser `src/parser.c`, loader
+`src/loader.c`, emitter `src/emitter.c`.
+## What you can ignore here
+The public API (`include/yaml.h`), out of scope. Never contact the upstream project (commandment 8).
+## Children
+None for now: the areas' nodes will be written by the proposed task ruche-0015.

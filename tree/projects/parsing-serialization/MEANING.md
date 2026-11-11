@@ -1,16 +1,16 @@
 ---
 parent: root
-updated_on: "2026-10-30"
+updated_on: "2026-11-11"
 maintained_by: ruche-0010
 line_budget: 40
 ---
-# Parsing et sérialisation
-## Pourquoi cette branche existe
-Les analyseurs de formats texte lisent configurations et données sur tout le web : chaque octet y passe.
-## Ce qui compte ici
-Preuve exigée : même arbre que la référence sur une suite de conformité, et mêmes refus sur les entrées invalides
-(categories.yaml). Une erreur d'analyse fait partie du résultat : elle ne change pas non plus.
-## Ce qu'on peut ignorer ici
-cJSON, en réserve pour la phase 4 (projets/cjson.yaml).
-## Enfants
-- `projects/parsing-serialization/libyaml` : libyaml, analyseur et émetteur YAML
+# Parsing and serialization
+## Why this branch exists
+Parsers of text formats read configurations and data all over the web: every byte goes through them.
+## What matters here
+Proof required: the same tree as the reference on a conformance suite, and the same refusals on invalid inputs
+(categories.yaml). A parse error is part of the result: it does not change either.
+## What you can ignore here
+cJSON, held in reserve for phase 4 (projects/cjson.yaml).
+## Children
+- `projects/parsing-serialization/libyaml`: libyaml, YAML parser and emitter

@@ -3,30 +3,29 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: M
-title: "Aller-retour par l'API document (yaml_parser_load, yaml_emitter_dump) et réglages de l'émetteur"
+title: "Round trip through the document API (yaml_parser_load, yaml_emitter_dump) and emitter settings"
 context: >
-  L'oracle d'aller-retour de libyaml-0003 (bee/tests/aller_retour.c) passe par l'API événements
-  (yaml_emitter_emit) avec les réglages par défaut. Or la métrique debit_emission mesure
-  yaml_emitter_dump d'un document chargé (bee/bench/banc.c, bee_passe_emission) : une optimisation
-  de src/dumper.c seul, ou du chemin de chargement (src/loader.c), ne serait pas jugée par
-  l'aller-retour. Étendre aller_retour.c (ou un second harnais) : (1) charger chaque document par
-  yaml_parser_load, le ré-émettre par yaml_emitter_dump, ré-analyser et comparer le flux
-  d'événements au flux d'origine, avec les mêmes normalisations N1 à N4 et, s'il en faut d'autres
-  (ancres renommées par le dumper, par exemple), les ajouter une par une, justifiées par une règle de
-  src/dumper.c ; (2) répéter l'aller-retour des deux API avec des réglages non par défaut de
-  l'émetteur : canonique (yaml_emitter_set_canonical), unicode, largeur et indentation extrêmes,
-  sauts de ligne CR et CRLF. Empreintes propres à chaque configuration, régénérées sur la base.
-  Constats de l'agent de libyaml-0003 (manifeste de cette tâche) : le corpus ne déclenche aucune
-  normalisation, les 22 cas intégrés à aller_retour.c le font.
+  The round-trip oracle of libyaml-0003 (bee/tests/aller_retour.c) goes through the event API
+  (yaml_emitter_emit) with the default settings. Yet the metric debit_emission measures
+  yaml_emitter_dump of a loaded document (bee/bench/banc.c, bee_passe_emission): an optimization of
+  src/dumper.c alone, or of the loading path (src/loader.c), would not be judged by the round trip.
+  Extend aller_retour.c (or a second harness): (1) load each document with yaml_parser_load, re-emit
+  it with yaml_emitter_dump, re-parse it and compare the event stream with the original stream, with
+  the same normalizations N1 to N4 and, if others are needed (anchors renamed by the dumper, for
+  example), add them one by one, each justified by a rule of src/dumper.c; (2) repeat the round trip
+  of both APIs with non-default emitter settings: canonical (yaml_emitter_set_canonical), unicode,
+  extreme width and indentation, CR and CRLF line breaks. Fingerprints specific to each
+  configuration, regenerated on the base. Findings of libyaml-0003's agent (that task's manifest):
+  the corpus triggers no normalization; the 22 cases built into aller_retour.c do.
 files: [bee/tests/aller_retour.c, bee/tests/empreintes-aller-retour.txt, bee/tests/lancer.sh, bee/Makefile]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64"
-  - "l'aller-retour par yaml_emitter_dump est stable sur tout le corpus et les cas intégrés ; normalisations supplémentaires listées et justifiées"
-  - "une mutation de src/dumper.c qui change la structure ré-analysée (par exemple ancres ou alias perdus) fait échouer le test"
-  - "chaque réglage non par défaut a ses empreintes ; durée totale de bee/tests/lancer.sh inférieure à 30 s en CI"
-out_of_scope: [sources de libyaml, corpus (bee/corpus/), oracle d'analyse (oracle.c)]
+  - "green CI (R2), x86-64 and ARM64"
+  - "the round trip through yaml_emitter_dump is stable on the whole corpus and the built-in cases; additional normalizations listed and justified"
+  - "a mutation of src/dumper.c that changes the re-parsed structure (for example lost anchors or aliases) makes the test fail"
+  - "each non-default setting has its fingerprints; total duration of bee/tests/lancer.sh under 30 s in CI"
+out_of_scope: [libyaml's sources, corpus (bee/corpus/), parsing oracle (oracle.c)]
 depends_on: [libyaml-0003]
 status: open
 created_by: council
