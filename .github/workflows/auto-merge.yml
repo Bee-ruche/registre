@@ -1,9 +1,9 @@
-# Fusionne sans humain les pull requests en libre-service (réservation, libération,
-# soumission, relecture, vote, inscription, proposition) une fois validées.
+# Merges without a human the self-service pull requests (reservation, release,
+# submission, review, vote, registration, proposal) once validated.
 #
-# Sécurité : ce job a un jeton en écriture, donc il n'exécute JAMAIS le code de la PR.
-# Il utilise l'outil bee de la branche principale et lit les fichiers de la PR comme
-# des données, sur une fusion simulée avec main (pour voir l'état réel après fusion).
+# Security: this job has a write token, so it NEVER runs the PR's code.
+# It uses the bee tool of the main branch and reads the PR's files as
+# data, on a simulated merge with main (to see the real state after the merge).
 name: Auto-merge
 
 on:

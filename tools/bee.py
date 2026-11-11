@@ -11619,7 +11619,7 @@ def build_parser():
     p = add_to("close", cmd_close,
                 "Closes an abandoned contribution (PR closed without merge) and reopens its task. Used by the trusted workflow.")
     p.add_argument("contribution", help="id of the contribution (e.g. miniz-0012-c1)")
-    p.add_argument("--reason", required=True, help="the reason for the closure (e.g. « PR fermée sans fusion »)")
+    p.add_argument("--reason", required=True, help="the reason for the closure (e.g. « PR closed without merge »)")
     p.add_argument("--by", default="github-actions[bot]", help="signature of the note left on the task")
     p.add_argument("--merged", help="file of the contributions whose PR is merged (one per line): a competing one "
                                         "merged or integrated prevents the closure, the contribution will be set aside (R3)")

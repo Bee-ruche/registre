@@ -1,5 +1,5 @@
 _site/
 __pycache__/
 *.pyc
-a_traiter.tsv
+to_process.tsv
 CONTRIBUTION.yaml
