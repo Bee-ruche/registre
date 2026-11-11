@@ -4,28 +4,28 @@ category: lossless-compression
 type: measurement
 area: governance
 size: S
-title: "Ajouter au banc un ratio_n1 et des débits par famille du corpus"
+title: "Add a ratio_n1 and throughputs per corpus family to the bench"
 context: >
-  Le banc (bee/bench/banc.c) ne mesure le ratio qu'au niveau 6 (ratio_n6) et agrège tout le
-  corpus. Deux angles morts en découlent. (1) Une tâche qui modifie le niveau 1 en acceptant de
-  changer la sortie (par exemple réactiver tdefl_compress_fast, miniz_tdef.c l. 885-1056 : dans un
-  essai hors dépôt, débit n1 ×1,85 mais ratio n1 de 2,833 à 2,587, −8,7 %) ne peut pas être jugée,
-  faute de ratio_n1. (2) Les familles réagissent très différemment : au niveau 6, texte 19,0 Mo/s,
-  structuré 19,8, binaire 16,7, répétitif 433, petits fichiers 26,5 ; une optimisation qui ne
-  gagne que sur le répétitif ressortirait gonflée. Ajouter au JSON du banc, en plus des six
-  métriques existantes et sans les changer : ratio_n1, ratio_n9, et un objet « par_famille »
-  (débits n1, n6, n9, décompression par dossier du corpus). Mettre à jour ab.py (médianes et test
-  du signe pour les nouvelles clés) et le README. Les nouvelles métriques doivent ensuite être
-  proposées au registre (projets/miniz.yaml) par le conseil : le noter dans le manifeste.
+  The bench (bee/bench/banc.c) measures the ratio only at level 6 (ratio_n6) and aggregates the
+  whole corpus. Two blind spots follow. (1) A task that changes level 1 and accepts a change of the
+  output (for example re-enabling tdefl_compress_fast, miniz_tdef.c l. 885-1056: in a trial outside
+  the repository, n1 throughput ×1.85 but n1 ratio from 2.833 to 2.587, −8.7%) cannot be judged, for
+  lack of a ratio_n1. (2) The families react very differently: at level 6, text 19.0 MB/s,
+  structured 19.8, binary 16.7, repetitive 433, small files 26.5; an optimization that gains only on
+  the repetitive family would come out inflated. Add to the bench's JSON, on top of the six existing
+  metrics and without changing them: ratio_n1, ratio_n9, and an object « par_famille » (n1, n6, n9
+  and decompression throughputs per corpus folder). Update ab.py (medians and sign test for the new
+  keys) and the README. The new metrics must then be proposed to the registry (projects/miniz.yaml)
+  by the council: note it in the manifest.
 files: [bee/bench/banc.c, bee/bench/ab.py, bee/README.md]
 reach: 0.5
 metric: null
 acceptance_criteria:
-  - "CI verte (R2) sur la base et sur cette contribution"
-  - "les six clés existantes du JSON sont inchangées (nom, unité, valeurs à la précision près)"
-  - "test A/A d'ab.py avec les nouvelles clés : tout dans le bruit (rapport joint)"
-  - "durée d'une exécution du banc en hausse de moins de 30 %"
-out_of_scope: [code de miniz, corpus, règles du registre]
+  - "green CI (R2) on the base and on this contribution"
+  - "the six existing keys of the JSON are unchanged (name, unit, values to within the precision)"
+  - "A/A test of ab.py with the new keys: everything within the noise (report attached)"
+  - "duration of one run of the bench increased by less than 30%"
+out_of_scope: [miniz's code, corpus, the registry's rules]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/bee
 status: open
