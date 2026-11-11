@@ -29,11 +29,11 @@ def verifier_entrees(entrees, cotes):
     noms = set()
     for e in entrees:
         if e.cote not in cotes or not COTE_PERMIS.fullmatch(e.cote):
-            raise Erreur(f"côté inconnu pour {e.nom!r} : {e.cote!r}")
+            raise Erreur(f"unknown side for {e.nom!r}: {e.cote!r}")
         if not NOM_PERMIS.fullmatch(e.nom) or (e.cote, e.nom) in noms:
-            raise Erreur(f"nom d'entrée invalide ou en double : {e.nom!r}")
+            raise Erreur(f"invalid or duplicate input name: {e.nom!r}")
         if not isinstance(e.donnees, bytes) or not isinstance(e.taille, int) or e.taille < 0:
-            raise Erreur(f"entrée mal formée : {e.nom!r}")
+            raise Erreur(f"malformed input: {e.nom!r}")
         noms.add((e.cote, e.nom))
 
 
@@ -70,7 +70,7 @@ def charger_corpus(outillage, generateur, dossier, prefixe_nom="k"):
     if generateur:
         r = subprocess.run([sys.executable, os.path.join(outillage, generateur)], capture_output=True, text=True, cwd=outillage)
         if r.returncode != 0:
-            raise Erreur("corpus non conforme : " + r.stderr[-1000:])
+            raise Erreur("corpus generator failed: " + r.stderr[-1000:])
     racine = os.path.join(outillage, dossier)
     fichiers = []
     for chemin, sous, noms in os.walk(racine):
@@ -79,5 +79,5 @@ def charger_corpus(outillage, generateur, dossier, prefixe_nom="k"):
             with open(os.path.join(chemin, n), "rb") as f:
                 fichiers.append((f"{prefixe_nom}{len(fichiers):03d}", f.read()))
     if not fichiers:
-        raise Erreur("corpus vide")
+        raise Erreur("empty corpus")
     return fichiers

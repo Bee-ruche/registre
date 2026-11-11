@@ -178,7 +178,7 @@ class TestAnalyse(unittest.TestCase):
 
     def test_line_continuation(self):
         b = {"rle.c": "    __as\\\nm volatile(\"\");\n    int x = 1;\n"}
-        self.assertEqual(list(analysis.text_constructs(b)), [("rle.c", "assembleur en ligne", "__as" + "m volatile(\"\");")])
+        self.assertEqual(list(analysis.text_constructs(b)), [("rle.c", "inline assembly", "__as" + "m volatile(\"\");")])
         self.assertEqual(len(analysis.analyse(surveys(), surveys(), {}, b, prefixes=("rle_",))), 1)
 
     def test_constructor_and_instructions(self):
@@ -463,7 +463,7 @@ class TestPlugin(unittest.TestCase):
         os.remove(toy_file(base, "plugin"))
         with self.assertRaises(lecture.Erreur) as e:  # bee/judge/ without its plugin: none found, in either contract
             judge.load_plugin(base, {})
-        self.assertIn("bee/judge/project.py ou bee/juge/projet.py", str(e.exception))
+        self.assertIn("bee/judge/project.py or bee/juge/projet.py", str(e.exception))
 
     def test_one_plugin_per_base(self):
         """Both bee/judge/project.py and bee/juge/projet.py, a link or a folder counting: refused, whichever is valid."""
@@ -944,7 +944,7 @@ class TestSameConditions(unittest.TestCase):
         docker.launch = hold_it
         root = os.path.join(self.workdir, "execution")
         try:
-            with self.assertRaisesRegex(lecture.Erreur, "^umount du tmpfs"):
+            with self.assertRaisesRegex(lecture.Erreur, "^umount of an execution's tmpfs failed"):
                 container.Execution(docker, "/c", {"B": "/b"}, self.workdir).launch(
                     "B", "/e", os.path.join(self.workdir, "s"), [("verifier", [container.HARNESS, "verifier", "/entrees", "/sorties"])])
             self.assertTrue(os.path.ismount(root))
@@ -1060,13 +1060,13 @@ class TestShuffle(unittest.TestCase):
         ecrire(os.path.join(travail, "m", "compression", "e", "e0011.6"), b"0 6\n")
         self.assertEqual(judge.same_outputs(index, verification, frozen_one("m"), {("f", "e0011"): "e0004"}, [("compression", "f")]), 2)
         ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"autre")
-        with self.assertRaisesRegex(lecture.Refus, "différente"):
+        with self.assertRaisesRegex(lecture.Refus, "differs"):
             judge.same_outputs(index, verification, frozen_one("m"), {("f", "e0011"): "e0004"}, [("compression", "f")])
         with self.assertRaises(lecture.Erreur):
             judge.same_outputs(index, verification, frozen_one("m"), {("f", "e0012"): "e0004"}, [("compression", "f")])
         measured = frozen_one("m")
         ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"sortie")
-        with self.assertRaisesRegex(lecture.Refus, "empreinte"):
+        with self.assertRaisesRegex(lecture.Refus, "fingerprint"):
             judge.same_outputs(index, verification, measured, {("f", "e0011"): "e0004"}, [("compression", "f")])
         # ruche-0117: counted per scenario, not per side: a scenario of the side without a comparable output is an error.
         two = [("compression", "f"), ("compression_bis", "f")]
@@ -1265,11 +1265,11 @@ class TestOrderAndFingerprints(unittest.TestCase):
         stopped = os.path.join(self.workdir, "stopped.json")
         with mock.patch.dict(judge.FAILURE, json=stopped, judge={"version": 3, "common": "juge-v3", "source": None, "base": None, "head": None}), \
                 contextlib.redirect_stderr(io.StringIO()):
-            judge.stop_it(2, "juge : erreur : x", True)
+            judge.stop_it(2, "judge: error: x", True)
         with open(stopped, encoding="utf-8") as f:
             self.assertEqual(names.data("judge_report", json.load(f), True), {"juge": {
                 "version": 3, "commun": "juge-v3", "source": None, "base": None, "tete": None, "code": 2, "issue": "erreur_environnement",
-                "panne_machine": True, "motif": "juge : erreur : x"}})
+                "panne_machine": True, "motif": "judge: error: x"}})
 
     def test_drawn_order_and_processor_time(self):
         """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
@@ -1399,7 +1399,7 @@ class TestOrderAndFingerprints(unittest.TestCase):
             with self.subTest(nom=nom), mock.patch.object(EmulatedDocker, "changed_ones", False, create=True), \
                     self.assertRaises(lecture.Refus) as e:
                 self.run_the_judge(change(action))
-            self.assertIn("après leur empreinte" if nom == "ajoutée" else "après son empreinte", str(e.exception))
+            self.assertIn("after their fingerprint" if nom == "ajoutée" else "after its fingerprint", str(e.exception))
 
 
 # ------------------------------------------------------------------ juge.yml (ruche-0024): read and run its scripts
@@ -2029,7 +2029,7 @@ class TestBounds(unittest.TestCase):
                     {"FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ETAT": state("exited", 0)}, {"FAUX_DOCKER_ETAT": "{"},
                     {"FAUX_DOCKER_ETAT": state("running", 0)}):
             with self.subTest(env=env), mock.patch.dict(os.environ, env), contextlib.redirect_stderr(io.StringIO()), \
-                    self.assertRaisesRegex(lecture.Panne, "^machine du juge en panne") as fault:
+                    self.assertRaisesRegex(lecture.Panne, "^failure of the judge's machine") as fault:
                 container.Docker("i").launch(["x"], [])
             self.assertNotRegex(str(fault.exception), "runc|daemon|API")  # what the error stream holds stays out of the motif
         with open(self.journal) as f:
@@ -2061,12 +2061,12 @@ class TestBounds(unittest.TestCase):
             j = json.load(f)["judge"]
         self.assertEqual((j["code"], j["outcome"], j["machine_failure"], j["head"], j["common"]),
                          (2, "environment_error", True, "3" * 40, judge.common_tag()))
-        self.assertIn("machine du juge en panne", j["reason"])
+        self.assertIn("failure of the judge's machine", j["reason"])
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "2", "2"])
         with mock.patch.dict(judge.FAILURE, json=path, judge={}), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(judge.stop_it(1, "juge : REFUS : B"), 1)
+            self.assertEqual(judge.stop_it(1, "judge: REFUSAL: B"), 1)
         with open(path, encoding="utf-8") as f:
-            self.assertEqual(json.load(f)["judge"], {"code": 1, "outcome": "refusal", "machine_failure": False, "reason": "juge : REFUS : B"})
+            self.assertEqual(json.load(f)["judge"], {"code": 1, "outcome": "refusal", "machine_failure": False, "reason": "judge: REFUSAL: B"})
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "1", "2"])
 
     def test_a_refusal_stays_a_refusal_whatever_its_message_holds(self):
@@ -2085,7 +2085,7 @@ class TestBounds(unittest.TestCase):
         self.assertEqual(output_text.stdout.splitlines()[0], "code=1")
         with mock.patch.dict(judge.FAILURE, json=path, judge={}), contextlib.redirect_stderr(io.StringIO()), \
                 mock.patch.object(os, "replace", side_effect=OSError("disque plein")):
-            self.assertEqual(judge.stop_it(1, "juge : REFUS : B\udcff"), 1)
+            self.assertEqual(judge.stop_it(1, "judge: REFUSAL: B\udcff"), 1)
         self.assertEqual(os.listdir(os.path.dirname(path)), [])
 
     def test_image_id(self):
@@ -2191,7 +2191,7 @@ class TestHistory(unittest.TestCase):
             with self.subTest(commits=commits, env=env), mock.patch.dict(os.environ, env):
                 with self.assertRaises(lecture.Erreur) as e:
                     judge.fetch_history(self.base, " ".join(commits))
-                self.assertIn("historique", str(e.exception))
+                self.assertIn("history:", str(e.exception))
                 self.assertFalse(any(self.present(c) for c in commits))
 
     def test_declared_history_is_checked(self):
@@ -2227,7 +2227,7 @@ class TestHistory(unittest.TestCase):
         judge_py = [sys.executable, os.path.join(HERE, "judge.py"), "--tooling", self.base, "--history-only"]
         r = subprocess.run(judge_py + ["--history", self.elsewhere], capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 2)
-        self.assertTrue(r.stderr.startswith("juge : erreur : historique : "), r.stderr)
+        self.assertTrue(r.stderr.startswith("judge: error: history: "), r.stderr)
         self.assertNotIn("Traceback", r.stderr)
         with open(os.path.join(self.base, "bee", "juge", "projet.py"), "a", encoding="utf-8") as f:
             f.write("\nraise SystemExit('the plugin was loaded')\n")
@@ -2374,7 +2374,7 @@ class TestSeededObjects(unittest.TestCase):
                 bytes_count = [s["detail"] for s in suspects if s["type"] == "octets"]
                 self.assertTrue(any(d.startswith(c + ":") and "objects'" in d for d in bytes_count), bytes_count)
                 self.assertTrue(any(d.startswith(c + ":") and "program's" in d for d in bytes_count), bytes_count)
-                instructions = [s["detail"].split(" ")[0] for s in suspects if s["type"] == "instruction"]
+                instructions = [s["detail"].split(":")[0] for s in suspects if s["type"] == "instruction"]
                 if v in SHOWN_BY_DISASSEMBLY:
                     self.assertIn(c, instructions)
                 if v == "variant_b":
@@ -2384,7 +2384,7 @@ class TestSeededObjects(unittest.TestCase):
                 self.assertEqual({s["type"] for s in suspects} - {"octets", "instruction", "source"}, set())
 
     def test_seeded_construct_int3(self):
-        self.assertIn("int3", [s["detail"].split(" ")[0] for s in self.analysis_of("int3", asm_bytes("cc"))
+        self.assertIn("int3", [s["detail"].split(":")[0] for s in self.analysis_of("int3", asm_bytes("cc"))
                                if s["type"] == "instruction"])
 
     def test_bytes_read_independently(self):
@@ -3270,7 +3270,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_early_exit(self):
         code, _, output_text = self.run_the_judge("sortie_anticipee", self.prepare("sortie_anticipee", early_exit), True)
         self.assertEqual(code, 1)
-        self.assertIn("REFUS", output_text)
+        self.assertIn("REFUSAL", output_text)
 
     def test_fake_stopwatches(self):
         code, report, _ = self.run_the_judge("faux_chronos", self.prepare("faux_chronos", fake_stopwatches), True)
@@ -3282,7 +3282,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_precomputed_table(self):
         code, _, output_text = self.run_the_judge("table_precalculee", self.prepare("table_precalculee", precomputed_table), True)
         self.assertEqual(code, 1)
-        self.assertIn("REFUS", output_text)
+        self.assertIn("REFUSAL", output_text)
 
     def test_valgrind_request(self):
         code, report, _ = self.run_the_judge("requete_valgrind", self.prepare("requete_valgrind", valgrind_request))
@@ -3311,7 +3311,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
             f.write(contract(source_b, "\nProjet.verifier = lambda self, a, b, e: 1\nProjet.compressee = lambda self, a, b, r, o: 0\n"))
         code, _, output_text = self.run_the_judge("greffon_de_la_pr", source_b, True)
         self.assertEqual(code, 1)
-        self.assertIn("REFUS", output_text)
+        self.assertIn("REFUSAL", output_text)
 
     def test_empty_readings(self):
         base = self.changed_base("releves_vides", "build", 'echo "construction terminée"',
@@ -3325,7 +3325,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         base = self.changed_base("objet_oublie", "build", '"$sortie/obj/rle.o"', '"$sortie/rle.o"')
         code, _, output_text = self.run_the_judge("objet_oublie", self.prepare("objet_oublie"), True, base=base)
         self.assertEqual(code, 2)
-        self.assertIn("sans objet", output_text)
+        self.assertIn("without an object", output_text)
 
     def test_split_tokens(self):
         code, report, _ = self.run_the_judge("jetons_scindes", self.prepare("jetons_scindes", split_tokens), True)
@@ -3338,7 +3338,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
                                   'self.juste(a, b, e, f"{s}/")', 'self.juste(a, a, e, f"{s}/")')
         code, _, output_text = self.run_the_judge("greffon_distrait", self.prepare("greffon_distrait"), True, base=base)
         self.assertEqual(code, 2)
-        self.assertIn("aucune sortie de B", output_text)
+        self.assertIn("no output of B", output_text)
 
     def test_forbidden_call(self):
         """Revue adverse n° 2 : getenv est signalé par son nom, quel que soit l'espace de noms déclaré."""
@@ -3474,7 +3474,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
                                            self.prepare("sortie_fausse_chronometree", wrong_output_timed), True,
                                            base=self.base_that_states_the_mode("sortie_fausse_chronometree"))
         self.assertEqual(code, 1, output_text)
-        self.assertIn("REFUS", output_text)
+        self.assertIn("REFUSAL", output_text)
         self.assertIn("compression/c/e", output_text)  # a timed output of a mixed-in input, not the verification step
 
     def test_changing_output_timed(self):
@@ -3485,7 +3485,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, _, output_text = self.run_the_judge("sortie_changeante_chronometree", source_b, True, options=["sortie_compressee=peut_changer"],
                                      base=self.base_that_states_the_mode("sortie_changeante_chronometree"))
         self.assertEqual(code, 1, output_text)
-        self.assertIn("différente de sa sortie en vérification", output_text)
+        self.assertIn("differs from its output in verification", output_text)
 
     def test_side_without_shuffle(self):
         """ruche-0037: a measured side without verification inputs to mix in is an error of the plugin, never a pass."""
@@ -3493,7 +3493,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
                                   "return self.entrees(fichiers, [])")
         code, _, output_text = self.run_the_judge("cote_sans_melange", self.prepare("cote_sans_melange"), True, base=base)
         self.assertEqual(code, 2, output_text)
-        self.assertIn("aucune entrée de vérification", output_text)
+        self.assertIn("no verification input", output_text)
 
     def test_instructions_without_shuffle(self):
         """ruche-0037: an instruction-count scenario that got no verification input (none within the prefix) is flagged."""
@@ -3508,7 +3508,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         os.symlink(os.path.join(self.toy, "rle.c"), os.path.join(source_b, "rle.c"))
         code, _, output_text = self.run_the_judge("lien_symbolique", source_b, True)
         self.assertEqual(code, 1)
-        self.assertIn("lien symbolique", output_text)
+        self.assertIn("symbolic link", output_text)
 
     def bounded_judge(self, nom, source_b, *options):
         """judge.py against the toy base, with the options given (ruche-0038); returns (code, report, journal, seconds)."""
