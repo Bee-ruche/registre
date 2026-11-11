@@ -29,9 +29,9 @@ import tarfile
 
 import yaml
 
-sys.dont_write_bytecode = True  # rien hors du dossier, pas même le cache de l'outil importé
-DAY, HOUR, MERGE = 86400, 3600, 60  # FUSION : secondes entre un geste et la fusion de sa PR
-# Ni la configuration git de la machine (signature, crochets), ni cache Python : les mêmes octets partout.
+sys.dont_write_bytecode = True  # nothing outside the folder, not even the imported tool's cache
+DAY, HOUR, MERGE = 86400, 3600, 60  # MERGE: seconds between a gesture and the merge of its PR
+# Neither the machine's git configuration (signing, hooks) nor a Python cache: the same bytes everywhere.
 ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "PYTHONDONTWRITEBYTECODE": "1"}
 NOTE = "Approche : profiler le scénario, puis une seule boucle chaude à la fois."
 SUMMARY = "Une copie évitée dans la boucle chaude, même sortie."
@@ -51,30 +51,30 @@ def iso(t):
 
 
 def run_bee(registry, instant, *arguments):
-    """L'outil bee du registre lui-même (le code de la base), à l'heure donnée."""
+    """The registry's own bee tool (the base's code), at the given time."""
     return subprocess.run([sys.executable, str(registry / "tools" / "bee.py"), "--registry", str(registry), *arguments],
                           capture_output=True, text=True, env={**ENV, "BEE_NOW": instant})
 
 
 class Ruche:
-    """Le registre jetable : chaque geste écrit ses fichiers dans confiance par l'outil bee de la base, puis devient une PR
-    fusionnée, envoyée à git fast-import."""
+    """The throwaway registry: each gesture writes its files in trust with the base's bee tool, then becomes a merged PR,
+    sent to git fast-import."""
 
     def __init__(self, root):
         self.root = root
         spec = importlib.util.spec_from_file_location("bee_de_la_base", root / "tools" / "bee.py")
         self.bee = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.bee)
-        # Le journal de session de ruche-0138 (.git/bee-session : un git par fichier écrit) ne sert qu'à bee publish ; les PR
-        # de cette ruche sont faites ici : sans lui, la moitié du temps de génération, les mêmes octets.
+        # ruche-0138's session log (.git/bee-session: one git call per written file) serves only bee publish; this hive's
+        # PRs are made here: without it, half the generation time, the same bytes.
         self.bee.note_written = lambda path: None
         self.stream = subprocess.Popen(["git", "-C", str(root), "fast-import", "--quiet", "--date-format=raw", "--done"],
                                      stdin=subprocess.PIPE, env=ENV)
         self.n, self.prs, self.authors, self.suite = 0, [], [], "from refs/heads/main^0\n"
 
     def pr(self, t, author, title, paths, command=None):
-        """Une PR d'un seul geste, ouverte par `auteur` à l'instant t et fusionnée MERGE secondes après ; son message nomme
-        la commande bee qui a écrit ses fichiers (sans commande : un geste du conseil, écrit à la main)."""
+        """A PR of a single gesture, opened by `author` at time t and merged MERGE seconds later; its message names the
+        bee command that wrote its files (without a command: a council gesture, written by hand)."""
         self.n += 1
         body = "bee " + shlex.join(command) if command else "Geste du conseil, écrit à la main (hors de bee)."
         message = f"{title} (#{self.n})\n\n{body}\n".encode()
@@ -93,20 +93,21 @@ class Ruche:
         return f"tasks/{tid.rsplit('-', 1)[0]}/{tid}.yaml"
 
     def next_value(self, project):
-        """Le numéro de tâche suivant, comme bee propose-task (le plus grand + 1, hors de la plage des tests)."""
+        """The next task number, as bee propose-task gives it (the highest + 1, outside the tests' range)."""
         reason = re.compile(re.escape(project) + r"-(?P<n>\d{4})\.yaml")
         numbers_of = [int(m["n"]) for f in (self.root / "tasks" / project).iterdir() if (m := reason.fullmatch(f.name))]
         return f"{project}-{self.bee.next_number(numbers_of):04d}"
 
-    def add_list(self, relative_one, entry_cards):  # comme setup.sh : des fiches au bout de la liste `members`
+    def add_list(self, relative_one, entry_cards):  # as setup.sh does: entries at the end of the `members` list
         path = self.root / relative_one
         text = path.read_text(encoding="utf-8")
         text = text.replace("members: []", "members:\n" + entry_cards) if "members: []" in text else text.rstrip("\n") + "\n" + entry_cards
         path.write_text(text, encoding="utf-8")
 
     def council(self, t, council, guardians, projects, members):
-        """La veille de la semaine, le conseil nomme un gardien pour 20 membres actifs (le maximum du frein de R13), un garant
-        pour deux gardiens (docs/devolution.md), et ouvre une tâche par membre sur les projets à optimiser qui ont un fork."""
+        """The day before the week, the council names one guardian per 20 active members (the maximum of R13's brake), one
+        guarantor per two guardians (docs/devolution.md), and opens one task per member on the projects to optimize that have
+        a fork."""
         guarantors = [f"garant-{i:03d}" for i in range(1, math.ceil(len(guardians) / 2) + 1)]
         self.add_list("governance/guarantors.yaml", "".join(
             f"  - login: {g}\n    github_id: {60000000 + i}\n    public_identity: Garant fictif {i} (essai de charge)\n"
@@ -148,18 +149,18 @@ class Ruche:
         self.bee.modify_task(self.root / path, note={"by": m["login"], "at": iso(t), "text": NOTE}, addition=path)
         self.pr(t, m["login"], f"Note {m['task']}", [path], ["note", m["task"], "--user", m["login"], "--text", NOTE])
 
-    def submit(self, t, m):  # bee submit, par le titulaire
+    def submit(self, t, m):  # bee submit, by the holder
         tid, cid = m["task"], m["task"] + "-c1"
         paths = [f"contributions/{tid.rsplit('-', 1)[0]}/{cid}.yaml", self.task_path(tid)]
         self.bee.write_yaml(self.root / paths[0], {"id": cid, "task": tid, "author": m["login"], "pr": m["pr"], "summary": SUMMARY,
                                                         "status": "in_review", "submitted_at": iso(t), "engaged_since": m["since"],
                                                         "reviews": []})
         self.bee.modify_task(self.root / paths[1], status="in_review", reservation=None, contribution=cid)
-        self.authors.append(f"{m['pr']}\t{m['login']}\t{m['id']}\n")  # la PR du fork est à lui (--auto-merge le relève)
+        self.authors.append(f"{m['pr']}\t{m['login']}\t{m['id']}\n")  # the fork PR is theirs (--auto-merge reads it)
         self.pr(t, m["login"], f"Soumission {cid}", paths,
                 ["submit", tid, "--user", m["login"], "--pr", m["pr"], "--summary", SUMMARY])
 
-    def review(self, t, reviewer, m, opinion):  # bee review, avant tout verdict de la CI du fork (donc sans --commit)
+    def review(self, t, reviewer, m, opinion):  # bee review, before any verdict of the fork's CI (so without --commit)
         cid = m["task"] + "-c1"
         path = f"contributions/{m['task'].rsplit('-', 1)[0]}/{cid}.yaml"
         rec = dict(self.bee.read_yaml(self.root / path))
@@ -170,13 +171,13 @@ class Ruche:
         self.pr(t, reviewer, f"Relecture {cid}", [path],
                 ["review", cid, "--user", reviewer, "--opinion", opinion, "--reason", REASONS[opinion]])
 
-    def vote(self, t, voter, m, value):  # bee vote, sans motif
+    def vote(self, t, voter, m, value):  # bee vote, without a reason
         cid = m["task"] + "-c1"
         path = f"votes/{cid}/{voter}.yaml"
         self.bee.write_yaml(self.root / path, {"voter": voter, "subject": cid, "value": value, "at": iso(t)})
         self.pr(t, voter, f"Vote {cid}", [path], ["vote", cid, "--user", voter, "--value", str(value)])
 
-    def propose(self, t, u, project):  # bee propose-task <project> : type et taille par défaut, le modèle tel que bee l'écrit
+    def propose(self, t, u, project):  # bee propose-task <project>: default type and size, the template as bee writes it
         entry_card, tid = self.bee.read_yaml(self.root / "projects" / f"{project}.yaml"), self.next_value(project)
         metric = entry_card["metrics"][0]["id"]
         values_of = {"id": tid, "project": project, "category": entry_card["category"], "type": "optimization", "size": "S",
@@ -190,13 +191,13 @@ class Ruche:
         (self.root / path).write_text(("\n".join(lines) + "\n").replace("debit_compression_n6", metric), encoding="utf-8")
         self.pr(t, u, f"Proposition de tâche {tid}", [path], ["propose-task", project, "--user", u])
 
-    def argue(self, t, u, debate, position):  # bee debate argue, dans un débat ouvert qui n'est pas une invitation
+    def argue(self, t, u, debate, position):  # bee debate argue, in an open debate that is not an invitation
         path = f"debates/{debate}.yaml"
         d = self.bee.read_yaml(self.root / path)
         existing = d.get("arguments") if isinstance(d.get("arguments"), list) else []
         d = {**d, "arguments": list(existing) + [
             {"id": f"A{len(existing) + 1}", "by": u, "at": iso(t), "position": position, "text": ARGUMENT}]}
-        d.setdefault("rapporteur", u)  # le premier à argumenter dans un débat sans rapporteur prend la plume
+        d.setdefault("rapporteur", u)  # the first to argue in a debate without a rapporteur takes the pen
         self.bee.require_room(path, self.bee.debate_render(d, path))
         self.bee.write_debate(self.root / path, d)
         self.pr(t, u, f"Argument {debate}", [path],
@@ -204,15 +205,15 @@ class Ruche:
 
 
 def generate(folder, number, seed, registry, base):
-    """Écrit la ruche jetable dans `dossier` ; renvoie le code de sortie de bee validate sur elle (à la fin de la semaine)."""
+    """Writes the throwaway hive in `folder`; returns the exit code of bee validate on it (at the end of the week)."""
     if number < 20:
-        raise SystemExit("--members : au moins 20 (un gardien pour 20 membres actifs)")
+        raise SystemExit("--members: at least 20 (one guardian per 20 active members)")
     sha = git(registry, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
     when_at = int(git(registry, "log", "-1", "--format=%ct", sha))
-    folder.mkdir(parents=True)  # refuse un dossier qui existe déjà
+    folder.mkdir(parents=True)  # refuses a folder that already exists
     root = folder / "trust"
     root.mkdir()
-    # La base en un seul commit : l'historique de la ruche jetable est complet, même pris d'un clone superficiel.
+    # The base in a single commit: the throwaway hive's history is complete, even taken from a shallow clone.
     with tarfile.open(fileobj=io.BytesIO(git(registry, "archive", sha))) as archive:
         archive.extractall(root, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
     git(root, "init", "-q", "-b", "main")
@@ -228,43 +229,43 @@ def generate(folder, number, seed, registry, base):
     debates = [c.stem for c in sorted((root / "debates").glob("D-*.yaml"))
               if (d := read(c)).get("status") == "open" and not d.get("invitation")]
     if not debates:
-        raise SystemExit("aucun débat ouvert (hors invitation) dans la base : où argumenter ?")
+        raise SystemExit("no open debate (other than an invitation) in the base: where to argue?")
     day_before = (when_at // DAY + 1) * DAY
     monday = day_before + (7 - dt.datetime.fromtimestamp(day_before, dt.timezone.utc).weekday()) * DAY
     members = [{"login": f"abeille-{i:04d}", "id": 50000000 + i,
                 "created": (dt.date(2012, 1, 1) + dt.timedelta(days=rng.randrange(3650))).isoformat()} for i in range(1, number + 1)]
     order, end = rng.sample(members, number), monday + 7 * DAY
-    # Au maximum du frein de R13 : un gardien pour 20 membres actifs à la fin de la semaine, comptés comme bee les compte (les
-    # membres simulés, et ceux que la base rend déjà actifs : ses gestes y datent tous du commit de la base).
+    # At the maximum of R13's brake: one guardian per 20 active members at the end of the week, counted as bee counts them
+    # (the simulated members, and those the base already makes active: its gestures are all dated at the base's commit).
     active = number + len(ruche.bee.active_members(ruche.bee.Registry(root), dt.datetime.fromtimestamp(end, dt.timezone.utc)))
-    for k, m in enumerate(members):  # la veille : les inscriptions, puis le conseil
+    for k, m in enumerate(members):  # the day before: the registrations, then the council
         ruche.register(day_before + k * (22 * HOUR // number), m)
     ruche.council(day_before + 23 * HOUR, council, sorted(m["login"] for m in order[:math.ceil(active / 20)]), projects, order)
     gestures, friday = [], monday + 4 * DAY + 18 * HOUR
     for k, m in enumerate(order):
-        if k % 2 == 0:  # la moitié des contributions le vendredi soir, de 18 h à minuit (UTC)
+        if k % 2 == 0:  # half the contributions on Friday evening, from 18:00 to midnight (UTC)
             submitted = friday + rng.randrange(6 * HOUR)
-        else:  # l'autre moitié du lundi 6 h au dimanche 6 h, hors du vendredi soir
+        else:  # the other half from Monday 06:00 to Sunday 06:00, outside Friday evening
             submitted = monday + 6 * HOUR + rng.randrange(5 * DAY + 18 * HOUR)
             submitted += 6 * HOUR if submitted >= friday else 0
         taking = max(monday, submitted - rng.randrange(2 * HOUR, 48 * HOUR))
         gestures += [(taking, ruche.take, m), ((taking + submitted) // 2, ruche.note, m), (submitted, ruche.submit, m)]
-        for j in (1, 2):  # deux relectures et deux votes par contribution, d'autres membres, dans les 17 h
+        for j in (1, 2):  # two reviews and two votes per contribution, by other members, within 17 h
             opinion = "unfavorable" if rng.random() < 0.1 else "favorable"
             gestures.append((submitted + rng.randrange(HOUR, 17 * HOUR), ruche.review, order[(k + j) % number]["login"], m, opinion))
             value = rng.choices([1, 0, -1], [7, 2, 1])[0]
             gestures.append((submitted + rng.randrange(HOUR, 17 * HOUR), ruche.vote, order[(k + j + 2) % number]["login"], m, value))
-    for m in rng.sample(members, number // 10):  # une tâche proposée pour 10 membres
+    for m in rng.sample(members, number // 10):  # one proposed task per 10 members
         gestures.append((monday + rng.randrange(7 * DAY - HOUR), ruche.propose, m["login"], rng.choice(projects)[0]))
-    for m in rng.sample(members, number // 5):  # un argument pour 5 membres
+    for m in rng.sample(members, number // 5):  # one argument per 5 members
         gestures.append((monday + rng.randrange(7 * DAY - HOUR), ruche.argue, m["login"], rng.choice(debates),
                        rng.choice(["for", "against", "question"])))
-    for t, _, gesture, *arguments in sorted((g[0], i, *g[1:]) for i, g in enumerate(gestures)):  # à l'heure, dans l'ordre de leur PR
+    for t, _, gesture, *arguments in sorted((g[0], i, *g[1:]) for i, g in enumerate(gestures)):  # on time, in the order of their PRs
         gesture(t, *arguments)
     ruche.stream.stdin.write(b"done\n")
     ruche.stream.stdin.close()
     if ruche.stream.wait():
-        raise SystemExit("git fast-import a échoué")
+        raise SystemExit("git fast-import failed")
     git(root, "reset", "-q", "--hard")
     git(folder, "clone", "-q", "--bare", "trust", "central.git")
     git(root, "remote", "add", "origin", "../central.git")
@@ -276,17 +277,17 @@ def generate(folder, number, seed, registry, base):
         (folder / "state" / name).write_text(text, encoding="utf-8")
     valid_one = run_bee(root, end, "validate")
     print(valid_one.stdout + valid_one.stderr, end="")
-    print(f"Ruche de charge : {folder} ; {number} membres, {ruche.n} PR, semaine du {iso(monday)[:10]} ; "
-          f"BEE_NOW={end} pour la lire telle qu'à la fin de la semaine.")
+    print(f"Load-test hive: {folder}; {number} members, {ruche.n} PRs, week of {iso(monday)[:10]}; "
+          f"BEE_NOW={end} to read it as at the end of the week.")
     return valid_one.returncode
 
 
 def replay(folder, numbers_of=(), steps=None):
-    """Rejoue les PR (toutes, ou les numéros donnés) : la commande bee de chacune, relancée sur l'état d'avant à son heure,
-    doit s'exécuter (code 0 : ni refusée, ni un nom d'avant la bascule, que bee refuse sans rien lancer) et écrire
-    exactement son contenu ; puis bee check-pr --auto-merge, à l'heure de sa fusion, doit l'accepter (le geste du conseil :
-    valide, réservé au conseil). Renvoie les écarts : [(numéro, raison)]. `steps`, une liste, reçoit chaque appel de bee,
-    dans l'ordre : (numéro, arguments, code de sortie, sortie), ce qui a vraiment tourné (ruche-0154)."""
+    """Replays the PRs (all, or the numbers given): the bee command of each, rerun on the state before it at its time, must
+    run (code 0: neither refused nor a pre-switch name, which bee refuses without running anything) and write exactly its
+    content; then bee check-pr --auto-merge, at the time of its merge, must accept it (the council's gesture: valid,
+    reserved to the council). Returns the gaps: [(number, reason)]. `steps`, a list, receives each call of bee, in order:
+    (number, arguments, exit code, output), what really ran (ruche-0154)."""
     root, replay, gaps = folder / "trust", folder / "replay", []
 
     def run(number_of, instant, *arguments):
@@ -311,19 +312,19 @@ def replay(folder, numbers_of=(), steps=None):
                 r = run(number_of, iso(int(open)), *shlex.split(body)[1:])
                 git(replay, "add", "-A")
                 if r.returncode:
-                    gaps.append((number_of, f"{body} : bee la refuse (code {r.returncode}) : {r.stdout + r.stderr}"))
+                    gaps.append((number_of, f"{body}: bee refuses it (code {r.returncode}): {r.stdout + r.stderr}"))
                 elif subprocess.run(["git", "-C", str(replay), "diff", "--cached", "--quiet", sha], env=ENV).returncode:
-                    gaps.append((number_of, f"{body} : n'écrit pas ce que porte la PR"))
+                    gaps.append((number_of, f"{body}: does not write what the PR carries"))
             git(replay, "reset", "-q", "--hard", sha)
             entry_card = replay / "members" / f"{author}.yaml"
-            entry_card = (yaml.safe_load(entry_card.read_text(encoding="utf-8")) if entry_card.exists() else next(  # sinon : le conseil
+            entry_card = (yaml.safe_load(entry_card.read_text(encoding="utf-8")) if entry_card.exists() else next(  # otherwise: the council
                 m for m in yaml.safe_load((replay / "governance" / "council.yaml").read_text(encoding="utf-8"))["members"]
                 if m["login"] == author))
             options = ["--github-id", str(entry_card["github_id"])] + (["--account-created-on", entry_card["account_created_on"]] if "account_created_on" in entry_card else [])
             r = run(number_of, iso(int(merge)), "check-pr", "--base", parent, "--head", sha, "--author", author, *options,
                     "--pr-authors", str(folder / "state" / "pr_authors.tsv"), "--auto-merge")
             if r.returncode not in ((0,) if body.startswith("bee ") else (0, 3)):
-                gaps.append((number_of, f"bee check-pr la refuse (code {r.returncode}) : {r.stdout + r.stderr}"))
+                gaps.append((number_of, f"bee check-pr refuses it (code {r.returncode}): {r.stdout + r.stderr}"))
     finally:
         git(root, "worktree", "remove", "--force", str(replay))
     return gaps
@@ -331,21 +332,21 @@ def replay(folder, numbers_of=(), steps=None):
 
 def principal(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("dir", type=pathlib.Path, help="le dossier de la ruche jetable (créé ; il ne doit pas exister)")
-    p.add_argument("--members", type=int, help="membres actifs : 100, 300 ou 1000 pour ruche-0083")
-    p.add_argument("--seed", default="1", help="la graine du tirage (défaut : 1) ; la même donne les mêmes octets")
-    p.add_argument("--registry", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[2], help="le clone source")
-    p.add_argument("--base", default="main", help="le commit de départ dans le clone source (défaut : main)")
-    p.add_argument("--replay", type=int, nargs="*", help="rejoue les PR d'une ruche déjà générée (toutes, ou ces numéros)")
+    p.add_argument("dir", type=pathlib.Path, help="the throwaway hive's folder (created; it must not exist)")
+    p.add_argument("--members", type=int, help="active members: 100, 300 or 1000 for ruche-0083")
+    p.add_argument("--seed", default="1", help="the draw's seed (default: 1); the same one gives the same bytes")
+    p.add_argument("--registry", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[2], help="the source clone")
+    p.add_argument("--base", default="main", help="the starting commit in the source clone (default: main)")
+    p.add_argument("--replay", type=int, nargs="*", help="replays the PRs of an already generated hive (all, or these numbers)")
     args = p.parse_args(argv)
     if args.replay is not None:
         gaps = replay(args.dir.resolve(), set(args.replay))
         for number_of, cause in gaps:
-            print(f"✗ PR {number_of} : {cause}")
-        print(f"{len(gaps)} écart(s)." if gaps else "✓ chaque PR rejouée écrit les mêmes octets et passe check-pr.")
+            print(f"✗ PR {number_of}: {cause}")
+        print(f"{len(gaps)} gap(s)." if gaps else "✓ each replayed PR writes the same bytes and passes check-pr.")
         return 1 if gaps else 0
     if args.members is None:
-        p.error("--members est exigé pour générer (ou --replay pour rejouer)")
+        p.error("--members is required to generate (or --replay to replay)")
     return generate(args.dir.resolve(), args.members, args.seed, args.registry, args.base)
 
 

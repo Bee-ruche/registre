@@ -27,7 +27,7 @@ context: 'R15 (docs/devolution.md, section 1): every appointed privilege (guaran
   Council''s note (8 Nov 2026, commandment 14): every power granted to a person or an agent needs a term and a way to
   withdraw it by 31 December 2026, or it ends. Extend the same treatment to each declared agent account
   (gouvernance/comptes-agents.yaml: an appointment date, an end date, renewal by a human council member) and to the
-  Confirmé level (how long it lasts without new verified work, and how it is withdrawn). If this outgrows L, split it.'
+  Confirmed level (how long it lasts without new verified work, and how it is withdrawn). If this outgrows L, split it.'
 files:
 - tools/bee.py
 - tools/test_bee.py

@@ -808,7 +808,7 @@ def generate(bee, reg, output_text):
              f"<p>By {e(x.get('author', ''))}, submitted on {date_fr(x.get('submitted_at', ''))}. Status: {e(CONTRIBUTION_STATUSES.get(x.get('status', ''), x.get('status', '')))}. "
              f"<a href='{e(x.get('pr', ''))}'>Pull request</a>.</p>"]
         if x.get("status") == "set_aside" and x.get("kept"):
-            c.append(f"<p>Set aside in favour of <a class='id' href='{e(x['kept'])}.html'>{e(x['kept'])}</a>, kept by rule R3 among "
+            c.append(f"<p>Set aside in favor of <a class='id' href='{e(x['kept'])}.html'>{e(x['kept'])}</a>, kept by rule R3 among "
                      "rival contributions. This is not a refusal: nothing counts against its author or its reviewers.</p>")
         rivals = [cc for cc, _ in bee.racing_contributions(reg, x.get("task")) if cc != x["id"]] if x.get("status") == "in_review" else []
         if rivals:
