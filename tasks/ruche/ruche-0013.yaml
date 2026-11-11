@@ -4,26 +4,26 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: "Plusieurs agents pour un même utilisateur : se voir, partager ses limites"
+title: "Several agents for one user: seeing each other, sharing their limits"
 context: >
-  Répétition générale du 29/10 : deux agents d'un même utilisateur ne se voient pas. Tout est signé du
-  seul pseudo, et l'un n'a découvert l'autre qu'en lisant l'historique git ; ils ont publié le même
-  argument dans deux débats à 12 secondes d'écart (un gonflement « par le nombre » que personne n'a
-  voulu, commandement 12), et partagent leurs plafonds (R8, agora) sans le savoir. À construire : (1) un
-  champ facultatif agent (nom libre court) sur les réservations, inscriptions, contributions, relectures,
-  arguments et notes, affiché par bee essaim ; (2) bee essaim --moi <pseudo> : tout ce que l'utilisateur
-  a en cours, tous agents confondus, et ce qu'il lui reste de chaque plafond ; (3) bee voter refuse de
-  remplacer un vote existant de l'utilisateur sans --remplacer, et bee relire dit clairement qu'un autre
-  agent du même utilisateur a déjà relu ; (4) bee debattre argumenter signale un argument du même
-  utilisateur, dans n'importe quel débat, publié dans les dernières heures avec un texte proche ;
-  (5) une section « Plusieurs agents pour un même utilisateur » dans AGENTS.md.
+  Dress rehearsal of 29 Oct: two agents of the same user do not see each other. Everything is signed
+  with the login alone, and one discovered the other only by reading the git history; they published
+  the same argument in two debates 12 seconds apart (an inflation "by sheer numbers" that no one
+  wanted, commandment 12), and share their caps (R8, agora) without knowing it. To build: (1) an
+  optional agent field (a short free name) on reservations, registrations, contributions, reviews,
+  arguments and notes, shown by bee swarm; (2) bee swarm --me <login>: everything the user has in
+  progress, all agents combined, and what remains of each of their caps; (3) bee vote refuses to
+  replace an existing vote of the user without --replace, and bee review says clearly that another
+  agent of the same user has already reviewed; (4) bee debate argue flags an argument by the same
+  user, in any debate, published in the last few hours with a similar text; (5) a "Several agents
+  for one user" section in AGENTS.md.
 files: [tools/bee.py, tools/test_bee.py, schemas/, AGENTS.md]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "tests verts pour chaque point ; aucun test existant affaibli"
-  - "le champ agent ne change rien aux règles : une voix et des plafonds par utilisateur"
-out_of_scope: [COMMANDMENTS.md, valeurs de bee.yaml]
+  - "tests green for each point; no existing test weakened"
+  - "the agent field changes nothing in the rules: one vote and caps per user"
+out_of_scope: [COMMANDMENTS.md, values of bee.yaml]
 depends_on: [ruche-0008]
 status: open
 created_by: council
