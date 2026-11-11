@@ -484,36 +484,36 @@ def options_of(list_of):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Juge commun Bee (voir l'aide du module).")
-    parser.add_argument("--tooling", required=True, help="copie de la BASE de la PR (greffon bee/juge/projet.py)")
+    parser = argparse.ArgumentParser(description="Bee's common judge (see the module's help).")
+    parser.add_argument("--tooling", required=True, help="copy of the PR's BASE (plugin bee/judge/project.py or bee/juge/projet.py)")
     parser.add_argument("--source-a")
     parser.add_argument("--source-b")
     parser.add_argument("--image-only", action="store_true",
-                           help="construit l'image du conteneur (avec réseau, avant la PR) et affiche son étiquette")
+                           help="builds the container's image (with network, before the PR) and prints its label")
     parser.add_argument("--history-only", action="store_true",
                            help="checks and fetches the declared history (--history) into the base, without loading the plugin")
     parser.add_argument("--history", default="", help="with --history-only: commits fetched into the base")
-    parser.add_argument("--judge-source", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
+    parser.add_argument("--judge-source", help="REPO@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
     parser.add_argument("--base", help="commit of A, recorded in juge.json (juge.yml: checked against the event)")
     parser.add_argument("--head", help="commit of B, recorded in juge.json (juge.yml: checked against the event)")
     parser.add_argument("--workdir", help="folder of the work directory (juge.yml: a size-bounded tmpfs)")
-    parser.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
+    parser.add_argument("--option", action="append", default=[], help="plugin option, KEY=VALUE (repeatable)")
     parser.add_argument("--repetitions", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--no-instructions", action="store_true")
     parser.add_argument("--instructions-prefix", type=int, default=131072)
     parser.add_argument("--instructions-threshold", type=float, default=0.002)
     parser.add_argument("--json")
-    parser.add_argument("--seed", help="graine hexadécimale (reproduction locale) ; défaut : tirée au hasard")
-    parser.add_argument("--order-seed", help="graine hexadécimale de l'ordre des scénarios (reproduction locale) ; défaut : tirée au hasard, à part")
-    parser.add_argument("--build-network", help="réseau de docker build (« host » sans pont Docker)")
+    parser.add_argument("--seed", help="hexadecimal seed (local reproduction); default: drawn at random")
+    parser.add_argument("--order-seed", help="hexadecimal seed of the scenarios' order (local reproduction); default: drawn at random, apart")
+    parser.add_argument("--build-network", help="docker build's network (« host » without Docker's bridge)")
     parser.add_argument("--memory", default="4g")
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args(argv)
     if args.repetitions < 1 or args.warmup < 0:
-        parser.error("--repetitions : au moins 1 ; --warmup : au moins 0")
+        parser.error("--repetitions: at least 1; --warmup: at least 0")
     if args.history and not args.history_only:
-        parser.error("--history va avec --history-only")
+        parser.error("--history goes with --history-only")
     if any(c is not None and not COMMIT.fullmatch(c) for c in (args.base, args.head)):
         parser.error("--base, --head : full commits (40 hexadecimal digits)")
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
@@ -536,7 +536,7 @@ def main(argv=None):
         print(container.build_image(getattr(projet, "PAQUETS", ()), args.build_network))
         return 0
     if not (args.source_a and args.source_b):
-        parser.error("--source-a et --source-b sont requis")
+        parser.error("--source-a and --source-b are required")
     sides_of = tuple(projet.COTES)
     travail = tempfile.mkdtemp(prefix="bee-juge-", dir=args.workdir)
     os.chmod(travail, 0o755)
@@ -550,7 +550,7 @@ def main(argv=None):
         constructs = {v: os.path.join(travail, f"construction-{v}") for v in "AB"}
         surveys = {"A": build(docker, projet, source_a, tools, constructs["A"], "A", travail),
                    "B": build(docker, projet, source_b, tools, constructs["B"], "B", travail)}
-        journal("A et B compilés dans le conteneur")
+        journal("A and B compiled in the container")
 
         suspects = analysis.analyse(surveys["A"], surveys["B"], texts_of(source_a), texts_of(source_b),
                                     prefixes=projet.PREFIXES, allowed_set=getattr(projet, "PERMIS", ()))
@@ -563,7 +563,7 @@ def main(argv=None):
         suspects.sort(key=lambda s: SEVERITY.index(s["type"]) if s["type"] in SEVERITY else len(SEVERITY))
         omitted_ones, suspects = max(0, len(suspects) - SUSPICIOUS_MAX), suspects[:SUSPICIOUS_MAX]
         for s in suspects:
-            journal(f"construction suspecte : {propre(s['detail'], 300)}")
+            journal(f"suspicious construct: {propre(s['detail'], 300)}")
 
         # La graine est tirée maintenant, après la compilation : rien de ce qui a été compilé ne la connaît.
         seed = bytes.fromhex(args.seed) if args.seed else secrets.token_bytes(16)
@@ -597,7 +597,7 @@ def main(argv=None):
             roots[v].controler()
         erase(roots["A"], folders)
         index = outputs_by_input(roots["B"].figees)
-        journal(f"vérification : {compared_ones} sorties de B justes ({len(entrees)} entrées)")
+        journal(f"verification: {compared_ones} outputs of B correct ({len(entrees)} inputs)")
         # Verification inputs mixed into every measurement (ruche-0037), spread over the repetitions.
         by_side = {c: [e for e in entrees if e.cote == c] for c in set(projet.SCENARIOS.values())}
         if not all(by_side.values()):
@@ -640,7 +640,7 @@ def main(argv=None):
             compared_ones += same_outputs(index, roots["B"], outputs["B"], shuffled, projet.SCENARIOS.items())
             unfolding.append(step("warmup" if i < args.warmup else "measurement", variants_of, order, raw))
             erase(outputs["A"], outputs["B"], folders)
-            journal(f"répétition {i + 1}/{args.warmup + args.repetitions} ({'chauffe' if i < args.warmup else 'mesurée'}) faite")
+            journal(f"repetition {i + 1}/{args.warmup + args.repetitions} ({'warmup' if i < args.warmup else 'measured'}) done")
 
         report = {
             "repetitions": args.repetitions, "warmup": args.warmup, "order": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
@@ -740,7 +740,7 @@ def main(argv=None):
         report["duration_s"] = round(time.time() - beginning, 1)
     finally:
         if args.keep:
-            journal(f"dossier de travail conservé : {travail}")
+            journal(f"work folder kept: {travail}")
         else:
             shutil.rmtree(travail, ignore_errors=True)
 

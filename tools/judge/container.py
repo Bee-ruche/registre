@@ -109,7 +109,7 @@ class Docker:
         # not run to its end, or whose code is not its process's is a failure of the machine, never a refusal (ruche-0136).
         state = survey(nom)
         if (state.get("Status"), state.get("Error"), state.get("ExitCode")) != ("exited", "", p.returncode):
-            journal("erreurs de docker run (hors du motif) : " + propre(bytes(read_items[1]), 500))
+            journal("docker run's errors (kept out of the reason): " + propre(bytes(read_items[1]), 500))
             raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode})")
         return subprocess.CompletedProcess(cmd, p.returncode, bytes(read_items[0]), bytes(read_items[1]))
 
@@ -149,7 +149,7 @@ def build_image(packages, network_on=None):
     label = "bee-juge-commun:" + hashlib.sha256(text.encode()).hexdigest()[:16]
     if subprocess.run(["docker", "image", "inspect", label], capture_output=True).returncode == 0:
         return label
-    journal(f"construction de l'image {label} (seule étape avec réseau, avant tout fichier de la PR)")
+    journal(f"building the image {label} (the only step with network, before any file of the PR)")
     context = tempfile.mkdtemp(prefix="bee-image-")
     try:
         with open(os.path.join(context, "Dockerfile"), "w", encoding="utf-8") as f:

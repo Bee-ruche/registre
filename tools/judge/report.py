@@ -4,8 +4,8 @@
   python3 report.py juge.json --code CODE        juge.yml's outputs: code=CODE then the figures, once the report is checked;
                                                   code=2 if it fails its check (none or malformed for code 0, another
                                                   code stated) (ruche-0117); a refusal (1) needs no report (ruche-0136)
-  python3 report.py juge.json --verify S.json --base BASE --head TETE
-      S.json: toJSON(needs.<judging job>.outputs), BASE and TETE the pull request's commits; 0 the same report, its code 0,
+  python3 report.py juge.json --verify S.json --base BASE --head HEAD
+      S.json: toJSON(needs.<judging job>.outputs), BASE and HEAD the pull request's commits; 0 the same report, its code 0,
       the PR's commits and both seeds drawn by the judge (ruche-0136); 1 not; 2 error. Any non-zero exit blocks the verdict.
 Standard library only: a verdict job can run this file alone (docs/juge-commun.md)."""
 
@@ -146,7 +146,7 @@ def publish(path, code):
             raise ValueError("the report's code is not the judge's exit code")
         return {"code": code, **(digits(data) if code == "0" else dict.fromkeys(FORMATS, ""))}
     except (OSError, ValueError) as e:
-        print(f"rapport : erreur : {e}; code 2 published", file=sys.stderr)
+        print(f"report: error: {e}; code 2 published", file=sys.stderr)
         return {"code": "2", **dict.fromkeys(FORMATS, "")}
 
 
@@ -189,7 +189,7 @@ def main(argv):
                 verifier(argv[0], json.loads(f.read(1 << 20)), argv[4], argv[6])
             return 0
     except (Gap, OSError, ValueError) as e:
-        print(f"rapport : {'REFUS' if isinstance(e, Gap) else 'erreur'} : {e}", file=sys.stderr)
+        print(f"report: {'REFUSAL' if isinstance(e, Gap) else 'error'}: {e}", file=sys.stderr)
         return 1 if isinstance(e, Gap) else 2
     print(__doc__, file=sys.stderr)
     return 2

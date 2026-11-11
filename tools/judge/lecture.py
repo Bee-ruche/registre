@@ -28,7 +28,7 @@ class Refus(Exception):
 
 
 def journal(message):
-    print(f"juge : {message}", file=sys.stderr, flush=True)
+    print(f"judge: {message}", file=sys.stderr, flush=True)
 
 
 def propre(octets, maximum=1500):
