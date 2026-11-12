@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 PROTOCOL = 1
@@ -38,7 +39,8 @@ LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 REPO_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 HEAD_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never a sentence
-MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Model): (.{1,200})\Z")
+MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model): (.{1,200})\Z")
+JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times is answered: judge_failed
 ACTIONS = ("claim", "submit")
 FILE_MODES = ("100644", "100755")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git knows it without it being written
@@ -64,6 +66,7 @@ DEFAULTS = {
                "judgements_per_sweep": 20},
     "members": {"min_account_age_days": 90, "judged_per_day": 5, "answers_per_day": 20, "banned": []},
     "claim_ttl_minutes": 180,
+    "claim_cooldown_hours": 24,
 }
 REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "unknown_task": "the marker names a task the project does not have",
@@ -87,6 +90,7 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "file_too_big": "a changed file is too big",
     "line_too_long": "an added line is longer than the project allows",
     "judge_refused": "the judge refused the candidate",
+    "judge_failed": "the judge could not judge this candidate, three times",
     "goal_not_met": "correct, but the task's goal is not met",
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
@@ -137,7 +141,9 @@ def parse_iso(text):
 def safe_text(value, limit=200):
     """A string from a fork, made harmless for a log line: printable ASCII only, no workflow command, bounded."""
     text = "".join(c if " " <= c <= "~" else "?" for c in str(value))[:limit]
-    return text.replace("::", ": :").replace("##[", "# #[")
+    while "::" in text:
+        text = text.replace("::", ": :")
+    return text.replace("##[", "# #[")
 
 
 def log(message):
@@ -252,7 +258,8 @@ def load_tasks(path):
 
 
 class Ledger:
-    """The project's append-only record: one JSON object per line (claims, verdicts, integrations)."""
+    """The project's append-only record: one JSON object per line. A claim or a verdict is recorded once per commit;
+    an error (the judge's machine failed on a candidate) each time."""
 
     def __init__(self, folder):
         self.folder = Path(folder)
@@ -263,16 +270,25 @@ class Ledger:
                 self.events = [json.loads(line) for line in f if line.strip()]
 
     def append(self, events):
-        if not events:
+        known = {(e.get("type"), e.get("sha")) for e in self.events if e.get("type") in ("claim", "verdict")}
+        fresh = []
+        for event in events:
+            mark = (event["type"], event["sha"])
+            if event["type"] in ("claim", "verdict"):
+                if mark in known:
+                    continue  # running the write step twice records nothing twice
+                known.add(mark)
+            fresh.append(event)
+        if not fresh:
             return
         self.folder.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as f:
-            for event in events:
+            for event in fresh:
                 f.write(json.dumps(event, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n")
-        self.events.extend(events)
+        self.events.extend(fresh)
 
     def seen(self):
-        """Candidate commits the hive has already answered: never judged twice."""
+        """Commits the hive has already answered: never read or judged again."""
         return {e["sha"] for e in self.events if e.get("type") in ("claim", "verdict")}
 
     def done(self):
@@ -285,6 +301,41 @@ class Ledger:
     def judged_today(self, member_id, day):
         return sum(1 for e in self.events if e.get("type") == "verdict" and e.get("member_id") == member_id
                    and e.get("judged") and e.get("at", "")[:10] == day)
+
+    def errors(self, sha):
+        return sum(1 for e in self.events if e.get("type") == "error" and e.get("sha") == sha)
+
+    def live_claims(self, instant, ttl_minutes):
+        """member id -> (task, time the hive recorded the claim), for claims that are still live: recorded less than
+        the claim's lifetime ago, and not used yet (a verdict for that member on that task uses the claim up)."""
+        horizon, live = instant - dt.timedelta(minutes=ttl_minutes), {}
+        for event in self.events:
+            if event.get("type") == "claim":
+                if parse_iso(event["at"]) >= horizon:
+                    live[event["member_id"]] = (event["task"], event["at"])
+                else:
+                    live.pop(event["member_id"], None)
+            elif event.get("type") == "verdict":
+                held = live.get(event.get("member_id"))
+                if held and held[0] == event.get("task"):
+                    del live[event["member_id"]]
+        return live
+
+    def cooling(self, member_id, task, instant, ttl_minutes, hours):
+        """True if the member let a claim on this task expire, without submitting, less than `hours` ago: taking a
+        task, leaving it and taking it again does not hold it."""
+        last, answered = None, False
+        for event in self.events:
+            if event.get("member_id") != member_id or event.get("task") != task:
+                continue
+            if event.get("type") == "claim":
+                last, answered = parse_iso(event["at"]), False
+            elif event.get("type") == "verdict" and last is not None:
+                answered = True
+        if last is None or answered:
+            return False
+        expired = last + dt.timedelta(minutes=ttl_minutes)
+        return expired <= instant < expired + dt.timedelta(hours=hours)
 
 
 def read_ignored(folder):
@@ -318,18 +369,12 @@ class GhApi:
 
     def forks(self, repo):
         return self._json_lines("--paginate", f"repos/{repo}/forks?per_page=100&sort=newest", "--jq",
-                                ".[] | {full_name, login: .owner.login, id: .owner.id, type: .owner.type, pushed_at}")
+                                ".[] | {full_name, repo_id: .id, login: .owner.login, id: .owner.id, type: .owner.type}")
 
     def user(self, login):
         if not LOGIN.match(login):
             raise HiveError("login unreadable")
         return self._json_lines(f"users/{login}", "--jq", "{id, created_at, type}")[0]
-
-    def repo(self, full_name):
-        if not REPO_NAME.match(full_name):
-            raise HiveError("repository name unreadable")
-        return self._json_lines(f"repos/{full_name}", "--jq",
-                                "{full_name, fork, parent: (.parent.full_name // null), login: .owner.login, id: .owner.id, type: .owner.type}")[0]
 
     def url(self, full_name):
         return f"https://github.com/{full_name}.git"
@@ -340,8 +385,9 @@ class GhApi:
 
 
 def read_marker(message):
-    """The marker of a commit message, or None: exactly one « Hive-Task: <id> » line and one « Hive-Action: claim|submit »
-    line, each alone on its line; « Hive-Model: » is optional and kept only if it is a plain name."""
+    """The marker of a commit message, or None: exactly one line each of « Hive-Task: <id> », « Hive-Action: claim|submit »
+    and « Hive-Member: <login> », each alone on its line. The member is the account the commit is for: it counts only
+    in that account's own fork. « Hive-Model: » is optional and kept only if it is an identifier."""
     found = {}
     for line in message.split("\n"):
         m = MARKER_LINE.match(line.rstrip("\r"))
@@ -349,11 +395,11 @@ def read_marker(message):
             if m.group(1) in found:
                 return None  # twice the same key: no marker
             found[m.group(1)] = m.group(2)
-    task, action = found.get("Hive-Task"), found.get("Hive-Action")
-    if not (task and action and TASK_ID.match(task) and action in ACTIONS):
+    task, action, member = found.get("Hive-Task"), found.get("Hive-Action"), found.get("Hive-Member")
+    if not (task and action and member and TASK_ID.match(task) and action in ACTIONS and LOGIN.match(member)):
         return None
     model = found.get("Hive-Model")
-    return {"task": task, "action": action, "model": model if model and MODEL.match(model) else None}
+    return {"task": task, "action": action, "member": member, "model": model if model and MODEL.match(model) else None}
 
 
 def commit_message(repo, sha):
@@ -521,34 +567,45 @@ def materialize(repo, tree, target):
 # Members
 
 
-def member_refusal(member, config, ledger, extra_today, instant):
-    """Why this member's candidate is not judged now, or None. extra_today: judgements already planned in this sweep."""
+def member_refusal(member, config, instant):
+    """Why this account's candidates are refused, or None: not a person, banned, or younger than the project asks.
+    A ban names the account's GitHub id (a number: it survives a change of login); a login is accepted too."""
     rules = config["members"]
     if member.get("type") != "User":
         return "not_a_person"
-    if member["login"].lower() in {b.lower() for b in rules["banned"]}:
+    banned = rules["banned"]
+    if member["id"] in [b for b in banned if isinstance(b, int)] \
+            or member["login"].lower() in {b.lower() for b in banned if isinstance(b, str)}:
         return "banned"
-    created = member.get("created_at")
     try:
-        age = (instant - parse_iso(created)).days
+        age = (instant - parse_iso(member.get("created_at"))).days
     except (TypeError, ValueError):
         return "young_account"
     if age < rules["min_account_age_days"]:
         return "young_account"
-    if ledger.judged_today(member["id"], iso(instant)[:10]) + extra_today >= rules["judged_per_day"]:
-        return "daily_cap"
     return None
 
 
+def member_of(api, entry, cache):
+    """The account behind an entry, as GitHub describes it now; HiveError if it is not the fork's owner."""
+    login = entry["login"]
+    if login not in cache:
+        cache[login] = api.user(login)
+    user = cache[login]
+    if not isinstance(user, dict) or user.get("id") != entry["member_id"]:
+        raise HiveError("the fork's owner and the account do not match")
+    return {"login": login, "id": entry["member_id"], "type": user.get("type"), "created_at": user.get("created_at")}
+
+
 # ---------------------------------------------------------------------------------------------------------------
-# Collect: discover the forks' new commits and read their markers
+# Discover: the forks' marked commits, as the forks are now
 
 
 def fork_url(api, full_name, allow_local):
-    if allow_local and hasattr(api, "local_url"):
-        return api.local_url(full_name)
     if not REPO_NAME.match(full_name):
         raise HiveError("fork name unreadable")
+    if allow_local and hasattr(api, "local_url"):
+        return api.local_url(full_name)
     return api.url(full_name)
 
 
@@ -566,57 +623,120 @@ def fetch_commit(repo, url, ref, sha, slot, allow_local=False):
     return got == sha
 
 
-def upstream_has(repo, sha):
-    """True if the commit is already in the project's own history (a fork carries every branch of the project)."""
-    if git(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode != 0:
-        return False
+def upstream_tips(repo):
+    """The tips of the project's own branches: a fork carries them all, and they are nobody's candidates."""
+    listed = git(repo, "for-each-ref", "--format=%(objectname)", "refs/remotes/origin", "refs/heads").stdout
+    return {line for line in listed.split() if is_sha(line)}
+
+
+def in_upstream(repo, sha):
+    """True if the commit, already in the hive's clone, is part of the project's own history."""
     return bool(git(repo, "for-each-ref", "--count=1", "--contains", sha, "refs/remotes/origin", "refs/heads").stdout.strip())
 
 
-def collect(repo, config, tasks, ledger, api, state_folder, allow_local=False):
-    """Lists the forks, reads their new branch tips and returns (claims, candidates, ignored): every commit with a
-    marker that the ledger has not answered yet, with the fork's owner as GitHub gives it."""
-    seen, ignored = ledger.seen(), read_ignored(state_folder)
-    skip = seen | set(ignored)
-    claims, candidates, slot = [], [], 0
+def discover(repo, config, api, skip, state_folder, allow_local=False, budget_seconds=900):
+    """Lists the project's forks and returns one entry per marked commit at the tip of a fork's branch, for commits
+    the hive has not answered yet. A commit counts only in the fork of the member its marker names: the same commit
+    pushed to someone else's fork is nothing there. One fork that fails or stalls never stops the others."""
+    started, ignored, entries, slot = time.monotonic(), read_ignored(state_folder), [], 0
+    skip = set(skip) | set(ignored)
     for fork in api.forks(config["repo"]):
-        full_name, login = fork.get("full_name"), fork.get("login")
-        if not (isinstance(full_name, str) and REPO_NAME.match(full_name) and isinstance(login, str) and LOGIN.match(login)
-                and isinstance(fork.get("id"), int)):
-            continue
-        url = fork_url(api, full_name, allow_local)
-        listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=60, env=transport(allow_local))
-        if listed.returncode != 0:
-            continue
-        heads = []
-        for line in listed.stdout.splitlines():
-            sha, _, ref = line.partition("\t")
-            if is_sha(sha) and sha not in skip and HEAD_REF.match(ref):
-                heads.append((sha, ref))
-        examined = 0
-        for sha, ref in heads:
-            if examined >= config["limits"]["heads_per_fork"]:
-                break
-            if upstream_has(repo, sha):
+        if time.monotonic() - started > budget_seconds:
+            log("discovery: time budget used up; the remaining forks wait for the next sweep")
+            break
+        if not (isinstance(fork, dict) and fork.get("type") == "User" and isinstance(fork.get("full_name"), str)
+                and REPO_NAME.match(fork["full_name"]) and isinstance(fork.get("login"), str) and LOGIN.match(fork["login"])
+                and isinstance(fork.get("id"), int) and isinstance(fork.get("repo_id"), int)):
+            continue  # an organization, a bot, or an answer the hive cannot read
+        try:
+            url = fork_url(api, fork["full_name"], allow_local)
+            listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=60, env=transport(allow_local))
+            if listed.returncode != 0:
                 continue
-            examined += 1
-            slot += 1
-            if not fetch_commit(repo, url, ref, sha, slot, allow_local):
-                continue
-            skip.add(sha)
-            marker = read_marker(commit_message(repo, sha))
-            if not marker:
-                ignored.append(sha)
-                continue
-            entry = {"sha": sha, "fork": full_name, "login": login, "member_id": fork["id"], "task": marker["task"],
-                     "action": marker["action"], "model": marker["model"]}
-            (claims if marker["action"] == "claim" else candidates).append(entry)
+            heads = {}
+            for line in listed.stdout.splitlines():
+                sha, _, ref = line.partition("\t")
+                if is_sha(sha) and HEAD_REF.match(ref):
+                    heads.setdefault(sha, ref)  # one commit on several branches is one commit
+            examined = 0
+            for sha, ref in heads.items():
+                if sha in skip:
+                    continue
+                if examined >= config["limits"]["heads_per_fork"]:
+                    break
+                examined += 1
+                if git(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode == 0:
+                    if in_upstream(repo, sha):
+                        ignored.append(sha)
+                        skip.add(sha)
+                        continue
+                else:
+                    slot += 1
+                    if not fetch_commit(repo, url, ref, sha, slot, allow_local):
+                        continue
+                marker = read_marker(commit_message(repo, sha))
+                if not marker:
+                    ignored.append(sha)
+                    skip.add(sha)
+                    continue
+                if marker["member"].lower() != fork["login"].lower():
+                    continue  # someone else's commit in this fork: it counts in its member's own fork only
+                entries.append({"sha": sha, "repo_id": fork["repo_id"], "fork": fork["full_name"], "login": fork["login"],
+                                "member_id": fork["id"], "task": marker["task"], "action": marker["action"],
+                                "model": marker["model"]})
+        except HiveError as error:
+            log(f"discovery: one fork skipped ({error})")
     write_ignored(state_folder, ignored)
-    return claims, candidates
+    return entries
+
+
+def plan(repo, config, tasks, ledger, api, state_folder, key, allow_local=False):
+    """What the sweep and the write step both derive, each on its own, before any judgement: the claims to record
+    and the candidates in the order they are judged.
+
+    Order: a candidate whose member holds a claim on the task that an EARLIER sweep recorded comes first, by the
+    time the hive recorded that claim (the hive's clock, never the commit's); the others follow, in an order drawn
+    from the commit and the run's key, which nobody knows before the run. So copying someone's work, even with a
+    commit id chosen at will, does not put the copy in front of a member who had said they were on the task.
+
+    Claims: from accounts that could submit, one live claim per member, and none on a task the member let expire in
+    the last day."""
+    instant, ttl = now(), config["claim_ttl_minutes"]
+    entries = discover(repo, config, api, ledger.seen() | upstream_tips(repo), state_folder, allow_local)
+    held_before = ledger.live_claims(instant, ttl)
+    held, done, members, claims, queue, known = dict(held_before), ledger.done(), {}, [], [], set()
+    for entry in sorted(entries, key=lambda e: e["sha"]):
+        if entry["sha"] in known:
+            continue
+        known.add(entry["sha"])
+        try:
+            member = member_of(api, entry, members)
+        except HiveError as error:
+            log(f"{entry['sha'][:12]}: {error}")
+            continue
+        reason = member_refusal(member, config, instant)
+        if entry["action"] == "claim":
+            task = tasks.get(entry["task"])
+            if reason or task is None or task.get("closed") or entry["task"] in done or member["id"] in held \
+                    or ledger.cooling(member["id"], entry["task"], instant, ttl, config["claim_cooldown_hours"]):
+                continue
+            held[member["id"]] = (entry["task"], iso(instant))
+            claims.append({"type": "claim", "at": iso(instant), "task": entry["task"], "member": member["login"],
+                           "member_id": member["id"], "repo_id": entry["repo_id"], "sha": entry["sha"]})
+        else:
+            queue.append({**entry, "refusal": reason})
+
+    def order(entry):
+        claim = held_before.get(entry["member_id"])
+        return (claim[1] if claim and claim[0] == entry["task"] else iso(instant),
+                hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
+
+    queue.sort(key=order)
+    return claims, queue
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Judge: each candidate merged on the moving tip, in an order fair to members
+# Process: each candidate merged on a tip that moves, the same way in both steps
 
 
 def derive(repo, tip, entry, task, config):
@@ -645,16 +765,19 @@ def goal_met(task, report):
     return False
 
 
+DETAIL_KEYS = ("lines", "files", "bytes", "commits")
+
+
 def clean_detail(detail):
-    """A refusal's detail as the ledger keeps it: numbers only. A path or any other text a fork chose stays out of
-    the public record, which other agents read."""
-    return {k: v for k, v in (detail or {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+    """A refusal's detail as the ledger keeps it: whole numbers under the hive's own keys, nothing else. No path, key
+    or other text that came from a fork reaches the public record, which other agents read."""
+    return {k: v for k, v in (detail or {}).items() if k in DETAIL_KEYS and isinstance(v, int) and not isinstance(v, bool)}
 
 
 def clean_report(report):
     """The judge's figures the ledger keeps: numbers and short plain strings, a bounded count."""
     kept = {}
-    for key, value in list((report or {}).items())[:40]:
+    for key, value in list((report if isinstance(report, dict) else {}).items())[:40]:
         if not (isinstance(key, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,59}", key)):
             continue
         if isinstance(value, bool) or isinstance(value, (int, float)):
@@ -664,170 +787,186 @@ def clean_report(report):
     return kept
 
 
-def judge_all(repo, tip, candidates, config, tasks, ledger, api, judge, workdir):
-    """Judges the candidates one after the other on a tip that moves with each acceptance. Returns the results:
-    one entry per candidate, with result accepted, refused, or skipped (an error of the hive's side: not recorded,
-    judged again at the next sweep)."""
-    instant, results, done = now(), [], set(ledger.done())
-    planned, answered, members = {}, {}, {}
-    day = iso(instant)[:10]
-    order = sorted(candidates, key=lambda e: (ledger.judged_today(e["member_id"], iso(instant)[:10]), e["sha"]))
-    judged = 0
-    for entry in order:
-        result = {**entry, "tip": tip, "result": "refused", "judged": False}
-        task = tasks.get(entry["task"])
-        answered[entry["member_id"]] = answered.get(entry["member_id"], 0) + 1
-        if ledger.answered_today(entry["member_id"], day) + answered[entry["member_id"]] > config["members"]["answers_per_day"]:
-            result["result"] = "skipped"  # a fork that floods is answered tomorrow
-            results.append(result)
-            continue
+def process(repo, tip, queue, config, tasks, ledger, verdict_of, judgements=None):
+    """Goes through the candidates in order, on a tip that moves with each acceptance, and returns (outcomes, tip).
+    verdict_of(entry, task, tip, tree, commit) gives the judge's answer for one judged commit, or None when there is
+    none yet: the sweep runs the judge there, the write step looks the commit up in the sweep's answers.
+
+    An outcome is accepted, refused (with a reason), error (the judge's machine failed on it), or skipped (not
+    answered now: a cap, or no answer yet). When a candidate is left without an answer, the later candidates for the
+    same task wait too: nobody passes in front of an earlier candidate by its answer being withheld."""
+    instant = now()
+    day, rules = iso(instant)[:10], config["members"]
+    outcomes, done, waiting, answered, judged_for, judged = [], set(ledger.done()), set(), {}, {}, 0
+    for entry in queue:
+        member_id = entry["member_id"]
+        outcome = {"sha": entry["sha"], "login": entry["login"], "member_id": member_id, "repo_id": entry["repo_id"],
+                   "task": entry["task"] if entry["task"] in tasks else None,  # never an id a fork made up
+                   "model": entry["model"], "tip": tip, "result": "skipped", "judged": False}
+        outcomes.append(outcome)
         try:
+            answered[member_id] = answered.get(member_id, 0) + 1
+            if ledger.answered_today(member_id, day) + answered[member_id] > rules["answers_per_day"]:
+                continue  # an account that floods is answered tomorrow
+            task = tasks.get(entry["task"])
+            if entry.get("refusal"):
+                raise Refusal(entry["refusal"])
             if task is None:
                 raise Refusal("unknown_task")
             if task.get("closed"):
                 raise Refusal("task_closed")
             if entry["task"] in done:
                 raise Refusal("superseded")
-            if entry["login"] not in members:
-                members[entry["login"]] = api.user(entry["login"])
-            user = members[entry["login"]]
-            if user.get("id") != entry["member_id"]:
-                raise HiveError("the fork's owner and the account do not match")
-            member = {"login": entry["login"], "id": entry["member_id"], "type": user.get("type"), "created_at": user.get("created_at")}
-            reason = member_refusal(member, config, ledger, planned.get(entry["member_id"], 0), instant)
-            if reason == "daily_cap":
-                result["result"] = "skipped"  # not an answer: judged another day
-                results.append(result)
+            if ledger.errors(entry["sha"]) >= JUDGE_ATTEMPTS:
+                raise Refusal("judge_failed")
+            if entry["task"] in waiting:
                 continue
-            if reason:
-                raise Refusal(reason)
-            if judged >= config["limits"]["judgements_per_sweep"]:
-                result["result"] = "skipped"
-                results.append(result)
+            if ledger.judged_today(member_id, day) + judged_for.get(member_id, 0) >= rules["judged_per_day"]:
+                continue  # the member's own cap: judged another day, and it holds nobody else back
+            if judgements is not None and judged >= judgements:
+                waiting.add(entry["task"])
                 continue
             tree, figures, commit = derive(repo, tip, entry, task, config)
-            result.update(merged_tree=tree, commit=commit, figures=figures)
-            planned[entry["member_id"]] = planned.get(entry["member_id"], 0) + 1
+            outcome.update(merged_tree=tree, commit=commit, figures=figures)
+            verdict = verdict_of(entry, task, tip, tree, commit)
+            if verdict is None:
+                waiting.add(entry["task"])
+                continue
             judged += 1
-            result["judged"] = True
+            if verdict["code"] not in (0, 1):
+                outcome["result"] = "error"
+                waiting.add(entry["task"])
+                continue
+            judged_for[member_id] = judged_for.get(member_id, 0) + 1
+            outcome.update(judged=True, report=verdict["report"])
+            if verdict["code"] == 1:
+                raise Refusal("judge_refused")
+            if not goal_met(task, verdict["report"]):
+                raise Refusal("goal_not_met")
+            outcome["result"] = "accepted"
+            done.add(entry["task"])
+            tip = commit
+        except Refusal as refusal:
+            outcome.update(result="refused", reason=refusal.reason, detail=clean_detail(refusal.detail))
+        except HiveError as error:
+            log(f"{entry['sha'][:12]}: {error}")
+            waiting.add(entry["task"])
+    return outcomes, tip
+
+
+def judging(repo, judge, workdir, verdicts):
+    """The sweep's verdict_of: writes the two trees to disk, runs the judge, and keeps its answer under the judged
+    commit's id. Whatever the judge function throws is the judge's machine failing (code 2), never the sweep's end.
+
+    A failure is the candidate's doing only if the machine works: when the judge fails on a candidate, it is asked
+    about the project's own tip against itself. If that fails too, the machine is down: nothing is answered, nothing
+    more is judged in this sweep, and no candidate pays for the breakdown."""
+    state = {"down": False, "works": {}}
+
+    def ask(tip, tree, task, commit, label):
+        try:
             folder = Path(tempfile.mkdtemp(prefix="judge-", dir=workdir))
             materialize(repo, tree_of(repo, tip), folder / "base")
             materialize(repo, tree, folder / "candidate")
-            verdict = judge(folder / "base", folder / "candidate", task, tip, commit)
-            code, report = verdict.get("code"), clean_report(verdict.get("report"))
-            result["report"] = report
-            if code == 0 and goal_met(task, report):
-                result["result"] = "accepted"
-                done.add(entry["task"])
-                tip = commit
-            elif code == 0:
-                raise Refusal("goal_not_met")
-            elif code == 1:
-                raise Refusal("judge_refused")
-            else:
-                result["result"] = "skipped"  # the judge's machine failed: nothing is judged
-                result["judged"] = False
-        except Refusal as refusal:
-            result.update(reason=refusal.reason, detail=clean_detail(refusal.detail))
-        except HiveError as error:
-            log(f"{entry['sha'][:12]}: {error}")
-            result["result"] = "skipped"
-        results.append(result)
-    return results
+            answer = judge(folder / "base", folder / "candidate", task, tip, commit)
+        except HiveError:
+            raise
+        except Exception as error:  # noqa: BLE001 (a timeout, a crash: the candidate is not answered by it)
+            log(f"{label}: the judge failed ({type(error).__name__})")
+            answer = {"code": 2}
+        code = answer.get("code") if isinstance(answer, dict) else 2
+        return {"code": code if code in (0, 1) and not isinstance(code, bool) else 2,
+                "report": clean_report(answer.get("report") if isinstance(answer, dict) else None)}
+
+    def machine_works(tip, task):
+        mark = (tip, task["id"])
+        if mark not in state["works"]:
+            state["works"][mark] = ask(tip, tree_of(repo, tip), task, tip, "the project's tip against itself")["code"] == 0
+        return state["works"][mark]
+
+    def verdict_of(entry, task, tip, tree, commit):
+        if state["down"]:
+            return None
+        answer = ask(tip, tree, task, commit, entry["sha"][:12])
+        if answer["code"] == 2 and not machine_works(tip, task):
+            state["down"] = True
+            log("the judge fails on the project's own tip: its machine is down, nothing more is judged in this sweep")
+            return None
+        verdicts[commit] = answer
+        return answer
+    return verdict_of
+
+
+def sweep(repo, tip, config, tasks, ledger, api, state_folder, key, judge, workdir, allow_local=False):
+    """The step without a write token: plans, judges, and returns (verdicts, outcomes). Only the verdicts leave it:
+    a table from the id of each judged commit to the judge's answer."""
+    verdicts = {}
+    _, queue = plan(repo, config, tasks, ledger, api, state_folder, key, allow_local)
+    outcomes, _ = process(repo, need_sha(tip), queue, config, tasks, ledger, judging(repo, judge, workdir, verdicts),
+                          judgements=config["limits"]["judgements_per_sweep"])
+    return verdicts, outcomes
 
 
 # ---------------------------------------------------------------------------------------------------------------
 # Apply: the only step that writes
 
 
-def verify_fork(api, entry, config):
-    """The fork is still a fork of the project and still belongs to the member the results name."""
-    info = api.repo(entry["fork"])
-    if not (info.get("fork") and str(info.get("parent") or "").lower() == config["repo"].lower()):
-        raise HiveError("not a fork of the project")
-    if info.get("id") != entry["member_id"] or str(info.get("login") or "").lower() != str(entry["login"]).lower():
-        raise HiveError("the fork's owner changed")
+def read_verdicts(table):
+    """The sweep's answers as the write step accepts them: commit id -> {code 0, 1 or 2; plain figures}."""
+    kept = {}
+    for commit, answer in (table.items() if isinstance(table, dict) else ()):
+        if is_sha(commit) and isinstance(answer, dict) and answer.get("code") in (0, 1, 2) and not isinstance(answer["code"], bool):
+            kept[commit] = {"code": answer["code"], "report": clean_report(answer.get("report"))}
+    return kept
 
 
-def apply(repo, remote, start_tip, results, claims, config, tasks, ledger, api, allow_local=False):
-    """Checks every accepted result again from git objects, pushes the chain of judged commits (fast-forward) and
-    records. results.json is trusted for one thing only: the judge's answer. Returns the project's new tip."""
-    instant, events, tip, chain_broken = now(), [], need_sha(start_tip), False
+def guarded_push(repo, remote, branch, expected, new, allow_local=False):
+    """Moves the project's branch from the tip that was judged to the new commit, and only that: the new commit must
+    descend from the expected tip (checked here, so that the lease below can never rewrite history), and the branch
+    must still be at the expected tip when the push lands (the lease), so that a branch someone moved meanwhile, a
+    maintainer taking a commit back for instance, is left as they put it."""
+    need_sha(expected), need_sha(new)
+    if git(repo, "merge-base", "--is-ancestor", expected, new, check=False).returncode != 0:
+        raise HiveError("the commit to push does not descend from the judged tip: nothing is pushed")
+    pushed = git(repo, "push", "--quiet", f"--force-with-lease=refs/heads/{branch}:{expected}", remote,
+                 f"{new}:refs/heads/{branch}", check=False, timeout=180, env=transport(allow_local))
+    if pushed.returncode != 0:
+        raise HiveError(f"the push was refused; nothing is recorded: {safe_text(pushed.stderr.strip())}")
+
+
+def events_of(claims, outcomes, instant):
+    """The ledger's lines for one run of the write step: every field is one the write step derived itself."""
+    events = list(claims)
+    for outcome in outcomes:
+        base = {"at": iso(instant), "task": outcome["task"], "member": outcome["login"], "member_id": outcome["member_id"],
+                "repo_id": outcome["repo_id"], "sha": outcome["sha"]}
+        if outcome["result"] == "error":
+            events.append({"type": "error", **base})
+        elif outcome["result"] in ("accepted", "refused"):
+            event = {"type": "verdict", **base, "result": outcome["result"], "judged": outcome["judged"], "model": outcome["model"]}
+            if outcome["result"] == "refused":
+                event.update(reason=outcome["reason"], detail=outcome["detail"])
+            else:
+                event.update(commit=outcome["commit"], figures=outcome["figures"], report=outcome["report"])
+            events.append(event)
+    return events
+
+
+def apply(repo, remote, start_tip, verdicts, config, tasks, ledger, api, state_folder, key, allow_local=False):
+    """The only step that writes. It plans again by itself, from the forks as they are now, exactly as the sweep did,
+    and takes from the sweep one thing: the judge's answer for each commit id it derives itself. Then it pushes the
+    judged commits and records. Returns (outcomes, tip)."""
     current = git(repo, "ls-remote", remote, f"refs/heads/{config['branch']}", timeout=60,
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
-    if current != start_tip:
+    if current != need_sha(start_tip):
         raise HiveError("the project's tip moved since the judgement: nothing is applied, the next sweep judges again")
-    for claim in claims:
-        if isinstance(claim, dict) and is_sha(claim.get("sha")) and isinstance(claim.get("task"), str) and TASK_ID.match(claim["task"]) \
-                and claim["task"] in tasks and isinstance(claim.get("login"), str) and LOGIN.match(claim["login"]) \
-                and isinstance(claim.get("member_id"), int):
-            events.append({"type": "claim", "at": iso(instant), "task": claim["task"], "member": claim["login"],
-                           "member_id": claim["member_id"], "sha": claim["sha"]})
-    members, planned, done, accepted = {}, {}, set(ledger.done()), []
-    for result in results:
-        if not (isinstance(result, dict) and is_sha(result.get("sha")) and isinstance(result.get("login"), str)
-                and LOGIN.match(result["login"]) and isinstance(result.get("member_id"), int)
-                and isinstance(result.get("task"), str) and TASK_ID.match(result["task"])
-                and isinstance(result.get("fork"), str) and REPO_NAME.match(result["fork"])):
-            continue
-        outcome = result.get("result")
-        base = {"type": "verdict", "at": iso(instant), "task": result["task"], "member": result["login"],
-                "member_id": result["member_id"], "fork": result["fork"], "sha": result["sha"],
-                "judged": bool(result.get("judged")), "model": result.get("model") if isinstance(result.get("model"), str)
-                and MODEL.match(result["model"]) else None}
-        if outcome == "refused" and result.get("reason") in REASONS:
-            events.append({**base, "result": "refused", "reason": result["reason"], "detail": clean_detail(result.get("detail"))})
-            continue
-        if outcome != "accepted" or chain_broken:
-            continue
-        task = tasks.get(result["task"])
-        try:
-            if task is None or task.get("closed") or result["task"] in done:
-                raise HiveError("the task is not open")
-            verify_fork(api, result, config)
-            if result["login"] not in members:
-                members[result["login"]] = api.user(result["login"])
-            user = members[result["login"]]
-            if user.get("id") != result["member_id"]:
-                raise HiveError("the member's account does not match")
-            member = {"login": result["login"], "id": result["member_id"], "type": user.get("type"), "created_at": user.get("created_at")}
-            reason = member_refusal(member, config, ledger, planned.get(result["member_id"], 0), instant)
-            if reason:
-                raise HiveError(f"the member is not eligible ({reason})")
-            # The fork named must hold the candidate NOW, on one of its branches, whether or not this clone already
-            # has the object: otherwise a result could name any eligible member's fork for someone else's commit.
-            url = fork_url(api, result["fork"], allow_local)
-            listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=60, env=transport(allow_local))
-            refs = [line.partition("\t")[2] for line in listed.stdout.splitlines() if line.startswith(result["sha"] + "\t")]
-            if listed.returncode != 0 or not refs:
-                raise HiveError("the candidate is not in the fork named")
-            if git(repo, "cat-file", "-e", f"{result['sha']}^{{commit}}", check=False).returncode != 0 \
-                    and not fetch_commit(repo, url, refs[0], result["sha"], "apply", allow_local):
-                raise HiveError("the candidate could not be fetched from the fork named")
-            marker = read_marker(commit_message(repo, result["sha"]))
-            if not (marker and marker["action"] == "submit" and marker["task"] == result["task"]):
-                raise HiveError("the candidate's marker does not name this task")
-            entry = {"sha": result["sha"], "login": result["login"], "member_id": result["member_id"]}
-            tree, figures, commit = derive(repo, tip, entry, task, config)
-            if commit != result.get("commit") or tree != result.get("merged_tree"):
-                raise HiveError("the judged commit is not the one the hive derives")
-        except (HiveError, Refusal) as error:
-            log(f"apply {result['sha'][:12]}: not integrated ({error}); judged again at the next sweep")
-            chain_broken = True  # later results were judged on a tip that included this one
-            continue
-        planned[result["member_id"]] = planned.get(result["member_id"], 0) + 1
-        done.add(result["task"])
-        tip = commit
-        accepted.append({**base, "result": "accepted", "commit": commit, "figures": figures,
-                         "report": clean_report(result.get("report"))})
-    if accepted:
-        pushed = git(repo, "push", "--quiet", remote, f"{tip}:refs/heads/{config['branch']}", check=False, timeout=180,
-                     env=transport(allow_local))
-        if pushed.returncode != 0:
-            raise HiveError(f"the push was refused; nothing is recorded: {safe_text(pushed.stderr.strip())}")
-    events.extend(accepted)
-    ledger.append(events)
-    return tip
+    answers = read_verdicts(verdicts)
+    claims, queue = plan(repo, config, tasks, ledger, api, state_folder, key, allow_local)
+    outcomes, tip = process(repo, start_tip, queue, config, tasks, ledger, lambda entry, task, tip, tree, commit: answers.get(commit))
+    if tip != start_tip:
+        guarded_push(repo, remote, config["branch"], start_tip, tip, allow_local)
+    ledger.append(events_of(claims, outcomes, now()))
+    return outcomes, tip
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -835,26 +974,28 @@ def apply(repo, remote, start_tip, results, claims, config, tasks, ledger, api, 
 
 
 def build_feed(config, tasks, ledger, tip):
-    """The project's open tasks, with the hints a worker needs to avoid double work: recent claims and past refusals."""
+    """The project's open tasks, with the hints a worker needs to avoid double work: live claims and past refusals.
+    It holds counts and the tasks' own (trusted) texts: nothing a contributor wrote."""
     instant = now()
-    horizon = instant - dt.timedelta(minutes=config["claim_ttl_minutes"])
-    done, claims, refusals = ledger.done(), {}, {}
+    done, claims, refusals, refused_members = ledger.done(), {}, {}, {}
+    for task, _ in ledger.live_claims(instant, config["claim_ttl_minutes"]).values():
+        claims[task] = claims.get(task, 0) + 1
     for event in ledger.events:
-        if event.get("type") == "claim" and parse_iso(event["at"]) >= horizon:
-            claims.setdefault(event["task"], set()).add(event["member_id"])
-        elif event.get("type") == "verdict" and event.get("result") == "refused" and event.get("judged") \
+        if event.get("type") == "verdict" and event.get("result") == "refused" and event.get("judged") \
                 and event.get("reason") in REASONS:
             reasons = refusals.setdefault(event["task"], {})
             reasons[event["reason"]] = reasons.get(event["reason"], 0) + 1
+            refused_members.setdefault(event["task"], set()).add(event.get("member_id"))
     listed = []
     for task in tasks.values():
         status = "done" if task["id"] in done else "closed" if task.get("closed") else "claimed" if claims.get(task["id"]) else "open"
-        refused = sum(refusals.get(task["id"], {}).values())
-        # A task the judge keeps refusing asks for a stronger worker: its tier rises by one every three judged refusals.
-        tier = min(3, max(1, int(task.get("tier", 1))) + refused // 3)
+        # A task the judge keeps refusing asks for a stronger worker: its tier rises by one for every three DIFFERENT
+        # members refused (one account sending junk does not move it).
+        tier = min(3, max(1, int(task.get("tier", 1))) + len(refused_members.get(task["id"], ())) // 3)
         listed.append({"id": task["id"], "title": task.get("title", ""), "files": task["files"], "size": task.get("size", "S"),
-                       "tier": tier, "status": status, "claims": len(claims.get(task["id"], ())), "refusals": refused,
-                       "refused_for": refusals.get(task["id"], {}), "context": task.get("context", "")})
+                       "tier": tier, "status": status, "claims": claims.get(task["id"], 0),
+                       "refusals": sum(refusals.get(task["id"], {}).values()), "refused_for": refusals.get(task["id"], {}),
+                       "context": task.get("context", "")})
     return {"protocol": PROTOCOL, "project": config["project"], "repo": config["repo"], "branch": config["branch"],
             "generated_at": iso(instant), "tip": tip, "check": config.get("check", ""), "tasks": listed}
 
@@ -889,7 +1030,7 @@ def pick(feed, login, hour, max_tier=3, sizes=("S", "M", "L")):
 # The judge the workflow uses: the registry's common judge
 
 
-def common_judge(registry_root, options=(), repetitions=10, workdir=None):
+def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
     """The common judge (tools/judge/judge.py) as a judge function: code 0 correct, 1 refused, 2 environment."""
     judge_py, report_py = Path(registry_root) / "tools/judge/judge.py", Path(registry_root) / "tools/judge/report.py"
 
@@ -901,7 +1042,10 @@ def common_judge(registry_root, options=(), repetitions=10, workdir=None):
             command += ["--workdir", str(workdir)]
         for key, value in {**dict(options), **(task.get("options") or {})}.items():
             command += ["--option", f"{key}={value}"]
-        ran = subprocess.run(command, capture_output=True, text=True, timeout=3 * 3600, stdin=subprocess.DEVNULL)
+        try:
+            ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            return {"code": 2}
         checked = subprocess.run([sys.executable, str(report_py), str(out), "--code", str(ran.returncode)], capture_output=True,
                                  text=True, timeout=60, stdin=subprocess.DEVNULL)
         figures = dict(line.split("=", 1) for line in checked.stdout.splitlines() if "=" in line)
@@ -946,21 +1090,28 @@ def paused(config):
     return False
 
 
+def run_key(args):
+    """The key both steps of one run share to order candidates that arrive together: the workflow gives its run id,
+    which nobody knows before the run starts."""
+    key = args.key or os.environ.get("HIVE_RUN_KEY", "")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", key):
+        raise HiveError("--key (or HIVE_RUN_KEY): the run's id, the same for the sweep and the write step")
+    return key
+
+
 def cmd_sweep(args):
-    """collect + judge: no write token. Writes results.json for the apply step."""
+    """plan + judge: no write token. Writes the judge's answers, by judged commit id, for the write step."""
     config, tasks, state, ledger = project_of(args)
     if paused(config):
         write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "paused": True})
         return
-    api = GhApi()
     tip = tip_of(args.repo, config)
-    claims, candidates = collect(args.repo, config, tasks, ledger, api, state)
-    judge = common_judge(args.registry, options=config.get("judge", {}).get("options", {}).items(),
-                         repetitions=config.get("judge", {}).get("repetitions", 10), workdir=args.judge_workdir)
-    results = judge_all(args.repo, tip, candidates, config, tasks, ledger, api, judge, args.workdir)
-    write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "tip": tip, "claims": claims, "results": results})
-    print(f"{len(claims)} claim(s), {len(candidates)} candidate(s), "
-          f"{sum(1 for r in results if r['result'] == 'accepted')} accepted")
+    settings = config.get("judge") or {}
+    judge = common_judge(args.registry, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
+                         workdir=args.judge_workdir, timeout=settings.get("timeout_seconds", 3600))
+    verdicts, outcomes = sweep(args.repo, tip, config, tasks, ledger, GhApi(), state, run_key(args), judge, args.workdir)
+    write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "tip": tip, "verdicts": verdicts})
+    print(f"{len(outcomes)} candidate(s), {len(verdicts)} judged, {sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
 
 
 def cmd_apply(args):
@@ -969,12 +1120,12 @@ def cmd_apply(args):
         return
     data = read_json(args.results)
     if not (isinstance(data, dict) and data.get("project") == config["project"] and is_sha(data.get("tip"))
-            and isinstance(data.get("results"), list) and isinstance(data.get("claims"), list)):
-        raise HiveError("results.json is not a sweep of this project")
-    tip = apply(args.repo, args.remote, data["tip"], data["results"], data["claims"], config, tasks, ledger, GhApi())
+            and isinstance(data.get("verdicts"), dict)):
+        raise HiveError("the results are not a sweep of this project")
+    outcomes, tip = apply(args.repo, args.remote, data["tip"], data["verdicts"], config, tasks, ledger, GhApi(), state, run_key(args))
     write_json(state / "feed.json", build_feed(config, tasks, ledger, tip))
     write_json(state / "stats.json", build_stats(ledger))
-    print(f"tip {tip}")
+    print(f"{sum(1 for o in outcomes if o['result'] == 'accepted')} integrated, tip {tip}")
 
 
 def cmd_feed(args):
@@ -983,13 +1134,18 @@ def cmd_feed(args):
     write_json(state / "feed.json", build_feed(config, tasks, ledger, args.tip or ""))
 
 
-def cmd_setup(args):
-    """Volunteer side: finds the project this fork belongs to, adds it as the « upstream » remote and fetches its tip."""
+def origin_identity():
+    """(login, repository name) of the clone's origin: the volunteer's own fork."""
     origin = git(".", "remote", "get-url", "origin", isolated=False).stdout.strip()
     found = re.search(r"[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?\Z", origin)
-    if not found:
+    if not found or not LOGIN.match(found.group(1)):
         raise HiveError("origin is not a GitHub repository: run this in a clone of your fork")
-    login, name = found.group(1), found.group(2)
+    return found.group(1), found.group(2)
+
+
+def cmd_setup(args):
+    """Volunteer side: finds the project this fork belongs to, adds it as the « upstream » remote and fetches its tip."""
+    login, name = origin_identity()
     configs = [load_config(path) for path in sorted((Path(args.registry) / "hive/projects").glob("*.json"))]
     chosen = [c for c in configs if (c["project"] == args.project if args.project else c["repo"].split("/")[1].lower() == name.lower())]
     if len(chosen) != 1:
@@ -1028,20 +1184,25 @@ def cmd_next(args):
     print(f"Project {feed['repo']}, branch {feed['branch']}. Change only the task's files. Then: hive.py submit --task {task['id']}")
 
 
-def marker_commit(task, action, model=None):
+def marker_commit(task, action, login=None, model=None):
+    """An empty commit whose message carries the marker. The member it names is the owner of this clone's origin:
+    the hive counts the commit in that account's fork and nowhere else."""
     if not TASK_ID.match(task):
         raise HiveError("--task: a task id like project-0001")
-    lines = [f"Hive {action}: {task}", "", f"Hive-Task: {task}", f"Hive-Action: {action}"]
+    login = login or origin_identity()[0]
+    if not LOGIN.match(login):
+        raise HiveError("--login: your GitHub login")
+    lines = [f"Hive {action}: {task}", "", f"Hive-Task: {task}", f"Hive-Action: {action}", f"Hive-Member: {login}"]
     if model:
         if not MODEL.match(model):
             raise HiveError("--model: the model's identifier, without spaces (claude-fable-5-2)")
         lines.append(f"Hive-Model: {model}")
     git(".", "commit", "--quiet", "--allow-empty", "--no-verify", "-m", "\n".join(lines), isolated=False)
-    print(f"Marker commit created ({action} {task}). Now push your branch to your own fork: git push origin HEAD")
+    print(f"Marker commit created ({action} {task}, member {login}). Now push your branch to your own fork: git push origin HEAD")
 
 
 def cmd_claim(args):
-    marker_commit(args.task, "claim")
+    marker_commit(args.task, "claim", args.login)
 
 
 def cmd_submit(args):
@@ -1063,7 +1224,7 @@ def cmd_submit(args):
         print(f"REFUSED ({refusal.reason}): {REASONS[refusal.reason]} {json.dumps(refusal.detail)}")
         sys.exit(1)
     print(f"Structure fine: {figures['files']} file(s), {figures['lines']} changed line(s).")
-    marker_commit(args.task, "submit", args.model)
+    marker_commit(args.task, "submit", args.login, args.model)
 
 
 def main(argv=None):
@@ -1081,12 +1242,14 @@ def main(argv=None):
     p.add_argument("--workdir", required=True)
     p.add_argument("--judge-workdir")
     p.add_argument("--out", required=True)
+    p.add_argument("--key")
     p.set_defaults(run=cmd_sweep)
     p = sub.add_parser("apply", help="check again, push and record (the only step with a write token)")
     hive_side(p)
     p.add_argument("--repo", required=True)
     p.add_argument("--remote", default="origin")
     p.add_argument("--results", required=True)
+    p.add_argument("--key")
     p.set_defaults(run=cmd_apply)
     p = sub.add_parser("feed", help="write the project's feed from its tasks and ledger")
     hive_side(p)
@@ -1106,12 +1269,14 @@ def main(argv=None):
     p.set_defaults(run=cmd_next)
     p = sub.add_parser("claim", help="volunteer: an empty commit that tells the hive the task is being worked on")
     p.add_argument("--task", required=True)
+    p.add_argument("--login", help="your GitHub login (default: the owner of this clone's origin)")
     p.set_defaults(run=cmd_claim)
     p = sub.add_parser("submit", help="volunteer: check the branch as the hive will, then mark it as a submission")
     p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]))
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--model")
+    p.add_argument("--login", help="your GitHub login (default: the owner of this clone's origin)")
     p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
     p.set_defaults(run=cmd_submit)
     args = parser.parse_args(argv)
