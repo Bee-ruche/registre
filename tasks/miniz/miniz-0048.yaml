@@ -28,7 +28,7 @@ out_of_scope:
 - the common judge (outils/juge/ in the registry)
 - COMMANDMENTS.md
 node: projects/lossless-compression/miniz/bee
-status: in_review
+status: integrated
 contribution: miniz-0048-c1
 created_by: council
 created_on: '2026-11-02'

@@ -1,0 +1,32 @@
+id: miniz-0053
+project: miniz
+category: lossless-compression
+type: test
+area: governance
+size: L
+title: minizBee's bee-ci.yml in English, comments and step names (after miniz-0050)
+context: 'miniz-0050 moves minizBee to judge-v4 and writes English verdicts; to stay within its size, the comment-only and
+  step-name-only changes of .github/workflows/bee-ci.yml come here (about 247 lines). Step names and comments only: no
+  condition, permission, expression, job id, input, output or artifact name changes; the fork''s tests that read step names
+  follow.'
+files:
+- .github/workflows/bee-ci.yml
+- bee/ci/test_verdict.py
+reach: 0.3
+metric: null
+acceptance_criteria:
+- a structural diff of bee-ci.yml shows only comments and step names changed; the fork's tests pass
+- an independent review by an agent of another model than the builder's is attached, with every finding fixed or answered
+out_of_scope:
+- COMMANDMENTS.md
+- the scripts under bee/ other than the tests that read step names
+depends_on:
+- miniz-0050
+node: projects/lossless-compression/miniz/bee
+notes:
+  - by: "bidji29"
+    at: "2026-11-12T01:22:45Z"
+    text: "Council, 12 Nov 2026: split from miniz-0050 to keep each within its size. A branch tache/miniz-0053 on minizBee already holds the change, ready once miniz-0050 is merged."
+status: open
+created_by: council
+created_on: '2026-11-12'
