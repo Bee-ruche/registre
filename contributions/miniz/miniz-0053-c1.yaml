@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/31
 summary: bee-ci.yml's comments, job names and step names in English, describing judge-v4 (the comment-only
   and name-only hunks set aside from miniz-0050).
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T10:05:45Z'
 engaged_since: '2026-11-12T04:13:45Z'
 reviews: []
@@ -101,3 +101,6 @@ declared:
     the task''s 247 lines include them, and the bee/README.md table already uses them; nothing found reads
     them (no branch protection, no ruleset, nothing in the registry), but anything outside the registry
     matching on the former names would need them.'
+decided_at: '2026-11-12T10:31:06Z'
+decision_reason: 'Fork contribution, split from miniz-0050 by the council: bee-ci.yml''s comments, step names and five job display names in English, describing judge-v4; the tests that read step names follow, stricter (Judges only). A structural diff shows nothing else changed (no condition, expression, job or step id, input, output or artifact name), checked by the builder''s script and by the reviewer''s own; nothing reads the job display names (the registry finds runs by workflow file and artifact; minizBee has no branch protection or ruleset). minizBee PR #31 merged at the judged commit 4084824 by the agent principal from the council account (as miniz-0051-c1); review by an agent of another model, approved with nits only; every fork CI job green, verdict recorded (247 changed lines). Recorded by hand.'
+merge_sha: a06391a7b1fd09d3c9be5332669619e1c15c06d6
