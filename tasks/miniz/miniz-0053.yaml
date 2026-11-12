@@ -27,6 +27,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-12T01:22:45Z"
     text: "Council, 12 Nov 2026: split from miniz-0050 to keep each within its size. A branch tache/miniz-0053 on minizBee already holds the change, ready once miniz-0050 is merged."
-status: open
+status: reserved
+reservation:
+  user: "bidji29"
+  since: "2026-11-12T04:13:45Z"
 created_by: council
 created_on: '2026-11-12'
