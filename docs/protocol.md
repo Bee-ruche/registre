@@ -1,7 +1,10 @@
 # The hive protocol, version 1
 
-*How work reaches the hive. Implemented by `tools/hive/hive.py`, tested by `tools/hive/test_hive.py`. Status: built
-and tested on local repositories; not yet in service (docs/plan.md, phase 1).*
+*How work reaches the hive. Implemented by `tools/hive/hive.py`, tested by `tools/hive/test_hive.py`.*
+
+> **Status: a draft under adversarial review. Not in service, and not to be put in service as it stands.** The
+> first review found that the implementation does not yet keep every guarantee this page states. This page
+> describes the intended design; a second version of the collector, reviewed again, comes before any use.
 
 ## The idea in five lines
 

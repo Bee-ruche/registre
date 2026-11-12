@@ -741,12 +741,16 @@ def apply(repo, remote, start_tip, results, claims, config, tasks, ledger, api, 
             reason = member_refusal(member, config, ledger, planned.get(result["member_id"], 0), instant)
             if reason:
                 raise HiveError(f"the member is not eligible ({reason})")
+            # The fork named must hold the candidate NOW, on one of its branches, whether or not this clone already
+            # has the object: otherwise a result could name any eligible member's fork for someone else's commit.
             url = fork_url(api, result["fork"], allow_local)
-            if git(repo, "cat-file", "-e", f"{result['sha']}^{{commit}}", check=False).returncode != 0:
-                listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=60, env=transport(allow_local))
-                refs = [line.partition("\t")[2] for line in listed.stdout.splitlines() if line.startswith(result["sha"] + "\t")]
-                if not (refs and fetch_commit(repo, url, refs[0], result["sha"], "apply", allow_local)):
-                    raise HiveError("the candidate is no longer in the fork")
+            listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=60, env=transport(allow_local))
+            refs = [line.partition("\t")[2] for line in listed.stdout.splitlines() if line.startswith(result["sha"] + "\t")]
+            if listed.returncode != 0 or not refs:
+                raise HiveError("the candidate is not in the fork named")
+            if git(repo, "cat-file", "-e", f"{result['sha']}^{{commit}}", check=False).returncode != 0 \
+                    and not fetch_commit(repo, url, refs[0], result["sha"], "apply", allow_local):
+                raise HiveError("the candidate could not be fetched from the fork named")
             marker = read_marker(commit_message(repo, result["sha"]))
             if not (marker and marker["action"] == "submit" and marker["task"] == result["task"]):
                 raise HiveError("the candidate's marker does not name this task")

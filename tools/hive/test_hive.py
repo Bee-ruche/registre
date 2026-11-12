@@ -403,6 +403,11 @@ class TestMembers(Base):
         self.refused("young_account")
         self.assertEqual(judge_by_content.seen, [])
 
+    def test_an_account_whose_age_cannot_be_read_is_refused(self):
+        self.w.fork("ghost", 203, created="not a date").submit("toy-0001")
+        self.refused("young_account")
+        self.assertEqual(judge_by_content.seen, [])
+
     def test_an_organization(self):
         self.w.fork("corp", 202, type="Organization").submit("toy-0001")
         self.refused("not_a_person")
@@ -503,6 +508,41 @@ class TestApply(Base):
         self.assertEqual(self.w.tip(), self.start)
         self.assertEqual([e for e in self.w.events() if e.get("result") == "accepted"], [])
 
+    def forged(self, sha, fork, login, member_id, task):
+        """What a compromised sweep would write: a result whose every id is the one apply itself derives, so that the
+        commit-equality check cannot be what stops it. Each test below then breaks ONE property."""
+        config, tasks, _ = self.w.load()
+        tree, figures, commit = hive.derive(self.w.harvest, self.tip, {"sha": sha, "login": login, "member_id": member_id},
+                                            tasks[task], config)
+        return {"sha": sha, "fork": fork, "login": login, "member_id": member_id, "task": task, "action": "submit", "model": None,
+                "tip": self.tip, "result": "accepted", "judged": True, "commit": commit, "merged_tree": tree, "figures": figures}
+
+    def test_consistent_forgery_credit_for_a_member_whose_fork_does_not_hold_the_candidate(self):
+        bob = self.w.fork("bob", 102)
+        entry = self.forged(self.candidate, bob.full_name, "bob", 102, "toy-0001")  # alice's commit, already in this clone
+        self.w.apply(self.tip, [], [entry])
+        self.nothing_integrated()
+
+    def test_consistent_forgery_a_claim_presented_as_an_accepted_submission(self):
+        bob = self.w.fork("bob", 102)
+        claim = bob.write("src/z.c", "int z;\n").commit().marker("toy-0002", "claim").push()
+        self.w.sweep()
+        self.w.apply(self.tip, [], [self.forged(claim, bob.full_name, "bob", 102, "toy-0002")])
+        self.nothing_integrated()
+
+    def test_a_candidate_removed_from_its_fork_after_the_sweep(self):
+        sh("git", "push", "--quiet", "origin", ":refs/heads/claude/work", cwd=self.alice.work)
+        self.w.apply(self.tip, self.claims, self.results)
+        self.nothing_integrated()
+
+    def test_a_refused_push_records_nothing(self):
+        (self.w.upstream / "refs/heads/main.lock").write_text("")  # the tip did not move, yet the push cannot land
+        with self.assertRaisesRegex(hive.HiveError, "push was refused"):
+            self.w.apply(self.tip, self.claims, self.results)
+        self.assertEqual(self.w.events(), [])
+        (self.w.upstream / "refs/heads/main.lock").unlink()
+        self.assertEqual(self.w.tip(), self.start)
+
     def test_another_commit_than_the_judged_one(self):
         self.results[0]["commit"] = self.start
         self.w.apply(self.tip, self.claims, self.results)
@@ -566,8 +606,15 @@ class TestApply(Base):
     def test_the_projects_tip_moved(self):
         self.w.upstream_commit("src/a.c", "int moved;\n")
         moved = self.w.tip()
-        with self.assertRaises(hive.HiveError):
+        real_git, pushes = hive.git, []
+
+        def spy(repo, *args, **options):
+            pushes.extend(a for a in args[:1] if a == "push")
+            return real_git(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=spy), self.assertRaisesRegex(hive.HiveError, "tip moved"):
             self.w.apply(self.tip, self.claims, self.results)
+        self.assertEqual(pushes, [], "stopped before any push, not by a refused push")
         self.assertEqual(self.w.tip(), moved)
         self.assertEqual(self.w.events(), [])
 
