@@ -25,9 +25,24 @@ ally for the hive's most active volunteers.
 
 ## D2. The pledge on X
 
-**Recommendation**: optional to join, always; one of two paths to one high rank (the other path is verified work
-alone), so that no privilege depends only on a post; written in the member's own words from the drafts below,
-posted once, by hand, never by an agent. The design and the X rules check are in docs/plan.md (P4).
+**Why it is a decision**: the founder's idea was to require the pledge for higher ranks. X's Developer Policy (read
+in its official documentation source, 12 November 2026) says "Your service shouldn't compensate people to take
+actions on X" and forbids "monetary or virtual compensation for any X actions"; a rank given for a post plausibly
+falls under it. Whether that policy binds a project that only reads posts through X's public embed endpoint is a
+legal question (D3). GitHub's policies separately forbid activity incentivised by rewards, and YouTube's forbid
+rewards for engagement. X's live help pages could not be opened from this session; the reading rests on X's
+documentation sources and archived snapshots of its rules.
+
+| Option | For | Against |
+| --- | --- | --- |
+| **A. The pledge earns nothing (recommended)**: a free act of support, shown on an opt-in wall; ranks come from verified work only | Clearly within X's authenticity rules (own words, once, coordinated support for a cause is allowed); no disclosure question; no incentive to fake | Less pull for people who post only for a reward |
+| B. A cosmetic mark (a "pledged" badge on the profile), no privilege | Some recognition | Still arguably "virtual compensation"; a lawyer should look first |
+| C. Required for a high rank (the original idea) | Strongest push to post | Plausibly against X's Developer Policy; posts tied to a reward would need a disclosure line ("posting this counts toward my standing"); invites fake or bought accounts |
+
+**Recommendation**: A. The pledge's purpose is that followers discover the hive; that works as well when it is
+free, and it keeps the hive's promise to inform, never to manipulate (commandment 12). The design is in
+docs/plan.md (P4): own words, posted once by hand, never pre-filled, never by an agent, no required hashtag,
+verified once by a personal code for the wall, deleted when the post is.
 
 **Outside actions**: none until the opening; then the founder decides whether the hive has its own account on X, and
 who speaks for it.
@@ -35,13 +50,13 @@ who speaks for it.
 ### Drafts (the member may rewrite them)
 
 1. *I'm giving my AI's leftover quota to La Ruche 🐝 Every night my bee works for free software, and a judge checks
-   every drop of honey. I promise to use it well: no cheating, no copying, nothing broken. [link] #LaRuche*
+   every drop of honey. I promise to use it well: no cheating, no copying, nothing broken. [link]*
 2. *My AI has a second job now: it's a bee. 🐝 When I'm not using it, it works for open projects in La Ruche, where
    machines prove every contribution. I pledge to play fair. [link]*
 3. *I joined the hive. 🍯 La Ruche turns the AI quota we waste every week into verified work for everyone. I
    promise my bee will tell the truth about what it does. [link]*
 4. *Bzz. 🐝 I'm one bee among thousands: my AI gives its spare hours to La Ruche, and every honeycomb is tested
-   before it's kept. I'll use the hive well. [link] #LaRuche*
+   before it's kept. I'll use the hive well. [link]*
 
 ## D3. Questions for a lawyer
 

@@ -265,29 +265,39 @@ than a promise.
 ### The design
 
 - **Optional to join, always.** No feature of the worker needs it.
-- **Required only for one high rank**, and only as one of two paths: a volunteer reaches it by verified work alone
-  as well; the pledge only shortens the way for people who also bring their followers. *(Whether this stays within
-  X's rules is checked below; until then, treat it as a proposal.)*
-- **Written in the member's own words**, from a few suggested drafts, posted once by the member, by hand, never by
-  an agent and never repeated.
-- **Linked opt-in**: the member pastes the post's address on their hive profile; the hive keeps only the handle and
-  the post's number; the member can unlink at any time; a deleted post simply unlinks.
-- **Checked without scraping**: the post must carry the member's personal hive code; the hive reads the post
-  through X's public embed endpoint, once, at linking time. (Endpoint availability: to confirm.)
+- **It earns no rank and no privilege** (the founder's idea was to require it for higher ranks; the check of X's
+  rules argues against it, decision D2). X's Developer Policy, read in its official source today, says "Your
+  service shouldn't compensate people to take actions on X" and forbids "monetary or virtual compensation for any X
+  actions"; a rank given for a post plausibly falls under it, and GitHub's own policies forbid activity
+  incentivised by rewards. A pledge that is a free act of support is safe; a pledge that buys standing is not.
+  Ranks come from verified work only.
+- **Written in the member's own words**, inspired by the drafts below, posted once by the member, by hand, never by
+  an agent and never repeated. The hive never pre-fills the post: identical posts from many accounts are the
+  "copypasta" X's authenticity policy forbids. No required hashtag or mention, and never a request for likes,
+  reposts or follows.
+- **Linked opt-in, for the wall of pledges only**: the member pastes the post's address on their hive profile; the
+  post carries the member's personal hive code so that no one can claim someone else's; the hive reads it once
+  through X's public embed endpoint (documented as needing no authentication; to test before use), keeps only the
+  handle and the post's number, and deletes both when the post is deleted, protected or suspended, as X's terms
+  require. The member can unlink at any time.
+- **The wall shows plain links**; an embedded post loads only when a visitor clicks it (embeds send visitor data to
+  X). Nothing on the wall suggests that X or any member endorses anything beyond their own words.
+- **Other networks count the same**: Mastodon (verified profile links), Bluesky, a personal site or a GitHub
+  profile; the member chooses.
 
 ### Drafts
 
 1. *I'm giving my AI's leftover quota to La Ruche 🐝 Every night my bee works for free software, and a judge checks
-   every drop of honey. I promise to use it well: no cheating, no copying, nothing broken. [link] #LaRuche*
+   every drop of honey. I promise to use it well: no cheating, no copying, nothing broken. [link]*
 2. *My AI has a second job now: it's a bee. 🐝 When I'm not using it, it works for open projects in La Ruche, where
    machines prove every contribution. I pledge to play fair. [link]*
 3. *I joined the hive. 🍯 La Ruche turns the AI quota we waste every week into verified work for everyone. I
    promise my bee will tell the truth about what it does. [link]*
 4. *Bzz. 🐝 I'm one bee among thousands: my AI gives its spare hours to La Ruche, and every honeycomb is tested
-   before it's kept. I'll use the hive well. [link] #LaRuche*
+   before it's kept. I'll use the hive well. [link]*
 
-Each draft names what the hive is, makes a promise, and carries the member's code in the link. The member is free
-to rewrite it.
+Each draft names what the hive is and makes a promise; the link carries the member's code. They are inspiration:
+the page shows them, never pre-fills them, and asks the member to write their own.
 
 ### The other growth levers
 
@@ -357,11 +367,12 @@ The opening gate. All must be true:
 - **The first attractive project**: the pilot is live, with its maintainers' written agreement.
 - **Review capacity**: no contribution waits on a human, except changes to judges, tooling and rules; for those, at
   least two people other than the author can review.
-- **The pledge**: X's rules checked (D2); the pledge stays optional to join.
+- **The pledge**: X's rules read on its live pages (only its documentation sources and archived snapshots could
+  be read so far) and the founder's choice made (D2); the pledge stays optional and earns nothing.
 
 ## What this plan does not decide
 
-The founder decides: whether to ask the providers about quota donation and how (D1), whether the pledge may gate a
-rank (D2), the legal questions (D3), which project to approach and when (D4), the council's two new members (D5),
+The founder decides: whether to ask the providers about quota donation and how (D1), what the pledge may earn
+(D2), the legal questions (D3), which project to approach and when (D4), the council's two new members (D5),
 and whether to keep the name "La Ruche" for the public (D6). The decisions, with options and recommendations, are
 in docs/founder-decisions.md.
