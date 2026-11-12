@@ -616,11 +616,8 @@ def member_of(api, entry, cache):
 
 
 def fork_url(api, full_name, allow_local):
-    if not REPO_NAME.match(full_name):
-        raise HiveError("fork name unreadable")
-    if allow_local and hasattr(api, "local_url"):
-        return api.local_url(full_name)
-    return api.url(full_name)
+    """Where git reads a fork: its https address; in tests, a local path. The name was checked by the caller."""
+    return api.local_url(full_name) if allow_local else api.url(full_name)
 
 
 def fetch_commit(repo, url, ref, sha, slot, allow_local=False):

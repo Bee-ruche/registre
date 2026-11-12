@@ -238,6 +238,10 @@ class Base(unittest.TestCase):
         self.assertEqual(self.w.tip(), self.start, "a refused candidate never moves the project")
         return result
 
+    def refused_at(self, tip, reason):
+        result = self.one(self.w.run())
+        self.assertEqual((result["result"], result.get("reason"), self.w.tip()), ("refused", reason, tip))
+
     @property
     def start(self):
         return sh("git", "rev-parse", "HEAD", cwd=self.w.seed).stdout.strip()
@@ -542,6 +546,18 @@ class TestMembers(Base):
         self.w.fork("newbie", 201, created="2026-10-01T00:00:00Z").submit("toy-0001")
         self.refused("young_account")
         self.assertEqual(judge_by_content.seen, [])
+
+    def test_an_account_exactly_old_enough(self):
+        self.w.fork("ninety", 204, created="2026-08-14T12:00:00Z").submit("toy-0001")  # 90 days before NOW, to the second
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        self.w.fork("almost", 205, created="2026-08-14T12:00:01Z").submit("toy-0002", path="src/x.c", content="int x;\n")
+        self.refused_at(self.w.tip(), "young_account")
+
+    def test_an_account_the_api_does_not_describe(self):
+        self.alice.submit("toy-0001")
+        for answer in (None, [], "alice", {}):
+            self.w.api.users["alice"] = answer
+            self.assertEqual((self.w.run(), self.w.events()), ([], []), "neither judged nor answered, and the run goes on")
 
     def test_an_account_whose_age_cannot_be_read_is_refused(self):
         self.w.fork("ghost", 203, created="not a date").submit("toy-0001")
@@ -1134,6 +1150,76 @@ class TestRebuild(Base):
         self.assertEqual([(e["member"], e["member_id"], e["task"], e["commit"]) for e in self.w.events()[1:]], [("bob", 102, "toy-0002", real)])
 
 
+class TestLedger(unittest.TestCase):
+    """What the ledger answers, on events written by hand: who used what, on which day, and which claims hold."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def ledger(self, *events):
+        ledger = hive.Ledger(self.tmp.name)
+        ledger.events = [{"sha": f"{i:040x}", **e} for i, e in enumerate(events)]
+        return ledger
+
+    @staticmethod
+    def at(clock, day="12"):
+        return f"2026-11-{day}T{clock}Z"
+
+    def test_what_counts_in_a_members_day(self):
+        a, b, day = 101, 102, "2026-11-12"
+        ledger = self.ledger(
+            {"type": "verdict", "member_id": a, "at": self.at("01:00:00"), "judged": True, "result": "refused", "task": "toy-0001"},
+            {"type": "verdict", "member_id": a, "at": self.at("02:00:00"), "judged": False, "result": "refused", "task": "toy-0001"},
+            {"type": "error", "member_id": a, "at": self.at("03:00:00"), "task": "toy-0001"},
+            {"type": "claim", "member_id": a, "at": self.at("04:00:00"), "task": "toy-0002"},
+            {"type": "verdict", "member_id": b, "at": self.at("05:00:00"), "judged": True, "result": "accepted", "task": "toy-0004",
+             "commit": "c" * 40},
+            {"type": "verdict", "member_id": a, "at": self.at("23:59:59", "11"), "judged": True, "result": "refused", "task": "toy-0001"},
+            {"type": "error", "member_id": a, "at": self.at("00:00:00", "13"), "task": "toy-0001"},
+            {"type": "error", "member_id": b, "at": self.at("06:00:00"), "task": "toy-0001"})
+        ledger.events[6]["sha"] = ledger.events[2]["sha"]  # the judge failed twice on the same candidate
+        self.assertEqual((ledger.answered_today(a, day), ledger.answered_today(b, day), ledger.answered_today(103, day)), (2, 1, 0),
+                         "answers: the verdicts of the day, judged or not; neither claims nor the judge's failures")
+        self.assertEqual((ledger.judged_today(a, day), ledger.judged_today(b, day), ledger.judged_today(103, day)), (2, 2, 0),
+                         "the judge's runs: judged verdicts and failures of the day")
+        self.assertEqual([ledger.errors(e["sha"]) for e in ledger.events[:3]] + [ledger.errors(ledger.events[7]["sha"])], [0, 0, 2, 1])
+        self.assertEqual(ledger.seen(), {e["sha"] for e in ledger.events if e["type"] != "error"}, "a failure answers nothing")
+        self.assertEqual((ledger.done(), ledger.integrated()), ({"toy-0004"}, {"c" * 40}))
+
+    def test_the_claims_that_hold(self):
+        claim = lambda member, task, clock: {"type": "claim", "member_id": member, "task": task, "at": self.at(clock)}  # noqa: E731
+        verdict = lambda member, task, clock: {"type": "verdict", "member_id": member, "task": task, "at": self.at(clock)}  # noqa: E731
+        ledger = self.ledger(
+            claim(1, "toy-0001", "08:59:59"),                                     # older than three hours at noon
+            claim(2, "toy-0001", "09:00:00"),                                     # exactly three hours: still holds
+            claim(3, "toy-0002", "11:00:00"), verdict(3, "toy-0002", "11:30:00"),  # used by a submission
+            claim(4, "toy-0002", "11:00:00"), verdict(4, "toy-0004", "11:10:00"),  # a verdict on ANOTHER task uses nothing
+            claim(5, "toy-0004", "10:00:00"), verdict(6, "toy-0004", "10:30:00"),  # nor does ANOTHER member's verdict
+            verdict(7, "toy-0005", "10:00:00"))                                   # a verdict without a claim is nothing here
+        noon = hive.parse_iso(self.at("12:00:00"))
+        self.assertEqual(ledger.live_claims(noon, 180), {2: ("toy-0001", self.at("09:00:00")), 4: ("toy-0002", self.at("11:00:00")),
+                                                         5: ("toy-0004", self.at("10:00:00"))})
+
+    def test_the_wait_after_a_claim_left_to_expire(self):
+        claim = {"type": "claim", "member_id": 1, "task": "toy-0001", "at": self.at("09:00:00")}
+        verdict = {"type": "verdict", "member_id": 1, "task": "toy-0001", "at": self.at("10:00:00")}
+
+        def cooling(ledger, clock, day="12", member=1, task="toy-0001"):
+            return ledger.cooling(member, task, hive.parse_iso(self.at(clock, day)), 180, 24)
+
+        left = self.ledger(claim)  # expires at noon; the wait lasts until noon the next day
+        self.assertEqual([cooling(left, "11:59:59"), cooling(left, "12:00:00"), cooling(left, "11:59:59", "13"),
+                          cooling(left, "12:00:00", "13")], [False, True, True, False])
+        self.assertEqual([cooling(left, "13:00:00", member=2), cooling(left, "13:00:00", task="toy-0002")], [False, False])
+        self.assertFalse(cooling(self.ledger(claim, verdict), "13:00:00"), "a claim followed by a submission was used")
+        self.assertTrue(cooling(self.ledger({**verdict, "at": self.at("08:00:00")}, claim), "13:00:00"),
+                        "a verdict from BEFORE the claim does not use it")
+        self.assertTrue(cooling(self.ledger(claim, {**verdict, "member_id": 2}), "13:00:00"), "nor someone else's verdict")
+        self.assertTrue(cooling(self.ledger(claim, {**verdict, "task": "toy-0002"}), "13:00:00"), "nor a verdict on another task")
+        self.assertFalse(cooling(self.ledger(verdict), "13:00:00"), "no claim, no wait")
+
+
 class TestHostileData(Base):
     def test_a_forks_names_never_reach_git_as_they_are(self):
         self.w.forks["evil"] = Fork(self.w, "evil", 301)
@@ -1144,9 +1230,14 @@ class TestHostileData(Base):
     def test_a_branch_name_outside_the_plain_ones_is_skipped(self):
         self.alice.write("lib.c", LIB + "int x;\n").commit().marker("toy-0001").push("café")
         self.assertEqual(self.w.run(), [])
-        self.assertFalse(hive.fetch_commit(self.w.harvest, "x", "refs/heads/a..b", "0" * 40, 1))
-        self.assertFalse(hive.fetch_commit(self.w.harvest, "x", "refs/heads/-x", "0" * 40, 1))
-        self.assertFalse(hive.fetch_commit(self.w.harvest, "x", "--upload-pack=x", "0" * 40, 1))
+        with mock.patch.object(hive, "git", side_effect=AssertionError("git is not even called with such a name")):
+            for ref in ("refs/heads/a..b", "refs/heads/-x", "--upload-pack=x", "refs/heads/x.lock", "refs/heads/a//b",
+                        "refs/tags/v1", "refs/heads/a b", "refs/heads/" + "x" * 201):
+                self.assertFalse(hive.fetch_commit(self.w.harvest, str(self.alice.bare), ref, "0" * 40, 1), ref)
+        sha = self.alice.push("plain-name")
+        self.assertTrue(hive.fetch_commit(self.w.harvest, str(self.alice.bare), "refs/heads/plain-name", sha, 1, allow_local=True))
+        self.assertFalse(hive.fetch_commit(self.w.harvest, str(self.alice.bare), "refs/heads/plain-name", "0" * 40, 1, allow_local=True),
+                         "the branch moved since it was listed: not the commit that was asked for")
 
     def test_safe_text(self):
         self.assertEqual(hive.safe_text("a\n::error::x\x1b[31m ##[group] ‮"), "a?: :error: :x?[31m # #[group] ?")
