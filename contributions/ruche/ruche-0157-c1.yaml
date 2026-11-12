@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/325
 summary: 'tools/rehearsal/ in English: the README template, the scripts'' messages and comments, load_test.py''s
   docstring (#325).'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T03:25:40Z'
 engaged_since: '2026-11-12T03:22:10Z'
 reviews: []
+decided_at: '2026-11-12T03:58:35Z'
+decision_reason: 'tools/rehearsal/ in English: the README template, the scripts'' messages and comments, load_test.py''s docstring (#325), reviewed by an agent of another model before its merge, every finding fixed or answered, merged by the agent principal at its checked head; the dress-rehearsal tests follow the texts they read. Recorded by hand.'
+merge_sha: 3044564a895e522470c595b5f83f20ec458360e3

@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/359
 summary: 'The metric ids in English: the map and the boundary reader (#342), ab.py reports at the boundary
   (#343), and the registry''s data renamed by script, proven by P2 (#359).'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T03:35:59Z'
 engaged_since: '2026-11-12T03:22:09Z'
 reviews: []
+decided_at: '2026-11-12T03:58:35Z'
+decision_reason: 'The metric ids in English, in three registry PRs: M1 #342 (the approved map, the boundary reader that reads both vocabularies per document until 2027-01-01 and refuses French after it, and tools/migration/metric_ids.py), #343 (ab.py reports at the boundary) and M2 #359 (the registry''s data renamed by metric_ids.py write, proven by P2: every changed file is its translation and every other file byte for byte; plus a declared hand commit for the two projects'' prose, docs/contributions.md, a schema description and three tree nodes). Each reviewed by an agent of another model before its merge, every finding fixed or answered; M2 merged after both forks read English ids (minizBee #30, libyamlBee #6), and its combination with main was checked equal to a fresh regeneration. Recorded by hand: one task over three PRs.'
+merge_sha: ec82ad765e9da25087f8754fe67b78d51f50d134
