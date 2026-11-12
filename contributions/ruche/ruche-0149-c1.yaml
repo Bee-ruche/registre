@@ -1,0 +1,10 @@
+id: ruche-0149-c1
+task: ruche-0149
+author: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/359
+summary: 'The metric ids in English: the map and the boundary reader (#342), ab.py reports at the boundary
+  (#343), and the registry''s data renamed by script, proven by P2 (#359).'
+status: in_review
+submitted_at: '2026-11-12T03:35:59Z'
+engaged_since: '2026-11-12T03:22:09Z'
+reviews: []
