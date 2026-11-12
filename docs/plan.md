@@ -62,6 +62,17 @@ use it.
 - **Never charge a volunteer by surprise**: a volunteer who has paid overage turned on would pay real money for a
   donation loop. The setup page says so first.
 
+### Two modes: the hive's projects, or your own
+
+The worker is a tool, and the volunteer decides where their quota goes:
+
+- **The hive's projects**: the projects the hive hosts, judges on its own CI, credits in ranks and promotes. They
+  meet the criteria of P2, because there the hive runs and rewards the work.
+- **Bring your own project**: the volunteer points the worker at any public repository and task list they choose.
+  The hive provides the loop and its safety (one bounded task per firing, nothing of the volunteer's within reach,
+  content read as data); it does not vet the project, judge it, credit it or answer for it, like any open-source
+  tool. The volunteer's own AI provider's rules apply to their use, as always.
+
 ### The worker loop
 
 One firing of the scheduled task does **one bounded task and stops**. This removes the need to read the remaining
@@ -110,6 +121,9 @@ session can push to the volunteer's fork and hand the branch to the hive without
 ## P2. Projects people want
 
 ### Criteria
+
+These criteria are for the projects the hive itself hosts, judges and credits. A volunteer can point their worker
+at anything else on their own (P1, "Bring your own project").
 
 A project enters the hive only if it meets all five:
 
