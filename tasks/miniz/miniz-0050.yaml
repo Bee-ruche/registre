@@ -32,6 +32,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-12T01:22:45Z"
     text: "Council, 12 Nov 2026: size M to L. The move to judge-v4 and the English verdict count 250 lines in bee-ci.yml, over M's 200; its comment-only and step-name-only changes go to miniz-0053. The pin stays at the judge-v4 tag (7623c12); the workflow makes the runner's copy of isoler.sh executable, as the tag's file lost its mode in J1 (restored on main for later versions)."
-status: open
+status: reserved
+reservation:
+  user: "bidji29"
+  since: "2026-11-12T02:13:50Z"
 created_by: council
 created_on: '2026-11-08'
