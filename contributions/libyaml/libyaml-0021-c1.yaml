@@ -1,0 +1,10 @@
+id: libyaml-0021-c1
+task: libyaml-0021
+author: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/6
+summary: 'libyamlBee writes English: verdict.json, metric ids, ab.py''s report and bee-ci.yml''s texts;
+  the registry is read in English only, its metric ids in both vocabularies until ruche-0149.'
+status: in_review
+submitted_at: '2026-11-12T02:34:56Z'
+engaged_since: '2026-11-12T02:13:50Z'
+reviews: []

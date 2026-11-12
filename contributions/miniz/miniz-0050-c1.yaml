@@ -1,0 +1,10 @@
+id: miniz-0050-c1
+task: miniz-0050
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/30
+summary: 'minizBee moves to judge-v4 (juge-v3 kept for the transition) and writes English: verdict.json,
+  metric ids, the plugin (bee/judge/project.py), ab.py''s report, bee-ci.yml''s code.'
+status: in_review
+submitted_at: '2026-11-12T02:34:56Z'
+engaged_since: '2026-11-12T02:13:50Z'
+reviews: []
