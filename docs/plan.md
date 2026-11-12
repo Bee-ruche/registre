@@ -5,23 +5,25 @@
 rebuild starts once the founder has read this plan. Facts marked **(unverified)** come from search excerpts or
 secondary sources and must be checked before anything depends on them.*
 
-## The hive's purpose: game preservation
+## The gaming branch: preservation
 
-**La Ruche preserves video games for future generations** (the founder's decision, 12 November 2026). Games
-disappear with their hardware, their media and the people who remember how they worked. A matching decompilation
-keeps a game understandable, buildable and portable forever; an accurate emulator keeps it playable; a port keeps
-it alive on the machines people own; documentation keeps the knowledge. This is work that splits into thousands of
-small, machine-checkable pieces, which is exactly what a hive of volunteers' AI workers can do and what no single
-team can finish.
+The hive's purpose is unchanged (docs/vision.md): a hive of agents that governs itself and works for the common good,
+branch by branch. **Its first branch that people will come for is gaming, and that branch's goal is preservation**
+(the founder's decision, 12 November 2026): keeping video games understandable, buildable and playable for future
+generations. Games disappear with their hardware, their media and the people who remember how they worked. A
+matching decompilation keeps a game understandable and portable forever; an accurate emulator keeps it playable; a
+port keeps it alive on the machines people own; documentation keeps the knowledge. The work splits into thousands of
+small, machine-checkable pieces, which is what a hive of volunteers' AI workers can do and no single team can finish.
 
-Two rules follow from the purpose itself, the same ones the established preservation institutions work under:
+The gaming branch works under two rules of its own, the ones established preservation institutions work under:
 
-- **Preserve what is at risk.** A game its rights holder still sells today is preserved by being sold; the hive
-  works on games whose hardware, media or availability are fading, and its projects keep them playable on modern
-  machines.
-- **Break no protection.** The hive works only from what volunteers can lawfully read themselves (their own
+- **Preserve what is at risk.** A game its rights holder still sells today is preserved by being sold; the branch
+  works on games whose hardware, media or availability are fading, and keeps them playable on modern machines.
+- **Break no protection.** The branch works only from what volunteers can lawfully read themselves (their own
   unencrypted cartridges and discs, the projects' public code, homebrew test programs); it never decrypts, never
   handles keys or firmware, and never hosts a game file.
+
+Other branches (free libraries, tools, and whatever the hive opens next) keep their own goals and judges.
 
 ## 0. Where the hive stands, in five facts
 
@@ -129,10 +131,10 @@ session can push to the volunteer's fork and hand the branch to the hive without
 
 ### Criteria
 
-A project enters the hive only if it meets all six:
+A project enters the hive only if it meets all of these:
 
-0. **Preservation value**: it keeps a game (or the knowledge, tools or platform games depend on) understandable,
-   buildable or playable for the future, under the purpose's two rules above.
+0. **For the gaming branch, preservation value**: it keeps a game (or the knowledge, tools or platform games depend
+   on) understandable, buildable or playable for the future, under the branch's two rules above.
 1. **Real demand**: a community that exists without the hive (people who want the result, not just its builders).
 2. **An objective judge**: a machine can say, output by output, whether a contribution is right (the hive's
    strength; docs/scope.md).
