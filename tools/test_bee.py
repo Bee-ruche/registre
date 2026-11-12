@@ -990,7 +990,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "auto-integration.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
                        "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
-                       "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"}}  # ruche-0132; ruche-0143
+                       "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"},  # ruche-0132; ruche-0143
+                       "hive-tests.yml": {"contents": "read"}}  # the hive protocol's tests (docs/protocol.md)
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
         for name, expected_ones in permissions.items():
             with self.subTest(stream=name):

@@ -1,0 +1,29 @@
+# Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py, on local git repositories, without network.
+# Read-only: no secret, no write, nothing of a pull request runs with more than a read token.
+name: Hive protocol tests
+
+on:
+  pull_request:
+    paths: ["tools/hive/**", ".github/workflows/hive-tests.yml"]
+  push:
+    branches: [main]
+    paths: ["tools/hive/**", ".github/workflows/hive-tests.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Hive protocol tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Tests (standard library only)
+        run: python3 tools/hive/test_hive.py
