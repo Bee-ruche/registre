@@ -130,6 +130,11 @@ candidate code in a container.
   judged, and pushes on the condition that the branch is still at that tip. A branch that a maintainer moved
   meanwhile, to take a commit back for instance, is left as they put it.
 - The write step run twice records nothing twice.
+- **The project's history is the record of what was integrated.** If a run pushed and then could not record, the
+  next run reads the hive's own commits back from the branch (its own line of commits only, never what came in
+  through a merge) and completes the ledger.
+- When the time allowed to read the forks runs out, the forks left wait for the next run; the list is read from a
+  place that moves with the hour, so that no fork is always the one left.
 
 Strings that come from a fork (ref names, commit messages, paths) never reach a shell, a workflow expression or
 the ledger.
@@ -170,7 +175,6 @@ members refused.
 ## What this version does not do yet
 
 - Run in service: the workflow, the state branch and the first project's files are phase 1.
-- Rebuild the ledger from the project's history when a run pushed and could not record.
 - Batch judging (one judgement for several candidates), needed above a few thousand contributions a week.
 - A "propose" mode for outside projects that want a capped stream of pull requests instead of direct
   integration.

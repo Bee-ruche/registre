@@ -43,6 +43,9 @@ REPO_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-
 HEAD_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never a sentence
 MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model): (.{1,200})\Z")
+AUTHOR_EMAIL = re.compile(r"([1-9][0-9]{0,18})\+([A-Za-z0-9-]{1,39})@users\.noreply\.github\.com\Z")
+INTEGRATION_LINE = re.compile(r"(Hive-Task|Hive-Member|Hive-Candidate): (.{1,200})\Z")
+REBUILD_DEPTH = 300  # how far back the project's history is read for integrations the ledger lacks
 JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times is answered: judge_failed
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
 SWEEP_MAX_AGE_HOURS = 6  # the write step applies no sweep older than this (a job cannot run longer)
@@ -68,7 +71,7 @@ DEFAULTS = {
     "branch": "main",
     "protected": [],
     "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "heads_per_fork": 30,
-               "judgements_per_sweep": 20},
+               "judgements_per_sweep": 20, "discovery_seconds": 900},
     "members": {"min_account_age_days": 90, "judged_per_day": 5, "answers_per_day": 20, "banned": []},
     "claim_ttl_minutes": 180,
     "claim_cooldown_hours": 24,
@@ -274,7 +277,8 @@ class Ledger:
             with open(self.path, encoding="utf-8") as f:
                 self.events = [json.loads(line) for line in f if line.strip()]
 
-    def append(self, events):
+    def append(self, events, write=True):
+        """write=False keeps the events in memory only: the sweep reads the ledger and never writes it."""
         known = {(e.get("type"), e.get("sha")) for e in self.events if e.get("type") in ("claim", "verdict")}
         fresh = []
         for event in events:
@@ -284,13 +288,16 @@ class Ledger:
                     continue  # running the write step twice records nothing twice
                 known.add(mark)
             fresh.append(event)
-        if not fresh:
-            return
-        self.folder.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "a", encoding="utf-8") as f:
-            for event in fresh:
-                f.write(json.dumps(event, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n")
+        if fresh and write:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            with open(self.path, "a", encoding="utf-8") as f:
+                for event in fresh:
+                    f.write(json.dumps(event, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n")
         self.events.extend(fresh)
+
+    def integrated(self):
+        """The ids of the commits the ledger says the hive integrated."""
+        return {e.get("commit") for e in self.events if e.get("type") == "verdict" and e.get("result") == "accepted"}
 
     def seen(self):
         """Commits the hive has already answered: never read or judged again."""
@@ -641,15 +648,19 @@ def in_upstream(repo, sha):
     return bool(git(repo, "for-each-ref", "--count=1", "--contains", sha, "refs/remotes/origin", "refs/heads").stdout.strip())
 
 
-def discover(repo, config, api, skip, state_folder, allow_local=False, budget_seconds=900):
+def discover(repo, config, api, skip, state_folder, instant, allow_local=False):
     """Lists the project's forks and returns one entry per marked commit at the tip of a fork's branch, for commits
     the hive has not answered yet. A commit counts only in the fork of the member its marker names: the same commit
-    pushed to someone else's fork is nothing there. One fork that fails or stalls never stops the others."""
+    pushed to someone else's fork is nothing there. One fork that fails or stalls never stops the others, and when
+    the time allowed runs out, the forks left wait for the next run: the list is read from a place that moves with
+    the hour, so that no fork is always the one left."""
     started, ignored, entries, slot = time.monotonic(), read_ignored(state_folder), [], 0
     skip = set(skip) | set(ignored)
-    for fork in api.forks(config["repo"]):
-        if time.monotonic() - started > budget_seconds:
-            log("discovery: time budget used up; the remaining forks wait for the next sweep")
+    forks = list(api.forks(config["repo"]))
+    first = int(instant.timestamp() // 3600) % len(forks) if forks else 0
+    for fork in forks[first:] + forks[:first]:
+        if time.monotonic() - started > config["limits"]["discovery_seconds"]:
+            log("discovery: time allowed used up; the forks left wait for the next run")
             break
         if not (isinstance(fork, dict) and fork.get("type") == "User" and isinstance(fork.get("full_name"), str)
                 and REPO_NAME.match(fork["full_name"]) and isinstance(fork.get("login"), str) and LOGIN.match(fork["login"])
@@ -708,7 +719,7 @@ def plan(repo, config, tasks, ledger, api, state_folder, instant, key=None, allo
     Claims: from accounts that could submit, one live claim per member, and none on a task the member let expire in
     the last day, so that claims cannot be used to keep others away from tasks."""
     ttl = config["claim_ttl_minutes"]
-    entries = discover(repo, config, api, ledger.seen() | upstream_tips(repo), state_folder, allow_local)
+    entries = discover(repo, config, api, ledger.seen() | upstream_tips(repo), state_folder, instant, allow_local)
     if key is None:
         key = secrets.token_hex(16)
     if not (isinstance(key, str) and RUN_KEY.match(key)):
@@ -736,6 +747,49 @@ def plan(repo, config, tasks, ledger, api, state_folder, instant, key=None, allo
             queue.append({**entry, "refusal": reason})
     queue.sort(key=lambda entry: hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
     return claims, queue, key
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Rebuild: the project's history is the record of what was integrated
+
+
+def rebuilt(repo, tip, tasks, ledger, instant):
+    """The ledger lines for the hive's integrations that the project's branch holds and the ledger lacks: a run that
+    pushed and then could not record. Without them the member's candidate would be read again, found to change
+    nothing, and answered as a refusal, and the task would stay open.
+
+    Only the branch's own line of commits is read (first parents): a commit shaped like the hive's that came in
+    through a merge is not one. On that line, the hive's commits are those the hive committed; the branch is
+    written by the hive and the project's maintainers only."""
+    known, events = ledger.integrated(), []
+    listed = git(repo, "rev-list", "--first-parent", f"--max-count={REBUILD_DEPTH}", need_sha(tip)).stdout.split()
+    for commit in listed:
+        if commit in known:
+            break  # the ledger was up to date when this one was recorded
+        raw = git(repo, "cat-file", "commit", need_sha(commit)).stdout
+        head, _, message = raw.partition("\n\n")
+        fields = {}
+        for line in head.split("\n"):
+            name, _, value = line.partition(" ")
+            fields.setdefault(name, []).append(value)
+        author = re.fullmatch(r"(.*) <([^<>]*)> [0-9]+ [+-][0-9]{4}", (fields.get("author") or [""])[0])
+        committer = re.fullmatch(r"(.*) <([^<>]*)> [0-9]+ [+-][0-9]{4}", (fields.get("committer") or [""])[0])
+        if len(fields.get("parent", [])) != 1 or not author or not committer or committer.groups() != ROBOT:
+            continue
+        identity, found = AUTHOR_EMAIL.match(author.group(2)), {}
+        for line in message.split("\n"):
+            m = INTEGRATION_LINE.match(line)
+            if m:
+                found.setdefault(m.group(1), []).append(m.group(2))
+        if any(len(found.get(key, [])) != 1 for key in ("Hive-Task", "Hive-Member", "Hive-Candidate")) or not identity:
+            continue
+        task, login, candidate = found["Hive-Task"][0], found["Hive-Member"][0], found["Hive-Candidate"][0]
+        if task not in tasks or not LOGIN.match(login) or login != author.group(1) or login != identity.group(2) \
+                or not is_sha(candidate):
+            continue
+        events.append({"type": "verdict", "at": iso(instant), "task": task, "member": login, "member_id": int(identity.group(1)),
+                       "sha": candidate, "result": "accepted", "judged": True, "model": None, "commit": commit, "rebuilt": True})
+    return events[::-1]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -903,6 +957,7 @@ def sweep(repo, tip, config, tasks, ledger, api, state_folder, judge, workdir, a
     """The step without a write token: plans, judges, and returns (answers, outcomes). Only the answers leave it:
     the run's instant, its key, and a table from the id of each judged commit to the judge's answer."""
     instant, verdicts = now(), {}
+    ledger.append(rebuilt(repo, need_sha(tip), tasks, ledger, instant), write=False)
     _, queue, key = plan(repo, config, tasks, ledger, api, state_folder, instant, None, allow_local)
     outcomes, _ = process(repo, need_sha(tip), queue, config, tasks, ledger, judging(repo, judge, workdir, verdicts), instant,
                           judgements=config["limits"]["judgements_per_sweep"])
@@ -981,6 +1036,7 @@ def apply(repo, remote, start_tip, answers, config, tasks, ledger, api, state_fo
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
     if current != need_sha(start_tip):
         raise HiveError("the project's tip moved since the judgement: nothing is applied, the next sweep judges again")
+    ledger.append(rebuilt(repo, start_tip, tasks, ledger, instant))
     claims, queue, _ = plan(repo, config, tasks, ledger, api, state_folder, instant, key, allow_local)
     outcomes, tip = process(repo, start_tip, queue, config, tasks, ledger,
                             lambda entry, task, tip, tree, commit: verdicts.get(commit), instant)

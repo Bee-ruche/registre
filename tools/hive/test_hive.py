@@ -970,6 +970,31 @@ class TestFirstReview(Base):
             self.w.run()
             self.assertEqual([c["task"] for c in self.claims()], ["toy-0001", "toy-0001"])
 
+    def test_when_time_runs_out_no_fork_is_always_the_one_left(self):
+        self.w.set_config({"limits": {"discovery_seconds": 5}})
+        for login, id, path in (("alice", 101, "src/a1.c"), ("bob", 102, "src/b1.c"), ("carol", 103, "src/c1.c")):
+            fork = self.w.forks.get(login) or self.w.fork(login, id)
+            fork.write(path, "int x;\n").commit().marker("toy-0002").push()
+        served = []
+        for hour in ("12", "13", "14"):
+            clock = iter([0, 0] + [10] * 50)  # the time allowed runs out after the first fork read
+            with mock.patch.dict(os.environ, {"HIVE_NOW": f"2026-11-12T{hour}:00:00Z"}), \
+                    mock.patch.object(hive.time, "monotonic", side_effect=lambda: next(clock)):
+                config, tasks, ledger = self.w.load()
+                served.append([e["login"] for e in hive.discover(self.w.harvest, config, self.w.api, set(), self.w.state, hive.now(),
+                                                                 allow_local=True)])
+        self.assertEqual(sorted(served), [["alice"], ["bob"], ["carol"]], "each fork comes first in its turn")
+
+    def test_the_ledger_records_a_claim_and_a_verdict_once_and_a_failure_each_time(self):
+        ledger = hive.Ledger(self.w.state)
+        claim, verdict, error = ({"type": t, "sha": "a" * 40, "at": NOW} for t in ("claim", "verdict", "error"))
+        ledger.append([claim, verdict, error])
+        ledger.append([claim, verdict, error, {**verdict, "sha": "b" * 40}])
+        self.assertEqual([(e["type"], e["sha"][0]) for e in hive.Ledger(self.w.state).events],
+                         [("claim", "a"), ("verdict", "a"), ("error", "a"), ("error", "a"), ("verdict", "b")])
+        ledger.append([{**claim, "sha": "c" * 40}], write=False)
+        self.assertEqual((len(ledger.events), len(hive.Ledger(self.w.state).events)), (6, 5), "the sweep keeps its own in memory")
+
     def test_one_commit_on_several_branches_is_judged_once(self):
         self.alice.submit("toy-0001")
         self.alice.push("second")
@@ -1051,6 +1076,62 @@ class TestFirstReview(Base):
         self.assertEqual([(e["sha"], e["result"]) for e in self.w.events()], [(candidate, "accepted")])
         self.assertEqual(json.loads((self.w.state / "feed.json").read_text())["tip"], self.w.tip())
         self.assertEqual(json.loads((self.w.state / "stats.json").read_text())["models"], {"claude-fable-5-2": {"judged": 1, "accepted": 1}})
+
+
+class TestRebuild(Base):
+    """The project's history is the record of what was integrated: a run that pushed and could not record loses
+    nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.candidate = self.alice.submit("toy-0001", model="claude-fable-5-2")
+        self.integrated = self.one(self.w.run())["commit"]
+        self.record = self.w.events()
+        (self.w.state / "ledger.jsonl").unlink()  # the push landed, the record did not
+        judge_by_content.seen = []
+
+    def test_an_integration_the_ledger_lost_is_read_back_from_the_projects_history(self):
+        tip, verdicts, outcomes = self.w.sweep()
+        self.assertEqual((outcomes, verdicts, judge_by_content.seen), ([], {}, []), "not read again as a candidate that changes nothing")
+        self.assertEqual(self.w.events(), [], "the sweep writes nothing")
+        self.assertEqual(self.w.apply(tip, verdicts), ([], self.integrated))
+        event = self.one(self.w.events())
+        self.assertEqual(event, {"type": "verdict", "at": NOW, "task": "toy-0001", "member": "alice", "member_id": 101,
+                                 "sha": self.candidate, "result": "accepted", "judged": True, "model": None,
+                                 "commit": self.integrated, "rebuilt": True})
+        self.assertEqual({k: event[k] for k in ("task", "member", "member_id", "sha", "commit")},
+                         {k: self.record[0][k] for k in ("task", "member", "member_id", "sha", "commit")})
+        self.assertEqual(self.w.feed()["toy-0001"]["status"], "done")
+        self.assertEqual((self.w.run(), len(self.w.events())), ([], 1), "and read back once")
+
+    def test_a_commit_shaped_like_the_hives_is_not_one(self):
+        """Only the hive's own commits on the branch's own line count: not one that came in through a merge, not one
+        the hive did not commit, not one whose author is not the member it names."""
+        (self.w.state / "ledger.jsonl").write_text("".join(json.dumps(e) + "\n" for e in self.record))
+        sh("git", "pull", "--quiet", "origin", "main", cwd=self.w.seed)
+        tree = sh("git", "rev-parse", "HEAD^{tree}", cwd=self.w.seed).stdout.strip()
+        message = f"toy-0002: Work in src\n\nHive-Task: toy-0002\nHive-Member: bob\nHive-Candidate: {self.start}\n"
+        robot = {"GIT_COMMITTER_NAME": hive.ROBOT[0], "GIT_COMMITTER_EMAIL": hive.ROBOT[1]}
+        bob = {"GIT_AUTHOR_NAME": "bob", "GIT_AUTHOR_EMAIL": "102+bob@users.noreply.github.com"}
+
+        def forged(env, parents, text=message):
+            command = ["git", "commit-tree", tree] + [x for parent in parents for x in ("-p", parent)] + ["-m", text]
+            return subprocess.run(command, cwd=self.w.seed, env={**os.environ, **GIT_ENV, **env}, check=True, capture_output=True,
+                                  text=True).stdout.strip()
+
+        side = forged({**robot, **bob}, [self.integrated])                           # exactly the hive's shape, on a side branch
+        merge = forged({}, [self.integrated, side], "Merge a pull request")           # ...that a maintainer merges
+        other = forged(bob, [merge])                                                  # the hive did not commit this one
+        wrong = forged({**robot, "GIT_AUTHOR_NAME": "bob", "GIT_AUTHOR_EMAIL": "bob@example.com"}, [other])
+        twice = forged({**robot, **bob}, [wrong], message + "Hive-Task: toy-0004\n")
+        gone = forged({**robot, **bob}, [twice], message.replace("toy-0002", "toy-9999"))
+        sh("git", "push", "--quiet", "origin", f"{gone}:refs/heads/main", cwd=self.w.seed)
+        self.assertEqual(self.w.run(), [])
+        self.assertEqual(self.w.events(), self.record, "nothing is read back")
+        real = forged({**robot, **bob}, [gone])  # control: the same commit on the branch's own line is read back
+        sh("git", "push", "--quiet", "origin", f"{real}:refs/heads/main", cwd=self.w.seed)
+        self.w.run()
+        self.assertEqual([(e["member"], e["member_id"], e["task"], e["commit"]) for e in self.w.events()[1:]], [("bob", 102, "toy-0002", real)])
 
 
 class TestHostileData(Base):
