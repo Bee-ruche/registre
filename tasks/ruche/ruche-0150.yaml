@@ -34,7 +34,7 @@ notes:
     text: "Council, 11 Nov 2026, after ruche-0146 and ruche-0147 (bee's messages, help, site, comments and docstrings in English): French left in tools/bee.py on purpose, to settle when the bridges go: the sources value « retiré » that a redaction writes into debate files (data: rename it with a migration of the existing files), gate_mode's « toujours » and FUSION_AUTO=oui/non (machine-shaped), the example « PR fermée sans fusion » that auto-integration.yml passes to bee close, tools/marker_inventory.py's French entries (now unused) and its --names check (pre-switch: it fails on main), and tools/migration/check_messages.py itself once no message PR is left."
   - by: "bidji29"
     at: "2026-11-12T03:58:35Z"
-    text: "Council, 12 Nov 2026: at date D the forks' bridges go too, by fork tasks to create then: libyamlBee's METRIQUES_FR (bee/ci/vocabulaire.py) and both forks' readers of French manifests (manifestes/) and verdicts. The judge's remaining French names (BEE_JUGE_* variables, the juge-commun checkout folder, the toy's messages) wait for judge-v5."
+    text: "Council, 12 Nov 2026: at date D the forks' bridges go too, by fork tasks to create then: both forks' French-to-English fallbacks for metric ids (bee/ci/vocabulaire.py, METRIQUES_FR in libyamlBee) and their readers of French manifests (manifestes/) and verdicts. The judge's remaining French names (BEE_JUGE_* variables, the juge-commun checkout folder, the toy's messages) wait for judge-v5."
 status: open
 created_by: council
 created_on: '2026-11-08'
