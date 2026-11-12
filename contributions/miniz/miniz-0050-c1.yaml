@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/30
 summary: 'minizBee moves to judge-v4 (juge-v3 kept for the transition) and writes English: verdict.json,
   metric ids, the plugin (bee/judge/project.py), ab.py''s report, bee-ci.yml''s code.'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T02:34:56Z'
 engaged_since: '2026-11-12T02:13:50Z'
 reviews: []
@@ -131,3 +131,6 @@ declared:
     the next version move. The registry''s names.yaml has no pr_base yet in fork_judge_base_rule. This
     PR touches bee/** and .github/workflows: a tooling task with judge paths, for a guardian or the council
     (R3).'
+decided_at: '2026-11-12T02:56:03Z'
+decision_reason: 'Fork contribution: minizBee pins judge-v4 (the founder''s tag, 7623c12), keeps juge-v3 for the transition and drops juge-v2''s, moves its plugin to bee/judge/project.py with judge-v4''s English contract, and writes English verdicts, metric ids and ab.py reports. minizBee PR #30 (replacing draft #29, same branch) merged at the judged commit by the agent principal from the council account (as miniz-0051-c1); adversarial review by another model, its one request (a failed judge job turns the verdict red) fixed and tested; every fork CI job green, verdict recorded (250 changed lines, size L by the council''s record of 12 Nov). An empty commit gave #30 a run of its own after #29''s closing window (pr_closed). bee-ci.yml''s comments and step names follow in miniz-0053. Recorded by hand.'
+merge_sha: aa33341328086edb026fe26cfb1be13e0a35e99b
