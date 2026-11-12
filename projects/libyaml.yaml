@@ -6,7 +6,7 @@ license: MIT
 fork: https://github.com/Bee-ruche/libyamlBee
 reference: yaml-test-suite (expected event streams, through tests/run-parser-test-suite.c) and libfyaml; same event stream, same errors
 scope:
-  - Parser (scanner, parser)
+  - Parsing (scanner, parser)
   - Document loader
   - Emitter
 out_of_scope:

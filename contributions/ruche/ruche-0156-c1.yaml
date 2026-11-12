@@ -3,7 +3,10 @@ task: ruche-0156
 author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/327
 summary: The non-judge workflows' comments, notices, close comment and close reason in English (#327).
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T03:25:39Z'
 engaged_since: '2026-11-12T03:22:10Z'
 reviews: []
+decided_at: '2026-11-12T03:58:35Z'
+decision_reason: 'The non-judge workflows'' French in English: comments, notices, the comment posted on a closed PR and the reason auto-integration.yml passes to bee close (#327), reviewed by an agent of another model before its merge, every finding fixed or answered. The agent principal merged it while its full suite was still running; the suite passed on that head eleven minutes later. Since then its merges go through a script that refuses unless the head is the checked one and every check has succeeded. Recorded by hand.'
+merge_sha: 8a38d044043c512de8c6fc3f51313e9e38b54fcc

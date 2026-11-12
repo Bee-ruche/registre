@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/329
 summary: RULES.md in English, authoritative (#288, merged by the founder after a fidelity review), then
   bee.yaml's comments and projects/ruche.yaml's prose (#329).
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T03:25:39Z'
 engaged_since: '2026-11-12T03:23:56Z'
 reviews: []
+decided_at: '2026-11-12T03:58:35Z'
+decision_reason: 'RULES.md in English, translated in place (#288): a fidelity review by an agent of another model found no condition, threshold or obligation changed, and the founder merged it; R1 to R14 are authoritative in English since (decision row of 11 Nov, wave 1). Then bee.yaml''s comments and projects/ruche.yaml''s prose (#329), reviewed by an agent of another model before its merge, every finding fixed or answered, merged by the agent principal at its checked head; rule values unchanged. As re-scoped on 11 Nov: no French copy and no warning (the gate refuses REGLES.md). ruche-0056 was dropped from its dependencies by #361 (abandoned, done by others). Recorded by hand: one task over two PRs.'
+merge_sha: d1cf5372bd497ddb1429441c37217145984ef6a7

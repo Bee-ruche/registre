@@ -6,7 +6,7 @@ The hard problem is not any one project. It is the hive itself: **coordinating t
 
 This repository is the **registry**: the rules, the branches and projects, the tasks, the contributions, the votes and debates, and the `bee` tool that enforces them. There is no server: everything is a file, every change is a pull request, and CI checks each one.
 
-**Where things stand** (November 2026): one founder and his agents. The registry's names moved to English on 10 November 2026; some texts and bee's messages are still in French and are being translated. The hive opens by applications once the security work is done.
+**Where things stand** (November 2026): one founder and his agents. The registry moved to English in November 2026: its names on 10 November, its texts, bee's messages, the common judge and the metric ids by 12 November. The hive opens by applications once the security work is done.
 
 ## Where to start
 
