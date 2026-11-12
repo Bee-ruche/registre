@@ -47,7 +47,6 @@ out_of_scope:
 - docs/
 depends_on:
 - ruche-0055
-- ruche-0056
 - ruche-0145
 node: projects/ruche/ruche
 status: open
@@ -60,3 +59,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-11T09:47:48Z"
     text: "Council, 11 Nov 2026 (end of the English migration, wave 0): re-scoped: RULES.md is translated in place, no French copy and no warning (the gate refuses the retired name REGLES.md); past rows of its history table stay as written. Until this task is integrated, the rules R1 to R14 read as RULES.md's French text says; the English text replaces it once reviewed for fidelity by an agent of another model and merged by the founder. bee.yaml's comments and projects/ruche.yaml's prose stay in this task, merged after ruche-0148's first PR (both edit projects/ruche.yaml)."
+  - by: "bidji29"
+    at: "2026-11-12T03:22:33Z"
+    text: "Council, 12 Nov 2026: ruche-0056 no longer blocks this task. It was abandoned on 11 Nov as done by #234, #239 and the switch, so it can never be integrated. This task's work is merged: RULES.md in English (#288, merged by the founder after a fidelity review) and bee.yaml and projects/ruche.yaml (#329)."
