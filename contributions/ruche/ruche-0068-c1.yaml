@@ -5,7 +5,10 @@ pr: https://github.com/Bee-ruche/registre/pull/303
 summary: 'The role briefs and the organization in English: docs/organization.md, agent-principal.md and
   council-bee.md (#298), builder.md, adversarial-reviewer.md and dress-rehearsal.md (#303), merged by
   the founder.'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T10:29:32Z'
 engaged_since: '2026-11-12T10:07:58Z'
 reviews: []
+decided_at: '2026-11-12T10:31:06Z'
+decision_reason: 'The role briefs and the organization in English, in two PRs merged by the founder after a fidelity review by an agent of another model: part a #298 (docs/organization.md, governance/briefs/agent-principal.md and council-bee.md; no power widened or narrowed) and part b #303 (builder.md, adversarial-reviewer.md and dress-rehearsal.md). These six files are authoritative in English. The question raised in #298, whether « a single session never combines writing, reviewing and merging the same thing » means never all three or never two of them, is left by the founder to the next project review. Recorded by hand: one task over two PRs.'
+merge_sha: db687f623a984e5a89c5b6dc2f5e1f731134f2d6
