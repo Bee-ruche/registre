@@ -1,0 +1,10 @@
+id: miniz-0053-c1
+task: miniz-0053
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/31
+summary: bee-ci.yml's comments, job names and step names in English, describing judge-v4 (the comment-only
+  and name-only hunks set aside from miniz-0050).
+status: in_review
+submitted_at: '2026-11-12T10:05:45Z'
+engaged_since: '2026-11-12T04:13:45Z'
+reviews: []
