@@ -80,13 +80,22 @@ To ask before the public opening; the builder is not a lawyer and states its unc
    disclose (US FTC Endorsement Guides; French and EU rules on influence), and how.
 5. **Personal data**: storing a member's GitHub login, X handle and post number; a privacy notice; GDPR basis.
 
-## D4. Which project to approach first, and the pitch
+## D4. The flagship, and the projects to invite
 
-**Recommendation**: approach **one** open-source project as an invited pilot, once phase 1 works: a widely used
-library or tool whose maintainers accept AI contributions in writing, whose tests can judge every change, and whose
-work splits into many small tasks. Never approach a project whose written policy refuses AI contributions. The
-choice is still to study (docs/candidates.md lists giflib, bzip2, cJSON and lodepng; projects with a larger
-community behind them should be weighed too). Gaming is set aside for now (decision of 12 November 2026).
+**Why it changed**: the first plan made the opening depend on an invited project's yes. The engineering plan
+(docs/plan.md, 4.3) puts first a flagship the hive can start alone, and invitations second.
+
+**Recommendation for the flagship**: **PCRE2 in safe Rust, proven case by case against the original**, decided
+only after phase 2's spike answers three questions (can the common judge judge Rust; does the work split into
+several hundred leaves; what a judgement costs). It needs nobody's permission: the hive writes a new work under
+PCRE2's licence, and the test data is in the public domain. Options: (a) accept this candidate and let the spike
+decide, recommended; (b) name another candidate that meets the five criteria of the plan's 4.2; (c) open with miniz
+alone, which draws little.
+
+**Recommendation for invitations**: wait until phase 1 works, then answer the projects that ask, and approach at
+most one. Never approach a project whose written policy refuses AI contributions. Do not use docs/candidates.md
+(giflib, bzip2, cJSON, lodepng) as a list of libraries to port: several are among those an existing public effort
+has already ported with agents (D9). Gaming is set aside (decision of 12 November 2026).
 
 **Outside action**: the founder sends the pitch, publicly or privately as the project prefers (commandment 8: no
 contact without the founder's decision).
@@ -100,12 +109,12 @@ contact without the founder's decision).
 >
 > What we would offer, only if you want it:
 >
-> - A task list generated from your own data (failing tests, coverage gaps, hot spots, labelled issues), with
->   leases so that nothing is worked on twice.
-> - Every contribution judged by your tests before it reaches you, and sent to your repository under your rules.
->   Nothing is merged without your acceptance, and there is no competing fork.
-> - Caps you set on open pull requests, a named human for every contribution, AI authorship disclosed, and a stop
->   button you control.
+> - A task list generated from your own data (failing tests, coverage gaps, hot spots), as small tasks on separate
+>   files.
+> - Every contribution judged by your tests before you ever see it. What passes is kept on a branch you can pull
+>   from, at the rate you choose. We never open a pull request, an issue or a comment on your repository unless you
+>   ask for it, and there is no competing fork.
+> - AI authorship disclosed, the contributor's GitHub identity on every commit, and a stop button you control.
 >
 > What we ask: a written yes, a scope, and one person to tell us what your reviewers can absorb. If the answer is
 > no, we won't write again.
@@ -139,3 +148,23 @@ Phase 1's milestone needs three volunteers who are not the founder, each with a 
 older than 90 days, willing to run the worker for a week on miniz. **Recommendation**: people the founder knows
 personally, told plainly what the worker does and that the providers have not yet answered D1. Outside action:
 the founder asks them; the hive sends no invitation by itself (commandment 13).
+
+## D9. Offer to check the AI-written ports that already exist
+
+**Why it is a decision**: at least one public effort has ported C libraries to Rust with agents (cJSON, giflib,
+bzip2 and libyaml among them), states that no human has read the generated code, and says it accepts test cases
+that show a difference from the original, not patches. The hive's "reproduce" tasks (docs/plan.md, 3.1) produce
+exactly that, and porting those libraries again would be the duplication the hive exists to end. But it means
+contacting its maintainers, whose process for outside submissions is not written, and agreeing first on how a
+difference that is a vulnerability gets reported.
+
+**Options**: (a) the founder writes to them once phase 1 works, with the question "would test cases from the
+hive's workers help you, and how should a security-relevant one reach you?", recommended; (b) not now.
+
+**Outside action**: the founder's message. The builder contacts nobody.
+
+## D10. What only the founder's account can set up
+
+The engineering plan lists it once (docs/plan.md, 7.1): the pull request to `main`, the repository settings, the
+integration identity for the `apply` job, access to the two forks, and phase 1's three volunteers (D8). Nothing
+goes into service before these, and the builder does none of them.
