@@ -8,3 +8,90 @@ status: in_review
 submitted_at: '2026-11-12T02:34:56Z'
 engaged_since: '2026-11-12T02:13:50Z'
 reviews: []
+verdict:
+  ci: green
+  base: 1a8baf583adc5e45cfb4e3e6b08591f51194b186
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725565.0
+      B: 461725565.0
+      gain: 0.0
+  degradations: {}
+  changed_lines: 167
+  declared_gap: null
+  sha: 1b3e58e7c25d567644f89a7dd61e4c78462552e5
+  tree: e5deea857262f9ef76a63518fbd7d99f7513fd6b
+  checked_files: true
+  modified_judges:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/bench/ab.py
+  - bee/bench/banc.c
+  - bee/bench/test_ab.py
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/ci/verifier_fork.py
+  - bee/ci/vocabulaire.py
+  - bee/corpus/generer.py
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/43118086690
+verdicts:
+- sha: 1b3e58e7c25d567644f89a7dd61e4c78462552e5
+  tree: e5deea857262f9ef76a63518fbd7d99f7513fd6b
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 167
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725565.0
+      B: 461725565.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'In bee/sandbox/sans-docker.sh: bee/ci/test_verdict.py (41 tests, OK), bee/bench/test_ab.py (10 tests,
+    OK), bee/tests/lancer.sh (40 event streams and 62 round trips identical to the reference).'
+  - A mutation of BEE_JUGES in a scratch copy fails the two new Juges tests.
+  - 'ab.py before and after on the same revisions (269d1ec against 1a8baf5, 6 repetitions, --instructions),
+    each in its sandbox: the old report translated by names.yaml has exactly the new report''s 141 key
+    paths; 38 deterministic values are equal, instruction counts included (249769850, 341192769, 461725565).'
+  - 'verdict.py before and after on the same artifacts in 5 scenarios (green; red step; red without result;
+    task copy missing; green with degradations and bootstrap): the old verdict.json translated key by
+    key by names.yaml''s fork_verdict, plus the disclosed map for steps, labels and details, equals the
+    new one in all 5.'
+  - 'In a temporary copy of registry main: bee record-verdict records the English and the French verdict
+    of the same inputs identically, records the English red verdict and the workflow''s English fallback
+    verdict, and refuses an English verdict with another metric; bee record-measurement records the French
+    report and its English translation identically, and accepts the real new report.'
+  untested:
+  - 'The CI of this PR runs the base''s scripts (judges from the base): its own verdict.json is still
+    French; the English verdict first appears on the PR after the merge.'
+  - 'ARM64 and the 600 s fuzzing run: only in the CI.'
+  doubts: 'Names names.yaml does not hold were chosen here: the steps keys (judges, manifest_and_size,
+    build_x86_64, determinism_x86_64, ab_bench…), their values passed/failed, the step labels, and the
+    details keys (metric_origin, manifest, task, head, gains_by_metric, sign_test, method). bee does not
+    read them; miniz-0050 may choose others. Kept French on purpose: state files and their values, job
+    and step ids, artifact names, GITHUB_OUTPUT names, environment variables and script options, because
+    the PR''s workflow runs the base''s scripts.'

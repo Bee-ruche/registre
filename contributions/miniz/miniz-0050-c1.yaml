@@ -8,3 +8,6 @@ status: in_review
 submitted_at: '2026-11-12T02:34:56Z'
 engaged_since: '2026-11-12T02:13:50Z'
 reviews: []
+awaiting_verdict:
+  reason: pr_closed
+  sha: 0917ed72f1ce32dffc0f7f3b34d5ac9de29da63a
