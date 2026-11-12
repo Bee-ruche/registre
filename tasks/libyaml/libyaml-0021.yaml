@@ -27,9 +27,7 @@ notes:
   - by: "bidji29"
     at: "2026-11-11T09:47:48Z"
     text: "Council, 11 Nov 2026 (end of the English migration, wave 0): re-scoped: libyamlBee has no common judge or plugin yet, so the judge-v4 part waits for libyaml-0013 to 0018; this task keeps the verdict, metric ids, bee-ci.yml and the fallbacks."
-status: reserved
-reservation:
-  user: "bidji29"
-  since: "2026-11-12T02:13:50Z"
+status: in_review
+contribution: libyaml-0021-c1
 created_by: council
 created_on: '2026-11-08'
