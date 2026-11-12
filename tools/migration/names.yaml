@@ -1935,6 +1935,7 @@ domains:
     en parallèle: parallel
   fork_judge_base_rule:
     point_de_depart: start_point
+    base_de_la_pr: pr_base
     introduction: introduction
     refus_point_de_depart: refused_start_point
     refus_rebase: refused_rebase
