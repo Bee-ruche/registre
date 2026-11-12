@@ -31,7 +31,7 @@ verdict:
       B: 34140561.0
       gain: 0.0
   degradations:
-    debit_decompression: -0.017211294821981582
+    decompression_throughput: -0.017211294821981582
   judge:
     version: 2
     common: null

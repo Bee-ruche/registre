@@ -16,22 +16,22 @@ status: active
 opening_phase: 1
 maintainer_tier: none
 metrics:
-  - id: debit_compression_n1
+  - id: compression_throughput_n1
     description: Débit de compression au niveau 1 sur le corpus de référence
     unit: MB/s
     direction: higher
     instructions: instructions_n1
-  - id: debit_compression_n6
+  - id: compression_throughput_n6
     description: Débit de compression au niveau 6 sur le corpus de référence
     unit: MB/s
     direction: higher
     instructions: instructions_n6
-  - id: debit_compression_n9
+  - id: compression_throughput_n9
     description: Débit de compression au niveau 9 sur le corpus de référence
     unit: MB/s
     direction: higher
     instructions: instructions_n9
-  - id: debit_decompression
+  - id: decompression_throughput
     description: Débit de décompression sur le corpus de référence
     unit: MB/s
     direction: higher
@@ -40,7 +40,7 @@ metrics:
     description: Taille originale divisée par taille compressée, niveau 6
     unit: ratio
     direction: higher
-  - id: memoire_max_ko
+  - id: max_memory_kb
     description: Mémoire résidente maximale pendant le banc
     unit: KB
     direction: lower

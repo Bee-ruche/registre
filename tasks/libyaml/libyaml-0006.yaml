@@ -6,7 +6,7 @@ size: M
 title: "Round trip through the document API (yaml_parser_load, yaml_emitter_dump) and emitter settings"
 context: >
   The round-trip oracle of libyaml-0003 (bee/tests/aller_retour.c) goes through the event API
-  (yaml_emitter_emit) with the default settings. Yet the metric debit_emission measures
+  (yaml_emitter_emit) with the default settings. Yet the metric emit_throughput measures
   yaml_emitter_dump of a loaded document (bee/bench/banc.c, bee_passe_emission): an optimization of
   src/dumper.c alone, or of the loading path (src/loader.c), would not be judged by the round trip.
   Extend aller_retour.c (or a second harness): (1) load each document with yaml_parser_load, re-emit

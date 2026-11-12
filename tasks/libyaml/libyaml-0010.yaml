@@ -15,10 +15,10 @@ context: >
   fallback (R6, portability).
 files: [src/reader.c]
 reach: 1.0
-metric: debit_analyse
+metric: parse_throughput
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64; event stream unchanged (identical fingerprints)"
-  - "gain >= 2% on debit_analyse, beyond the noise (R4)"
+  - "gain >= 2% on parse_throughput, beyond the noise (R4)"
   - "no other metric degraded by more than 1% (R5)"
   - "invalid UTF-8 inputs are still rejected, at the same place (test cases in the manifest)"
 out_of_scope: [output format, public API (yaml.h), new dependency, UTF-8 validation (same refusals)]

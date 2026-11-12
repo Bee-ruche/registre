@@ -15,10 +15,10 @@ context: >
   fuzzing le vérifient. Garder le chemin général comme repli (R6, portabilité).
 files: [src/reader.c]
 reach: 1.0
-metric: debit_analyse
+metric: parse_throughput
 acceptance_criteria:
   - "CI verte (R2), x86-64 et ARM64 ; flux d'événements inchangé (empreintes identiques)"
-  - "gain >= 2 % sur debit_analyse, au-delà du bruit (R4)"
+  - "gain >= 2 % sur parse_throughput, au-delà du bruit (R4)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "les entrées UTF-8 invalides sont toujours rejetées, au même endroit (cas de test dans le manifeste)"
 out_of_scope: [format de sortie, API publique (yaml.h), nouvelle dépendance, validation UTF-8 (mêmes refus)]

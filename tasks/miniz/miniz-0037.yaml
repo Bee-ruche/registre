@@ -35,12 +35,12 @@ context: >
   level 1, time follows instructions (0.117 ns per instruction, TABLEAUX.md section 4).
 files: [miniz_tdef.c]
 reach: 1.0
-metric: debit_compression_n1
+metric: compression_throughput_n1
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
-  - "no other metric degraded by more than 1% (R5), debit_compression_n9 included (the regression of miniz-0013's trial)"
+  - "R4: at least 2% fewer instructions on compression_throughput_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5), compression_throughput_n9 included (the regression of miniz-0013's trial)"
   - "manifest: disassembly of the probe loop before and after (no new spill to the stack), instructions_n6 and instructions_n9 declared"
   - "identical fingerprints, including the flushes « 1v », « 6v » and « 9v » and the streaming call (flux-1, flux-4096)"
   - "the TDEFL_LESS_MEMORY case (12-bit hash) stays correct: argument or trial declared in the manifest"
