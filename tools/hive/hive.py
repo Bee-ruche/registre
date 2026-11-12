@@ -802,6 +802,22 @@ def build_feed(config, tasks, ledger, tip):
             "generated_at": iso(instant), "tip": tip, "check": config.get("check", ""), "tasks": listed}
 
 
+def build_stats(ledger):
+    """What the ledger says of members and models, for the project's page: candidates judged and accepted. The model
+    is what each worker declared: a statistic, not a proof."""
+    members, models = {}, {}
+    for event in ledger.events:
+        if event.get("type") != "verdict" or not event.get("judged"):
+            continue
+        accepted = event.get("result") == "accepted"
+        for table, key in ((members, event.get("member")), (models, event.get("model") or "undeclared")):
+            if isinstance(key, str) and (LOGIN.match(key) or MODEL.match(key)):
+                row = table.setdefault(key, {"judged": 0, "accepted": 0})
+                row["judged"] += 1
+                row["accepted"] += accepted
+    return {"protocol": PROTOCOL, "generated_at": iso(now()), "members": members, "models": models}
+
+
 def pick(feed, login, hour, max_tier=3, sizes=("S", "M", "L")):
     """The task a worker takes: among the open ones (then the claimed ones), in an order drawn from the login and the
     hour, so that workers who start together spread over the tasks without talking to each other."""
@@ -865,9 +881,20 @@ def tip_of(repo, config):
     return git(repo, "rev-parse", "--verify", f"refs/remotes/origin/{config['branch']}^{{commit}}").stdout.strip()
 
 
+def paused(config):
+    """The project's stop button: « paused: true » in its configuration. Nothing is collected, judged or integrated."""
+    if config.get("paused"):
+        print(f"project {config['project']} is paused: nothing is done")
+        return True
+    return False
+
+
 def cmd_sweep(args):
     """collect + judge: no write token. Writes results.json for the apply step."""
     config, tasks, state, ledger = project_of(args)
+    if paused(config):
+        write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "paused": True})
+        return
     api = GhApi()
     tip = tip_of(args.repo, config)
     claims, candidates = collect(args.repo, config, tasks, ledger, api, state)
@@ -881,12 +908,15 @@ def cmd_sweep(args):
 
 def cmd_apply(args):
     config, tasks, state, ledger = project_of(args)
+    if paused(config):
+        return
     data = read_json(args.results)
     if not (isinstance(data, dict) and data.get("project") == config["project"] and is_sha(data.get("tip"))
             and isinstance(data.get("results"), list) and isinstance(data.get("claims"), list)):
         raise HiveError("results.json is not a sweep of this project")
     tip = apply(args.repo, args.remote, data["tip"], data["results"], data["claims"], config, tasks, ledger, GhApi())
     write_json(state / "feed.json", build_feed(config, tasks, ledger, tip))
+    write_json(state / "stats.json", build_stats(ledger))
     print(f"tip {tip}")
 
 

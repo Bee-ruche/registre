@@ -296,6 +296,22 @@ class TestIntegration(Base):
         self.assertIsNone(hive.pick(feed, "alice", "h", max_tier=1), "a light model leaves it to a stronger one")
         self.assertEqual(hive.pick(feed, "alice", "h", max_tier=2)["id"], "toy-0001")
 
+    def test_the_stop_button_and_the_statistics(self):
+        self.alice.submit("toy-0001", model="claude-fable-5-2")
+        self.w.fork("bob", 102).submit("toy-0004", content=LIB + "/* REFUSE */\n")
+        self.w.run()
+        stats = hive.build_stats(self.w.load()[2])
+        self.assertEqual(stats["members"], {"alice": {"judged": 1, "accepted": 1}, "bob": {"judged": 1, "accepted": 0}})
+        self.assertEqual(stats["models"], {"claude-fable-5-2": {"judged": 1, "accepted": 1}, "undeclared": {"judged": 1, "accepted": 0}})
+        self.w.set_config({"paused": True})
+        out = self.w.root / "results.json"
+        common = ["--registry", str(self.w.registry), "--project", "toy", "--state", str(self.w.state.parent), "--repo", str(self.w.harvest)]
+        with mock.patch.object(hive, "collect", side_effect=AssertionError("a paused project collects nothing")), \
+                mock.patch.object(hive, "apply", side_effect=AssertionError("a paused project applies nothing")), mock.patch("sys.stdout"):
+            hive.main(["sweep", *common, "--workdir", str(self.w.work), "--out", str(out)])
+            hive.main(["apply", *common, "--results", str(out)])
+        self.assertTrue(json.loads(out.read_text())["paused"])
+
     def test_a_goal_on_a_metric(self):
         self.alice.submit("toy-0004")
         self.refused("goal_not_met")
@@ -611,6 +627,26 @@ class TestHostileData(Base):
         self.assertTrue(os.access(self.w.root / "out2/run.sh", os.X_OK))
         self.assertFalse(os.access(self.w.root / "out2/lib.c", os.X_OK))
         self.assertFalse((self.w.root / "out2/.git").exists())
+
+    def test_defences_that_no_candidate_should_reach(self):
+        tip = self.start
+        with self.assertRaises(hive.HiveError):  # a login that is not a login never signs a commit
+            hive.squash_commit(self.w.harvest, hive.tree_of(self.w.harvest, tip), tip, TASKS[0], {"login": "a b\nX: y", "id": 1}, tip)
+        missing = sh("git", "mktree", "--missing", cwd=self.w.harvest, stdin=f"100644 blob {'1' * 40}\tgone.c\n").stdout.strip()
+        with self.assertRaises(hive.HiveError):  # a tree whose blob is not there is not written to disk as if it were
+            hive.materialize(self.w.harvest, missing, self.w.root / "out3")
+        real_git = hive.git
+
+        def broken_merge(repo, *args, **options):
+            if args[0] == "merge-tree":
+                return subprocess.CompletedProcess(args, 2, stdout="", stderr="fatal: boom")
+            return real_git(repo, *args, **options)
+
+        self.alice.submit("toy-0001")
+        with mock.patch.object(hive, "git", side_effect=broken_merge):
+            result = self.one(self.w.run())
+        self.assertEqual(result["result"], "skipped", "git failing is the hive's error, never an answer to the member")
+        self.assertEqual(self.w.events(), [])
 
     def test_paths_and_patterns(self):
         for bad in ("", "/abs", "a/../b", "a//b", "./a", ".git/config", "a/.GIT/x", "a\tb", "a\\b", " a", "aé", "x" * 201):
