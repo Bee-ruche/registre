@@ -8,11 +8,13 @@ one squashed commit credited to the fork's owner.
 
 Trust: everything that comes from a fork (objects, ref names, commit messages, logins) is hostile data. This file
 never checks a fork's tree out with git, never runs a hook or a filter, and never passes a fork's string to a
-shell. Three steps, for two jobs of a workflow:
+shell. Two jobs of a workflow:
 
-  collect + judge   no write token: discover, check the structure, judge in the isolated judge, write results.json
-  apply             the only step with a write token: derives everything again from git objects by SHA, trusts
-                    results.json for the judge's code only, pushes the judged commits (fast-forward) and records
+  sweep   no write token: reads the forks, checks the structure, judges in the isolated judge, and writes the
+          judge's answers by judged commit id
+  apply   the only step with a write token: reads the forks again and derives everything by itself, takes from the
+          sweep the judge's answers only, pushes the judged commits (never anything but a descendant of the judged
+          tip) and records
 
 Volunteer side (same file, in the fork's clone): next, claim, submit.
 
@@ -26,6 +28,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -41,6 +44,8 @@ HEAD_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never a sentence
 MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model): (.{1,200})\Z")
 JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times is answered: judge_failed
+RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
+SWEEP_MAX_AGE_HOURS = 6  # the write step applies no sweep older than this (a job cannot run longer)
 ACTIONS = ("claim", "submit")
 FILE_MODES = ("100644", "100755")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git knows it without it being written
@@ -299,8 +304,10 @@ class Ledger:
                    and e.get("at", "")[:10] == day)
 
     def judged_today(self, member_id, day):
-        return sum(1 for e in self.events if e.get("type") == "verdict" and e.get("member_id") == member_id
-                   and e.get("judged") and e.get("at", "")[:10] == day)
+        """The judge's runs this member's candidates used today: those that gave an answer, and those where the judge
+        failed on the candidate (they cost the most)."""
+        return sum(1 for e in self.events if e.get("member_id") == member_id and e.get("at", "")[:10] == day
+                   and (e.get("type") == "error" or e.get("type") == "verdict" and e.get("judged")))
 
     def errors(self, sha):
         return sum(1 for e in self.events if e.get("type") == "error" and e.get("sha") == sha)
@@ -690,21 +697,23 @@ def discover(repo, config, api, skip, state_folder, allow_local=False, budget_se
     return entries
 
 
-def plan(repo, config, tasks, ledger, api, state_folder, key, allow_local=False):
+def plan(repo, config, tasks, ledger, api, state_folder, instant, key=None, allow_local=False):
     """What the sweep and the write step both derive, each on its own, before any judgement: the claims to record
-    and the candidates in the order they are judged.
+    and the candidates in the order they are judged. Returns (claims, queue, key).
 
-    Order: a candidate whose member holds a claim on the task that an EARLIER sweep recorded comes first, by the
-    time the hive recorded that claim (the hive's clock, never the commit's); the others follow, in an order drawn
-    from the commit and the run's key, which nobody knows before the run. So copying someone's work, even with a
-    commit id chosen at will, does not put the copy in front of a member who had said they were on the task.
+    Order: a draw from each commit's id and the run's key. The sweep draws the key AFTER it has read the forks, so
+    no commit can have been made to come first, and hands it to the write step. A claim gives no rank: it is a hint
+    for other workers, and anyone can push one.
 
     Claims: from accounts that could submit, one live claim per member, and none on a task the member let expire in
-    the last day."""
-    instant, ttl = now(), config["claim_ttl_minutes"]
+    the last day, so that claims cannot be used to keep others away from tasks."""
+    ttl = config["claim_ttl_minutes"]
     entries = discover(repo, config, api, ledger.seen() | upstream_tips(repo), state_folder, allow_local)
-    held_before = ledger.live_claims(instant, ttl)
-    held, done, members, claims, queue, known = dict(held_before), ledger.done(), {}, [], [], set()
+    if key is None:
+        key = secrets.token_hex(16)
+    if not (isinstance(key, str) and RUN_KEY.match(key)):
+        raise HiveError("the run's key is unreadable")
+    held, done, members, claims, queue, known = ledger.live_claims(instant, ttl), ledger.done(), {}, [], [], set()
     for entry in sorted(entries, key=lambda e: e["sha"]):
         if entry["sha"] in known:
             continue
@@ -725,14 +734,8 @@ def plan(repo, config, tasks, ledger, api, state_folder, key, allow_local=False)
                            "member_id": member["id"], "repo_id": entry["repo_id"], "sha": entry["sha"]})
         else:
             queue.append({**entry, "refusal": reason})
-
-    def order(entry):
-        claim = held_before.get(entry["member_id"])
-        return (claim[1] if claim and claim[0] == entry["task"] else iso(instant),
-                hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
-
-    queue.sort(key=order)
-    return claims, queue
+    queue.sort(key=lambda entry: hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
+    return claims, queue, key
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -787,15 +790,15 @@ def clean_report(report):
     return kept
 
 
-def process(repo, tip, queue, config, tasks, ledger, verdict_of, judgements=None):
+def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, judgements=None):
     """Goes through the candidates in order, on a tip that moves with each acceptance, and returns (outcomes, tip).
     verdict_of(entry, task, tip, tree, commit) gives the judge's answer for one judged commit, or None when there is
-    none yet: the sweep runs the judge there, the write step looks the commit up in the sweep's answers.
+    none: the sweep runs the judge there, the write step looks the commit up in the sweep's answers.
 
-    An outcome is accepted, refused (with a reason), error (the judge's machine failed on it), or skipped (not
-    answered now: a cap, or no answer yet). When a candidate is left without an answer, the later candidates for the
-    same task wait too: nobody passes in front of an earlier candidate by its answer being withheld."""
-    instant = now()
+    An outcome is accepted, refused (with a reason), error (the judge failed on this candidate), or skipped (not
+    answered now: a cap, or no answer). A candidate without an answer holds nobody back: in the write step it is one
+    that arrived after the sweep, and it waits for the next run. The sweep itself never judges a candidate in front
+    of an earlier one for the same task (its budget and the judge's failures stop the task for that sweep)."""
     day, rules = iso(instant)[:10], config["members"]
     outcomes, done, waiting, answered, judged_for, judged = [], set(ledger.done()), set(), {}, {}, 0
     for entry in queue:
@@ -830,14 +833,13 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, judgements=None
             outcome.update(merged_tree=tree, commit=commit, figures=figures)
             verdict = verdict_of(entry, task, tip, tree, commit)
             if verdict is None:
-                waiting.add(entry["task"])
                 continue
             judged += 1
+            judged_for[member_id] = judged_for.get(member_id, 0) + 1  # a failure of the judge counts too: it costs the most
             if verdict["code"] not in (0, 1):
                 outcome["result"] = "error"
                 waiting.add(entry["task"])
                 continue
-            judged_for[member_id] = judged_for.get(member_id, 0) + 1
             outcome.update(judged=True, report=verdict["report"])
             if verdict["code"] == 1:
                 raise Refusal("judge_refused")
@@ -897,22 +899,37 @@ def judging(repo, judge, workdir, verdicts):
     return verdict_of
 
 
-def sweep(repo, tip, config, tasks, ledger, api, state_folder, key, judge, workdir, allow_local=False):
-    """The step without a write token: plans, judges, and returns (verdicts, outcomes). Only the verdicts leave it:
-    a table from the id of each judged commit to the judge's answer."""
-    verdicts = {}
-    _, queue = plan(repo, config, tasks, ledger, api, state_folder, key, allow_local)
-    outcomes, _ = process(repo, need_sha(tip), queue, config, tasks, ledger, judging(repo, judge, workdir, verdicts),
+def sweep(repo, tip, config, tasks, ledger, api, state_folder, judge, workdir, allow_local=False):
+    """The step without a write token: plans, judges, and returns (answers, outcomes). Only the answers leave it:
+    the run's instant, its key, and a table from the id of each judged commit to the judge's answer."""
+    instant, verdicts = now(), {}
+    _, queue, key = plan(repo, config, tasks, ledger, api, state_folder, instant, None, allow_local)
+    outcomes, _ = process(repo, need_sha(tip), queue, config, tasks, ledger, judging(repo, judge, workdir, verdicts), instant,
                           judgements=config["limits"]["judgements_per_sweep"])
-    return verdicts, outcomes
+    return {"at": iso(instant), "key": key, "verdicts": verdicts}, outcomes
 
 
 # ---------------------------------------------------------------------------------------------------------------
 # Apply: the only step that writes
 
 
+def read_answers(answers):
+    """What the write step takes from the sweep: (the run's instant, its key, the verdicts). The instant is the
+    sweep's, so that both steps count days and claims the same way, but only if it is a plausible one."""
+    try:
+        instant = parse_iso(answers["at"])
+        key, table = answers["key"], answers["verdicts"]
+    except (TypeError, KeyError, ValueError):
+        raise HiveError("the sweep's answers are unreadable") from None
+    if not (isinstance(key, str) and RUN_KEY.match(key)):
+        raise HiveError("the run's key is unreadable")
+    if not now() - dt.timedelta(hours=SWEEP_MAX_AGE_HOURS) <= instant <= now() + dt.timedelta(minutes=5):
+        raise HiveError("the sweep's instant is not a recent one: nothing is applied")
+    return instant, key, read_verdicts(table)
+
+
 def read_verdicts(table):
-    """The sweep's answers as the write step accepts them: commit id -> {code 0, 1 or 2; plain figures}."""
+    """The judge's answers as the write step accepts them: commit id -> {code 0, 1 or 2; plain figures}."""
     kept = {}
     for commit, answer in (table.items() if isinstance(table, dict) else ()):
         if is_sha(commit) and isinstance(answer, dict) and answer.get("code") in (0, 1, 2) and not isinstance(answer["code"], bool):
@@ -952,20 +969,24 @@ def events_of(claims, outcomes, instant):
     return events
 
 
-def apply(repo, remote, start_tip, verdicts, config, tasks, ledger, api, state_folder, key, allow_local=False):
+def apply(repo, remote, start_tip, answers, config, tasks, ledger, api, state_folder, allow_local=False):
     """The only step that writes. It plans again by itself, from the forks as they are now, exactly as the sweep did,
-    and takes from the sweep one thing: the judge's answer for each commit id it derives itself. Then it pushes the
-    judged commits and records. Returns (outcomes, tip)."""
+    and takes from the sweep the run's instant and key and one more thing: the judge's answer for each commit id it
+    derives itself. Then it pushes the judged commits and records. Returns (outcomes, tip).
+
+    So a sweep that was taken over can lie about what the judge said, and nothing else: it cannot name a candidate,
+    a member, a task or a path."""
+    instant, key, verdicts = read_answers(answers)
     current = git(repo, "ls-remote", remote, f"refs/heads/{config['branch']}", timeout=60,
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
     if current != need_sha(start_tip):
         raise HiveError("the project's tip moved since the judgement: nothing is applied, the next sweep judges again")
-    answers = read_verdicts(verdicts)
-    claims, queue = plan(repo, config, tasks, ledger, api, state_folder, key, allow_local)
-    outcomes, tip = process(repo, start_tip, queue, config, tasks, ledger, lambda entry, task, tip, tree, commit: answers.get(commit))
+    claims, queue, _ = plan(repo, config, tasks, ledger, api, state_folder, instant, key, allow_local)
+    outcomes, tip = process(repo, start_tip, queue, config, tasks, ledger,
+                            lambda entry, task, tip, tree, commit: verdicts.get(commit), instant)
     if tip != start_tip:
         guarded_push(repo, remote, config["branch"], start_tip, tip, allow_local)
-    ledger.append(events_of(claims, outcomes, now()))
+    ledger.append(events_of(claims, outcomes, instant))
     return outcomes, tip
 
 
@@ -1090,17 +1111,8 @@ def paused(config):
     return False
 
 
-def run_key(args):
-    """The key both steps of one run share to order candidates that arrive together: the workflow gives its run id,
-    which nobody knows before the run starts."""
-    key = args.key or os.environ.get("HIVE_RUN_KEY", "")
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", key):
-        raise HiveError("--key (or HIVE_RUN_KEY): the run's id, the same for the sweep and the write step")
-    return key
-
-
 def cmd_sweep(args):
-    """plan + judge: no write token. Writes the judge's answers, by judged commit id, for the write step."""
+    """plan + judge: no write token. Writes the run's instant and key and the judge's answers, for the write step."""
     config, tasks, state, ledger = project_of(args)
     if paused(config):
         write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "paused": True})
@@ -1109,9 +1121,10 @@ def cmd_sweep(args):
     settings = config.get("judge") or {}
     judge = common_judge(args.registry, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
                          workdir=args.judge_workdir, timeout=settings.get("timeout_seconds", 3600))
-    verdicts, outcomes = sweep(args.repo, tip, config, tasks, ledger, GhApi(), state, run_key(args), judge, args.workdir)
-    write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "tip": tip, "verdicts": verdicts})
-    print(f"{len(outcomes)} candidate(s), {len(verdicts)} judged, {sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
+    answers, outcomes = sweep(args.repo, tip, config, tasks, ledger, GhApi(), state, judge, args.workdir)
+    write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "tip": tip, **answers})
+    print(f"{len(outcomes)} candidate(s), {len(answers['verdicts'])} judged, "
+          f"{sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
 
 
 def cmd_apply(args):
@@ -1119,10 +1132,10 @@ def cmd_apply(args):
     if paused(config):
         return
     data = read_json(args.results)
-    if not (isinstance(data, dict) and data.get("project") == config["project"] and is_sha(data.get("tip"))
-            and isinstance(data.get("verdicts"), dict)):
+    if not (isinstance(data, dict) and data.get("protocol") == PROTOCOL and data.get("project") == config["project"]
+            and is_sha(data.get("tip"))):
         raise HiveError("the results are not a sweep of this project")
-    outcomes, tip = apply(args.repo, args.remote, data["tip"], data["verdicts"], config, tasks, ledger, GhApi(), state, run_key(args))
+    outcomes, tip = apply(args.repo, args.remote, data["tip"], data, config, tasks, ledger, GhApi(), state)
     write_json(state / "feed.json", build_feed(config, tasks, ledger, tip))
     write_json(state / "stats.json", build_stats(ledger))
     print(f"{sum(1 for o in outcomes if o['result'] == 'accepted')} integrated, tip {tip}")
@@ -1242,14 +1255,12 @@ def main(argv=None):
     p.add_argument("--workdir", required=True)
     p.add_argument("--judge-workdir")
     p.add_argument("--out", required=True)
-    p.add_argument("--key")
     p.set_defaults(run=cmd_sweep)
     p = sub.add_parser("apply", help="check again, push and record (the only step with a write token)")
     hive_side(p)
     p.add_argument("--repo", required=True)
     p.add_argument("--remote", default="origin")
     p.add_argument("--results", required=True)
-    p.add_argument("--key")
     p.set_defaults(run=cmd_apply)
     p = sub.add_parser("feed", help="write the project's feed from its tasks and ledger")
     hive_side(p)
