@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/6
 summary: 'libyamlBee writes English: verdict.json, metric ids, ab.py''s report and bee-ci.yml''s texts;
   the registry is read in English only, its metric ids in both vocabularies until ruche-0149.'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T02:34:56Z'
 engaged_since: '2026-11-12T02:13:50Z'
 reviews: []
@@ -95,3 +95,6 @@ declared:
     read them; miniz-0050 may choose others. Kept French on purpose: state files and their values, job
     and step ids, artifact names, GITHUB_OUTPUT names, environment variables and script options, because
     the PR''s workflow runs the base''s scripts.'
+decided_at: '2026-11-12T02:56:03Z'
+decision_reason: 'Fork contribution, as re-scoped by the council on 11 Nov 2026: libyamlBee writes English (verdict.json by names.yaml''s fork_verdict family, metric ids where it emits them, ab.py''s report keys, bee-ci.yml''s texts) and reads the registry in English only, its metric ids in both vocabularies until ruche-0149. libyamlBee PR #6 merged at the judged commit 1b3e58e by the agent principal from the council account (as miniz-0051-c1); adversarial review by another model, approved; every fork CI job green, verdict recorded (167 changed lines). The judge-v4 part waits for libyamlBee''s common judge (libyaml-0013 to 0018). Recorded by hand.'
+merge_sha: 95957668b6e9a48a44b5b6920b2bb6e446d963f7
