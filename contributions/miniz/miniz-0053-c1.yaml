@@ -8,3 +8,96 @@ status: in_review
 submitted_at: '2026-11-12T10:05:45Z'
 engaged_since: '2026-11-12T04:13:45Z'
 reviews: []
+verdict:
+  ci: green
+  base: aa33341328086edb026fe26cfb1be13e0a35e99b
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_n1:
+      A: 174652861.0
+      B: 174652861.0
+      gain: 0.0
+    instructions_n6:
+      A: 339049158.0
+      B: 339049158.0
+      gain: 0.0
+    instructions_n9:
+      A: 487515186.0
+      B: 487515186.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34771174.0
+      B: 34771174.0
+      gain: 0.0
+  degradations: {}
+  judge:
+    version: 3
+    common: judge-v4
+    outputs_compared: 9289
+    suspicious_constructs: []
+  changed_lines: 247
+  declared_gap: null
+  sha: 4084824c860e18d17ec7def0c1bc97a67c11188e
+  tree: 72c7b8376c4483173eab5e6debf592d3fe047828
+  checked_files: true
+  modified_judges:
+  - .github/workflows/bee-ci.yml
+  - bee/ci/test_verdict.py
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/43145831932
+verdicts:
+- sha: 4084824c860e18d17ec7def0c1bc97a67c11188e
+  tree: 72c7b8376c4483173eab5e6debf592d3fe047828
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 247
+  instructions:
+    instructions_n1:
+      A: 174652861.0
+      B: 174652861.0
+      gain: 0.0
+    instructions_n6:
+      A: 339049158.0
+      B: 339049158.0
+      gain: 0.0
+    instructions_n9:
+      A: 487515186.0
+      B: 487515186.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34771174.0
+      B: 34771174.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'In bee/sandbox/sans-docker.sh, at the merge b96378f: test_verdict.py 77 OK (0917ed7''s assertion
+    included: a failed judge job gives ci red, its label is verdict.py''s own); test_ab.py 12 OK; test_profil.py
+    4 OK; test_judge.py with BEE_HARNESS_SANDBOX=1 and judge-v4''s tools/judge (git archive 7623c12) 29
+    tests OK, 8 skipped (Docker); bee/ci/differentiel.sh 3843 checks, 0 discrepancies, API 192 cases,
+    0 failures; bee/ci/tests_origine.sh (cmake + ctest) 1/1 passed.'
+  - 'The step-name tests are as strict as before, or stricter: in scratch copies, putting back « Verdict
+    de repli », « CI rouge si une étape a échoué », « Conserver le manifeste » or one « Juges (bee/ …
+    » fails test_verdict.py each time (1 test each).'
+  - 'A structural diff of bee-ci.yml, master against this head (both loaded with PyYAML, job and step
+    names and full-line comments inside scalars removed): equal; same job ids in the same order, same
+    step count and step ids; 5 job names and 34 step names changed; every one of the 247 changed raw lines
+    is a YAML comment, a job or step name: line, or a comment line inside a run script. A negative control
+    (an artifact name and a run line changed) is caught by both checks.'
+  - 'Names as data: verdict.py''s labels are its own constants keyed by job id (toJSON(needs)), not read
+    from bee-ci.yml; the renamed steps with an id (manifeste, greffon, juges) keep it, so steps.<id> is
+    unchanged; the registry reads the runs of bee-ci.yml by workflow file and the artifact « verdict »,
+    never a job or step name, and names.yaml fork_verdict has no step label; master has no branch protection
+    and no ruleset (REST).'
+  - 'bee check-fork as the manifeste job runs it (master''s etape.sh and manifeste.sh, in the sandbox,
+    registry main 0516eaa): branch compliant, 247 changed lines, manifest valid.'
+  untested:
+  - This PR's CI on GitHub runs after the push; its result is on the PR. The « Keep the manifest » step's
+    case pattern is not exercised outside GitHub.
+  doubts: 'R1: 247 counted lines (121 added, 126 deleted, all in .github/workflows/bee-ci.yml), over size
+    M (200), within L. The 5 job display names are check-run names, a step further than « step names »:
+    the task''s 247 lines include them, and the bee/README.md table already uses them; nothing found reads
+    them (no branch protection, no ruleset, nothing in the registry), but anything outside the registry
+    matching on the former names would need them.'
