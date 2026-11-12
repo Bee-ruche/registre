@@ -5,26 +5,6 @@
 rebuild starts once the founder has read this plan. Facts marked **(unverified)** come from search excerpts or
 secondary sources and must be checked before anything depends on them.*
 
-## The gaming branch: preservation
-
-The hive's purpose is unchanged (docs/vision.md): a hive of agents that governs itself and works for the common good,
-branch by branch. **Its first branch that people will come for is gaming, and that branch's goal is preservation**
-(the founder's decision, 12 November 2026): keeping video games understandable, buildable and playable for future
-generations. Games disappear with their hardware, their media and the people who remember how they worked. A
-matching decompilation keeps a game understandable and portable forever; an accurate emulator keeps it playable; a
-port keeps it alive on the machines people own; documentation keeps the knowledge. The work splits into thousands of
-small, machine-checkable pieces, which is what a hive of volunteers' AI workers can do and no single team can finish.
-
-The gaming branch works under two rules of its own, the ones established preservation institutions work under:
-
-- **Preserve what is at risk.** A game its rights holder still sells today is preserved by being sold; the branch
-  works on games whose hardware, media or availability are fading, and keeps them playable on modern machines.
-- **Break no protection.** The branch works only from what volunteers can lawfully read themselves (their own
-  unencrypted cartridges and discs, the projects' public code, homebrew test programs); it never decrypts, never
-  handles keys or firmware, and never hosts a game file.
-
-Other branches (free libraries, tools, and whatever the hive opens next) keep their own goals and judges.
-
 ## 0. Where the hive stands, in five facts
 
 1. **It has one participant.** All 126 contributions so far are the founder's (through his agents); no review,
@@ -131,10 +111,8 @@ session can push to the volunteer's fork and hand the branch to the hive without
 
 ### Criteria
 
-A project enters the hive only if it meets all of these:
+A project enters the hive only if it meets all five:
 
-0. **For the gaming branch, preservation value**: it keeps a game (or the knowledge, tools or platform games depend
-   on) understandable, buildable or playable for the future, under the branch's two rules above.
 1. **Real demand**: a community that exists without the hive (people who want the result, not just its builders).
 2. **An objective judge**: a machine can say, output by output, whether a contribution is right (the hive's
    strength; docs/scope.md).
@@ -143,64 +121,27 @@ A project enters the hive only if it meets all of these:
    project states how it stays legal (users supply their own legal copy; licenses compatible).
 5. **Openness to AI contributions**: the people who maintain the work accept them, in writing.
 
-### The video-game case: Ocarina of Time
+### Gaming: set aside for now
 
-What the check of the ecosystem found (from the projects' own repositories, 12 November 2026):
+The founder set gaming aside on 12 November 2026. The research done on it (the decompilation ecosystem around Ocarina
+of Time, the GTA VI wave) stays in this file's git history and can be taken up again.
 
-- **Ocarina of Time's matching decompilation is finished**: `zeldaret/oot` rebuilds sixteen versions byte for byte,
-  checked in its CI. The PC port (Ship of Harkinian) is built on it; the static recompilation project
-  (Zelda64Recomp) covers Majora's Mask and announces Ocarina of Time.
-- **The work that remains is not open to AI**: the recompilation projects ban AI contributions outright; the
-  decompilation is being rewritten clean-room under a new license, where a model that has read the existing code
-  is a provenance problem; several other Zelda and Nintendo decompilations ban AI as well.
-- **How these projects judge without hosting the game**: every matching CI read keeps the original with the
-  project's operator (a private container, a self-hosted runner, or an encrypted copy decrypted by a CI secret).
-  The hive must never do any of these.
-- **Reported, to verify**: a public progress index of decompilation projects closed in October 2026, its operator
-  blaming AI-driven "hostile forks" finishing other teams' projects; a new official release of the game appeared on
-  5 November 2026 and several PC recompilations of it within a week **(unverified)**.
+### What the hive offers existing projects: a federation, not a fork
 
-The honest conclusion: **in Ocarina of Time today, a hive of AI workers would be one more competing force in a
-community that is, in large part, closing its doors to exactly that.** The founder's vision (pool the power of the
-projects that duplicate each other, let isolated fans help with nothing but quota) is right in principle, but it can
-only happen with the maintainers, never around them.
-
-### The video-game case: GTA VI (release announced for 19 November 2026)
-
-- **The wave is real and mostly empty**: GitHub repositories with "gta6" in their name were created at 171 in
-  October and 145 in the first twelve days of November; nearly all are landing pages, countdowns, themes, bots,
-  fan sites and "leaked build" bait. At least thirteen separate interactive maps, sixteen "companion" apps and ten
-  wikis duplicate each other, none with traction. **No tooling for the game exists**, and none can lawfully start:
-  the game is announced only on consoles **(unverified: no PC version announced)**.
-- **The rights holder is hostile to exactly this**: it removed thousands of repositories derived from the reverse
-  engineering of its older games (takedown notices in GitHub's public archive, 2021 to 2025), and its 2026 mod
-  guidelines forbid ports, multiplayer outside its own platform and commercial modding **(unverified)**.
-- **What the hive can lawfully host around it**: optimizing free libraries that open-world games use (physics,
-  compression, image codecs: the hive's existing judge); an original open-world toolkit with its own assets and
-  no reference to the game; tools that work only on files a user supplies, once a PC version exists, after a
-  lawyer's review.
-- **What the hive refuses**: leaks and anything derived from them, console dumps and any circumvention, ports and
-  recompilations, multiplayer frameworks, cheats, paid mods, redistributed assets, the game's names in the hive's
-  branding.
-- **Timing**: the hive will not be open by 19 November, and should not try to be; the wave that matters (tooling,
-  mods) comes with a PC version. The hive's answer to the next wave is the federation below, ready before it.
-
-### What the hive offers game communities: a federation, not a fork
-
-The hive hosts **no game repository**. It offers the projects that duplicate each other a shared engine:
+Many open-source efforts duplicate each other, and AI effort spread across them is diluted. The hive offers the
+projects that want it a shared engine, without taking their work away from them:
 
 1. **A project opts in, in writing**, with its own scope and acceptance rules, and a named human who answers for it.
-2. **Its task list comes from its own data** (for a decompilation: the functions still unmatched, from its progress
-   reports), generated by a tool, not written by hand.
-3. **Leases prevent two workers, or two projects, from doing the same function twice**: the deduplication the
-   ecosystem lacks today (coordination now lives in shared spreadsheets and issue labels).
-4. **Workers iterate locally against the volunteer's own legal copy** (a local worker, never a cloud one: a game
-   copy never leaves the volunteer's machine) and submit; **the project's own CI is the verdict that counts**,
-   because the project, not the hive, holds what the check needs. The hive records that verdict and nothing else.
-5. **Results go upstream, to the project's repository**, never to a competing fork; the project can pause or stop
-   the hive's workers at any time.
-6. **A fan with no skills joins with one choice**: on the "Give your quota" page, pick the project; nothing more.
-   (For games, that fan's worker runs on their own machine with their own copy; the page says so plainly.)
+2. **Its task list comes from its own data** (failing tests, coverage gaps, a profiler's hot spots, its issue
+   labels), generated by a tool, not written by hand.
+3. **Leases prevent two workers, or two projects, from doing the same piece twice**: the deduplication that shared
+   spreadsheets and issue labels give today, made automatic.
+4. **Every contribution is judged** by the hive's common judge or by the project's own CI, whichever the project
+   chooses; the hive records the verdict.
+5. **Results go upstream, to the project's repository**; the project can pause or stop the hive's workers at any
+   time.
+6. **A volunteer with no skills joins with one choice**: on the "Give your quota" page, pick the project; nothing
+   more.
 
 The pitch to project maintainers is in docs/founder-decisions.md; contacting them is the founder's decision.
 
@@ -210,12 +151,10 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
    judge). Its task supply is regenerated by a profiler, not by hand.
 2. **Retire libyaml's own CI**: it has no outside judge. Either port it to the common judge as one task, or put the
    project to sleep (R13's "sleeping branch"; nothing is deleted).
-3. **One invited game project as the federation pilot**: among the decompilations whose written policy accepts AI
-   contributions (Super Mario Sunshine, Super Smash Bros. Melee, Breath of the Wild, in that order from the check;
-   their policies and progress must be re-read before contact).
-4. **Candidates outside games** that meet the criteria and draw people (to study, not yet checked): free
-   re-implementations of game engines that load the player's own files (OpenMW, OpenRCT2, OpenTTD), emulators,
-   widely used libraries with test suites (codecs, compression, parsers).
+3. **One invited open-source project as the federation pilot**: a widely used library or tool whose maintainers
+   accept AI contributions in writing and whose tests can judge every change. Which one is still to study (phase 3):
+   start from docs/candidates.md (giflib, bzip2, cJSON, lodepng) and from projects with a real community behind
+   them.
 
 ## P3. The hive at scale
 
@@ -241,8 +180,8 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
   one robot pass turns comments into leases, first come first served. A small coordinator service replaces it only
   if the inbox cannot keep up (cost estimate: $5 to $50 a month at 10,000 to 100,000 contributions a week,
   unverified).
-- **Task supply is generated**: each project has a splitter (a profiler for miniz, the progress report for a
-  decompilation) that turns its data into small structured tasks continuously. A person or an agent writes the
+- **Task supply is generated**: each project has a splitter (a profiler for miniz, failing tests or coverage gaps for a
+  library) that turns its data into small structured tasks continuously. A person or an agent writes the
   splitter once, not each task.
 - **Machines judge, humans arbitrate.** The judge decides every contribution. Instead of two reviews per
   contribution (which, at 10,000 a week, would need 20,000 reviews and 20,000 votes), the hive uses redundancy: a
@@ -371,10 +310,10 @@ Each task below is sized for one session. Phases are in dependency order.
 
 ### Phase 3: the first project people want (in parallel with phase 2, once the founder decides)
 
-- 3.1 The founder contacts one invited game project with the pitch (docs/founder-decisions.md, D4).
+- 3.1 The founder contacts one invited open-source project with the pitch (docs/founder-decisions.md, D4).
 - 3.2 A lawyer answers the questions in D3.
-- 3.3 The pilot: that project's task feed, leases, local workers with the volunteer's own copy, its CI as the
-  verdict.
+- 3.3 The pilot: that project's task feed generated from its own data, leases, the volunteers' workers, and
+  its tests (through the common judge or its own CI) as the verdict.
 - **Milestone**: the pilot project's maintainers say, in writing, that the hive's contributions helped them.
 
 ### Phase 4: the public opening

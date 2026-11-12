@@ -67,26 +67,19 @@ To ask before the public opening; the builder is not a lawyer and states its unc
    work with a rank.
 2. **Liability**: does a hive that hands out tasks and records credit keep the protections of a mere host, or does
    it answer for what volunteers' agents produce? Who answers: the founder personally, or a structure (association)?
-3. **Matching decompilation**: the hive would host no game file and no target assembly, and a project's own CI
-   (holding the original) would judge. Is coordinating volunteers who use their own legal copies, and upstreaming to
-   the project, lawful in France and the EU (Software Directive 2009/24, art. 6) and the US?
-4. **Original compilers** that some decompilations need: may a volunteer's local worker use one the volunteer
-   obtained, and may the hive point to where to obtain it?
-5. **GTA VI**: confirm the "refuse" list in docs/plan.md, and whether any tool working on user-supplied files would
-   be safe once a PC version exists.
-6. **Contributor licensing**: AI-generated contributions under each project's license; whether the hive needs a
+3. **Contributor licensing**: AI-generated contributions under each project's license; whether the hive needs a
    contributor agreement; disclosure of AI authorship, which Anthropic's Usage Policy requires.
-7. **The pledge**: whether a rank earned partly by a public post is a "material connection" that the post must
+4. **The pledge**: whether a rank earned partly by a public post is a "material connection" that the post must
    disclose (US FTC Endorsement Guides; French and EU rules on influence), and how.
-8. **Personal data**: storing a member's GitHub login, X handle and post number; a privacy notice; GDPR basis.
+5. **Personal data**: storing a member's GitHub login, X handle and post number; a privacy notice; GDPR basis.
 
-## D4. Which game project to approach, and the pitch
+## D4. Which project to approach first, and the pitch
 
-**Recommendation**: approach **one** project, whose written policy already accepts AI contributions, as an invited
-pilot; never approach a project that bans them. From the check, in this order: Super Mario Sunshine
-(`doldecomp/sms`), Super Smash Bros. Melee, Breath of the Wild. Re-read their policies and progress before contact.
-Do not approach Ocarina of Time's projects now: the remaining work there is closed to AI, and pushing would harm the
-hive's name with exactly the communities it wants to serve.
+**Recommendation**: approach **one** open-source project as an invited pilot, once phase 1 works: a widely used
+library or tool whose maintainers accept AI contributions in writing, whose tests can judge every change, and whose
+work splits into many small tasks. Never approach a project whose written policy refuses AI contributions. The
+choice is still to study (docs/candidates.md lists giflib, bzip2, cJSON and lodepng; projects with a larger
+community behind them should be weighed too). Gaming is set aside for now (decision of 12 November 2026).
 
 **Outside action**: the founder sends the pitch, publicly or privately as the project prefers (commandment 8: no
 contact without the founder's decision).
@@ -96,15 +89,14 @@ contact without the founder's decision).
 > Hello. I run La Ruche, an open hive where people give the AI quota they don't use, and a strict automated judge
 > checks every contribution before it counts. I'm writing because your project's guidelines accept AI-assisted
 > contributions, and because a lot of AI effort is wasted today: several people's agents work on the same
-> functions, and much of it never reaches you.
+> problems, and much of it never reaches you.
 >
 > What we would offer, only if you want it:
 >
-> - Your task list, generated from your own progress data, with leases so that no function is worked on twice.
-> - Volunteers' agents that work on their own machines, with their own copy of the game. The hive never hosts or
->   sees a ROM, an asset or target assembly.
-> - Every contribution goes to your repository, under your rules, judged by your CI. Nothing is merged without
->   your acceptance, and there is no competing fork.
+> - A task list generated from your own data (failing tests, coverage gaps, hot spots, labelled issues), with
+>   leases so that nothing is worked on twice.
+> - Every contribution judged by your tests before it reaches you, and sent to your repository under your rules.
+>   Nothing is merged without your acceptance, and there is no competing fork.
 > - Caps you set on open pull requests, a named human for every contribution, AI authorship disclosed, and a stop
 >   button you control.
 >
@@ -116,9 +108,8 @@ contact without the founder's decision).
 ## D5. The council before the opening
 
 **Recommendation**: two more people, chosen by the founder, with public identities and no shared employer (as R15
-already requires before phase 3); at least one with open-source maintainer experience, ideally one from a game
-preservation community. Until they are seated, every change to judges, tooling and rules needs the founder's own
-approval, given by hand, on GitHub.
+already requires before phase 3); at least one with open-source maintainer experience. Until they are seated,
+every change to judges, tooling and rules needs the founder's own approval, given by hand, on GitHub.
 
 ## D6. The public name
 
