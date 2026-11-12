@@ -82,7 +82,7 @@ def main():
             verdict["instructions"] = {scenario: {"A": round(a), "B": round(a * (1 - gain_instr)), "gain": round(gain_instr, 4)}}
             verdict["gain"] = round(stopwatch, 4)
             verdict["beyond_noise"] = abs(stopwatch) > 0.004
-            verdict["degradations"] = {"debit_decompression": -0.012} if stopwatch_randomness.random() < 0.05 else {}
+            verdict["degradations"] = {"decompression_throughput": -0.012} if stopwatch_randomness.random() < 0.05 else {}
         else:
             verdict["gain"] = None
         if randomness.random() < 0.1:

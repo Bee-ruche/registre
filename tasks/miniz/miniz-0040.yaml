@@ -24,11 +24,11 @@ context: >
   TABLEAUX.md section 4).
 files: [miniz.c]
 reach: 1.0
-metric: debit_compression_n1
+metric: compression_throughput_n1
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_compression_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on compression_throughput_n1 (instructions_n1), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5)"
   - "the « sommes » checks of bee/tests/lancer.sh and the API tests without a discrepancy; identical fingerprints"
   - "manifest: instructions per byte of mz_adler32 before and after"

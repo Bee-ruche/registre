@@ -21,7 +21,7 @@ context: >
   part du coût l'est (profil ci-dessus).
 files: [miniz_tdef.c]
 reach: 1.0
-metric: debit_compression_n1
+metric: compression_throughput_n1
 compressed_output: identical
 acceptance_criteria:
   - "CI verte (R2), x86-64 et ARM64 (R6)"

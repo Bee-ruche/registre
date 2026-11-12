@@ -10,8 +10,8 @@ context: >
   Jusqu'ici (libyaml-0013 à libyaml-0016) le greffon vérifie sans mesurer (SCENARIOS vide). Cette étape
   ajoute au harnais les modes analyse, chargement, emission et memoire, et au greffon SCENARIOS,
   INSTRUCTIONS, METRIQUES et les méthodes repetition, instructions et scenario, avec les identifiants de
-  métriques de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et
-  instructions_analyse, instructions_chargement, instructions_emission pour R4). Le juge commun mesure par
+  métriques de projets/libyaml.yaml (parse_throughput, load_throughput, emit_throughput, max_memory_kb, et
+  instructions_parse, instructions_load, instructions_emit pour R4). Le juge commun mesure par
   wait4 dans son propre lanceur, compte les instructions de tout le processus et analyse les objets
   (constructions suspectes). Modèles : le greffon jouet du registre et celui de minizBee. Jusqu'à
   libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges :
@@ -20,7 +20,7 @@ files: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "les métriques portent les identifiants de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et instructions_* pour R4)"
+  - "les métriques portent les identifiants de projets/libyaml.yaml (parse_throughput, load_throughput, emit_throughput, max_memory_kb, et instructions_* pour R4)"
   - "sur une PR honnête, les décomptes d'instructions de A et de B sont identiques et aucune construction suspecte n'est relevée"
   - "méta-tests : faux chronos, requête client Valgrind et faux résumé sont signalés"
 out_of_scope:

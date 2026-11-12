@@ -34,11 +34,11 @@ context: >
   L1 misses (TABLEAUX.md, section 4).
 files: [miniz_tdef.c]
 reach: 1.0
-metric: debit_compression_n9
+metric: compression_throughput_n9
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64 (R6)"
-  - "R4: at least 2% fewer instructions on debit_compression_n9 (instructions_n9), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "R4: at least 2% fewer instructions on compression_throughput_n9 (instructions_n9), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
   - "no other metric degraded by more than 1% (R5); instructions_n6 and instructions_n1 declared in the manifest"
   - "identical fingerprints, levels 1, 6, 9, 10 and flushes included"
   - "manifest: instructions per probe before and after (disassembly of the loop, gcc -O3)"

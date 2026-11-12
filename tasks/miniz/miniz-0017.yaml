@@ -21,7 +21,7 @@ context: >
   gain n'est pas démontré, seule la part du coût l'est (profil ci-dessus).
 files: [miniz_tinfl.c]
 reach: 1.0
-metric: debit_decompression
+metric: decompression_throughput
 compressed_output: identical
 acceptance_criteria:
   - "CI verte (R2), x86-64 et ARM64 (R6)"

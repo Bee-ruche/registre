@@ -12,8 +12,8 @@ libyaml parses and emits YAML in C, under many tools. Fork: `Bee-ruche/libyamlBe
 Judge: for each input of the corpus, exactly the same event stream and the same status (success or error) as the
 base, by SHA-256 fingerprints (`bee/tests/lancer.sh`); the emitter, by round trip (events, YAML, events).
 References: yaml-test-suite and libfyaml.
-Metrics: `debit_analyse`, `debit_chargement`, `debit_emission` (judged on their instruction count),
-`memoire_max_ko`. Parsing is CPU-bound: a drop in instructions shows on the stopwatch.
+Metrics: `parse_throughput`, `load_throughput`, `emit_throughput` (judged on their instruction count),
+`max_memory_kb`. Parsing is CPU-bound: a drop in instructions shows on the stopwatch.
 No isolated judge yet (task libyaml-0005): every contribution waits for the review of a guardian or the council
 (R3's gate). Sandbox: `bee/sandbox/sans-docker.sh`; the Docker image is still to be built.
 Areas: reading and UTF-8 decoding `src/reader.c`, scanner `src/scanner.c`, parser `src/parser.c`, loader
