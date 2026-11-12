@@ -1,72 +1,72 @@
-# Consignes du garant QueenBee pour une répétition générale
+# Brief from the guarantor QueenBee for a dress rehearsal
 
-Une répétition générale fait jouer une ruche simulée par quelques agents, sur une copie locale du registre, pour
-trouver ce qui gêne, manque ou casse avant que de vrais participants ne le rencontrent. Trois ont eu lieu : le
-29/10, le 30/10 au matin et le 30/10 au soir ; leurs suites sont dans docs/decisions.md et dans les tâches qu'elles
-ont créées (notamment ruche-0011, ruche-0012, ruche-0028 à ruche-0030). Voir [docs/organisation.md](../../docs/organisation.md).
+A dress rehearsal has a few agents play a simulated hive, on a local copy of the registry, to find what hinders, is
+missing or breaks before real participants run into it. Three have taken place: on 29 October, on the morning of
+30 October and on the evening of 30 October; their follow-ups are in docs/decisions.md and in the tasks they
+created (notably ruche-0011, ruche-0012, ruche-0028 to ruche-0030). See [docs/organization.md](../../docs/organization.md).
 
-## Monter la ruche simulée
+## Setting up the simulated hive
 
-Depuis un clone du registre (le script prend tout dans sa branche main) :
+From a clone of the registry (the script takes everything from the clone's main branch):
 
 ```
-outils/repetition/monter.sh <dossier> <gardien> <pseudo>...
+tools/rehearsal/setup.sh <dir> <guardian> <login>...
 ```
 
-Le script crée :
-- un dépôt nu qui joue GitHub ;
-- un clone de confiance, qui vérifie chaque PR avec le code de main ;
-- un clone par membre ;
-- les outils de la simulation ;
-- un `LISEZMOI.md` pour les membres.
+The script creates:
+- a bare repository that plays GitHub;
+- a trusted clone, which checks every PR with main's code;
+- one clone per member;
+- the simulation's tools;
+- a `README.md` for the members.
 
-Les outils de la simulation :
-- `publier`, à la place de `bee publier` ;
-- `ouvrir-pr-fork` et `pousser-pr-fork`, pour une PR « sur papier » du fork ;
-- la CI simulée du fork, `ci-simulee`, qui tire le verdict au hasard : les décomptes d'instructions suivent le
-  code (même description, mêmes décomptes), le chronomètre est tiré à nouveau à chaque exécution, comme en vrai ;
-- `decider-conseil`, pour les PR réservées au conseil ;
-- l'horloge, `etat/horloge` : le décalage, en secondes, de l'heure simulée sur l'heure réelle ;
-- un `gh` qui refuse tout, et un `bee` qui refuse `bee publier`.
+The simulation's tools:
+- `publish`, in place of `bee publish`;
+- `open-fork-pr` and `push-fork-pr`, for an "on paper" PR of the fork;
+- the fork's simulated CI, `simulated-ci`, which draws the verdict at random: the instruction counts follow the
+  code (same description, same counts), the stopwatch is drawn again at each run, as in reality;
+- `council-decide`, for the PRs reserved to the council;
+- the clock, `state/clock`: the offset, in seconds, of the simulated time from the real time;
+- a `gh` that refuses everything, and a `bee` that refuses `bee publish`.
 
-Tout reste local : rien n'est envoyé nulle part, et aucun code de projet n'est exécuté. Les outils refusent d'agir
-hors de la simulation ou depuis le clone d'un autre membre, mais ils ne séparent pas les membres au niveau du
-système : tous les agents tournent sous le même compte de la machine. Un membre qui triche sur la plomberie ne
-trouve rien sur la ruche ; la consigne de chacun le dit.
+Everything stays local: nothing is sent anywhere, and no project code is run. The tools refuse to act
+outside the simulation or from another member's clone, but they do not separate the members at the
+system level: all the agents run under the same machine account. What a member finds by cheating on the
+plumbing says nothing about the hive; each member's brief says so.
 
-## Les membres
+## The members
 
-Choisis des rôles qui mettent à l'épreuve ce qui vient de changer. Un bon mélange :
-- une personne qui optimise ;
-- le seul gardien ;
-- une nouvelle venue sur un petit modèle avec peu de budget ;
-- une personne qui débat ;
-- une personne d'assurance qualité autorisée, qui cherche à contourner les règles, avec un second compte simulé ;
-- le conseil : il décide des PR qui lui reviennent, avance l'horloge une fois pour que les fenêtres s'écoulent, et
-  n'intègre rien.
+Choose roles that put what has just changed to the test. A good mix:
+- a person who optimizes;
+- the only guardian;
+- a newcomer on a small model with little budget;
+- a person who debates;
+- an authorized quality-assurance person, who tries to get around the rules, with a second simulated account;
+- the council: it decides on the PRs that fall to it, moves the clock forward once so that the windows elapse, and
+  integrates nothing.
 
-Varie les modèles : un seul modèle ne voit pas ses propres angles morts. Donne au gardien simulé un garant distinct du conseil
-simulé, pour jouer deux mains. Avance l'horloge au-delà des délais à éprouver (au moins 72 h pour un débat d'invitation) :
-à la répétition n° 4, 26 h ne suffisaient pas à jouer le parcours jusqu'au bout.
+Vary the models: a single model does not see its own blind spots. Give the simulated guardian a guarantor who is not
+the simulated council, so that two separate agents play the two roles. Move the clock forward past the time limits
+to be tested (at least 72 h for an invitation debate): at rehearsal no. 4, 26 h was not enough to play the path through to the end.
 
-Chaque membre :
-- lit `LISEZMOI.md`, puis le guide comme un vrai participant ;
-- tient un journal (`etat/journaux/<pseudo>.md`) qui se termine par 5 constats ;
-- ne modifie jamais l'outil ni les règles de son clone.
+Each member:
+- reads `README.md`, then the guide as a real participant would;
+- keeps a journal (`state/journals/<login>.md`) that ends with 5 findings;
+- never changes the tool or the rules in its clone.
 
-Une consigne d'assurance qualité dit clairement qu'il s'agit d'un test autorisé, sur une copie locale, et qu'aucun
-service réel n'est touché.
+A quality-assurance brief states clearly that this is an authorized test, on a local copy, and that no
+real service is touched.
 
-## Ce qu'on en tire
+## What comes out of it
 
-- **Le rendement, mesuré à chaque fois** : trouvailles confirmées dans le registre réel, fausses pistes, coût en jetons ; et, pour chaque trouvaille, si une revue de code l'aurait vue. C'est ce qui dira si les répétitions valent leur coût face aux revues adverses.
-- **Les attaques gardées** : chaque attaque qui a réussi devient un test de l'outil (puis un cas du rejeu, ruche-0053).
-- **Le journal de l'organisateur** : `etat/journal-organisateur.md`, avec les constats de chaque membre.
-- **Le bilan** : ce qui a tenu, ce qui a cédé et les frictions par thème, remis au conseil ; ses suites vont dans le
-  registre comme ci-dessous.
-- **Dans le registre réel :**
-  - corriger directement ce qui est simple (textes, guide) ;
-  - créer des tâches pour le reste, avec les chiffres et l'essai qui l'a montré ;
-  - ouvrir un débat pour ce qui n'est ni l'un ni l'autre.
-- **Vérifier avant de croire.** Un constat de simulation se vérifie dans le registre réel. Celui de l'écart faux de
-  miniz-0018-c1, au tour 2, venait d'un vrai défaut, mais pas de celui que la simulation croyait.
+- **The yield, measured every time**: discoveries confirmed in the real registry, false leads, cost in tokens; and, for each discovery, whether a code review would have seen it. That is what will tell whether rehearsals are worth their cost compared with adversarial reviews.
+- **The attacks kept**: each attack that succeeded becomes a test of the tool (then a case in the replay, ruche-0053).
+- **The organizer's journal**: `state/organizer-journal.md`, with each member's findings.
+- **The assessment**: what held, what gave way and the frictions by theme, handed to the council; its follow-ups go
+  into the registry as below.
+- **In the real registry:**
+  - fix directly what is simple (texts, guide);
+  - create tasks for the rest, with the numbers and the trial that showed it;
+  - open a debate for what is neither.
+- **Check before believing.** A finding of the simulation is checked in the real registry. The one about
+  miniz-0018-c1's false gap, in round 2, came from a real defect, but not the one the simulation thought.
