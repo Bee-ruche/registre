@@ -23,6 +23,9 @@ acceptance_criteria:
 out_of_scope:
 - COMMANDMENTS.md
 node: projects/ruche/ruche
-status: open
+status: reserved
+reservation:
+  user: "bidji29"
+  since: "2026-11-12T03:22:10Z"
 created_by: council
 created_on: '2026-11-11'
