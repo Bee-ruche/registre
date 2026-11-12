@@ -3,7 +3,7 @@ project: miniz
 category: lossless-compression
 type: test
 area: governance
-size: M
+size: L
 title: minizBee writes English (English names, after the switch)
 context: 'docs/english-migration.md, section 6. minizBee moves to judge-v4 (paths, options, inputs, artifact name in the
   same PR), then writes English: verdict.json keys and values, metric ids (with the registry''s ruche-0149), plugin names;
@@ -29,6 +29,9 @@ notes:
   - by: "bidji29"
     at: "2026-11-11T09:47:48Z"
     text: "Council, 11 Nov 2026 (end of the English migration, wave 0): minizBee still runs juge-v2: this task comes after miniz-0048 (juge-v3) and the founder's judge-v4 tag (ruche-0148)."
+  - by: "bidji29"
+    at: "2026-11-12T01:22:45Z"
+    text: "Council, 12 Nov 2026: size M to L. The move to judge-v4 and the English verdict count 250 lines in bee-ci.yml, over M's 200; its comment-only and step-name-only changes go to miniz-0053. The pin stays at the judge-v4 tag (7623c12); the workflow makes the runner's copy of isoler.sh executable, as the tag's file lost its mode in J1 (restored on main for later versions)."
 status: open
 created_by: council
 created_on: '2026-11-08'

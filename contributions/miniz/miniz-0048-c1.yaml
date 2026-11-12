@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/28
 summary: minizBee adopts the juge-v3 contract (parameters on descriptor 0, timed metrics, the event's
   base) and pins juge-v3
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T23:11:06Z'
 engaged_since: '2026-11-11T22:31:03Z'
 reviews: []
@@ -134,3 +134,6 @@ declared:
     the merge (the « rebasez » rule). The registry''s common_judge_min stays 2 until the council raises
     it (libyamlBee also adopts juge-v3). This PR modifies bee/** and .github/workflows: a tooling task
     with judge paths, for a guardian or the council (R3).'
+decided_at: '2026-11-12T01:22:45Z'
+decision_reason: 'Fork contribution: minizBee adopts the juge-v3 contract (parameters on descriptor 0, timed metrics, the event''s base) and pins juge-v3. minizBee PR #28 merged at the judged commit 5e0ef99 by the agent principal from the council account (as miniz-0051-c1); adversarial review by another model, its findings fixed and verified (the harness now creates its output folders up front, the same in every mode); every fork CI job green, verdict recorded. Recorded by hand.'
+merge_sha: d6125e7840642e2f213f9f52f665d439a6ebaa63

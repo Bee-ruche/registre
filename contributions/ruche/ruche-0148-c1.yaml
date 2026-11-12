@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/348
 summary: 'The common judge in English: moved to tools/judge by script, English contracts read in both
   languages, messages and texts, judge-v4 (eight registry PRs, each reviewed adversarially)'
-status: in_review
+status: integrated
 submitted_at: '2026-11-12T01:19:44Z'
 engaged_since: '2026-11-11T23:39:41Z'
 reviews: []
+decided_at: '2026-11-12T01:22:45Z'
+decision_reason: 'The common judge in English, in eight registry PRs merged by the agent principal at their checked heads: J1 #320 (moved to tools/judge, English identifiers, by script, P1), J2 #331 and #337 (English plugin contract, judge.json, inputs and outputs, both languages read; the tag rule), J3 #339 and #340 (messages, help, comments), J4 #346, #347 and #348 (data texts, COMMON_VERSION 4, judge.yml, the meta-tests workflow, docs/common-judge.md). Each reviewed adversarially by an agent of another model, every finding fixed and verified; the meta-tests pass with both plugin contracts; juge-v4 and judge-v2 tags are refused by a test. The founder tagged judge-v4 at 7623c12 on 12 Nov 2026. Recorded by hand: one task over several PRs.'
+merge_sha: 7623c1288482673f48171bb7ed921f447ac272d9
