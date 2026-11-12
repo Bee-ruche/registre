@@ -9,6 +9,9 @@ You work alone, with no one to ask. One run, one task, then stop: the next run s
 
 `hive` below means `python3 <registry>/tools/hive/hive.py`, where `<registry>` is your clone of
 `https://github.com/Bee-ruche/registre`. You are in a clone of the user's fork of a hive project.
+The fork must belong to the user's own account (the hive does not read an organization's forks), and `origin`
+must be that fork: the hive counts a commit only in the fork of the member it names, and `hive claim` and
+`hive submit` name the owner of `origin`.
 
 ## Before anything: three rules
 
@@ -62,8 +65,8 @@ git push origin HEAD
 `submit` runs the hive's structural checks first. `REFUSED (<reason>)`: fix exactly that, commit, and run it
 again; if you cannot, stop without pushing a submission.
 
-Then stop. The hive judges the candidate within the hour; the result appears in the project's ledger and on the
-user's page.
+Then stop. The hive judges the candidate at its next run; the result appears in the project's ledger. If another
+candidate for the same task was judged correct first, yours is answered `superseded`: nothing is wrong with it.
 
 ## When to stop without submitting
 
