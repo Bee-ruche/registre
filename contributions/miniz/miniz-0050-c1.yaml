@@ -8,6 +8,126 @@ status: in_review
 submitted_at: '2026-11-12T02:34:56Z'
 engaged_since: '2026-11-12T02:13:50Z'
 reviews: []
-awaiting_verdict:
-  reason: pr_closed
-  sha: 0917ed72f1ce32dffc0f7f3b34d5ac9de29da63a
+verdict:
+  ci: green
+  base: d6125e7840642e2f213f9f52f665d439a6ebaa63
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_n1:
+      A: 190640057.0
+      B: 190640057.0
+      gain: 0.0
+    instructions_n6:
+      A: 356271732.0
+      B: 356271732.0
+      gain: 0.0
+    instructions_n9:
+      A: 504578153.0
+      B: 504578153.0
+      gain: 0.0
+    instructions_decompression:
+      A: 29075077.0
+      B: 29075077.0
+      gain: 0.0
+  degradations: {}
+  judge:
+    version: 3
+    common: juge-v3
+    outputs_compared: 9289
+    suspicious_constructs: []
+  changed_lines: 250
+  declared_gap: null
+  sha: f9bbc9f482458df9d7ae8eff888c3850e0d83505
+  tree: 93b8187ae062a02197b804f9131251873de1843c
+  checked_files: true
+  modified_judges:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/bench/ab.py
+  - bee/bench/banc.c
+  - bee/bench/test_ab.py
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/ci/verifier_fork.py
+  - bee/ci/vocabulaire.py
+  - bee/judge/build.sh
+  - bee/judge/execution.c
+  - bee/judge/project.py
+  - bee/judge/test_judge.py
+  - bee/juge/construire.sh
+  - bee/juge/execution.c
+  - bee/juge/projet.py
+  - bee/juge/test_juge.py
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/43143205126
+verdicts:
+- sha: f9bbc9f482458df9d7ae8eff888c3850e0d83505
+  tree: 93b8187ae062a02197b804f9131251873de1843c
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 250
+  instructions:
+    instructions_n1:
+      A: 190640057.0
+      B: 190640057.0
+      gain: 0.0
+    instructions_n6:
+      A: 356271732.0
+      B: 356271732.0
+      gain: 0.0
+    instructions_n9:
+      A: 504578153.0
+      B: 504578153.0
+      gain: 0.0
+    instructions_decompression:
+      A: 29075077.0
+      B: 29075077.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'In bee/sandbox/sans-docker.sh: test_verdict.py 77 OK; test_judge.py with BEE_HARNESS_SANDBOX=1 and
+    judge-v4''s tools/judge (git archive 7623c12): 29 tests, 21 OK, 8 meta-tests skipped (Docker); test_ab.py
+    12 OK; test_profil.py 4 OK. A mutation of BEE_JUGES in a scratch copy fails both copy tests.'
+  - 'judge-v4''s load_plugin, in each sandbox: master''s French plugin (d6125e7) loads (class Projet,
+    French metric ids), so this PR''s judge-v4 job can judge it; this PR''s English plugin loads (EnglishPlugin,
+    METRICS read as plus_haut/plus_bas).'
+  - 'verdict.json before (master''s verdict.py, juge-v3 artifacts) and after (this verdict.py, the same
+    artifacts translated by names.yaml judge_report and metric_id) on 7 scenarios (green; red step; red
+    without result; task copy missing; degradations and bootstrap; judge refusal; rebase refusal): in
+    all 7 the before verdict translated key by key by names.yaml fork_verdict plus a disclosed map (steps,
+    labels, details, pr_base) equals the after verdict.'
+  - 'ab.py before and after on the same revisions (f5440c3 against d6125e7, 6 repetitions, --instructions),
+    each in its own sandbox: the old report translated by names.yaml has exactly the new report''s 237
+    key paths, and 43 deterministic values are equal, instruction counts included (170765561, 334757696,
+    482752478, 26160282).'
+  - 'In throwaway copies of registry main: bee record-verdict records the French and the English verdicts
+    of the same inputs identically, but for judge.common and the failed step''s label; it refuses an English
+    verdict naming another metric; the English fallback verdict behaves as the French one. bee record-measurement
+    records the old French report and its English translation identically.'
+  - banc in the sandbox prints the six English metric ids.
+  - 'The fork''s CI on f124f72 (run 43127185396): the judge-v4 judge job and the juge-v3 job each gave
+    code 0 on this PR with master''s French plugin, both report checks passed (juge_isole: succes), the
+    meta-tests ran with Docker against judge-v4 with the English plugin (26 OK; mesure_devinee, sortie_anticipee
+    and table_precalculee refused), outillage-pr and juge-ancien green; build, differential and fuzzing
+    failed on isoler.sh''s mode (fixed in f2b7b81), and the manifest job on R1.'
+  untested:
+  - 'The meta-tests with Docker (honest variant and the seven malicious ones against judge-v4 with this
+    English plugin): the sandbox has no Docker; the meta-juge job runs them on this PR.'
+  - The judge-v4 and juge-v3 jobs and report checks run for real only in CI; ARM64 too.
+  doubts: 'R1: bee-ci.yml counts 250 lines (116 added, 134 deleted): the council resized miniz-0050 to
+    L (400) and moved the comment-only and step-name-only hunks (about 247 lines) to miniz-0053, so until
+    it merges bee-ci.yml keeps French comments and step names, some of them describing juge-v2 or juge-v3
+    (the comment-only hunks that also updated content went with them). The scenario name memoire (a mode
+    word of the harness and of banc.c) and internal identifiers stay French. judge-v4 is not tagged yet
+    (pinned by SHA), and its commit records tools/judge/isoler.sh without the executable mode (100644;
+    outils/juge/isoler.sh was 100755): BEE_IMAGE runs chmod +x on the runner''s checkout, a no-op once
+    the registry restores the mode. The juge-v3 and juge-ancien jobs and the verdict job''s remap go with
+    the next version move. The registry''s names.yaml has no pr_base yet in fork_judge_base_rule. This
+    PR touches bee/** and .github/workflows: a tooling task with judge paths, for a guardian or the council
+    (R3).'
