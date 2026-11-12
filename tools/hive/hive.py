@@ -41,14 +41,26 @@ MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never
 MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Model): (.{1,200})\Z")
 ACTIONS = ("claim", "submit")
 FILE_MODES = ("100644", "100755")
-# Never changed by a judged contribution, whatever the project says: what runs in CI, what steers git, and what an
-# agent reads as instructions (a stored prompt injection would reach every later worker).
-ALWAYS_PROTECTED = (".github/**", ".gitattributes", ".gitmodules", "hive/**", ".claude/**", ".codex/**", ".cursor/**",
-                    "AGENTS.md", "CLAUDE.md", "GEMINI.md", ".cursorrules", ".mcp.json")
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git knows it without it being written
+TREE_MODE = "040000"
+ADDED_PART = re.compile(r"[A-Za-z0-9._+-]{1,64}\Z")  # a path component a contribution may ADD: an identifier, never a sentence
+# Never changed by a judged contribution, whatever the project or the task says, at ANY depth of the tree: what runs
+# in CI or when a folder is opened, what steers git, and what a coding agent reads as instructions (agents read such
+# files in sub-folders too; an integrated instruction would reach every later worker). Compared without case.
+# This narrows one channel; it does not close it: any integrated text, a code comment included, is read by later
+# workers, which is why a worker treats everything in a project as data (docs/protocol.md).
+PROTECTED_NAMES = frozenset((
+    ".gitattributes", ".gitmodules", ".envrc", ".mcp.json", "agents.md", "agent.md", "agents.override.md", "claude.md",
+    "claude.local.md", "gemini.md", "copilot-instructions.md", ".cursorrules", ".windsurfrules", ".clinerules",
+    ".continuerules", ".goosehints", ".rules", ".aider.conf.yml", "replit.md"))
+PROTECTED_DIRS = frozenset((
+    ".github", ".claude", ".cursor", ".codex", ".gemini", ".windsurf", ".roo", ".kiro", ".junie", ".vscode",
+    ".devcontainer", ".continue", ".amazonq", ".clinerules", ".aider", ".zed", ".idea"))
+ALWAYS_PROTECTED = ("hive/**",)  # at the root: the hive's own files in a project
 DEFAULTS = {
     "branch": "main",
     "protected": [],
-    "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "commits": 50, "heads_per_fork": 30,
+    "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "heads_per_fork": 30,
                "judgements_per_sweep": 20},
     "members": {"min_account_age_days": 90, "judged_per_day": 5, "answers_per_day": 20, "banned": []},
     "claim_ttl_minutes": 180,
@@ -73,6 +85,7 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "too_many_files": "too many files changed",
     "too_large": "too many changed lines",
     "file_too_big": "a changed file is too big",
+    "line_too_long": "an added line is longer than the project allows",
     "judge_refused": "the judge refused the candidate",
     "goal_not_met": "correct, but the task's goal is not met",
 }
@@ -131,15 +144,18 @@ def log(message):
     print(safe_text(message, 400), file=sys.stderr)
 
 
-def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True):
+def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True, attributes=True):
     """Runs git on a repository, never through a shell, with hooks off; isolated from the machine's configuration
-    (the hive's side) unless the caller is the volunteer's own clone."""
+    (the hive's side) unless the caller is the volunteer's own clone. attributes=False: the command reads no
+    .gitattributes at all, neither a work tree's nor a commit's (the empty tree is its attribute source), so that what
+    a tree says never changes how the hive merges, counts lines or finds binary files. Needs git 2.40."""
     environment = dict(os.environ)
     if isolated:
         environment.update(GIT_ISOLATED)
     environment.update(env or {})
     try:
-        result = subprocess.run(["git", *GIT_BASE, "-C", str(repo), *args], input=stdin, capture_output=True, text=True,
+        source = () if attributes else (f"--attr-source={EMPTY_TREE}",)
+        result = subprocess.run(["git", *GIT_BASE, *source, "-C", str(repo), *args], input=stdin, capture_output=True, text=True,
                                 timeout=timeout, env=environment, errors="replace")
     except subprocess.TimeoutExpired as e:
         raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
@@ -170,6 +186,13 @@ def matches(path, patterns):
         elif low == p or fnmatch.fnmatchcase(low, p):
             return True
     return False
+
+
+def protected(path, patterns):
+    """True if a contribution may never change this path: a protected name or folder at any depth, or one of the
+    project's own patterns (its tests, its judge)."""
+    parts = path.lower().split("/")
+    return parts[-1] in PROTECTED_NAMES or any(part in PROTECTED_DIRS for part in parts) or matches(path, patterns)
 
 
 def in_task_files(path, files):
@@ -355,7 +378,7 @@ def merge_tree(repo, tip, candidate, limits):
     commits = int(git(repo, "rev-list", "--count", f"{base.stdout.strip()}..{candidate}").stdout.strip())
     if commits > limits["commits"]:
         raise Refusal("too_many_commits", {"commits": commits})
-    merged = git(repo, "merge-tree", "--write-tree", "--no-messages", tip, candidate, check=False)
+    merged = git(repo, "merge-tree", "--write-tree", "--no-messages", tip, candidate, check=False, attributes=False)
     tree = merged.stdout.split("\n", 1)[0].strip()
     if merged.returncode == 1:
         raise Refusal("conflict")
@@ -364,38 +387,68 @@ def merge_tree(repo, tip, candidate, limits):
     return tree
 
 
+def blob_bytes(repo, sha, limit):
+    """A blob's bytes, or None if it is larger than the limit."""
+    if int(git(repo, "cat-file", "-s", need_sha(sha)).stdout.strip()) > limit:
+        return None
+    read = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "cat-file", "blob", sha], capture_output=True, timeout=120,
+                          env={**os.environ, **GIT_ISOLATED})
+    if read.returncode != 0:
+        raise HiveError(f"blob {sha[:12]} unreadable")
+    return read.stdout
+
+
 def check_structure(repo, tip_tree, merged_tree, task, config):
-    """Every structural rule, read on what would land: the difference between the tip's tree and the merged tree.
-    Raises Refusal at the first rule broken; returns the figures (files, lines) otherwise."""
+    """Every structural rule, read on what would land: the difference between the tip's tree and the merged tree,
+    folders included (an empty folder is an entry too, and git shows it only when asked). The content rules (binary,
+    line length) are the hive's own reading of the bytes, not git's. Raises Refusal at the first rule broken; returns
+    the figures (files, lines) otherwise."""
     need_sha(tip_tree), need_sha(merged_tree)
     limits, changed = config["limits"], []
-    raw = git(repo, "diff-tree", "-r", "-z", "--raw", "--no-renames", "--abbrev=40", tip_tree, merged_tree).stdout
+    raw = git(repo, "diff-tree", "-r", "-t", "-z", "--raw", "--no-renames", "--abbrev=40", tip_tree, merged_tree).stdout
     fields = raw.split("\0")
     for i in range(0, len(fields) - 1, 2):
         meta, path = fields[i].split(" "), fields[i + 1]
-        old_mode, new_mode, new_sha = meta[0].lstrip(":"), meta[1], meta[3]
+        if len(meta) != 5:
+            raise HiveError("git diff-tree: an entry the hive cannot read")
+        old_mode, new_mode, old_sha, new_sha = meta[0].lstrip(":"), meta[1], meta[2], meta[3]
         if not plain_path(path):
             raise Refusal("bad_path")
         deleted, added = new_mode == "000000", old_mode == "000000"
+        if added and not all(ADDED_PART.match(part) for part in path.split("/")):
+            raise Refusal("bad_path")  # a new name is an identifier: later workers read the names they list
+        if protected(path, config["protected"]):
+            raise Refusal("protected_path", {"path": path})
+        if TREE_MODE in (old_mode, new_mode):  # a folder: its files are judged one by one below
+            if (old_mode not in ("000000", TREE_MODE)) or (new_mode not in ("000000", TREE_MODE)):
+                raise Refusal("special_file", {"path": path})
+            if new_sha == EMPTY_TREE:
+                raise Refusal("special_file", {"path": path})  # git never writes an empty folder: this one was crafted
+            continue
         if (not deleted and new_mode not in FILE_MODES) or (not added and old_mode not in FILE_MODES):
             raise Refusal("special_file", {"path": path})
         if not deleted and not added and old_mode != new_mode:
             raise Refusal("mode_change", {"path": path})
-        if matches(path, config["protected"]):
-            raise Refusal("protected_path", {"path": path})
         if not in_task_files(path, task["files"]):
             raise Refusal("path_outside_task", {"path": path})
         if not deleted:
-            size = int(git(repo, "cat-file", "-s", need_sha(new_sha)).stdout.strip())
-            if size > limits["file_bytes"]:
-                raise Refusal("file_too_big", {"path": path, "bytes": size})
+            new = blob_bytes(repo, new_sha, limits["file_bytes"])
+            if new is None:
+                raise Refusal("file_too_big", {"path": path})
+            if b"\0" in new:
+                raise Refusal("binary", {"path": path})
+            old = b"" if added else (blob_bytes(repo, old_sha, 4 * limits["file_bytes"]) or b"")
+            known = set(old.split(b"\n"))
+            longest = max((len(line) for line in new.split(b"\n") if line not in known), default=0)
+            if longest > limits["line_bytes"]:
+                raise Refusal("line_too_long", {"path": path, "bytes": longest})
         changed.append(path)
     if not changed:
         raise Refusal("empty")
     if len(changed) > limits["files"]:
         raise Refusal("too_many_files", {"files": len(changed)})
     lines = 0
-    numstat = git(repo, "diff-tree", "-r", "-z", "--numstat", "--no-renames", tip_tree, merged_tree).stdout
+    numstat = git(repo, "diff-tree", "-r", "-z", "--numstat", "--no-renames", tip_tree, merged_tree, attributes=False).stdout
     for entry in numstat.split("\0"):
         if not entry:
             continue

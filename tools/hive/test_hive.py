@@ -273,6 +273,21 @@ class TestIntegration(Base):
         self.assertEqual(sorted((r["result"], r.get("reason")) for r in results), [("accepted", None), ("refused", "superseded")])
         self.assertEqual(len(judge_by_content.seen), 1, "the superseded candidate costs no judgement")
 
+    def test_attributes_in_the_tree_never_steer_the_count_or_the_binary_rule(self):
+        """The project's own .gitattributes may say anything: the hive counts lines and finds binary files the same way."""
+        for attributes, content, expected in (("* -diff\n", LIB + "int plain;\n", ("accepted", None)),
+                                              ("* diff\n", b"int x;\n\x00\x01\x02\n", ("refused", "binary"))):
+            with self.subTest(attributes=attributes.strip()):
+                world = World(tempfile.mkdtemp(dir=self.tmp.name))
+                world.upstream_commit(".gitattributes", attributes)
+                sh("git", "pull", "--quiet", "--ff-only", "origin", "main", cwd=world.harvest)  # the hive's clone at the tip
+                fork = world.fork("alice", 101)
+                fork.write("lib.c", content).commit().marker("toy-0001").push()
+                result = self.one(world.run())
+                self.assertEqual((result["result"], result.get("reason")), expected)
+                if expected[0] == "accepted":
+                    self.assertEqual(result["figures"], {"files": 1, "lines": 1})
+
     def test_the_judge_sees_the_trees_bytes_whatever_gitattributes_says(self):
         self.alice.submit("toy-0001", content=LIB + "int last;\n")
         self.w.run()
@@ -332,6 +347,68 @@ class TestStructure(Base):
                 result = self.one(world.run())
                 self.assertEqual((result["result"], result["reason"]), ("refused", "protected_path"))
 
+    def test_agent_instruction_files_and_git_steering_files_are_refused_at_any_depth(self):
+        """Coding agents read such files in sub-folders too: under a task's folder they would instruct every later worker."""
+        for path in ("src/CLAUDE.md", "src/AGENTS.md", "src/GEMINI.md", "src/.cursor/rules/x.mdc", "src/.claude/commands/x.md",
+                     "src/.gitattributes", "src/.github/copilot-instructions.md", "src/.vscode/tasks.json", "src/deep/er/agents.md",
+                     "src/.gitmodules", "src/.envrc", "src/.devcontainer/devcontainer.json"):
+            with self.subTest(path):
+                world = World(tempfile.mkdtemp(dir=self.tmp.name))
+                world.fork("alice", 101).write(path, "text for a later agent\n").commit().marker("toy-0002").push()
+                result = self.one(world.run())
+                self.assertEqual((result["result"], result.get("reason")), ("refused", "protected_path"))
+                self.assertEqual(world.tip(), sh("git", "rev-parse", "HEAD", cwd=world.seed).stdout.strip())
+
+    def crafted(self, root_lines, task):
+        """A candidate whose root tree is written by hand (git's own commands never write an empty folder)."""
+        tree = sh("git", "mktree", cwd=self.alice.work, stdin="".join(line + "\n" for line in root_lines)).stdout.strip()
+        commit = sh("git", "commit-tree", tree, "-p", "HEAD", "-m", f"x\n\nHive-Task: {task}\nHive-Action: submit",
+                    cwd=self.alice.work).stdout.strip()
+        sh("git", "push", "--quiet", "origin", f"{commit}:refs/heads/crafted-{commit[:10]}", cwd=self.alice.work)
+        return commit
+
+    def listing(self, treeish):
+        return sh("git", "ls-tree", treeish, cwd=self.alice.work).stdout.splitlines()
+
+    def test_an_empty_folder_is_an_entry_too(self):
+        empty = sh("git", "mktree", cwd=self.alice.work, stdin="").stdout.strip()
+        self.assertEqual(empty, hive.EMPTY_TREE)
+        with self.subTest("an empty folder with a protected name, at the root"):
+            self.crafted(self.listing("HEAD") + [f"040000 tree {empty}\t.claude"], "toy-0005")
+            self.refused("protected_path")
+        with self.subTest("an empty folder with a harmless name, inside the task's folder"):
+            src = sh("git", "mktree", cwd=self.alice.work,
+                     stdin="".join(line + "\n" for line in self.listing("HEAD:src") + [f"040000 tree {empty}\tnewdir"])).stdout.strip()
+            root = [f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")]
+            self.crafted(root, "toy-0002")
+            self.refused("special_file", self.w.run())
+        with self.subTest("a real change, plus an empty folder outside the task's files"):
+            lib = sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin=LIB + "int real;\n").stdout.strip()
+            root = [f"100644 blob {lib}\tlib.c" if line.endswith("\tlib.c") else line for line in self.listing("HEAD")]
+            self.crafted(root + [f"040000 tree {empty}\temptydir"], "toy-0001")
+            self.refused("special_file", self.w.run())
+        with self.subTest("an existing folder emptied but kept as an entry"):
+            root = [f"040000 tree {empty}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")]
+            self.crafted(root, "toy-0002")
+            self.refused("special_file", self.w.run())
+
+    def test_a_name_a_contribution_adds_is_an_identifier(self):
+        self.alice.write("src/read this first.c", "int x;\n").commit().marker("toy-0002").push()
+        self.refused("bad_path")
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("src/old name.c", "int old;\n")
+        world.fork("alice", 101).write("src/old name.c", "int older;\n").commit().marker("toy-0002").push()
+        self.assertEqual(self.one(world.run())["result"], "accepted", "a file that already has such a name can still be changed")
+
+    def test_an_added_line_too_long(self):
+        self.alice.write("lib.c", LIB + "/*" + "x" * 400 + "*/\n").commit().marker("toy-0001").push()
+        self.assertEqual(self.refused("line_too_long")["detail"], {"bytes": 404})
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("lib.c", LIB + "/*" + "y" * 900 + "*/\n")
+        world.fork("alice", 101).write("lib.c", LIB.replace("return 0;", "return 0; /* tuned */") + "/*" + "y" * 900 + "*/\n") \
+            .commit().marker("toy-0001").push()
+        self.assertEqual(self.one(world.run())["result"], "accepted", "a long line that was already there is not the candidate's")
+
     def test_a_symbolic_link(self):
         os.symlink("lib.c", self.alice.work / "link")
         self.alice.commit().marker("toy-0005").push()
@@ -350,6 +427,14 @@ class TestStructure(Base):
     def test_a_binary_file(self):
         self.alice.write("lib.c", b"\x00\x01\x02binary").commit().marker("toy-0001").push()
         self.refused("binary")
+
+    def test_a_binary_file_whose_first_bytes_look_like_text(self):
+        world = World(tempfile.mkdtemp(dir=self.tmp.name), {"limits": {"file_bytes": 20000, "changed_lines": 2000}})
+        text = "".join(f"int v{i:04d} = {i};\n" for i in range(600)).encode()  # more than the 8,000 bytes git looks at
+        self.assertGreater(len(text), 8000)
+        world.fork("alice", 101).write("lib.c", text + b"\x00\x01\x02\n").commit().marker("toy-0001").push()
+        result = self.one(world.run())
+        self.assertEqual((result["result"], result.get("reason")), ("refused", "binary"))
 
     def test_too_many_changed_lines(self):
         self.alice.write("lib.c", LIB + "".join(f"int v{i};\n" for i in range(51))).commit().marker("toy-0001").push()
@@ -699,11 +784,13 @@ class TestHostileData(Base):
         for bad in ("", "/abs", "a/../b", "a//b", "./a", ".git/config", "a/.GIT/x", "a\tb", "a\\b", " a", "aé", "x" * 201):
             self.assertFalse(hive.plain_path(bad), bad)
         self.assertTrue(hive.plain_path("src/a b.c"))
-        self.assertTrue(hive.matches(".github/workflows/x.yml", hive.ALWAYS_PROTECTED))
-        self.assertTrue(hive.matches(".GITHUB/x", hive.ALWAYS_PROTECTED))
-        self.assertTrue(hive.matches("agents.md", hive.ALWAYS_PROTECTED))
-        self.assertFalse(hive.matches("src/agents.md", hive.ALWAYS_PROTECTED))
-        self.assertFalse(hive.matches("hiveless/x", hive.ALWAYS_PROTECTED))
+        project = ["hive/**", "tests/**"]
+        for path in (".github/workflows/x.yml", ".GITHUB/x", "agents.md", "src/agents.md", "src/deep/CLAUDE.md", "docs/Gemini.md",
+                     "src/.cursor/rules/x.mdc", "a/b/.vscode/tasks.json", "src/.gitattributes", "x/.gitmodules", "src/.envrc",
+                     "src/.claude/commands/x.md", "hive/x", "tests/t.c", ".claude", "src/.github"):
+            self.assertTrue(hive.protected(path, project), path)
+        for path in ("src/a.c", "hiveless/x", "src/hive/x", "src/claude.md.txt", "src/myagents.md", "docs/github/x", "src/gitattributes"):
+            self.assertFalse(hive.protected(path, project), path)
         self.assertTrue(hive.in_task_files("src/a.c", ["src/"]))
         self.assertFalse(hive.in_task_files("src2/a.c", ["src/"]))
         self.assertFalse(hive.in_task_files("lib.c.bak", ["lib.c"]))

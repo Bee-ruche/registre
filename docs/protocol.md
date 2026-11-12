@@ -56,17 +56,26 @@ it**: exactly what would land.
 | `not_a_person`, `young_account`, `banned` | the fork's owner is an organization or a bot, is younger than the project's minimum (90 days by default), or is banned |
 | `unrelated`, `too_many_commits`, `conflict`, `empty` | the branch does not come from the project, is too long, does not merge on the tip, or changes nothing |
 | `path_outside_task` | a changed path is not one of the task's files (a hard rule, not a warning) |
-| `protected_path` | a changed path is protected: CI (`.github/`), what steers git (`.gitattributes`, `.gitmodules`), the hive's files (`hive/`), **agent instruction files** (`AGENTS.md`, `CLAUDE.md`, `.claude/`…), and what the project adds (its tests, its judge) |
-| `special_file`, `mode_change`, `bad_path`, `binary` | a symbolic link or submodule, a changed file mode, a path that is not plain printable ASCII, a binary file |
-| `too_many_files`, `too_large`, `file_too_big` | the project's size limits |
+| `protected_path` | a changed path is protected, **at any depth of the tree**: CI and editor automation (`.github/`, `.vscode/`, `.devcontainer/`…), what steers git (`.gitattributes`, `.gitmodules`), **agent instruction files and folders** (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.cursor/`…), the hive's files (`hive/` at the root), and what the project adds (its tests, its judge) |
+| `special_file`, `mode_change` | a symbolic link or submodule, an empty folder (git never writes one: it was crafted), a changed file mode |
+| `bad_path` | a path that is not plain printable ASCII, or a **new** name that is not an identifier (letters, digits, `. _ + -`, 64 characters at most per part) |
+| `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
+| `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line |
 | `judge_refused`, `goal_not_met` | the judge refused, or the candidate is correct but misses the task's goal |
 
 Two limits protect the judge's time: judgements per member per day, and answers per member per day. A candidate
 over a limit is not refused: it waits for the next day.
 
 Agent instruction files are protected because an integrated instruction would be read by every later worker: a
-stored prompt injection. Changes to protected paths are ordinary pull requests, reviewed by the project's
-maintainers.
+stored prompt injection. Coding agents read such files in sub-folders too, so the rule holds at any depth. Changes
+to protected paths are ordinary pull requests, reviewed by the project's maintainers.
+
+This narrows one channel; it does not close it. Whatever a contribution adds (a comment, a string, a file's name)
+is read by the workers that come after. That is why a worker treats everything in a project as data, and why it can
+reach nothing but a branch of its owner's fork.
+
+No `.gitattributes`, the project's own included, changes how the hive merges, counts lines or finds binary files:
+the hive runs those git commands with an empty attribute source.
 
 ## How a candidate is judged and integrated
 
