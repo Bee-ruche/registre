@@ -19,6 +19,11 @@ grows on a reading the providers reject would lose its volunteers' accounts over
 | B. Open, and ask in parallel | Faster | Volunteers carry the risk |
 | C. Do not ask | — | The risk falls on volunteers without their knowing |
 
+**If a provider says no, or does not answer**: a "no" removes that provider from the worker (the hive never runs
+against a provider's stated wish); silence after a month leaves the founder two choices: open with the risk stated
+plainly on the setup page, so that each volunteer decides for their own account, or wait. Recommendation: wait for
+at least one written answer before the public opening, and open with that provider first.
+
 **Outside action**: the founder sends the question (the builder drafts it on request). Also worth knowing:
 Anthropic runs a "Claude for Open Source" program (free plans for maintainers and active contributors), a possible
 ally for the hive's most active volunteers.
@@ -67,6 +72,8 @@ To ask before the public opening; the builder is not a lawyer and states its unc
    work with a rank.
 2. **Liability**: does a hive that hands out tasks and records credit keep the protections of a mere host, or does
    it answer for what volunteers' agents produce? Who answers: the founder personally, or a structure (association)?
+   And in "bring your own project" mode, where the hive only provides the worker and the volunteer chooses the
+   project: does the hive's exposure really end where the volunteer's choice begins?
 3. **Contributor licensing**: AI-generated contributions under each project's license; whether the hive needs a
    contributor agreement; disclosure of AI authorship, which Anthropic's Usage Policy requires.
 4. **The pledge**: whether a rank earned partly by a public post is a "material connection" that the post must
@@ -125,3 +132,10 @@ action: a trademark search, by the founder or a lawyer).
 - Open PR #174 (applications instead of invitations): its idea fits the new design (people join by themselves);
   the PR itself is out of date. **Recommendation**: close it with a note that the plan carries the idea.
 - The repository settings listed in the private check report.
+
+## D8. Recruit phase 1's volunteers
+
+Phase 1's milestone needs three volunteers who are not the founder, each with a Claude plan and a GitHub account
+older than 90 days, willing to run the worker for a week on miniz. **Recommendation**: people the founder knows
+personally, told plainly what the worker does and that the providers have not yet answered D1. Outside action:
+the founder asks them; the hive sends no invitation by itself (commandment 13).

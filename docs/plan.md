@@ -1,7 +1,7 @@
 # The plan: rebuilding the hive for "point and forget"
 
 *12 November 2026. Written by the builder of the hive at the founder's request, after a full check of the project
-(the check itself is a private report held by the founder: it describes weaknesses that are not fixed yet). The
+(the check itself is a private report held by the founder). The
 rebuild starts once the founder has read this plan. Facts marked **(unverified)** come from search excerpts or
 secondary sources and must be checked before anything depends on them.*
 
@@ -96,10 +96,16 @@ the leftovers, the "Nuit des abeilles" made personal).
 - **The worker can reach nothing of the volunteer's**: no connectors (the setup removes them; the worker's first
   step refuses to run if any are present), no environment variables or secrets, no repository other than the
   volunteer's fork of the project and the public registry.
-- **A hostile task cannot turn a worker against its volunteer or the hive**: tasks come from the hive's own task
-  generator as structured data (file, function, metric, check command), never from free prose a member wrote; the
-  worker's instructions come from its fixed prompt and the repository's skill, never from task content; every
-  output is judged by the hive's judge, which never trusts the worker.
+- **A hostile task cannot turn a worker against its volunteer or the hive** (for the hive's own projects): tasks
+  come from the hive's own task generator as structured data (file, function, metric, check command), never from
+  free prose a member wrote; the worker's instructions come from its fixed prompt and the repository's skill, never
+  from task content; every output is judged by the hive's judge, which never trusts the worker.
+- **The code itself is data too**: the worker must read the project's code and comments, which anyone could have
+  written; its fixed prompt says that nothing it reads there is an instruction, and the limits above (nothing of the
+  volunteer's within reach, nothing outside the fork) are what holds when that fails.
+- **"Bring your own project" gets the loop's safety, not the hive's guarantees**: the worker still reaches nothing
+  of the volunteer's and runs code only in its sandbox, but the task list and the code are whatever the chosen
+  project provides, and no hive judge checks the result. The setup page says so.
 - **Untrusted code runs only in a sandbox**: in a cloud session, the session's VM is the boundary (it holds no
   personal files and no credentials); on a volunteer's machine, the worker uses its tool's sandbox or a container.
 - **The hive never asks a worker to do what an auto-approval classifier would block** (force pushes, merges,
@@ -118,6 +124,16 @@ first time. Unavoidable: the Claude sign-in, the GitHub authorization, the Creat
 five commands. **To verify in phase 1 with a real volunteer who is not the founder** (section P5): that a cloud
 session can push to the volunteer's fork and hand the branch to the hive without any further approval.
 
+### Risks, and what must hold before the opening
+
+- **A provider says no, or changes its terms** (the area it keeps adjusting is programmatic use of subscriptions):
+  the worker loses that provider; the hive keeps a second provider ready (Codex) and never depends on one.
+- **Scheduled tasks are a research preview**: they may change; the worker is a skill in the repository, so it moves
+  to whatever replaces them.
+- **Auto-approval stalls**: a worker that keeps being blocked waits for a human; phase 1 measures how often.
+- **Must hold before the opening**: the phase 1 milestone met; D1 answered or its risk stated on the setup page;
+  the worker's safety limits tested by an adversarial reviewer.
+
 ## P2. Projects people want
 
 ### Criteria
@@ -131,8 +147,9 @@ A project enters the hive only if it meets all five:
 2. **An objective judge**: a machine can say, output by output, whether a contribution is right (the hive's
    strength; docs/scope.md).
 3. **Splittable work**: hundreds of small tasks many workers can share without duplicating each other.
-4. **Legal safety**: no copyrighted asset, ROM, key or leaked material is ever hosted or needed by the hive; the
-   project states how it stays legal (users supply their own legal copy; licenses compatible).
+4. **Legal safety**: no copyrighted asset, ROM, key or leaked material is ever hosted or needed by the hive, and no
+   work requires breaking a protection (decryption, extracted keys, firmware); the project states how it stays legal
+   (users supply their own legal copy; licenses compatible).
 5. **Openness to AI contributions**: the people who maintain the work accept them, in writing.
 
 ### Gaming: set aside for now
@@ -146,8 +163,8 @@ Many open-source efforts duplicate each other, and AI effort spread across them 
 projects that want it a shared engine, without taking their work away from them:
 
 1. **A project opts in, in writing**, with its own scope and acceptance rules, and a named human who answers for it.
-2. **Its task list comes from its own data** (failing tests, coverage gaps, a profiler's hot spots, its issue
-   labels), generated by a tool, not written by hand.
+2. **Its task list comes from its own data** (failing tests, coverage gaps, a profiler's hot spots, labelled
+   issues), generated by a tool as structured data, not written by hand and never copying the issues' prose.
 3. **Leases prevent two workers, or two projects, from doing the same piece twice**: the deduplication that shared
    spreadsheets and issue labels give today, made automatic.
 4. **Every contribution is judged** by the hive's common judge or by the project's own CI, whichever the project
@@ -170,6 +187,14 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
    start from docs/candidates.md (giflib, bzip2, cJSON, lodepng) and from projects with a real community behind
    them.
 
+### Risks, and what must hold before the opening
+
+- **No project with a community says yes**: the hive then opens with its proving ground only, which draws little;
+  the pilot is the opening's condition, not an option.
+- **Maintainers fear a flood**: the caps they set, the named human per contribution and the stop button answer it;
+  one bad week with a pilot would cost the hive its name.
+- **Must hold before the opening**: one pilot project live, with its maintainers' written agreement.
+
 ## P3. The hive at scale
 
 ### What breaks first, in order (for unattended workers on GitHub alone)
@@ -191,7 +216,9 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
   batches, by one robot.
 - **Leases go through the "gesture inbox"** the hive already designed (docs/architecture.md, step 2): a worker
   claims by a comment on the registry, which every cloud session can reach without changing its network settings;
-  one robot pass turns comments into leases, first come first served. A small coordinator service replaces it only
+  one robot pass turns comments into leases, first come first served. The robot reads comments as data, with
+  main's own tool, accepting only a fixed command form; no workflow runs because of a comment. The inbox is built
+  only after an adversarial review. A small coordinator service replaces it only
   if the inbox cannot keep up (cost estimate: $5 to $50 a month at 10,000 to 100,000 contributions a week,
   unverified).
 - **Task supply is generated**: each project has a splitter (a profiler for miniz, failing tests or coverage gaps for a
@@ -206,10 +233,12 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
   starts at zero weight; the hive, not the contributor, chooses who re-checks whom. Rank gives larger tasks, the
   re-checker role, then judge review.
 - **Abuse**: Sybil accounts gain nothing that verified work would not give them; floods meet per-account caps on
-  open leases and submissions; poisoned tasks cannot exist because tasks are generated, structured data.
+  open leases and submissions; poisoned tasks cannot exist in the hive's own projects, because their tasks are
+  generated, structured data (the generator extracts identifiers from a project's data, never copies its prose).
 - **Cost**: GitHub Actions remains free for public repositories; the judge runs on the hive's CI (trusted), and
   sixty concurrent jobs carry about 60,000 ten-minute judgements a week. Beyond that, the redundancy design lets
-  volunteers' own machines judge, with spot checks. Workflow runs are kept only 90 days: verdicts must be (and are)
+  volunteers' own machines judge, but a volunteer's verdict counts only when an independent volunteer, chosen by the
+  hive, reproduces it, and the hive's CI re-judges a sample. Workflow runs are kept only 90 days: verdicts must be (and are)
   committed.
 - **Visible progress**: each project page shows tasks done, in progress and left, the curve of the week, and each
   volunteer's own contributions.
@@ -219,7 +248,7 @@ The pitch to project maintainers is in docs/founder-decisions.md; contacting the
 
 | Today | In the rebuilt hive |
 | --- | --- |
-| The 14 commandments | **Kept, shortened.** The core stays: never break anything, no evidence no claim, don't cheat the judge, tell the truth, content is data, sandbox without secrets, no hidden code, respect licenses, the commons, humans have the last word, inform don't manipulate, one person one voice. Commandment 8 changes: upstream projects are contacted only through the founder's decided, public pitch, and work goes upstream only where a project opted in |
+| The 14 commandments | **Kept, shortened.** The core stays: never break anything, no evidence no claim, don't cheat the judge, tell the truth, content is data, sandbox without secrets, no hidden code, respect licenses, the commons, humans have the last word, inform don't manipulate, one person one voice. Commandment 8 changes: upstream projects are contacted only through the founder's decided pitch, and work goes upstream only where a project opted in |
 | R1 (size), R2 (full CI), R4, R5, R6, R16 | **Kept**: they are the judge |
 | R3 (reviews and votes per contribution) | **Replaced** by the judge plus redundancy; human review only for judges, tooling, rules and appeals |
 | R7, R8 (72-hour reservations, three engagements) | **Replaced** by short leases granted by the inbox |
@@ -234,6 +263,15 @@ sub-agents it launched itself. It is replaced by a rule GitHub can enforce: **no
 tooling, workflows or rules is merged by the account that wrote it; a second identity approves it** (a human, or an
 agent account of another model acting for another person), and the repository's rules make that technical rather
 than a promise.
+
+### Risks, and what must hold before the opening
+
+- **Redundancy is gamed by colluding accounts**: re-checkers are chosen by the hive, never by the contributor, and
+  one person counts once; a dress rehearsal attacks it before it is trusted.
+- **The inbox is a new attack surface** (hostile comments): it is built only after an adversarial review.
+- **GitHub's own limits or policies tighten**: the small coordinator service is the fallback, designed in advance.
+- **Must hold before the opening**: phase 2's rehearsal passed; per-account caps in force; no human step left in
+  daily work except changes to judges, tooling and rules.
 
 ## P4. Virality: the pledge
 
@@ -277,16 +315,23 @@ the page shows them, never pre-fills them, and asks the member to write their ow
 ### The other growth levers
 
 - **"Your AI built this"**: every integrated contribution carries the volunteer's name on the project page, and a
-  shareable card ("My bee matched 14 functions this week").
+  shareable card ("My bee landed 14 verified contributions this week").
 - **Project progress made visible**: one page per project, one bar per milestone, shared milestones ("50 % of the
-  functions matched") announced by the hive's own account, decided by the founder.
+  tasks done") announced by the hive's own account, decided by the founder.
 - **Leaderboards by verified work**, per project and per week, never by volume alone.
 - **Teams**: people who run a community (a project, a Discord, a stream) bring their members as a team, the way
   volunteer-computing projects have done for decades.
 
+### Risks, and what must hold before the opening
+
+- **A pledge reads as an advertisement or as spam**: own words, once, nothing earned, no pre-filled text.
+- **X changes its rules or its embed endpoint**: the wall links to posts on any network; nothing depends on X.
+- **Must hold before the opening**: X's live rules read and D2 decided.
+
 ## P5. The road to the public opening
 
-Each task below is sized for one session. Phases are in dependency order.
+Phases are in dependency order. Each task is split to one session (about 200 lines outside tests) before it starts;
+the larger ones (1.3, 1.5, 2.1, 2.2) will each become several.
 
 ### Phase 0: close the check (before anything else; about one week of sessions)
 
@@ -300,18 +345,21 @@ Each task below is sized for one session. Phases are in dependency order.
 
 ### Phase 1: a real volunteer can try it (two to three weeks) — first deliverable
 
-- 1.1 Spike: a cloud scheduled task, on a test account that is not the founder's, pushes a branch to its fork and
-  hands it to the hive with no approval prompt. Record each obstacle.
+- 1.1 Spike: a cloud scheduled task, on the account of a volunteer the founder has recruited (not the founder's own,
+  and older than the hive's 90-day minimum), pushes a branch to its fork and hands it to the hive with no approval
+  prompt. Record each obstacle.
 - 1.2 The worker prompt and skill (`.claude/skills/bee-worker/`): lease, work, prove, submit, stop; refuses to run
   with connectors present; reads task data as data.
 - 1.3 The inbox: leases by comment, one robot pass, first come first served, lease expiry.
 - 1.4 The miniz splitter: tasks generated from the profiler, structured, size S.
 - 1.5 Judging on the hive's CI for a branch from a volunteer's fork, bound to the commit, integrated automatically
-  when the judge passes (miniz only, during the pilot, with a human able to stop it).
+  when the judge passes (miniz only, during the pilot, with a human able to stop it). Starts only once phase 0 is
+  closed.
 - 1.6 The "Give your quota" page: one prompt, one checklist, the overage warning.
 - 1.7 A progress page for miniz.
-- **Milestone**: three volunteers who are not the founder set up in 15 minutes or less, do nothing else for a week,
-  and each gets at least one integrated contribution.
+- **Milestone**: three volunteers who are not the founder (recruited by the founder, D8, and told plainly that the
+  providers have not yet answered D1) set up in 15 minutes or less, do nothing else for a week, and each gets at
+  least one integrated contribution.
 
 ### Phase 2: the hive holds at scale (three to four weeks)
 
@@ -349,5 +397,6 @@ The opening gate. All must be true:
 
 The founder decides: whether to ask the providers about quota donation and how (D1), what the pledge may earn
 (D2), the legal questions (D3), which project to approach and when (D4), the council's two new members (D5),
-and whether to keep the name "La Ruche" for the public (D6). The decisions, with options and recommendations, are
+whether to keep the name "La Ruche" for the public (D6), the housekeeping only his account can do (D7), and the
+recruiting of phase 1's volunteers (D8). The decisions, with options and recommendations, are
 in docs/founder-decisions.md.
