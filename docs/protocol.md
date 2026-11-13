@@ -97,6 +97,11 @@ Each run, after the forks were read, in this order:
    tier, and whose former holder has no candidate in this run. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
 
+**Tasks that may change the same file are never held by two members at once.** What a member pushes for its task
+is public; someone holding another task on the same file could put that work into its own candidate. So such a task
+is dealt only when the others are free, and a late candidate does not count while someone else holds one of them.
+A project whose tasks name separate files loses nothing; one whose tasks share a file does them one at a time.
+
 A member who pushes a candidate *and* an ask is dealt its next task **in the same run, once that candidate is
 answered**: a worker that runs every hour gets a task per run. If the answer costs it a wait, the ask stays for
 later.
@@ -106,7 +111,7 @@ What ends a deal, and what it costs its member:
 | The deal ends when | Cost to the member |
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
-| the judge refuses it (`judge_refused`, `goal_not_met`, `requirement_not_met`), or it no longer merges on the project's tip (`conflict`) | none: a real attempt |
+| the judge refuses it (`judge_refused`, `goal_not_met`, `requirement_not_met`), or the project's tip moved under it: it no longer merges (`conflict`) or adds nothing (`empty`) | none: a real attempt |
 | it breaks a structural rule, makes the judge fail three times (`judge_failed`), or the project's repository declines it three times (`push_refused`) | a wait |
 | its time is up and the fork holds no candidate | a wait |
 | the hive could not answer it in six runs (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
@@ -132,7 +137,7 @@ it**: exactly what would land.
 | `special_file`, `mode_change` | a symbolic link or submodule, an empty folder (git never writes one: it was crafted), a changed file mode |
 | `bad_path` | a path that is not plain printable ASCII, or a **new** name that is not an identifier: letters, digits, `. _ + -`, 64 characters at most per part, not starting with a dot or a dash, not ending with a dot |
 | `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
-| `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. No file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends |
+| `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe |
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
 | `judge_failed` | the judge could not judge this deal's candidates (it ran out of time, for instance), three times |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |
@@ -236,17 +241,21 @@ What makes them hold:
 - **The hive's own faults cost members nothing.** A fork GitHub would not let the hive read decides nothing. The
   judge's machine down marks nobody. What the judge ran on and the hive could not use is judged again.
 - **The state survives a run that stops**: its files are written whole or not at all, one cut short is read as
-  empty, and a line of one run is recorded once however often a job is run again.
+  empty, a ledger line cut short is removed before anything is added, and a line of one run is recorded once
+  however often a job is run again.
 
 What this costs, plainly: a worker waits for the hive's next run before its first task; nobody chooses their task
-(only the hardest tier they take); and an account that asks and never comes back holds one task for four hours.
+(only the hardest tier they take); an account that asks and never comes back holds one task for four hours, and
+with it the tasks that share a file with that one.
 
 ## How the hive writes
 
 - **It promises, then pushes.** Before each push the write job records an *intent* in the ledger and saves the
   state. If a run pushed and then could not record, or could not tell whether its push landed, the next run finds
   the promise, looks for the promised commit in the project's history, and completes the ledger. Nothing but the
-  hive's own promise is believed: no field of a commit on the project's branch is.
+  hive's own promise is believed: no field of a commit on the project's branch is. That a promised push *landed*
+  is recorded as soon as a run sees the commit in the project's history; that it *never landed* is recorded only
+  by a write job, which first checks that the project's tip has not moved since its plan.
 - **The push can only add to the judged tip.** The hive checks that what it pushes descends from the tip that was
   judged, and pushes on the condition that the branch is still at that tip. A branch that a maintainer moved
   meanwhile, to take a commit back for instance, is left as they put it.

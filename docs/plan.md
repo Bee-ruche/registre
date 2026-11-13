@@ -119,6 +119,9 @@ candidates for different tasks independent of each other.
 
 - **A worker asks, the hive deals.** Each run, every worker that asked gets one open task, drawn by the hive, its
   alone for three hours. So no two workers are ever on one task, and none of the power is spent twice. **Built.**
+- **Tasks that share a file are dealt one at a time**: a member's candidate is public, and the holder of another
+  task on the same file could put it into its own. A splitter should give tasks separate files; where it cannot
+  (eight of miniz's first eleven tasks change one file), those tasks are done one after the other. **Built.**
 - **A task cannot be squatted for long**: one task per account at a time; a deal left without a candidate ends
   after four hours and costs the account a wait that doubles (two hours to seven days), until one of its
   candidates is accepted. **Built.**

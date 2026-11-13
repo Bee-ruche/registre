@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -58,11 +59,12 @@ UNANSWERED_RUNS = 6  # a deal whose candidates the hive spent this many runs on 
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
 # Refusals that cost their member no wait: a real attempt the judge answered, or work the project's tip overtook.
-ATTEMPT_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met", "conflict")
+ATTEMPT_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met", "conflict", "empty")
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
 HEADS_PER_FORK_MAX = 2000  # a fork with more branches than this is not read at all
+FOLDER_LISTING_BYTES = 64 << 20  # a folder whose own listing is longer than this is not read
 FILE_MODES = ("100644", "100755")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git knows it without it being written
 TREE_MODE = "040000"
@@ -195,6 +197,34 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
     if check and result.returncode != 0:
         raise HiveError(f"git {args[0]} failed ({result.returncode}): {safe_text(result.stderr.strip(), 300)}")
     return result
+
+
+def git_capped(repo, *args, limit, timeout=300):
+    """The output of a git command that lists one object of a candidate, or None if it is longer than `limit` bytes:
+    the command is stopped there, so that what the hive reads does not grow with what a fork sends."""
+    try:
+        process = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   stdin=subprocess.DEVNULL, env={**os.environ, **GIT_ISOLATED})
+    except OSError as e:
+        raise HiveError(f"git {args[0]}: {type(e).__name__}") from e
+    late = []
+    timer = threading.Timer(timeout, lambda: (late.append(True), process.kill()))
+    timer.start()
+    try:
+        data = process.stdout.read(limit + 1)
+        if len(data) > limit:
+            process.kill()
+        process.stdout.close()
+        code = process.wait()
+    finally:
+        timer.cancel()
+    if late:
+        raise HiveError(f"git {args[0]}: timeout after {timeout} s")
+    if len(data) > limit:
+        return None
+    if code != 0:
+        raise HiveError(f"git {args[0]} failed ({code})")
+    return data.decode("utf-8", errors="replace")
 
 
 def is_sha(value):
@@ -355,6 +385,13 @@ class Ledger:
             fresh.append(event)
         if fresh and write:
             self.folder.mkdir(parents=True, exist_ok=True)
+            if self.path.exists():
+                # A last line cut short (a run stopped while writing it) was left out when the ledger was read: it is
+                # removed before anything is added, so that a new line is never glued to it.
+                content = self.path.read_bytes()
+                if content and not content.endswith(b"\n"):
+                    with open(self.path, "rb+") as f:
+                        f.truncate(content.rfind(b"\n") + 1)
             with open(self.path, "a", encoding="utf-8") as f:
                 for event in fresh:
                     f.write(json.dumps(event, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False) + "\n")
@@ -409,18 +446,18 @@ class Ledger:
         wait: the instant until which it is dealt nothing, or None. A deal that ended badly (it expired without a
           candidate; its candidate broke a structural rule, made the judge fail three times, or was declined by the
           project three times) costs a wait, doubled at each one in a row, until an acceptance. A candidate the judge
-          answered and refused, or one that no longer merges on the project's tip, is a real attempt: it costs no
-          wait. What the hive's own side caused costs nothing.
+          answered and refused, or one that no longer merges on the project's tip or adds nothing to it (the tip
+          moved under it), is a real attempt: it costs no wait. What the hive's own side caused costs nothing.
         today: the deals it was given on the instant's day, those that ended in an acceptance left out: the day's
           limit bounds what an account can take and waste, never what it can contribute."""
-        ends, today, day = [], set(), iso(instant)[:10]
+        ends, today, accepted, day = [], [], set(), iso(instant)[:10]
         for e in self.events:
             if e.get("member_id") != member_id:
                 continue
             if e.get("type") == "deal" and e.get("at", "")[:10] == day:
-                today.add((e.get("task"), e["at"]))
+                today.append((e.get("task"), e["at"]))
             elif e.get("type") == "verdict" and e.get("result") == "accepted":
-                today.discard((e.get("task"), e.get("deal")))
+                accepted.add((e.get("task"), e.get("deal")))
             if e.get("type") == "expired":
                 ends.append((e["at"], "fault" if e.get("fault") else "penalty"))
             elif e.get("type") == "verdict" and e.get("deal"):
@@ -437,7 +474,7 @@ class Ledger:
             until = parse_iso(last) + dt.timedelta(hours=min(BACKOFF_MAX_HOURS, config["backoff_hours"] * 2 ** min(streak - 1, 20)))
             wait = iso(until) if instant < until else None
         counted = [kind for _, kind in ends if kind != "fault"]
-        return (1 if not counted else 0 if counted[-1] == "accepted" else 2), wait, len(today)
+        return (1 if not counted else 0 if counted[-1] == "accepted" else 2), wait, sum(1 for deal in today if deal not in accepted)
 
     def marks(self, task, member_id, deal):
         """The runs the hive spent on a deal's candidates without an answer: [(kind, unproven)]. Counted for the deal,
@@ -620,23 +657,55 @@ def blob_bytes(repo, sha, limit):
     return read.stdout
 
 
+def folder_entries(repo, tree):
+    """name -> (mode, object id) for the entries of ONE folder (not of its sub-folders)."""
+    listed = git_capped(repo, "ls-tree", "-z", need_sha(tree), limit=FOLDER_LISTING_BYTES)
+    if listed is None:
+        raise Refusal("too_many_files")
+    entries = {}
+    for record in listed.split("\0"):
+        if record:
+            meta, _, name = record.partition("\t")
+            mode, _, sha = meta.split(" ")
+            entries[name] = (mode, sha)
+    return entries
+
+
+def changed_entries(repo, old_tree, new_tree, most):
+    """What differs between two trees, folders included, as (old mode, new mode, old id, new id, path); a mode of
+    000000 means absent. The hive walks the trees itself, one folder at a time, and stops (too_many_files) past `most`
+    entries: git's own recursive listings build the whole list first, however large a tree a few objects describe,
+    so what a candidate costs to refuse would grow with what it sends."""
+    none, found, stack = "0" * 40, [], [("", old_tree, new_tree)]
+    while stack:
+        prefix, old, new = stack.pop()
+        before = folder_entries(repo, old) if old else {}
+        after = folder_entries(repo, new) if new else {}
+        inner = []
+        for name in sorted(set(before) | set(after)):
+            (old_mode, old_sha), (new_mode, new_sha) = before.get(name, ("000000", none)), after.get(name, ("000000", none))
+            if (old_mode, old_sha) == (new_mode, new_sha):
+                continue
+            found.append((old_mode, new_mode, old_sha, new_sha, prefix + name))
+            if len(found) > most:
+                raise Refusal("too_many_files")  # far too many entries, folders included: not listed to the end
+            if {old_mode, new_mode} <= {TREE_MODE, "000000"}:  # a folder added, removed or changed: its entries too
+                inner.append((prefix + name + "/", old_sha if old_mode == TREE_MODE else None,
+                              new_sha if new_mode == TREE_MODE else None))
+        stack.extend(reversed(inner))
+    return found
+
+
 def check_structure(repo, tip_tree, merged_tree, task, config):
     """Every structural rule, read on what would land: the difference between the tip's tree and the merged tree,
     folders included (an empty folder is an entry too, and git shows it only when asked). The content rules (binary,
-    line length) are the hive's own reading of the bytes, not git's, and no file is read before the entries are
-    counted: what a candidate costs to refuse does not grow with what it sends. Raises Refusal at the first rule
+    line length) are the hive's own reading of the bytes, not git's; the entries are listed by the hive itself, folder
+    by folder, up to a limit, and no file is read before they are counted: what a candidate costs to refuse does not
+    grow with what it sends. Raises Refusal at the first rule
     broken; returns the figures (files, lines) otherwise."""
     need_sha(tip_tree), need_sha(merged_tree)
     limits, changed = config["limits"], []
-    raw = git(repo, "diff-tree", "-r", "-t", "-z", "--raw", "--no-renames", "--abbrev=40", tip_tree, merged_tree).stdout
-    fields = raw.split("\0")
-    if (len(fields) - 1) // 2 > 4 * limits["files"] + 100:
-        raise Refusal("too_many_files")  # far too many entries, folders included: not even listed
-    for i in range(0, len(fields) - 1, 2):
-        meta, path = fields[i].split(" "), fields[i + 1]
-        if len(meta) != 5:
-            raise HiveError("git diff-tree: an entry the hive cannot read")
-        old_mode, new_mode, old_sha, new_sha = meta[0].lstrip(":"), meta[1], meta[2], meta[3]
+    for old_mode, new_mode, old_sha, new_sha, path in changed_entries(repo, tip_tree, merged_tree, 4 * limits["files"] + 100):
         if not plain_path(path):
             raise Refusal("bad_path")
         deleted, added = new_mode == "000000", old_mode == "000000"
@@ -944,6 +1013,34 @@ def settle(ledger, instant, landed, own=None):
     return events
 
 
+def rivals_of(tasks):
+    """task id -> the other tasks that may change a path it may change. Two such tasks are never held by two members
+    at once: what one member pushes for its task, in public, could be put into the other's candidate."""
+    exact, folders, rivals = {}, [], {task_id: set() for task_id in tasks}
+    for task_id, task in tasks.items():
+        for path in task["files"]:
+            if path.endswith("/"):
+                folders.append((path, task_id))
+            else:
+                exact.setdefault(path, set()).add(task_id)
+    for group in exact.values():
+        for task_id in group:
+            rivals[task_id] |= group
+    for folder, task_id in folders:
+        for path, group in exact.items():
+            if path.startswith(folder):
+                rivals[task_id] |= group
+                for other in group:
+                    rivals[other].add(task_id)
+        for other_folder, other in folders:
+            if other_folder.startswith(folder) or folder.startswith(other_folder):
+                rivals[task_id].add(other)
+                rivals[other].add(task_id)
+    for task_id in rivals:
+        rivals[task_id].discard(task_id)
+    return rivals
+
+
 def draw(key, *parts):
     """A place in a draw nobody can steer: the run's key is drawn after the forks were read."""
     return hashlib.sha256(":".join([key, *(str(part) for part in parts)]).encode()).hexdigest()
@@ -965,7 +1062,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        expired is still the task's holder until the task is dealt to someone else: late work is not lost.
        A deal on a task the project closed meanwhile ends at once, at no cost either.
     2. Candidates. A submit for task T in member M's fork is a candidate if M is T's holder, the submit names the
-       deal M holds, and T is open. Of several, one stands (a draw). Every other submit is ignored for good: it
+       deal M holds, and T is open (and, when M's time was up, nobody else holds a task that shares a file with T). Of several, one stands (a draw). Every other submit is ignored for good: it
        costs the hive nothing.
        They are judged oldest deal first; after them those of deals whose time was up, then those a run already
        failed on, and last those the project's repository already declined.
@@ -973,7 +1070,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
     4. Each asker is dealt, among the open tasks that have no live deal, whose lapsed holder has no candidate here
-       and whose tier it takes, the one a draw gives it. A member that holds a candidate in this run is dealt
+       and whose tier it takes, the one a draw gives it. Tasks that share a file are never held by two members at
+       once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is answered in this run.
     The draws use a key drawn AFTER the forks were read."""
     instant, lines, digest = now(), ledger.lines, ledger.digest()
@@ -983,13 +1081,21 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     entries, ignored, reads = discover(repo, config, api, ledger.seen() | upstream_tips(repo), instant, allow_local,
                                        read_ignored(state_folder), accounts)
     key = secrets.token_hex(16)
-    deals, done, models = ledger.deals(), ledger.done(), set(config["models"])
+    deals, done, models, rivals = ledger.deals(), ledger.done(), set(config["models"]), rivals_of(tasks)
+
+    def shared(task_id, member_id):
+        """True if a task that shares a file with this one is held, live, by another member."""
+        return any(deals[other]["state"] == "live" and deals[other]["member_id"] != member_id
+                   for other in rivals.get(task_id, ()) if other in deals)
+
     submits, asks = {}, {}
     for entry in sorted(entries, key=lambda e: e["sha"]):
         deal = deals.get(entry["task"])
         if entry["action"] == "submit" and not (deal and deal["member_id"] == entry["member_id"] and deal["at"] == entry["deal"]
-                                                and deal["state"] in ("live", "lapsed")):
-            # Not the task's holder, or not for the deal it holds: not a candidate, and never read again.
+                                                and (deal["state"] == "live" or (deal["state"] == "lapsed"
+                                                                                 and not shared(entry["task"], entry["member_id"])))):
+            # Not the task's holder, or not for the deal it holds, or late while someone else holds a task that
+            # shares a file with it: not a candidate, and never read again.
             ignored[str(entry["repo_id"])].append(entry["sha"])
         elif entry["action"] == "submit":
             submits.setdefault((entry["member_id"], entry["task"]), []).append(entry)
@@ -1055,15 +1161,20 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     askers.sort()
 
     # 4. the deal
-    dealable = {t for t in tasks if is_open(t) and (t not in deals or deals[t]["state"] == "closed" or (
-        deals[t]["state"] == "lapsed" and (deals[t]["member_id"], t) not in waiting))}
+    def free(task_id):
+        """Nobody holds it live, and its former holder has no candidate in this run."""
+        return task_id not in deals or deals[task_id]["state"] == "closed" or (
+            deals[task_id]["state"] == "lapsed" and (deals[task_id]["member_id"], task_id) not in waiting)
+
+    # A task is dealt only if it is open and free, and so is every task that shares a file with it.
+    dealable = {t for t in tasks if is_open(t) and free(t) and all(free(other) for other in rivals[t] if is_open(other))}
     dealt, conditional_deals = [], []
     for _, _, member_id, tier, conditional in askers:
         mine = [t for t in dealable if int(tasks[t].get("tier", 1)) <= tier]
         if not mine:
             continue
         task_id = min(mine, key=lambda t: draw(key, member_id, t))
-        dealable.discard(task_id)
+        dealable -= {task_id} | rivals[task_id]
         fork = asks[member_id][0]
         line = {"task": task_id, "member": fork["login"], "member_id": member_id, "repo_id": fork["repo_id"]}
         if conditional:
@@ -1447,9 +1558,11 @@ def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is recorded")
     key = plan_["key"]
-    # First, what the plan found of the pushes earlier runs promised: so that the ledger never shows a member with a
-    # task it has in fact finished next to the one it is dealt now.
-    ledger.append(settle(ledger, instant, plan_["landed"], own=key))
+    # First, the pushes earlier runs promised that the plan found IN the project's history: so that the ledger never
+    # shows a member with a task it has in fact finished next to the one it is dealt now. A promise the plan did not
+    # find there is left open: its push may land after the plan was made, and only the write step, which checks that
+    # the project's tip has not moved since, can say that it never did.
+    ledger.append(settle(ledger, instant, {commit: True for commit, landed in plan_["landed"].items() if landed}, own=key))
     ledger.append([{"type": "expired", "at": iso(now()), "run": key, "task": e["task"], "member_id": e["member_id"],
                     "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]] + deal_lines(plan_["deals"], key, config))
     write_ignored(state_folder, plan_["ignored"])

@@ -67,7 +67,7 @@ beside my fork if it is not already here) and follow it exactly. Whatever else y
   asks for the next, and the hive deals the next as soon as the first is answered.
 - **Leaving a task costs a wait.** A task dealt and left without a candidate, or a candidate that breaks a
   structural rule, costs your account two hours before its next task, then four, then eight; one accepted task
-  clears it. A candidate the judge examined and refused costs no wait. By default an account is dealt five tasks a
+  clears it. A candidate the judge examined and refused costs no wait, nor does one the project's tip overtook. By default an account is dealt five tasks a
   day, not counting those it completed.
 - **Where to look**: the project's page (progress, members, models, recent integrations, refusals by reason) and
   your card. `tools/hive/page.py` makes them from the ledger; where they will be published is not stated yet.

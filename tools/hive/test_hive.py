@@ -582,6 +582,32 @@ class TestStructure(Base):
             self.crafted(root, "toy-0002")
             self.refused("special_file", self.w.run())
 
+    def test_a_tree_of_a_billion_paths_made_of_a_few_objects_costs_nothing_to_refuse(self):
+        """Ten folders that are one object, nine levels deep: a few kilobytes pushed, 10^9 paths. The hive lists what a
+        candidate changes itself, folder by folder, and stops: it never asks git for the whole list."""
+        def mktree(lines):
+            return sh("git", "mktree", cwd=self.alice.work, stdin="".join(line + "\n" for line in lines)).stdout.strip()
+        blob = sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin="x\n").stdout.strip()
+        level = mktree([f"100644 blob {blob}\tf{i}" for i in range(10)])
+        for _ in range(8):
+            level = mktree([f"040000 tree {level}\td{i}" for i in range(10)])
+        src = mktree(self.listing("HEAD:src") + [f"040000 tree {level}\tbomb"])
+        self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
+        real = hive.git
+
+        def no_recursive_listing(repo, *args, **options):
+            self.assertNotIn(args[0], ("diff-tree", "ls-files", "diff"), "git is asked for a whole listing")
+            if args[0] == "ls-tree" and "-r" in args:  # the project's own tip, written out for the judge: never the candidate's
+                self.assertEqual(args[-1], hive.tree_of(self.w.harvest, self.start))
+            return real(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=no_recursive_listing):
+            self.refused("too_many_files")
+        self.assertLess(len(hive.changed_entries(self.w.harvest, hive.EMPTY_TREE, hive.tree_of(self.w.harvest, self.start), 100)), 30)
+        with mock.patch.object(hive, "FOLDER_LISTING_BYTES", 40), self.assertRaises(hive.Refusal) as refusal:
+            hive.changed_entries(self.w.harvest, hive.EMPTY_TREE, hive.tree_of(self.w.harvest, self.start), 100)
+        self.assertEqual(refusal.exception.reason, "too_many_files", "a single folder too long to list is not listed either")
+
     def test_a_name_a_contribution_adds_is_an_identifier(self):
         self.alice.write("src/read this first.c", "int x;\n").commit().marker("toy-0002").push()
         self.refused("bad_path")
@@ -1155,7 +1181,11 @@ class TestFirstReview(Base):
         with open(self.w.state / "ledger.jsonl", "a") as f:
             f.write('{"type":"verdict","sha":"dd')  # a run stopped while writing its last line
         self.assertEqual(len(hive.Ledger(self.w.state).events), 7, "the cut line is left out, the hive goes on")
+        for run in "34":
+            hive.Ledger(self.w.state).append([{**error, "run": run * 32}])  # and a line added later is never glued to it
         text = (self.w.state / "ledger.jsonl").read_text()
+        self.assertEqual(([e["run"][0] for e in hive.Ledger(self.w.state).events[7:]], '"dd' in text, text.endswith("}\n")),
+                         (["3", "4"], False, True))
         (self.w.state / "ledger.jsonl").write_text("not json\n" + text)
         with self.assertRaisesRegex(hive.HiveError, "needs a person"):
             hive.Ledger(self.w.state)  # anywhere else, a broken ledger is not guessed at
@@ -1346,6 +1376,35 @@ class TestPromise(Base):
         self.assertTrue(event["settled"])
         self.assertEqual(self.w.feed()["toy-0001"]["status"], "done")
         self.assertEqual((self.w.run(), len(self.w.events())), ([], 1), "and recorded once")
+
+    def test_a_plan_made_before_another_runs_push_landed_never_voids_it(self):
+        """Run A promised, and its push lands without A knowing. Run B's plan was made in between: it did not see the
+        commit in the project's history. B's recording step leaves the promise open (only the write step, which
+        checks that the tip has not moved, can say a push never landed), B's write step refuses, and the next run
+        records the integration: the task is done once, in its member's name."""
+        real, later = hive.guarded_push, {}
+
+        def lands_without_a_word(*a, **k):
+            later["plan"] = self.w.plan()  # run B's plan job, now: after A's promise, before A's push
+            real(*a, **k)
+            raise hive.HiveError("git push: timeout after 180 s")
+
+        with mock.patch.object(hive, "guarded_push", side_effect=lands_without_a_word), self.assertRaises(hive.HiveError):
+            self.w.apply(self.verdicts)
+        self.assertEqual((self.w.tip(), later["plan"]["landed"]), (self.commit, {self.commit: False}))
+        self.w.made = later["plan"]
+        self.w.record()
+        self.assertEqual(([e["type"] for e in self.w.promises()], self.w.events()), (["intent"], []), "the promise is left open")
+        with self.assertRaisesRegex(hive.HiveError, "tip moved"):
+            self.w.apply({})
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.assertEqual(self.w.run(), [])
+        event = self.one(self.w.events())
+        self.assertEqual((event["result"], event["member"], event["settled"], self.w.feed()["toy-0001"]["status"]),
+                         ("accepted", "alice", True, "done"))
+        self.assertEqual(sh("git", "log", "--format=%an", f"{self.start}..main", cwd=self.w.upstream).stdout.split(), ["alice"])
+        config, _, ledger = self.w.load()
+        self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (0, None))
 
     def test_a_promise_whose_push_never_landed_is_void(self):
         (self.w.upstream / "refs/heads/main.lock").write_text("")
@@ -1884,6 +1943,28 @@ class TestDealing(Base):
         self.w.run()
         self.assertEqual((self.lines("deal"), self.w.feed_file()["deals"]), ([], {}))
 
+    def test_tasks_that_share_a_file_are_never_held_by_two_members_at_once(self):
+        """What a member pushes for its task is public: someone holding another task on the same file could put it
+        in its own candidate. So such tasks are dealt one at a time."""
+        self.assertEqual(hive.rivals_of({"a": {"files": ["lib.c"]}, "b": {"files": ["src/"]}, "c": {"files": ["src/x.c", "doc.md"]},
+                                         "d": {"files": ["src/deep/"]}, "e": {"files": ["lib.c", "doc.md"]}, "f": {"files": ["srcs/y.c"]}}),
+                         {"a": {"e"}, "b": {"c", "d"}, "c": {"b", "e"}, "d": {"b"}, "e": {"a", "c"}, "f": set()})
+        carol = self.w.fork("carol", 103)
+        first = self.hold(self.alice, "toy-0001")[0]
+        for fork in (self.bob, carol):
+            fork.ready()
+        self.w.run()
+        self.assertEqual([d["task"] for d in self.lines("deal")], ["toy-0002"], "toy-0004 and toy-0005 may change lib.c, as toy-0001 may")
+        self.assertEqual(self.one(self.w.run() if self.alice.submit("toy-0001", deal=first) else [])["result"], "accepted")
+        self.w.run()
+        self.assertEqual(len(self.lines("deal")), 2, "toy-0001 is done: one of the two others is dealt")
+        late = self.w.deal(carol, "toy-0005", at="2026-11-12T07:00:00Z", fresh=True) if self.w.deals().get("toy-0005", ("", ""))[1] != "live" else None
+        if late:  # carol's time on toy-0005 is long up, and someone else now holds toy-0004: her late work is not a candidate
+            self.assertEqual(self.w.deals()["toy-0004"][1], "live")
+            self.w.run()
+            stray = carol.fresh("late").submit("toy-0005", content=LIB + "/* late */\n", deal=late)
+            self.assertEqual((self.w.run(), stray in hive.read_ignored(self.w.state)["1103"]), ([], True))
+
     def test_each_asker_gets_one_task_and_no_task_goes_to_two(self):
         askers = [self.alice, self.bob] + [self.w.fork(f"m{i}", 120 + i) for i in range(4)]
         for fork in askers:
@@ -1891,13 +1972,14 @@ class TestDealing(Base):
             fork.ready(branch="hive/again")  # two asks are one ask
         self.w.run()
         deals = self.lines("deal")
-        self.assertEqual(sorted(d["task"] for d in deals), sorted(self.OPEN), "four open tasks: four deals")
-        self.assertEqual(len({d["member_id"] for d in deals}), 4, "one each")
+        self.assertEqual(len(deals), 2, "toy-0002, and ONE of the three tasks that may change lib.c")
+        self.assertEqual(({d["task"] for d in deals} - {"toy-0001", "toy-0004", "toy-0005"}, len({d["member_id"] for d in deals})),
+                         ({"toy-0002"}, 2), "one each")
         self.assertEqual({len(v) for k, v in hive.read_ignored(self.w.state).items() if int(k) - 1000 in {d["member_id"] for d in deals}},
                          {2}, "both asks of a member that was dealt are used")
         self.w.run()
-        self.assertEqual(len(self.lines("deal")), 4, "nothing left to deal: the two others wait, their asks unused")
-        self.assertEqual(sorted(len(v) for v in hive.read_ignored(self.w.state).values()), [2, 2, 2, 2])
+        self.assertEqual(len(self.lines("deal")), 2, "nothing left to deal: the others wait, their asks unused")
+        self.assertEqual(sorted(len(v) for v in hive.read_ignored(self.w.state).values()), [2, 2])
 
     def test_who_is_dealt_first_when_tasks_are_short(self):
         """Those whose last deal was accepted, then those who never had one, then the others; within each, a draw
@@ -1905,13 +1987,13 @@ class TestDealing(Base):
         ace, new, poor, holder = (self.w.fork(login, 130 + i) for i, login in enumerate(("ace", "new", "poor", "holder")))
         self.answered(ace, "toy-0005")
         self.answered(poor, "toy-0004", "judge_refused")
-        self.hold(holder, "toy-0001", "toy-0002")  # one task left to deal: toy-0004
+        self.hold(holder, "toy-0002")  # toy-0001 and toy-0004 are left, and share a file: one deal at a time
         for fork in (ace, new, poor, self.alice, self.bob):
             fork.ready()
         self.assertEqual([self.standing(f)[0] for f in (ace, new, self.alice, poor)], [0, 1, 1, 2])
         for expected in ({"ace"}, {"new", "alice", "bob"}, {"poor"}):
-            dealt = {(d["task"], d["member"]) for _ in range(24) for d in self.w.plan()["deals"]}
-            self.assertEqual(dealt, {("toy-0004", login) for login in expected})
+            plans = [self.w.plan()["deals"] for _ in range(24)]
+            self.assertEqual(({len(deals) for deals in plans}, {d["member"] for deals in plans for d in deals}), ({1}, expected))
             for login in expected:
                 sh("git", "push", "--quiet", "origin", ":refs/heads/hive/ready", cwd=self.w.forks[login].work)
 
@@ -1919,7 +2001,9 @@ class TestDealing(Base):
         """A task's tier is the project's own (toy-0004 is of tier 2)."""
         self.alice.ready(tier=1)
         self.assertNotIn("toy-0004", {d["task"] for _ in range(16) for d in self.w.plan()["deals"]})
-        self.hold(self.w.fork("holder", 133), "toy-0001", "toy-0002", "toy-0005")
+        self.hold(self.w.fork("holder", 133), "toy-0002")
+        for task in ("toy-0001", "toy-0005"):
+            self.answered(self.w.forks["holder"], task)  # done: toy-0004 is the only task left
         self.alice.ready(branch="hive/again")  # an ask without a tier does not lift the other's
         self.assertEqual(self.w.plan()["deals"], [], "the only task left is above it")
         self.bob.ready(tier=2)
@@ -2010,7 +2094,9 @@ class TestDealing(Base):
     def test_a_task_whose_former_holder_has_a_candidate_in_this_run_is_not_dealt(self):
         dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T07:00:00Z")
         self.w.run()
-        self.hold(self.w.fork("holder", 133), "toy-0002", "toy-0004", "toy-0005")
+        self.hold(self.w.fork("holder", 133), "toy-0002")
+        for task in ("toy-0004", "toy-0005"):
+            self.answered(self.w.forks["holder"], task)  # done: toy-0001 is the only task left
         late = self.alice.submit("toy-0001", content=LIB + "/* REFUSE */\n", deal=dealt)
         self.bob.ready()
         made = self.w.plan()
@@ -2167,10 +2253,10 @@ class TestLedger(unittest.TestCase):
                              f"{reason}: not the member's doing, no cost at all")
             self.assertEqual(self.standing(self.ledger(*accepted, *bad("10:30:00", "11:00:00", reason)), "11:00:01")[0], 0)
         self.assertEqual(sorted(set(hive.REASONS) - set(hive.ATTEMPT_REASONS) - set(hive.HIVE_SIDE_REASONS)),
-                         ["bad_path", "binary", "empty", "file_too_big", "judge_failed", "line_too_long", "mode_change", "path_outside_task",
+                         ["bad_path", "binary", "file_too_big", "judge_failed", "line_too_long", "mode_change", "path_outside_task",
                           "protected_path", "push_refused", "special_file", "too_large", "too_many_commits", "too_many_files", "unrelated"],
                          "every other refusal is the candidate's own doing")
-        for reason in ("path_outside_task", "judge_failed", "push_refused", "empty"):
+        for reason in ("path_outside_task", "judge_failed", "push_refused", "too_large"):
             one = self.ledger(*bad("09:00:00", "10:00:00", reason))
             self.assertEqual([self.standing(one, clock)[:2] for clock in ("10:00:00", "11:59:59", "12:00:00")],
                              [(2, self.at("12:00:00")), (2, self.at("12:00:00")), (2, None)], f"{reason}: two hours")
