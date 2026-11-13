@@ -314,6 +314,9 @@ def load_config(path):
         raise HiveError(f"{path}: judge.metrics: the names of the judge's figures the hive keeps")
     if not (isinstance(judge["require"], list) and all(condition_ok(c, judge["metrics"]) for c in judge["require"])):
         raise HiveError(f"{path}: judge.require: conditions on figures listed in judge.metrics")
+    judge.setdefault("history", [])
+    if not (isinstance(judge["history"], list) and len(judge["history"]) <= 16 and all(is_sha(c) for c in judge["history"])):
+        raise HiveError(f"{path}: judge.history: the commits of the project's own history its judge reads by id (full ids)")
     return config
 
 
@@ -1526,7 +1529,27 @@ def derives(repo, tip, config):
 # Judge: the step that runs contributors' code (in the judge's container), and holds nothing
 
 
-def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, save=None, started=None):
+def with_history(repo, folder, commits):
+    """Makes commits of the project's own history readable by id (`git cat-file`) in a tree the hive wrote. A project's
+    judge may read files frozen at an old commit by their git id (a corpus of the project as it was): the project's
+    file lists those commits (judge.history), and the base tree handed to the judge becomes a repository that holds
+    them, each with its files and without its parents, and nothing else: no remote, no branch, no setting but git's
+    own. The candidate's tree is never one: it stays plain files. A commit the hive's clone of the project does not
+    have is the hive's own failure, said loudly."""
+    if not commits:
+        return
+    git(folder, "init", "--quiet")
+    for commit in commits:
+        listed = git_raw(repo, "rev-list", "--objects", "--no-walk", f"{need_sha(commit)}^{{commit}}")
+        if listed.returncode != 0:
+            raise HiveError(f"judge.history: commit {commit[:12]} is not in the hive's clone of the project")
+        ids = b"".join(line.split(b" ", 1)[0] + b"\n" for line in listed.stdout.splitlines())
+        pack = git_raw(repo, "pack-objects", "--stdout", "-q", stdin=ids, timeout=600)
+        if pack.returncode != 0 or git_raw(folder, "unpack-objects", "-q", stdin=pack.stdout, timeout=600).returncode != 0:
+            raise HiveError(f"judge.history: commit {commit[:12]} could not be copied for the judge")
+
+
+def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, save=None, started=None, history=()):
     """The judging step's verdict_of: writes the two trees to disk, runs the judge, removes them, and keeps the
     answer under the judged commit's id. Whatever the judge function throws is a failure to judge (code 2).
 
@@ -1543,6 +1566,7 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         folder = Path(tempfile.mkdtemp(prefix="judge-", dir=workdir))
         try:
             materialize(repo, tree_of(repo, tip), folder / "base")
+            with_history(repo, folder / "base", history)
             materialize(repo, tree, folder / "candidate")
             answer = judge(folder / "base", folder / "candidate", task, tip, commit)
         except HiveError:
@@ -1597,13 +1621,14 @@ def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None):
     probe = Path(tempfile.mkdtemp(prefix="tip-", dir=workdir))
     try:
         materialize(repo, tree_of(repo, plan_["tip"]), probe / "tip")  # a tip the hive cannot write stops the run, loudly
+        with_history(repo, probe / "tip", config["judge"]["history"])  # and so does a commit the judge needs and the hive lacks
     finally:
         shutil.rmtree(probe, ignore_errors=True)
     verdicts, started = {}, []
     deadline = time.monotonic() + config["limits"]["judging_seconds"]
     outcomes, _ = process(repo, plan_["tip"], plan_["queue"], config, tasks, ledger,
                           judging(repo, judge, workdir, verdicts, config["judge"]["metrics"], deadline,
-                                  config["judge"].get("timeout_seconds", 3600), save, started), instant)
+                                  config["judge"].get("timeout_seconds", 3600), save, started, config["judge"]["history"]), instant)
     return verdicts, outcomes, started
 
 

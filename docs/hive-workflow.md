@@ -180,7 +180,7 @@ jobs:
         with: { name: plan, path: taken/plan }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: candidates, path: taken/candidates }
-      - name: The judge's image (with network, before any candidate's file is on this machine's disk)
+      - name: The judge's image (with network; built from the project's own tree, and no candidate's code runs here)
         run: python3 registry/tools/judge/judge.py --tooling project --image-only
       - name: Judge the plan's candidates (their code runs only in containers without network)
         run: |
@@ -287,6 +287,9 @@ Notes on the draft:
   is pushed meanwhile.
 - That an environment restricted to `main` refuses a job started on another ref, and what `!cancelled()` gives
   when the judging job is stopped at its time limit rather than by a person.
+- That miniz's own judge works on the trees the hive hands it. It reads files of the project frozen at an old
+  commit by their git id; the hive now puts the commits the project's file lists (`judge.history`) in the base tree
+  it writes, which was tested with a stand-in judge, never with miniz's.
 - That the common judge builds its image from a clone of the project (`--tooling project --image-only`) outside
   the pull-request flow it was written for, and how long a judgement of miniz takes (the plan's phase 1 target is
   under ten minutes).

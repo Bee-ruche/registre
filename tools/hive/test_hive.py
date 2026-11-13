@@ -576,6 +576,44 @@ class TestIntegration(Base):
                        "--bundle", str(self.w.bundle), "--verdicts", str(verdicts)])
         self.assertEqual((json.loads(made.read_text())["paused"], json.loads(verdicts.read_text())), (True, {"answers": {}, "started": []}))
 
+    def test_the_commits_a_projects_judge_reads_by_id_are_in_the_tree_it_is_handed(self):
+        """A project's judge may read files frozen at an old commit of the project, by their git id (a corpus). The
+        trees the hive writes for the judge are plain files: the commits the project's file lists are made readable in
+        the base, and in the base only."""
+        old = self.start
+        frozen = sh("git", "rev-parse", f"{old}:lib.c", cwd=self.w.seed).stdout.strip()
+        self.w.upstream_commit("lib.c", LIB + "int since;\n")  # the project moved on: the old commit is not its tip any more
+        self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old]}})
+        alice = self.w.fork("ann", 111)
+        alice.write("src/h.c", "int h;\n").commit().marker("toy-0002").push()
+        seen = []
+
+        def judge(base, candidate, task, tip, commit):
+            def has(folder, *args):
+                return subprocess.run(["git", "-C", str(folder), *args], capture_output=True, env={**os.environ, **GIT_ENV})
+            seen.append({"commit": has(base, "cat-file", "-e", f"{old}^{{commit}}").returncode,
+                         "file": has(base, "cat-file", "blob", frozen).stdout,
+                         "parents": has(base, "cat-file", "-e", f"{old}^").returncode != 0 or old == self.w_first(),
+                         "refs": has(base, "for-each-ref").stdout, "remotes": has(base, "remote").stdout,
+                         "candidate": (candidate / ".git").exists(), "tip": (base / "lib.c").read_text()})
+            return judge_by_content(base, candidate, task, tip, commit)
+
+        self.assertEqual(self.one(self.w.run(judge))["result"], "accepted")
+        self.assertEqual(seen, [{"commit": 0, "file": LIB.encode(), "parents": True, "refs": b"", "remotes": b"", "candidate": False,
+                                 "tip": LIB + "int since;\n"}], "the old commit and its files, by id; the tree is the tip's; nothing else")
+        self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": ["1" * 40]}})
+        self.w.fork("bob", 102).submit("toy-0001", content=LIB + "int since;\n/* tuned */\n")
+        with self.assertRaisesRegex(hive.HiveError, "judge.history: commit 111111111111 is not in the hive's clone"):
+            self.w.run()
+        self.assertEqual([e["type"] for e in self.w.events()], ["verdict"], "the hive's own lack: said loudly, and held against no candidate")
+        for bad in (["HEAD"], "x", [old, 7], [old] * 17):
+            self.w.set_config({"judge": {"metrics": ["gain"], "history": bad}})
+            with self.subTest(bad=bad), self.assertRaisesRegex(hive.HiveError, "judge.history"):
+                self.w.load()
+
+    def w_first(self):
+        return sh("git", "rev-list", "--max-parents=0", "HEAD", cwd=self.w.seed).stdout.strip()
+
     def test_a_goal_on_a_metric(self):
         self.alice.submit("toy-0004")
         self.refused("goal_not_met")

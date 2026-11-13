@@ -25,6 +25,9 @@
  "judge": {
   "repetitions": 10,
   "timeout_seconds": 3600,
+  "history": [
+   "2948eebafc5b9f1c69bebed80333e403a09bd62d"
+  ],
   "metrics": [
    "suspects",
    "outputs_compared",
