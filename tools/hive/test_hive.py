@@ -995,6 +995,9 @@ class TestStructure(Base):
         self.assertEqual(refusal.exception.reason, "special_file")
         with self.assertRaisesRegex(hive.HiveError, "cannot list"):
             hive.folder_entries(repo, blob)
+        slow = mock.patch.object(hive, "git_capped", side_effect=hive.HiveError("git ls-tree: timeout after 120 s"))
+        with slow, self.assertRaisesRegex(hive.HiveError, "cannot list"):  # a slow machine proves nothing about a candidate
+            hive.folder_entries(repo, root, theirs=True)
         everything = hive.changed_entries(repo, None, root, 1000)  # the whole project, as if added: folders included
         self.assertEqual(len(hive.changed_entries(repo, None, root, len(everything))), len(everything), "exactly as many as allowed")
         with self.assertRaises(hive.Refusal) as refusal:
@@ -1815,6 +1818,28 @@ class TestPromise(Base):
         self.assertEqual(([e["type"] for e in self.w.promises()], saved, self.w.events()), (["intent", "void"], [True], []),
                          "nothing of the plan is applied, and the old promise is closed all the same")
 
+    def test_a_tip_the_write_step_does_not_hold_says_nothing_about_a_promise(self):
+        """The project's branch moved after the write step fetched it, to a commit this step does not have: whether
+        an earlier push lies under it cannot be told here. The promise stays open, and the next run looks."""
+        with mock.patch.object(hive, "guarded_push", side_effect=hive.HiveError("the network")), self.assertRaises(hive.HiveError):
+            self.w.apply(self.verdicts)  # run A promised; its push is still on its way
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            _, verdicts, _ = self.w.sweep()
+            sh("git", "fetch", "--quiet", "origin", cwd=self.w.writer)  # run B's write step has the project as it was
+            sh("git", "push", "--quiet", "origin", f"{self.commit}:refs/heads/main", cwd=self.w.writer)  # A's push lands
+            self.w.upstream_commit("hive/readme", "and a maintainer's commit on top of it\n")
+            self.assertNotEqual(sh("git", "cat-file", "-e", self.w.tip(), cwd=self.w.writer, check=False).returncode, 0)
+            config, tasks, ledger = self.w.load()
+            with self.assertRaisesRegex(hive.HiveError, "tip moved"):
+                hive.apply(self.w.writer, "origin", self.w.made, verdicts, config, tasks, ledger, self.w.state, allow_local=True)
+        self.assertEqual(([e["type"] for e in self.w.promises()], self.w.events()), (["intent"], []),
+                         "no void for a push that may well have landed")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T14:00:00Z"}):
+            self.assertEqual(self.w.run(), [])
+        event = self.one(self.w.events())
+        self.assertEqual((event["result"], event["member"], event["settled"], self.w.feed()["toy-0001"]["status"]),
+                         ("accepted", "alice", True, "done"))
+
     def test_a_promise_whose_push_never_landed_is_void(self):
         (self.w.upstream / "refs/heads/main.lock").write_text("")
         with self.assertRaises(hive.HiveError):
@@ -1978,6 +2003,8 @@ class TestSecondReview(Base):
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
             honest = self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002").push()
             self.assertIn("no push of this run landed", self.attempt()[1])
+            self.assertEqual([e["type"] for e in self.w.promises()], ["intent", "intent", "void", "void"],
+                             "neither the declined push nor the one that waited behind it keeps a promise open")
             self.assertEqual([(c["login"], c["declined"]) for c in self.w.plan()["queue"]], [("alice", False), ("mallory", True)],
                              "what was declined goes last")
             self.assertIn("declined a commit", self.attempt()[1])
