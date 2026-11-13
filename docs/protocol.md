@@ -110,13 +110,15 @@ What ends a deal, and what it costs its member:
 | The deal ends when | Cost to the member |
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
-| its candidate is refused, whatever the reason: by the judge, on a structural rule, because it does not merge or changes nothing, after three runs spent on it without an answer (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait |
-| its time is up and the fork holds no candidate | the same wait |
+| the judge examined its candidate and refused it (`judge_refused`, `goal_not_met`, `requirement_not_met`) | a wait of two hours, each time, never doubled: a refusal there is ordinary, on tasks that ask for a measured gain |
+| its candidate is refused before the judge could examine it: on a structural rule, because it does not merge or changes nothing, after three runs spent on it without an answer (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait that doubles |
+| its time is up and the fork holds no candidate | the same wait that doubles |
 | the project's repository declined it six times while accepting nothing else (`not_answered`), the hive could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
-**One rule: a deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is
-cheaper than doing the task. The wait is two hours, doubled at each such deal in a row, seven days at most; an
-acceptance starts the count again. A project also limits the deals an account is given in a day (5 by default), **not
+**A deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is free. When
+the judge examined the candidate, the wait is two hours. When the task was held for nothing (no candidate, or one
+refused before the judge), it is two hours doubled at each such deal in a row, seven days at most; an acceptance
+clears both. A project also limits the deals an account is given in a day (5 by default), **not
 counting those whose candidate was accepted**: the limit bounds what an account can take and waste, never what it
 can contribute.
 

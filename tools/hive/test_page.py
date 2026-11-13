@@ -521,7 +521,7 @@ class TestWins(Case):
         figure, card = self.headline_of({"gain_instructions_n6": 0.032, "sure_instructions_n6": 1, "gain_time": 0.5, "sure_time": 0,
                                          "gain_size": 0.01, "sure_size": 1, "outputs_compared": 96})
         self.assertEqual(figure, {"metric": "instructions_n6", "gain": 0.032})
-        self.assertIn("3.2 % better · instructions n6 · verified by the judge", card)
+        self.assertIn("accepted by the judge · measured 3.2 % better (instructions n6)", card)
         self.assertNotIn("50.0", card)
 
     def test_a_gain_that_is_not_sure_negative_zero_or_alone_is_no_headline(self):
@@ -530,7 +530,7 @@ class TestWins(Case):
                        {"gain_a": 0.00001, "sure_a": 1}):
             figure, card = self.headline_of(report)
             self.assertIsNone(figure, report)
-            self.assertIn(">verified by the judge<", card)
+            self.assertIn(">accepted by the judge<", card)
             self.assertNotIn("%", card, report)
 
     def test_the_figure_is_chosen_among_the_sure_ones_only(self):
@@ -570,7 +570,7 @@ class TestWins(Case):
     def test_a_gain_of_a_thousand_percent_is_the_last_one_shown(self):
         figure, card = self.headline_of({"gain_a": 10, "sure_a": 1})
         self.assertEqual(figure, {"metric": "a", "gain": 10.0})
-        self.assertIn("1000.0 % better · a · verified", card)
+        self.assertIn("measured 1000.0 % better (a)", card)
 
     def card_text(self, text):
         root = minidom.parseString(text.encode("utf-8")).documentElement
@@ -595,12 +595,12 @@ class TestWins(Case):
             self.assertEqual(root.getAttribute("aria-label"), " · ".join(visible), name)
             self.assertEqual(root.getElementsByTagName("title")[0].firstChild.data, root.getAttribute("aria-label"))
         _, first = self.card_text(wins[f"wins/{sha(5001)}.svg"])
-        self.assertEqual(first, ["La Ruche · toy", "3.2 % better · instructions n6 · verified by the judge", "toy-0001 · <script>x</script> & \"q\"",
+        self.assertEqual(first, ["La Ruche · toy", "accepted by the judge · measured 3.2 % better (instructions n6)", "toy-0001 · <script>x</script> & \"q\"",
                                  "by alice · 2026-11-01", "declared model: claude-fable-5-2"])
         _, second = self.card_text(wins[f"wins/{sha(5002)}.svg"])
-        self.assertEqual(second, ["La Ruche · toy", "verified by the judge", "toy-0001 · <script>x</script> & \"q\"", "by alice · 2026-11-02"])
+        self.assertEqual(second, ["La Ruche · toy", "accepted by the judge", "toy-0001 · <script>x</script> & \"q\"", "by alice · 2026-11-02"])
         _, third = self.card_text(wins[f"wins/{sha(5003)}.svg"])
-        self.assertEqual(third, ["La Ruche · toy", "10.0 % better · t · verified by the judge", "toy-9999", "by bob · 2026-11-03"],
+        self.assertEqual(third, ["La Ruche · toy", "accepted by the judge · measured 10.0 % better (t)", "toy-9999", "by bob · 2026-11-03"],
                          "a task not in the feed shows its id alone; a model that is not an identifier is not shown")
 
     def test_the_login_is_not_shown_when_it_is_no_longer_the_account_s(self):

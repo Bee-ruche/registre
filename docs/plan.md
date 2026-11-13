@@ -125,10 +125,11 @@ candidates for different tasks independent of each other.
 - **A task cannot be squatted for long**: one task per account at a time; a deal left without a candidate ends
   after four hours and costs the account a wait that doubles (two hours to seven days), until one of its
   candidates is accepted. **Built.**
-- **One cost rule**: a deal that does not end in an accepted candidate costs the wait, whether the task was left
-  or its candidate refused, so that no way of ending a deal is cheaper than doing the task; what the hive's own
-  side caused costs nothing. An account is also dealt five tasks a day at most, not counting accepted ones.
-  **Built.**
+- **No way of ending a deal is free**: a candidate the judge examined and refused costs two hours, each time; a
+  task held for nothing (left, or its candidate refused before the judge) costs a wait that doubles; what the
+  hive's own side caused costs nothing. Measured before choosing: with a doubling wait for every refusal, a worker
+  accepted one time in two would take 93 hours on average for twenty tasks instead of 20; with two hours per judged
+  refusal it takes 40. An account is also dealt five tasks a day at most, not counting accepted ones. **Built.**
 - **Those who deliver are served first**: when tasks are short, members whose last deal was accepted come first,
   then newcomers, then the others. **Built.**
 - **A worker that runs every hour gets a task per run, while tasks are free**: it pushes its candidate with an ask,

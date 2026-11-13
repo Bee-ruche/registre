@@ -2285,13 +2285,13 @@ class TestDealing(Base):
         self.assertEqual(self.one(self.w.run())["reason"], "empty")
         self.assertEqual((self.lines("deal"), self.standing(self.alice)[:2], judge_by_content.seen), ([], (2, "2026-11-12T14:00:00Z"), []))
 
-    def test_a_refused_candidate_costs_the_same_wait_as_none_and_a_days_deals_are_counted(self):
-        """No way of ending a deal is cheaper than doing the task: junk that the judge refuses, a candidate that does
-        not merge, one that changes nothing, all cost what leaving the task costs."""
+    def test_a_candidate_the_judge_refuses_costs_two_hours_each_time_and_a_days_deals_are_counted(self):
+        """No way of ending a deal is free. A candidate the judge examined and refused costs the first wait, never
+        doubled: a refusal there is ordinary. (A deal held for nothing costs a wait that doubles: other tests.)"""
         self.w.set_config({"members": {"deals_per_day": 2}})
         self.alice.ready()
         self.w.run()
-        for clock, wait in (("12:30:00", "2026-11-12T14:30:00Z"), ("14:30:00", "2026-11-12T18:30:00Z")):
+        for clock, wait in (("12:30:00", "2026-11-12T14:30:00Z"), ("14:30:00", "2026-11-12T16:30:00Z")):
             with self.at(clock):
                 if clock != "12:30:00":
                     self.w.run()  # the wait is over: the ask, still there, is dealt
@@ -2301,7 +2301,7 @@ class TestDealing(Base):
                 self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
                 self.assertEqual(self.standing(self.alice)[:2], (2, wait))
         self.assertEqual(len(self.lines("deal")), 2, "no next task in the run that refused its candidate")
-        with self.at("18:30:00"):
+        with self.at("16:30:00"):
             self.w.run()
             self.assertEqual((len(self.lines("deal")), self.standing(self.alice)), (2, (2, None, 2)), "its wait is over; its day is used")
         with self.at("00:00:00", "13"):
@@ -2402,8 +2402,21 @@ class TestLedger(unittest.TestCase):
             self.assertEqual(self.standing(self.ledger(*bad("09:00:00", "10:00:00", reason)), "10:00:01")[:2], (1, None),
                              f"{reason}: not the member's doing, no cost at all")
             self.assertEqual(self.standing(self.ledger(*accepted, *bad("10:30:00", "11:00:00", reason)), "11:00:01")[0], 0)
-        self.assertEqual(hive.HIVE_SIDE_REASONS, ("not_answered", "task_closed"))
-        for reason in sorted(set(hive.REASONS) - set(hive.HIVE_SIDE_REASONS)):  # one rule: no way to end a deal is cheaper than doing the task
+        self.assertEqual((hive.HIVE_SIDE_REASONS, hive.JUDGED_REASONS),
+                         (("not_answered", "task_closed"), ("judge_refused", "goal_not_met", "requirement_not_met")))
+        for reason in hive.JUDGED_REASONS:  # examined by the judge and refused: two hours, each time, never doubled
+            once = self.ledger(*bad("09:00:00", "10:00:00", reason))
+            self.assertEqual([self.standing(once, clock)[:2] for clock in ("10:00:00", "11:59:59", "12:00:00")],
+                             [(2, self.at("12:00:00")), (2, self.at("12:00:00")), (2, None)], reason)
+            thrice = self.ledger(*bad("03:00:00", "04:00:00", reason), *bad("06:00:00", "07:00:00", reason), *bad("09:00:00", "10:00:00", reason))
+            self.assertEqual(self.standing(thrice, "10:00:01")[1], self.at("12:00:00"), f"{reason}, three times in a row: still two hours")
+            mixed = self.ledger(*bad("03:00:00", "04:00:00"), *bad("06:00:00", "07:00:00", reason), *bad("09:00:00", "10:00:00"))
+            self.assertEqual(self.standing(mixed, "10:00:01")[1], self.at("14:00:00"), "it neither adds to the doubling nor clears it")
+            held = self.ledger(*bad("08:00:00", "09:00:00"), *bad("09:10:00", "09:30:00"), *bad("09:40:00", "10:00:00", reason))
+            self.assertEqual(self.standing(held, "10:00:01")[1], self.at("13:30:00"), "and the longer wait of the two holds")
+            cleared = self.ledger(*bad("06:00:00", "07:00:00", reason), self.deal(1, t, "08:00:00"), self.end(1, t, "08:00:00", "08:30:00"))
+            self.assertEqual(self.standing(cleared, "08:30:01")[:2], (0, None), "an acceptance clears it")
+        for reason in sorted(set(hive.REASONS) - set(hive.HIVE_SIDE_REASONS) - set(hive.JUDGED_REASONS)):  # held for nothing: doubled
             one = self.ledger(*bad("09:00:00", "10:00:00", reason))
             self.assertEqual([self.standing(one, clock)[:2] for clock in ("10:00:00", "11:59:59", "12:00:00")],
                              [(2, self.at("12:00:00")), (2, self.at("12:00:00")), (2, None)], f"{reason}: two hours")

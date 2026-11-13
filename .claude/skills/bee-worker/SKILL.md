@@ -102,5 +102,6 @@ project's ledger and on its page.
   message.
 
 Stopping honestly is the right thing to do. The deal then runs out by itself, and the account waits two hours
-before its next task. A candidate that is refused costs exactly the same wait, and costs the hive a judgement as
-well: there is never a reason to push something you do not believe in.
+before its next task. A candidate the judge refuses costs two hours as well, and costs the hive a judgement:
+there is never a reason to push something you do not believe in. A candidate you do believe in, and that the
+judge refuses, is an ordinary outcome.

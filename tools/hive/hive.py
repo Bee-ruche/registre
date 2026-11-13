@@ -59,6 +59,7 @@ UNANSWERED_RUNS = 6  # a deal whose candidates the hive spent this many runs on 
 VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still looked for in the project's history
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
+JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the judge examined the candidate: a real attempt
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
@@ -441,10 +442,13 @@ class Ledger:
         """Where a member stands when tasks are dealt: (class, wait, today).
         class: 0 if its last deal that came to an end was accepted, 1 if none did yet, 2 otherwise.
         wait: the instant until which it is dealt nothing, or None. Every deal that did not end in an accepted
-          candidate costs a wait (no candidate in time, or a candidate that was refused, whatever the reason), doubled
-          at each one in a row, until an acceptance. One rule, so that no way of ending a deal is cheaper than doing
-          the task. What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork
-          it could not read) costs nothing.
+          candidate costs a wait, so that no way of ending a deal is free:
+          - a candidate the judge examined and refused (JUDGED_REASONS): the first wait (two hours), each time. The
+            judge's time went to real work, and a refusal there is ordinary, on tasks that ask for a measured gain;
+          - a deal held for nothing (no candidate in time, or a candidate refused before the judge could examine
+            it): the same wait, doubled at each such deal in a row, until an acceptance.
+          What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork it could
+          not read) costs nothing.
         today: the deals it was given on the instant's day, those that ended in an acceptance left out: the day's
           limit bounds what an account can take and waste, never what it can contribute."""
         ends, today, accepted, day = [], [], set(), iso(instant)[:10]
@@ -458,18 +462,22 @@ class Ledger:
             if e.get("type") == "expired":
                 ends.append((e["at"], "fault" if e.get("fault") else "penalty"))
             elif e.get("type") == "verdict" and e.get("deal"):
-                ends.append((e["at"], "accepted" if e.get("result") == "accepted"
+                ends.append((e["at"], "accepted" if e.get("result") == "accepted" else "judged" if e.get("reason") in JUDGED_REASONS
                              else "fault" if e.get("reason") in HIVE_SIDE_REASONS else "penalty"))
-        streak, last = 0, None
+        streak, last, judged = 0, None, None
         for at, kind in ends:
             if kind == "accepted":
-                streak = 0
+                streak, judged = 0, None
             elif kind == "penalty":
                 streak, last = streak + 1, at
-        wait = None
+            elif kind == "judged":
+                judged = at
+        waits = []
         if streak:
-            until = parse_iso(last) + dt.timedelta(hours=min(BACKOFF_MAX_HOURS, config["backoff_hours"] * 2 ** min(streak - 1, 20)))
-            wait = iso(until) if instant < until else None
+            waits.append(parse_iso(last) + dt.timedelta(hours=min(BACKOFF_MAX_HOURS, config["backoff_hours"] * 2 ** min(streak - 1, 20))))
+        if judged:
+            waits.append(parse_iso(judged) + dt.timedelta(hours=config["backoff_hours"]))
+        wait = iso(max(waits)) if waits and instant < max(waits) else None
         counted = [kind for _, kind in ends if kind != "fault"]
         return (1 if not counted else 0 if counted[-1] == "accepted" else 2), wait, sum(1 for deal in today if deal not in accepted)
 

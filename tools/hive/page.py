@@ -64,6 +64,7 @@ WEEK = dt.timedelta(days=7)
 YEARS = (2000, 2999)  # an instant outside these years is not one
 MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30
 WINS_MAX = 200  # win cards written: the most recent integrations
+MEMBER_CARDS_MAX = 2000  # member cards written: the members with the most integrations
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 
 
@@ -593,7 +594,7 @@ def render_html(data, title, repo_url, join):
             rows.append([when, task, member_cell(item["login"], item["member_id"]),
                          el("a", short, href=link, rel="nofollow noopener") if link is not None else short])
         recent = [table([("Date", False), ("Task", False), ("Member", False), ("Commit", False)], rows),
-                  el("p", "A date links to the integration's card: the task, the member and the figure the judge verified, if any.", class_="note")]
+                  el("p", "A date links to the integration's card: the task, the member and the largest gain the judge measured beyond the noise, if any.", class_="note")]
     else:
         recent = el("p", "Nothing has been integrated yet.", class_="soft")
     sections.append(el("section", el("h2", "Recent integrations"), recent))
@@ -675,8 +676,8 @@ def render_win(project, win):
     aria-label and the title, in the same words. The figure is a fraction already checked (headline())."""
     figure = win["headline"]
     lines = [("La Ruche" + (f" · {plain(project, 24)}" if project else ""), 15, True, "#0b0b0b"),
-             (f"{100 * figure['gain']:.1f} % better · {figure['metric'].replace('_', ' ')} · verified by the judge" if figure
-              else "verified by the judge", 14, True, "#0b0b0b")]
+             (f"accepted by the judge · measured {100 * figure['gain']:.1f} % better ({figure['metric'].replace('_', ' ')})" if figure
+              else "accepted by the judge", 14, True, "#0b0b0b")]
     if win["task"]:
         title = plain(win["title"], 60)
         lines.append((f"{win['task']} · {title}" if title else win["task"], 12.5, False, "#0b0b0b"))
@@ -733,7 +734,7 @@ def render(data, title="", repo_url=None, join=None):
     """{file name: text} for one project's page. The same data gives the same bytes."""
     files = {"index.html": render_html(data, title, repo_url, join or Link(DEFAULT_JOIN_URL)),
              "badge.svg": render_badge(data["totals"]["integrations"]), "summary.json": summary_json(data)}
-    for member in data["members"]:
+    for member in data["members"][:MEMBER_CARDS_MAX]:  # those with the most integrations first
         files[card_name(member["id"])] = render_card(data["project"], member)
     for win in data["_wins"][:WINS_MAX]:
         name = win_name(win["commit"])
