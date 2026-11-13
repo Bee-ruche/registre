@@ -1354,6 +1354,31 @@ class TestApply(Base):
         self.nothing_integrated()
         self.assertEqual(self.w.events(), [])
 
+    def test_answers_the_write_step_cannot_read_are_no_answers(self):
+        """The file of answers comes from the job that runs contributors' code. Absent, not JSON, of another shape, or
+        nested so deep that reading it gives up: the write step goes on as when the judge answered nothing."""
+        plan_file, answers_file = self.w.root / "plan.json", self.w.root / "verdicts.json"
+        plan_file.write_text(json.dumps(self.w.made))
+        digest = hashlib.sha256(plan_file.read_bytes()).hexdigest()
+        command = ["apply", "--registry", str(self.w.registry), "--project", "toy", "--state", str(self.w.state.parent), "--repo", str(self.w.writer),
+                   "--plan", str(plan_file), "--plan-sha256", digest, "--bundle", str(self.w.bundle), "--verdicts", str(answers_file)]
+
+        def handed(text):
+            answers_file.unlink(missing_ok=True)
+            if text is not None:
+                answers_file.write_text(text)
+            with mock.patch.object(hive, "apply", return_value=([], self.start)) as applied, mock.patch("sys.stdout"):
+                hive.main(command)
+            return applied.call_args.args[3], applied.call_args.kwargs["started"]
+
+        for label, text in (("absent", None), ("not JSON", "{"), ("a list", "[1]"), ("a number", "7"),
+                            ("nested beyond what a parser follows", "[" * 200000 + "]" * 200000),
+                            ("the same, inside the answers", '{"answers": ' + "[" * 200000 + "]" * 200000 + "}")):
+            with self.subTest(label):
+                self.assertEqual(handed(text), (None, ()))
+        whole = {"answers": self.verdicts, "started": [self.commit]}
+        self.assertEqual(handed(json.dumps(whole)), (self.verdicts, [self.commit]), "what the judging step did leave is handed over as it is")
+
     def test_a_bundle_that_lacks_one_of_the_plans_candidates_is_not_used(self):
         self.w.fork("bob", 102).write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
         made = self.w.plan()
@@ -2037,6 +2062,29 @@ class TestSecondReview(Base):
         config, _, ledger = self.w.load()
         self.assertIsNotNone(ledger.standing(102, hive.now(), config)[1], "with its cost: it is the candidate's own doing")
         self.assertNotIn("AKIA", sh("git", "log", "-p", "main", cwd=self.w.upstream).stdout)
+
+    def test_after_a_push_that_did_not_land_each_run_of_the_judge_has_its_line_and_nothing_else_has_one(self):
+        """What followed the declined push in the queue: the judge ran on one candidate (unused), failed on another
+        (unused too: every run of the judge leaves a line), and never ran on the one a structural rule refused, which
+        has no line in this run and its answer at the next."""
+        hook = self.w.upstream / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read old new ref; do\n  if git log -p \"$old..$new\" | grep -q 'AKIA[0-9A-Z]\\{16\\}'; then\n"
+                        "    exit 1\n  fi\ndone\nexit 0\n")
+        os.chmod(hook, 0o755)
+        declined = self.w.fork("bob", 102).submit("toy-0001", content=LIB + '/* "AKIAABCDEFGHIJKLMNOP" */\n')
+        fine = self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n")
+        outside = self.w.fork("dave", 104).submit("toy-0005", path="tests/t.c", content="int changed;\n")
+        failing = self.w.fork("erin", 105).submit("toy-0004", content=LIB.replace("return 0;", "return 0; /* ENVERR */"))
+        outcomes, error = self.attempt()
+        self.assertEqual([(o["login"], o["result"], o.get("kind") or o.get("reason"), o["judged"]) for o in outcomes],
+                         [("bob", "accepted", None, True), ("carol", "accepted", None, True), ("dave", "refused", "protected_path", False),
+                          ("erin", "error", "judge", False)], "as the judging step saw them")
+        self.assertIn("declined a commit", error)
+        self.assertEqual([(e["sha"], e["type"]) for e in self.w.events()], [(declined, "error"), (fine, "unused"), (failing, "unused")])
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.attempt()
+        answers = {e["sha"]: e.get("reason", e.get("result")) for e in self.w.events() if e["type"] == "verdict"}
+        self.assertEqual((answers.get(fine), answers.get(outside)), ("accepted", "protected_path"), "the next run answers them")
 
     def test_nothing_is_judged_after_a_candidate_the_project_declined_before_is_accepted_again(self):
         """Its push will likely be declined again, and what would be judged after it could then not be used."""

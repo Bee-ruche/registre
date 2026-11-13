@@ -2035,7 +2035,7 @@ def cmd_apply(args):
 
     try:
         handed = read_json(args.verdicts)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # absent, not JSON, or nested so deep that reading it gives up
         handed = {}  # the judging step left nothing readable: no answer, and nobody is marked for it
     handed = handed if isinstance(handed, dict) else {}
     outcomes, tip = apply(args.repo, args.remote, made, handed.get("answers"), config, tasks, ledger, state, checkpoint=checkpoint,
