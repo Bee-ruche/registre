@@ -353,12 +353,23 @@ class TestIntegration(Base):
         self.assertIn(f"Hive-Candidate: {candidate}", body)
         self.assertIn("Hive-Member: alice", body)
         self.assertNotIn("Hive-Action", body)
+        self.assertEqual(body.strip().splitlines()[2:], [hive.UNATTENDED, "", "Hive-Task: toy-0001", "Hive-Member: alice",
+                                                         f"Hive-Candidate: {candidate}", "Hive-Model: claude-fable-5-2"],
+                         "what it is, in the hive's own words: an agent's work, which model it declared, and that no person read it")
+        dates = sh("git", "show", "-s", "--format=%aI|%cI", tip, cwd=self.w.upstream).stdout.strip()
+        self.assertEqual(dates, "2026-11-12T12:00:00+00:00|2026-11-12T12:00:00+00:00", "dated at the run that judged it, not at the project's previous commit")
         self.assertIn("tuned", sh("git", "show", f"{tip}:lib.c", cwd=self.w.upstream).stdout)
         verdict = [e for e in self.w.events() if e["type"] == "verdict"]
         self.assertEqual(len(verdict), 1)
         self.assertEqual((verdict[0]["result"], verdict[0]["member"], verdict[0]["member_id"], verdict[0]["sha"], verdict[0]["commit"],
                           verdict[0]["model"]), ("accepted", "alice", 101, candidate, tip, "claude-fable-5-2"))
         self.assertEqual(verdict[0]["report"], {"gain": 0.0, "outputs_compared": 12}, "only plain figures are kept")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-12-24T08:30:00Z"}):
+            later = self.w.fork("bob", 102).submit("toy-0002", path="src/b.c", content="int b;\n", model="some-other-model")
+            second = self.one(self.w.run())["commit"]
+        shown = sh("git", "show", "-s", "--format=%aI|%B", second, cwd=self.w.upstream).stdout
+        self.assertTrue(shown.startswith("2026-12-24T08:30:00+00:00|"), shown[:40])
+        self.assertIn(f"Hive-Candidate: {later}\nHive-Model: undeclared\n", shown, "a model the project does not list is not repeated")
 
     def test_a_candidate_is_answered_once(self):
         self.alice.submit("toy-0001", content=LIB + "/* REFUSE */\n")
@@ -1256,7 +1267,9 @@ class TestApply(Base):
         world = world or self.w
         config, tasks, _ = world.load()
         tree = hive.merge_tree(world.harvest, tip or self.tip, sha, config["limits"])
-        return hive.squash_commit(world.harvest, tree, tip or self.tip, tasks[task], {"login": login, "id": member_id}, sha)
+        model = next((c["model"] for c in world.made["queue"] if c["sha"] == sha), None)
+        return hive.squash_commit(world.harvest, tree, tip or self.tip, tasks[task], {"login": login, "id": member_id}, sha,
+                                  hive.parse_iso(world.made["at"]), model)
 
     def test_the_honest_answers_are_applied(self):
         outcomes, tip = self.w.apply(self.verdicts)
@@ -3086,7 +3099,7 @@ class TestHostileData(Base):
     def test_defences_that_no_candidate_should_reach(self):
         tip = self.start
         with self.assertRaises(hive.HiveError):  # a login that is not a login never signs a commit
-            hive.squash_commit(self.w.harvest, hive.tree_of(self.w.harvest, tip), tip, TASKS[0], {"login": "a b\nX: y", "id": 1}, tip)
+            hive.squash_commit(self.w.harvest, hive.tree_of(self.w.harvest, tip), tip, TASKS[0], {"login": "a b\nX: y", "id": 1}, tip, hive.now())
         missing = sh("git", "mktree", "--missing", cwd=self.w.harvest, stdin=f"100644 blob {'1' * 40}\tgone.c\n").stdout.strip()
         with self.assertRaises(hive.HiveError):  # a tree whose blob is not there is not written to disk as if it were
             hive.materialize(self.w.harvest, missing, self.w.root / "out3")

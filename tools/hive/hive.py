@@ -822,17 +822,25 @@ def check_structure(repo, tip_tree, merged_tree, task, config):
     return {"files": len(changed), "lines": lines}
 
 
-def squash_commit(repo, tree, tip, task, member, candidate):
+UNATTENDED = ("Written by an AI coding agent running unattended, credited to the member whose agent it is. "
+              "Accepted by the hive's judge; read by no person before it was integrated.")
+
+
+def squash_commit(repo, tree, tip, task, member, candidate, instant, model=None):
     """The commit the hive integrates: the merged tree on the tip, authored by the member (GitHub's identity of the
-    fork's owner, never the candidate's own author field), committed by the hive. Deterministic: the same tip,
-    candidate, task and member give the same commit id, so the writing job can check the judged one."""
+    fork's owner, never the candidate's own author field), committed by the hive, dated at the instant of the run
+    that judged it (the plan's: the day the work was done, not the day of the project's previous commit). Its message
+    says what it is in the hive's own fixed words: which task, whose agent, which candidate, which model the worker
+    declared (or that it declared none the project lists), and that no person read it. Deterministic: the same tip,
+    candidate, task, member, model and instant give the same commit id, so the writing job can check the judged one."""
     login, member_id = member["login"], int(member["id"])
     if not LOGIN.match(login):
         raise HiveError("member login unreadable")
     title = safe_text(task.get("title") or "", 72)
-    message = (f"{task['id']}: {title}\n\nHive-Task: {task['id']}\nHive-Member: {login}\n"
-               f"Hive-Candidate: {need_sha(candidate)}\n")
-    date = f"{commit_time(repo, tip) + 1} +0000"
+    declared = model if isinstance(model, str) and MODEL.match(model) else "undeclared"
+    message = (f"{task['id']}: {title}\n\n{UNATTENDED}\n\nHive-Task: {task['id']}\nHive-Member: {login}\n"
+               f"Hive-Candidate: {need_sha(candidate)}\nHive-Model: {declared}\n")
+    date = f"{int(instant.timestamp())} +0000"
     env = {"GIT_AUTHOR_NAME": login, "GIT_AUTHOR_EMAIL": f"{member_id}+{login}@users.noreply.github.com",
            "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_NAME": ROBOT[0], "GIT_COMMITTER_EMAIL": ROBOT[1],
            "GIT_COMMITTER_DATE": date}
@@ -1359,12 +1367,13 @@ def same_ledger(ledger, plan_):
 # Process: each candidate merged on a tip that moves, the same way in the judging step and in the writing step
 
 
-def derive(repo, tip, entry, task, config):
+def derive(repo, tip, entry, task, config, instant):
     """Everything the hive derives from git about one candidate on one tip: the merged tree, the structure's
     figures and the commit that would be integrated. Raises Refusal."""
     tree = merge_tree(repo, tip, entry["sha"], config["limits"])
     figures = check_structure(repo, tree_of(repo, tip), tree, task, config)
-    commit = squash_commit(repo, tree, tip, task, {"login": entry["login"], "id": entry["member_id"]}, entry["sha"])
+    commit = squash_commit(repo, tree, tip, task, {"login": entry["login"], "id": entry["member_id"]}, entry["sha"], instant,
+                           entry["model"])
     return tree, figures, commit
 
 
@@ -1411,7 +1420,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
     moves with each acceptance, and returns (outcomes, tip). verdict_of(entry, task, tip, tree, commit) gives the
     judge's answer for one judged commit, or None: the judging step runs the judge there, the writing step looks the
     commit up in the judging step's answers. Both steps go through the same candidates with the same ledger, tasks
-    and instant: they derive the same commits.
+    and instant (the plan's, which dates the commits): they derive the same commits.
 
     An outcome is accepted, refused (with a reason), error, or skipped (the run's budget: it was not tried, and is
     first at the next run). An error is a run spent on a candidate without an answer: the judge failed on it
@@ -1448,7 +1457,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
                 raise Refusal("too_many_commits", {"commits": config["limits"]["commits"] + 1})
             if halt or broken or judged >= budget:
                 continue  # not tried in this run; oldest deal first: it is first at the next
-            tree, figures, commit = derive(repo, tip, entry, task, config)
+            tree, figures, commit = derive(repo, tip, entry, task, config, instant)
             outcome.update(merged_tree=tree, commit=commit, figures=figures)
             verdict = verdict_of(entry, task, tip, tree, commit)
             if verdict is None:
@@ -1519,7 +1528,7 @@ def derives(repo, tip, config):
                     "GIT_COMMITTER_EMAIL": ROBOT[1]}
         probe = git(repo, "commit-tree", tree, "-p", tip, stdin="probe\n", env=identity).stdout.strip()
         merged = merge_tree(repo, tip, probe, config["limits"])
-        squash_commit(repo, merged, tip, {"id": "probe-0000", "title": "probe"}, {"login": "hive", "id": 0}, probe)
+        squash_commit(repo, merged, tip, {"id": "probe-0000", "title": "probe"}, {"login": "hive", "id": 0}, probe, now())
         return merged == tree
     except (HiveError, Refusal):
         return False
@@ -1736,11 +1745,12 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     itself declines is a failure of its candidate's, as when the judge fails on it. A push the hive cannot tell
     the fate of keeps its promise open: the next run looks. Returns (outcomes recorded, tip reached); raises
     HiveError, after recording, if a push did not land."""
-    _, plan_ = read_plan(plan_, config)
+    planned, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is applied")
-    # What this step writes is dated now, when it is written: a wait counts from the moment its member can see the
-    # answer, however long the judging took.
+    # What this step writes in the ledger is dated now, when it is written: a wait counts from the moment its member
+    # can see the answer, however long the judging took. The commits it derives are dated at the plan's instant, as
+    # the judging step dated them: the same commits.
     tip, instant = plan_["tip"], now()
     current = git(repo, "ls-remote", remote, f"refs/heads/{config['branch']}", timeout=60,
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
@@ -1756,7 +1766,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     answers = read_verdicts(verdicts, config["judge"]["metrics"])
     began = {commit for commit in (started if isinstance(started, (list, tuple, set)) else ()) if is_sha(commit)}
     outcomes, _ = process(repo, tip, plan_["queue"], config, tasks, ledger,
-                          lambda entry, task, tip, tree, commit: answers.get(commit), instant, began)
+                          lambda entry, task, tip, tree, commit: answers.get(commit), planned, began)
     accepted, run = [outcome for outcome in outcomes if outcome["result"] == "accepted"], plan_["key"]
     ledger.append([{**verdict_event(outcome, instant, "intent"), "run": run} for outcome in accepted])
     if accepted and checkpoint:

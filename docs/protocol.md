@@ -203,9 +203,12 @@ the hive runs those git commands with an empty attribute source.
 - **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come those a
   run already failed on, and last those the project's repository already declined.
 - The integrated commit is a squash: its tree is the merged tree, its parent the tip, its author the fork's owner
-  (`<id>+<login>@users.noreply.github.com`, so GitHub credits the member), its committer the hive. It is
-  deterministic: the same tip, candidate, task and member always give the same commit id. The candidate's own
-  commit messages and author fields never enter the project's history.
+  (`<id>+<login>@users.noreply.github.com`: the member is credited), its committer the hive, its date the instant of
+  the run that judged it. Its message says what it is, in the hive's own fixed words: that an AI coding agent wrote
+  it unattended, that the hive's judge accepted it and that no person read it before it was integrated; then the
+  task, the member, the candidate and the model the worker declared (`Hive-Model`, or `undeclared`). It is
+  deterministic: the same tip, candidate, task, member, model and instant always give the same commit id. The
+  candidate's own commit messages and author fields never enter the project's history.
 
 ## What holds over time
 
