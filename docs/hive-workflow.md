@@ -222,7 +222,8 @@ Notes on the draft:
 
 ## What could not be tried here
 
-- The whole run: there is no Docker in the builder's environment, no integration identity, no state repository.
+- The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
+  purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
 - That `gh api` lists a public repository's forks with the workflow's read-only token (it should: the data is
   public).
 - That the common judge builds its image from a clone of the project (`--tooling project --image-only`) outside
