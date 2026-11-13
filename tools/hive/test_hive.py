@@ -608,6 +608,35 @@ class TestStructure(Base):
             hive.changed_entries(self.w.harvest, hive.EMPTY_TREE, hive.tree_of(self.w.harvest, self.start), 100)
         self.assertEqual(refusal.exception.reason, "too_many_files", "a single folder too long to list is not listed either")
 
+    def test_a_huge_tree_never_reaches_gits_merge(self):
+        """The same billion paths, in a candidate that also deletes a file the project changed since: git's merge
+        would read the whole added folder looking for where the file went. The hive lists what the candidate changed
+        since it left the project's history, up to the limit, BEFORE it asks git to merge; and git looks for no rename."""
+        base = self.start
+        self.w.upstream_commit("lib.c", LIB + "int moved;\n")
+
+        def mktree(lines):
+            return sh("git", "mktree", cwd=self.alice.work, stdin="".join(line + "\n" for line in lines)).stdout.strip()
+        blob = sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin="x\n").stdout.strip()
+        level = mktree([f"100644 blob {blob}\tf{i}" for i in range(10)])
+        for _ in range(8):
+            level = mktree([f"040000 tree {level}\td{i}" for i in range(10)])
+        src = mktree(self.listing(f"{base}:src") + [f"040000 tree {level}\tbomb"])
+        root = mktree([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing(base)
+                       if not line.endswith("\tlib.c")])
+        message = f"x\n\nHive-Task: toy-0002\nHive-Action: submit\nHive-Deal: {self.w.deal(self.alice, 'toy-0002')}\nHive-Member: alice"
+        commit = sh("git", "commit-tree", root, "-p", base, "-m", message, cwd=self.alice.work).stdout.strip()
+        sh("git", "push", "--quiet", "origin", f"{commit}:refs/heads/bomb", cwd=self.alice.work)
+        real = hive.git
+
+        def no_merge(repo, *args, **options):
+            self.assertNotIn(args[0], ("merge-tree", "diff-tree"), "git is handed the huge tree")
+            return real(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=no_merge):
+            self.refused("too_many_files")
+        self.assertIn("merge.renames=false", hive.GIT_BASE)
+
     def test_a_folder_that_lists_one_name_twice_is_refused(self):
         """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
         tool's affair. The hive refuses the candidate."""
@@ -1416,6 +1445,54 @@ class TestPromise(Base):
         self.assertEqual(sh("git", "log", "--format=%an", f"{self.start}..main", cwd=self.w.upstream).stdout.split(), ["alice"])
         config, _, ledger = self.w.load()
         self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (0, None))
+
+    def test_a_push_that_lands_after_the_hive_gave_up_on_it_is_still_recorded(self):
+        """A void says « not seen in the project's history ». The push may have been on its way: the hive looks again."""
+        def stopped():
+            raise hive.HiveError("the write step was stopped")
+
+        with self.assertRaisesRegex(hive.HiveError, "stopped"):
+            self.w.apply(self.verdicts, checkpoint=stopped)  # run A: its promise is saved, and A is gone
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.w.sweep()
+            self.w.apply({}, started=[])  # run B finds nothing in the history and gives up on A's promise
+        self.assertEqual(([e["type"] for e in self.w.promises()], self.w.events()), (["intent", "void"], []))
+        sh("git", "push", "--quiet", "origin", f"{self.commit}:refs/heads/main", cwd=self.w.writer)  # and A's push lands after all
+        judge_by_content.seen = []
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T14:00:00Z"}):
+            self.assertEqual((self.w.run(), judge_by_content.seen), ([], []), "nothing is judged again")
+        event = self.one(self.w.events())
+        self.assertEqual((event["result"], event["member"], event["commit"], event["settled"]), ("accepted", "alice", self.commit, True))
+        self.assertEqual((self.w.feed()["toy-0001"]["status"], self.w.deals()["toy-0001"]), ("done", ("alice", "closed")))
+        old = hive.Ledger(self.w.state)
+        self.assertEqual(hive.landings(self.w.writer, self.w.tip(), old, hive.parse_iso("2026-11-30T00:00:00Z")), {},
+                         "an answered promise is looked for no more")
+
+    def test_a_promise_given_up_on_is_looked_for_during_a_week(self):
+        def stopped():
+            raise hive.HiveError("the write step was stopped")
+
+        with self.assertRaisesRegex(hive.HiveError, "stopped"):
+            self.w.apply(self.verdicts, checkpoint=stopped)
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.w.sweep()
+            self.w.apply({}, started=[])
+        ledger = hive.Ledger(self.w.state)
+        looked = [hive.landings(self.w.writer, self.w.tip(), ledger, hive.parse_iso(at)) for at in ("2026-11-19T13:00:00Z", "2026-11-19T13:00:01Z")]
+        self.assertEqual(looked, [{self.commit: False}, {}])
+
+    def test_a_project_whose_branch_moves_at_every_run_keeps_no_promise_open(self):
+        with mock.patch.object(hive, "guarded_push", side_effect=hive.HiveError("the network")), self.assertRaises(hive.HiveError):
+            self.w.apply(self.verdicts)  # promised, and never pushed
+        self.assertEqual([e["type"] for e in self.w.promises()], ["intent"])
+        saved = []
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            _, verdicts, _ = self.w.sweep()
+            self.w.upstream_commit("hive/readme", "a maintainer's commit, between the plan and the write step\n")
+            with self.assertRaisesRegex(hive.HiveError, "tip moved"):
+                self.w.apply(verdicts, checkpoint=lambda: saved.append(True))
+        self.assertEqual(([e["type"] for e in self.w.promises()], saved, self.w.events()), (["intent", "void"], [True], []),
+                         "nothing of the plan is applied, and the old promise is closed all the same")
 
     def test_a_promise_whose_push_never_landed_is_void(self):
         (self.w.upstream / "refs/heads/main.lock").write_text("")

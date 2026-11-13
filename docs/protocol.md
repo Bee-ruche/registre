@@ -181,8 +181,10 @@ the hive runs those git commands with an empty attribute source.
 
 ## How a candidate is judged and integrated
 
-- The hive computes the merge without a work tree (`git merge-tree`), writes the two trees to disk **byte for
-  byte, without git's checkout** (no hook, filter, attribute or end-of-line conversion applies), and hands them
+- The hive first lists, itself and up to the project's limit, what the candidate changed since it left the
+  project's history; only then does it compute the merge, without a work tree (`git merge-tree`) and without
+  looking for renames (a candidate that moves a file the project changed meanwhile is a `conflict`). It writes the
+  two trees to disk **byte for byte, without git's checkout** (no hook, filter, attribute or end-of-line conversion applies), and hands them
   to the judge. A candidate can add or change plain files only; the project's own links and submodules are
   written as they are.
 - The judge is the registry's common judge (docs/common-judge.md): candidate code builds and runs only in a
@@ -254,8 +256,9 @@ with it the tasks that share a file with that one.
   state. If a run pushed and then could not record, or could not tell whether its push landed, the next run finds
   the promise, looks for the promised commit in the project's history, and completes the ledger. Nothing but the
   hive's own promise is believed: no field of a commit on the project's branch is. That a promised push *landed*
-  is recorded as soon as a run sees the commit in the project's history; that it *never landed* is recorded only
-  by a write job, which first checks that the project's tip has not moved since its plan.
+  is recorded as soon as a run sees the commit in the project's history; that it was *not seen there* is recorded
+  only by a write job, against the project's tip as it is then. And a push given up on is still looked for during a
+  week: one that lands after all is recorded, and its task is done once.
 - **The push can only add to the judged tip.** The hive checks that what it pushes descends from the tip that was
   judged, and pushes on the condition that the branch is still at that tip. A branch that a maintainer moved
   meanwhile, to take a commit back for instance, is left as they put it.

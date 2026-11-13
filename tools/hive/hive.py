@@ -56,6 +56,7 @@ JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times i
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
 PLAN_MAX_AGE_HOURS = 24  # the write step applies no plan older than this
 UNANSWERED_RUNS = 6  # a deal whose candidates the hive spent this many runs on without an answer is closed: not_answered
+VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still looked for in the project's history
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
 # Refusals that cost their member no wait: a real attempt the judge answered, or work the project's tip overtook.
@@ -124,7 +125,7 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
-            "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true")
+            "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true", "-c", "merge.renames=false")
 GIT_ISOLATED = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0",
                 "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1"}
 
@@ -485,18 +486,29 @@ class Ledger:
         return [(e.get("kind", "judge"), bool(e.get("unproven"))) for e in self.events
                 if e.get("type") == "error" and e.get("task") == task and e.get("member_id") == member_id and e.get("deal") == deal]
 
-    def open_intents(self):
-        """The pushes the hive promised and has not closed: neither a verdict on the candidate nor a void."""
-        pending = {}
+    def promises(self):
+        """(open, voided): the pushes the hive promised and has not closed (neither a verdict on the candidate nor a
+        void), and those it closed with a void and has not answered since. A void says « not seen in the project's
+        history »; it is looked at again for a while, because a push can land after the run that gave up on it."""
+        pending, voided = {}, {}
         for event in self.events:
-            if event.get("type") == "intent":
-                pending[(event["sha"], event["commit"])] = event
-            elif event.get("type") == "verdict":
-                for mark in [m for m in pending if m[0] == event.get("sha")]:
-                    del pending[mark]
-            elif event.get("type") == "void":
-                pending.pop((event.get("sha"), event.get("commit")), None)
-        return list(pending.values())
+            kind = event.get("type")
+            if kind == "intent":
+                mark = (event["sha"], event["commit"])
+                pending[mark] = event
+                voided.pop(mark, None)
+            elif kind == "verdict":
+                for store in (pending, voided):
+                    for mark in [m for m in store if m[0] == event.get("sha")]:
+                        del store[mark]
+            elif kind == "void":
+                mark = (event.get("sha"), event.get("commit"))
+                if mark in pending:
+                    voided[mark] = (pending.pop(mark), event.get("at"))
+        return list(pending.values()), list(voided.values())
+
+    def open_intents(self):
+        return self.promises()[0]
 
 
 def read_state(folder, name, default):
@@ -637,6 +649,10 @@ def merge_tree(repo, tip, candidate, limits):
     commits = int(git(repo, "rev-list", "--count", f"{base.stdout.strip()}..{candidate}").stdout.strip())
     if commits > limits["commits"]:
         raise Refusal("too_many_commits", {"commits": commits})
+    # What the candidate itself changed since it left the project's history is listed first, by the hive, up to the
+    # limit: git's merge is never handed a tree that a few objects make huge. And the merge looks for no renames
+    # (a search that reads whole folders): a candidate that moves a file the project changed meanwhile is a conflict.
+    changed_entries(repo, tree_of(repo, base.stdout.strip()), tree_of(repo, candidate), 4 * limits["files"] + 100)
     merged = git(repo, "merge-tree", "--write-tree", "--no-messages", tip, candidate, check=False, attributes=False)
     tree = merged.stdout.split("\n", 1)[0].strip()
     if merged.returncode == 1:
@@ -991,20 +1007,25 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
     return entries, ignored, reads
 
 
-def landings(repo, tip, ledger):
-    """For each push the hive promised and has not closed: is the promised commit in the project's history?"""
-    return {intent["commit"]: git(repo, "merge-base", "--is-ancestor", intent["commit"], need_sha(tip), check=False).returncode == 0
-            for intent in ledger.open_intents() if is_sha(intent.get("commit"))}
+def landings(repo, tip, ledger, instant):
+    """For each push the hive promised and has not answered (open, or given up on in the last days): is the promised
+    commit in the project's history at `tip`?"""
+    pending, voided = ledger.promises()
+    since = iso(instant - dt.timedelta(days=VOID_MEMORY_DAYS))
+    commits = {intent.get("commit") for intent in pending} | {intent.get("commit") for intent, at in voided if stamp(at) and at >= since}
+    return {commit: git(repo, "merge-base", "--is-ancestor", commit, need_sha(tip), check=False).returncode == 0
+            for commit in sorted(c for c in commits if is_sha(c))}
 
 
 def settle(ledger, instant, landed, own=None):
     """The ledger lines that close the pushes the hive promised (an « intent ») and did not record: a verdict if the
     promised commit is in the project's history, a « void » if it is not (`landed`: commit id -> which). So a run
     that pushed and could not record loses nothing, and nothing but the hive's own promise is believed: no field of
-    a commit is. `own` is the key of the run that is settling: its own promises are not closed by it, whatever
-    number of times its write step runs."""
-    events = []
-    for intent in ledger.open_intents():
+    a commit is. A promise already given up on (a void) whose commit is found in the history after all gets its
+    verdict: a push may land after the run that looked. `own` is the key of the run that is settling: its own
+    promises are not closed by it, whatever number of times its write step runs."""
+    events, (pending, voided) = [], ledger.promises()
+    for intent in pending:
         if (own is not None and intent.get("run") == own) or type(landed.get(intent.get("commit"))) is not bool:
             continue  # a promise of THIS run (the write step was stopped and is run again), or one nothing is known of
         if landed[intent["commit"]]:
@@ -1012,6 +1033,9 @@ def settle(ledger, instant, landed, own=None):
         else:
             events.append({"type": "void", "at": iso(instant), "run": intent.get("run"), "by": own, "sha": intent["sha"],
                            "commit": intent.get("commit")})
+    for intent, _ in voided:
+        if landed.get(intent.get("commit")) is True and not (own is not None and intent.get("run") == own):
+            events.append({**intent, "type": "verdict", "at": iso(instant), "settled": True, "by": own})
     return events
 
 
@@ -1077,7 +1101,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        conditionally: its new deal is recorded, and its ask used, only if that candidate is answered in this run.
     The draws use a key drawn AFTER the forks were read."""
     instant, lines, digest = now(), ledger.lines, ledger.digest()
-    landed = landings(repo, tip, ledger)
+    landed = landings(repo, tip, ledger, instant)
     ledger.append(settle(ledger, instant, landed), write=False)
     accounts = read_accounts(state_folder)
     entries, ignored, reads = discover(repo, config, api, ledger.seen() | upstream_tips(repo), instant, allow_local,
@@ -1471,7 +1495,7 @@ def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None):
     leaves it: a table from the id of each judged commit to the judge's answer, and the ids of the commits it
     started on (so that the one it was on, if it is stopped, can be told from those it never reached)."""
     instant, plan_ = read_plan(plan_, config)
-    ledger.append(settle(ledger, instant, landings(repo, plan_["tip"], ledger)), write=False)
+    ledger.append(settle(ledger, instant, landings(repo, plan_["tip"], ledger, instant)), write=False)
     probe = Path(tempfile.mkdtemp(prefix="tip-", dir=workdir))
     try:
         materialize(repo, tree_of(repo, plan_["tip"]), probe / "tip")  # a tip the hive cannot write stops the run, loudly
@@ -1593,8 +1617,14 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     current = git(repo, "ls-remote", remote, f"refs/heads/{config['branch']}", timeout=60,
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
     if current != tip:
+        # Nothing of this plan is applied. The promises of earlier runs are still looked at, against the tip as it is
+        # now (if this clone has it): a project whose branch moves at every run must not keep them open for ever.
+        if is_sha(current) and git(repo, "cat-file", "-e", f"{current}^{{commit}}", check=False).returncode == 0:
+            ledger.append(settle(ledger, instant, landings(repo, current, ledger, instant), own=plan_["key"]))
+            if checkpoint:
+                checkpoint()
         raise HiveError("the project's tip moved since the plan: nothing is applied, the next run starts again")
-    ledger.append(settle(ledger, instant, landings(repo, tip, ledger), own=plan_["key"]))
+    ledger.append(settle(ledger, instant, landings(repo, tip, ledger, instant), own=plan_["key"]))
     answers = read_verdicts(verdicts, config["judge"]["metrics"])
     began = {commit for commit in (started if isinstance(started, (list, tuple, set)) else ()) if is_sha(commit)}
     outcomes, _ = process(repo, tip, plan_["queue"], config, tasks, ledger,
