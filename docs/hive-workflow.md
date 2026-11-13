@@ -284,7 +284,8 @@ Notes on the draft:
   that action's code writes for one file (a header, the deflated data, sixteen bytes of sizes, a directory of one
   entry, the end record, no comment and no extra field); it was tested on archives its tests make that way,
   never on one of GitHub's. If the layout differs in anything, it refuses: the first real run tells, and nothing
-  is pushed meanwhile.
+  is pushed meanwhile. (The upload steps must keep the action's default compression: at `compression-level: 0`
+  the action stores members instead of deflating them, a layout the tool refuses.)
 - That an environment restricted to `main` refuses a job started on another ref, and what `!cancelled()` gives
   when the judging job is stopped at its time limit rather than by a person.
 - That miniz's own judge works on the trees the hive hands it. It reads files of the project frozen at an old

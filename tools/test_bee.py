@@ -6283,6 +6283,10 @@ if args[:2] == ["run", "download"]:
         os.makedirs(os.path.dirname(target), exist_ok=True)
         if what is None:
             os.makedirs(target, exist_ok=True)
+        elif isinstance(what, dict) and "zeros" in what:
+            with open(target, "wb") as f:
+                for _ in range(what["zeros"] // (1 << 20)):
+                    f.write(bytes(1 << 20))
         elif isinstance(what, dict):
             os.symlink(what["link"], target)
         else:
@@ -7475,6 +7479,15 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         download = self.calls_of(calls, "run", "download")[0]["args"]
         self.assertNotIn(download[download.index("-D") + 1], ("verdict", str(self.dir.parent / "runner" / "verdict")),
                          "unpacked apart from the folder this step writes in")
+
+    def test_a_forks_archive_too_heavy_for_a_verdict_is_no_verdict_and_nothing_of_any_archive_stays(self):
+        runner = self.dir.parent / "runner"
+        output_text, verdict, _ = self.collect({}, archive={"padding.bin": {"zeros": 70 << 20}})
+        self.assertIsNone(verdict, output_text)
+        self.assertFalse((runner / "fork-archive").exists() or (runner / "verdict").exists(), "nothing stays after the pass")
+        output_text, verdict, _ = self.collect({}, archive={"small.bin": {"zeros": 1 << 20}})
+        self.assertEqual(verdict["gain"], 0.05, "what else it holds, when it is not heavy, changes nothing")
+        self.assertFalse((runner / "fork-archive").exists() or (runner / "verdict").exists())
 
     def test_a_verdict_that_is_not_a_plain_file_is_no_verdict(self):
         for label, what in (("a folder", None), ("a link", {"link": "/etc/hostname"})):
@@ -23608,6 +23621,10 @@ class TestHiveWorkflowDraft(unittest.TestCase):
                    if "upload-artifact" in step.get("uses", "")}
         self.assertEqual(uploads, {"plan": "plan.json", "candidates": "candidates.bundle", "verdicts": "verdicts.json"},
                          "one file per artifact, under the name the taker expects")
+        for job in self.jobs.values():
+            for step in job["steps"]:
+                if step.get("uses") == self.UPLOAD:
+                    self.assertLessEqual(set(step["with"]), {"name", "path", "retention-days"}, "the action's default compression: the layout the taker reads")
         self.assertTrue((ROOT / "tools/hive/artifact.py").is_file())
 
     def test_the_jobs_run_on_main_only_and_a_cancelled_run_pushes_nothing(self):

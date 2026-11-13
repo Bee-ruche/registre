@@ -87,10 +87,15 @@ jobs:
             # The fork's archive is unpacked in a folder of its own, and one file is taken from it: verdict.json, if it is a plain
             # file. Whatever else it holds stays there, unread: the files this step writes below are in a folder the archive never
             # reaches, and one fork's archive is that fork's affair, never the pass's.
+            # No file of it may weigh more than 64 MiB on this machine (a verdict is a few kilobytes), and nothing of it stays
+            # once the one file is taken, or once the pass is over.
             rm -rf "$RUNNER_TEMP/verdict" "$RUNNER_TEMP/fork-archive" && mkdir -p "$RUNNER_TEMP/verdict"
-            gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/fork-archive" || continue
-            [ -f "$RUNNER_TEMP/fork-archive/verdict.json" ] && [ ! -L "$RUNNER_TEMP/fork-archive/verdict.json" ] || continue
-            cp "$RUNNER_TEMP/fork-archive/verdict.json" "$RUNNER_TEMP/verdict/verdict.json" || continue
+            taken=no
+            if ( ulimit -f 65536; gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/fork-archive" ) \
+               && [ -f "$RUNNER_TEMP/fork-archive/verdict.json" ] && [ ! -L "$RUNNER_TEMP/fork-archive/verdict.json" ] \
+               && cp "$RUNNER_TEMP/fork-archive/verdict.json" "$RUNNER_TEMP/verdict/verdict.json"; then taken=yes; fi
+            rm -rf "$RUNNER_TEMP/fork-archive"
+            [ "$taken" = yes ] || continue
             # The base verdict.json declares (fork data) is never believed: the API says whether it is an ancestor of the default
             # branch (compare: identical or ahead); bee record-verdict refuses otherwise.
             : > "$RUNNER_TEMP/verdict/bases.txt"
@@ -129,7 +134,7 @@ jobs:
             python3 tools/bee.py record-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
               --sha "$sha" --run "$address" "${options[@]}" 2>&1 | log_text || true
           done < to_process.tsv
-          rm -f to_process.tsv
+          rm -rf to_process.tsv "$RUNNER_TEMP/fork-archive" "$RUNNER_TEMP/verdict"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

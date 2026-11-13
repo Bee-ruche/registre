@@ -186,10 +186,12 @@ def take(archive, members, folder):
                 if unpacked > members[name]:
                     raise Refused(f"{name}: larger than allowed")
                 # The header in front of the data: where the member before it ended, and as the upload action writes it.
+                if start != position:  # (checked first: a header is then always there to read, the directory lies behind it)
+                    raise different
                 source.seek(start)
                 header = source.read(LOCAL.size + len(name))
                 signature, _, flags, method, _, _, *figures, name_length, extra = LOCAL.unpack_from(header)
-                if start != position or signature != b"PK\x03\x04" or (flags, method) != (SIZES_AFTER_DATA, DEFLATED) or figures != [0, 0, 0] \
+                if signature != b"PK\x03\x04" or (flags, method) != (SIZES_AFTER_DATA, DEFLATED) or figures != [0, 0, 0] \
                         or name_length != len(name) or extra or header[LOCAL.size:] != name.encode():
                     raise different
                 position = entries[index + 1][4] if index + 1 < len(entries) else directory  # where this member must end

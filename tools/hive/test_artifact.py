@@ -379,6 +379,9 @@ class TestTake(Base):
         plan, bundle = member("plan.json", PLAN), member("candidates.bundle", BUNDLE, offset=0)  # the second entry points at the first member
         self.refused(packed([plan, bundle]), saying="exactly")
         self.refused(packed([plan, member("candidates.bundle", BUNDLE, offset=7)]), saying="exactly")
+        whole = packed([plan])
+        for elsewhere in (len(whole), len(whole) - 10, len(whole) + 4096, 0xFFFFFFFF):  # past the end, or inside the end record
+            self.refused(packed([member("plan.json", PLAN, offset=elsewhere)]), ONE, saying="exactly")
 
     def test_an_archive_of_another_kind(self):
         """What Python's writer makes when it writes to a file, and what any writer makes for more than 4 GiB or 65,535
