@@ -154,7 +154,7 @@ class World:
         self.harvest, self.bench, self.writer = self.root / "harvest", self.root / "bench", self.root / "writer"
         for clone in (self.harvest, self.bench, self.writer):
             sh("git", "clone", "--quiet", str(self.upstream), str(clone), cwd=self.root)
-        self.bundle, self.made = self.root / "candidates.bundle", None
+        self.bundle, self.made, self.started = self.root / "candidates.bundle", None, []
         self.registry = self.root / "registry"
         (self.registry / "hive/projects").mkdir(parents=True)
         (self.registry / "hive/tasks").mkdir(parents=True)
@@ -204,7 +204,7 @@ class World:
         sh("git", "fetch", "--quiet", "origin", cwd=self.bench)
         config, tasks, ledger = self.load()
         hive.read_bundle(self.bench, self.made, self.bundle)
-        verdicts, outcomes = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work)
+        verdicts, outcomes, self.started = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work)
         return json.loads(json.dumps(verdicts)), outcomes
 
     def sweep(self, judge=judge_by_content):
@@ -213,14 +213,14 @@ class World:
         verdicts, outcomes = self.judge(judge)
         return self.made["tip"], verdicts, outcomes
 
-    def apply(self, verdicts, checkpoint=None, **changes):
+    def apply(self, verdicts, checkpoint=None, started=None, **changes):
         """Step 3, in its own clone, given the last plan (with `changes`) and these verdicts: (outcomes, new tip)."""
         sh("git", "fetch", "--quiet", "origin", cwd=self.writer)
         config, tasks, ledger = self.load()
         made = {**self.made, **changes}
         hive.read_bundle(self.writer, hive.read_plan(made, config)[1], self.bundle)  # as the command does: the plan first
         return hive.apply(self.writer, "origin", made, verdicts, config, tasks, ledger, self.state, allow_local=True,
-                          checkpoint=checkpoint)
+                          checkpoint=checkpoint, started=self.started if started is None else started)
 
     def run(self, judge=judge_by_content):
         """One whole run; returns what the write step decided."""
@@ -456,7 +456,7 @@ class TestIntegration(Base):
                        "--workdir", str(self.w.work), "--out", str(verdicts)])
             hive.main(["apply", *common, "--repo", str(self.w.writer), "--plan", str(made), "--plan-sha256", digest,
                        "--bundle", str(self.w.bundle), "--verdicts", str(verdicts)])
-        self.assertEqual((json.loads(made.read_text())["paused"], json.loads(verdicts.read_text())), (True, {}))
+        self.assertEqual((json.loads(made.read_text())["paused"], json.loads(verdicts.read_text())), (True, {"answers": {}, "started": []}))
 
     def test_a_goal_on_a_metric(self):
         self.alice.submit("toy-0004")
@@ -1131,13 +1131,22 @@ class TestFirstReview(Base):
 
     def test_the_ledger_records_a_claim_and_a_verdict_once_and_a_failure_each_time(self):
         ledger = hive.Ledger(self.w.state)
-        claim, verdict, error = ({"type": t, "sha": "a" * 40, "at": NOW} for t in ("claim", "verdict", "error"))
+        claim, verdict, error = ({"type": t, "sha": "a" * 40, "at": NOW, "run": "1" * 32} for t in ("claim", "verdict", "error"))
         ledger.append([claim, verdict, error])
-        ledger.append([claim, verdict, error, {**verdict, "sha": "b" * 40}])
-        self.assertEqual([(e["type"], e["sha"][0]) for e in hive.Ledger(self.w.state).events],
-                         [("claim", "a"), ("verdict", "a"), ("error", "a"), ("error", "a"), ("verdict", "b")])
+        ledger.append([{**claim, "run": "2" * 32}, {**verdict, "run": "2" * 32}, error, {**error, "run": "2" * 32},
+                       {**verdict, "sha": "b" * 40}])
+        self.assertEqual([(e["type"], e["sha"][0], e["run"][0]) for e in hive.Ledger(self.w.state).events],
+                         [("claim", "a", "1"), ("verdict", "a", "1"), ("error", "a", "1"), ("error", "a", "2"), ("verdict", "b", "1")],
+                         "a claim and a verdict once per commit; a failure once per run: the write step run again records nothing twice")
         ledger.append([{**claim, "sha": "c" * 40}], write=False)
-        self.assertEqual((len(ledger.events), len(hive.Ledger(self.w.state).events)), (6, 5), "the sweep keeps its own in memory")
+        self.assertEqual((len(ledger.events), len(hive.Ledger(self.w.state).events)), (6, 5), "a step without a token keeps its own in memory")
+        with open(self.w.state / "ledger.jsonl", "a") as f:
+            f.write('{"type":"verdict","sha":"dd')  # a run stopped while writing its last line
+        self.assertEqual(len(hive.Ledger(self.w.state).events), 5, "the cut line is left out, the hive goes on")
+        text = (self.w.state / "ledger.jsonl").read_text()
+        (self.w.state / "ledger.jsonl").write_text("not json\n" + text)
+        with self.assertRaisesRegex(hive.HiveError, "needs a person"):
+            hive.Ledger(self.w.state)  # anywhere else, a broken ledger is not guessed at
 
     def test_one_commit_on_several_branches_is_judged_once(self):
         self.alice.submit("toy-0001")
@@ -1185,7 +1194,7 @@ class TestFirstReview(Base):
                  "task": lambda v: v is None or v in {t["id"] for t in TASKS}, "member": lambda v: hive.LOGIN.match(v),
                  "member_id": lambda v: type(v) is int, "repo_id": lambda v: type(v) is int, "sha": hive.is_sha,
                  "result": lambda v: v in ("accepted", "refused"), "reason": lambda v: v in hive.REASONS,
-                 "judged": lambda v: type(v) is bool, "kind": lambda v: v in ("judge", "push"), "model": lambda v: v is None or hive.MODEL.match(v), "commit": hive.is_sha,
+                 "judged": lambda v: type(v) is bool, "kind": lambda v: v in ("judge", "push"), "run": lambda v: hive.RUN_KEY.match(v), "model": lambda v: v is None or hive.MODEL.match(v), "commit": hive.is_sha,
                  "detail": lambda v: all(k in hive.DETAIL_KEYS and type(n) is int for k, n in v.items()),
                  "figures": lambda v: all(k in ("files", "lines") and type(n) is int for k, n in v.items()),
                  "report": lambda v: v == {"gain": 0.05}}
@@ -1217,7 +1226,9 @@ class TestFirstReview(Base):
                                                "seen", "tip"])
             self.assertEqual([c["sha"] for c in written["queue"]], [candidate])
             hive.main(["judge", *common, "--repo", str(self.w.bench), *files, "--workdir", str(self.w.work), "--out", str(verdicts)])
-            self.assertEqual([v["code"] for v in json.loads(verdicts.read_text()).values()], [0])
+            handed = json.loads(verdicts.read_text())
+            self.assertEqual((sorted(handed), [v["code"] for v in handed["answers"].values()], handed["started"]),
+                             (["answers", "started"], [0], list(handed["answers"])))
             self.assertEqual((self.w.tip(), self.w.events()), (self.start, []))
             apply = ["apply", *common, "--repo", str(self.w.writer), *files, "--verdicts", str(verdicts)]
             tampered = self.w.root / "tampered.json"
@@ -1228,7 +1239,7 @@ class TestFirstReview(Base):
                     hive.main(wrong)
             self.assertEqual((self.w.tip(), self.w.events()), (self.start, []), "a plan that is not the published one is not applied")
             hive.main([*apply, "--plan-sha256", digest])
-        self.assertEqual(self.w.tip(), next(iter(json.loads(verdicts.read_text()))))
+        self.assertEqual(self.w.tip(), next(iter(json.loads(verdicts.read_text())["answers"])))
         self.assertEqual([(e["sha"], e["result"]) for e in self.w.events()], [(candidate, "accepted")])
         self.assertEqual(json.loads((self.w.state / "feed.json").read_text())["tip"], self.w.tip())
         self.assertEqual(json.loads((self.w.state / "stats.json").read_text())["models"], {"claude-fable-5-2": {"judged": 1, "accepted": 1}})
@@ -1295,7 +1306,7 @@ class TestPromise(Base):
         self.assertEqual(self.w.events(), [], "neither the plan nor the judging step writes")
         self.assertEqual(self.w.apply(verdicts), ([], self.commit))
         event = self.one(self.w.events())
-        self.assertEqual({**event, "settled": None}, {**record[0], "settled": None}, "the same record, from the promise")
+        self.assertEqual({k: v for k, v in event.items() if k not in ("settled", "run")}, record[0], "the same record, from the promise")
         self.assertTrue(event["settled"])
         self.assertEqual(self.w.feed()["toy-0001"]["status"], "done")
         self.assertEqual((self.w.run(), len(self.w.events())), ([], 1), "and recorded once")
@@ -1461,9 +1472,8 @@ class TestSecondReview(Base):
         self.assertEqual(sorted(o.get("reason") for o in outcomes[1:]), ["superseded"] * 3)
         self.assertEqual(sh("git", "show", "-s", "--format=%an", "main", cwd=self.w.upstream).stdout.strip(), "alice")
 
-    def test_when_github_has_not_said_when_a_candidate_was_pushed(self):
-        """It waits one run and then takes the instant the hive first saw it; meanwhile what was pushed lately for the
-        same task waits too, since it could be a copy of it."""
+    def test_while_github_has_not_said_when_a_candidate_was_pushed_its_task_waits(self):
+        """A candidate whose instant is unknown could be the original of the others: one clock per task, never a mix."""
         self.w.api.silent.add("alice")
         original = self.alice.submit("toy-0001")
         mallory = self.w.fork("mallory", 666)
@@ -1472,29 +1482,90 @@ class TestSecondReview(Base):
             other = mallory.fresh("other").write("src/m.c", "int m;\n").commit().marker("toy-0002").push()
             self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [other], "the task waits; the other tasks do not")
             self.assertEqual(self.one(self.w.run())["sha"], other)
-            self.assertEqual(hive.read_pending(self.w.state)[original], "2026-11-12T12:00:05Z")
-        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.assertEqual(hive.read_pending(self.w.state)[original], {"seen": "2026-11-12T12:00:05Z", "pushed": None})
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T15:00:00Z"}):
+            self.assertEqual(self.w.run(), [], "still no word from GitHub three hours later: the task still waits")
+            self.w.api.silent.clear()
             outcomes = self.w.run()
-        self.assertEqual({o["login"] for o in outcomes}, {"alice", "mallory"}, "the next run serves the task, whatever GitHub says")
+        self.assertEqual([(o["login"], o.get("reason") or o["result"]) for o in outcomes], [("alice", "accepted"), ("mallory", "superseded")])
         self.assertEqual(hive.read_pending(self.w.state), {}, "answered: no longer waiting")
 
-    def test_a_candidate_without_an_answer_goes_last_and_nothing_pushed_later_for_its_task_passes_it(self):
+    def test_after_a_day_without_a_word_from_github_the_hives_own_first_sight_is_the_clock_for_all(self):
+        self.w.api.silent.add("alice")
+        self.alice.submit("toy-0001")
+        self.assertEqual(self.w.run(), [], "the hive sees alice's candidate, and waits for GitHub")
+        mallory = self.w.fork("mallory", 666)
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            mallory.submit("toy-0001")  # pushed, and seen by the hive, an hour after alice's
+            self.assertEqual(self.w.run(), [])
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T13:00:01Z"}):
+            self.assertEqual({tuple(self.w.order(f"{i:032x}")) for i in range(20)}, {("alice", "mallory")},
+                             "the hive saw alice's first; GitHub's instant for mallory's is not mixed in")
+            self.assertEqual([(o["login"], o["result"]) for o in self.w.run()], [("alice", "accepted"), ("mallory", "refused")])
+
+    def test_a_commit_taken_away_and_pushed_again_has_the_instant_of_its_return(self):
+        """Commits pushed early and kept in reserve do not go before what was pushed in the meantime."""
+        mallory = self.w.fork("mallory", 666)
+        reserve = mallory.submit("toy-0001", content=LIB + "/* REFUSE */\n")
+        sh("git", "push", "--quiet", "origin", ":refs/heads/claude/work", cwd=mallory.work)
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            honest = self.alice.submit("toy-0001")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:01:00Z"}):
+            mallory.push()
+            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [honest, reserve])
+
+    def test_a_member_the_judge_failed_on_or_the_project_declined_goes_after_the_others(self):
+        """An account hurts the others once, not once per commit; and still nothing passes an earlier push on a task."""
+        mallory, bob = self.w.fork("mallory", 666), self.w.fork("bob", 102)
+        mallory.submit("toy-0001", content=LIB + "/* ENVERR */\n")
+        self.assertEqual(self.one(self.w.run())["result"], "error")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            early = mallory.fresh("m2").write("src/m.c", "int m;\n").commit().marker("toy-0002").push()
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:30:00Z"}):
+            late = self.alice.write("run.sh", "#!/bin/sh\necho\n").commit().marker("toy-0005").push()
+            behind = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+            queue = [c["sha"] for c in self.w.plan()["queue"]]
+            self.assertEqual(queue[0], late, "pushed later, by a member without a failure: first")
+            self.assertLess(queue.index(early), queue.index(behind), "for one task, mallory's earlier push still goes before bob's")
+        ledger = self.w.load()[2]
+        self.assertEqual([ledger.member_class(666, hive.parse_iso(at)) for at in (LATER, "2026-11-19T11:59:00Z", "2026-11-19T12:00:01Z")],
+                         [1, 1, 0], "for a week")
+        events = [{"type": "error", "kind": kind, "member_id": 5, "at": NOW} for kind in ("none", "hive", "judge", "push")]
+        for count, expected in ((1, 0), (2, 0), (3, 1), (4, 2)):
+            ledger.events = events[:count]
+            self.assertEqual(ledger.member_class(5, hive.parse_iso(LATER)), expected, "only what a candidate itself did counts")
+        self.assertEqual(ledger.member_class(6, hive.parse_iso(LATER)), 0)
+
+    def test_state_files_cut_short_do_not_stop_the_hive(self):
+        self.alice.submit("toy-0001")
+        self.w.plan()
+        self.w.apply({}, started=[])
+        for name in ("pending.json", "ignored.json", "waiting.json"):
+            (self.w.state / name).write_text('{"abc')
+        self.assertEqual((hive.read_pending(self.w.state), hive.read_ignored(self.w.state), hive.read_waiting(self.w.state)), ({}, [], []))
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        self.assertEqual(json.loads((self.w.state / "pending.json").read_text()), {}, "and they are written whole again")
+        self.assertEqual([p.name for p in self.w.state.iterdir() if p.name.endswith(".tmp")], [])
+
+    def test_a_candidate_the_judging_stopped_on_goes_last_and_nothing_pushed_later_for_its_task_passes_it(self):
         bob, mallory = self.w.fork("bob", 102), self.w.fork("mallory", 666)
         waiting = self.alice.submit("toy-0001")
-        bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
-        self.w.plan()
-        self.w.apply({})  # a run in which no answer came: the candidate at the head has spent it
-        marked = [e["sha"] for e in self.w.events() if e["type"] == "error"]
-        self.assertEqual(len(marked), 1)
+        other = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        _, _, outcomes = self.w.sweep()
+        on = {o["sha"]: o["commit"] for o in outcomes}
+        self.w.apply({}, started=[on[waiting]])  # the judging job was stopped while it was on alice's candidate
+        self.assertEqual([(e["sha"], e["kind"]) for e in self.w.events()], [(waiting, "none")],
+                         "the one it was on is marked; the one it never reached is not")
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
-            copy = mallory.submit("toy-0001" if marked == [waiting] else "toy-0002", path="lib.c" if marked == [waiting] else "src/b.c",
-                                  content=LIB.replace("return 0;", "return 0; /* tuned */") if marked == [waiting] else "int b;\n")
+            copy = mallory.submit("toy-0001")
             carol = self.w.fork("carol", 103).write("run.sh", "#!/bin/sh\necho\n").commit().marker("toy-0005").push()
-            queue = [c["sha"] for c in self.w.plan()["queue"]]
-            self.assertEqual(queue[-2:], [marked[0], copy], "the marked one after the others, and its copy right behind it")
-            self.assertEqual(queue.index(carol), 1, "a candidate pushed later for ANOTHER task goes before the marked one")
+            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [other, carol, waiting, copy],
+                             "the marked one after the others, later pushes included, and its copy right behind it")
             answers = {o["sha"]: o.get("reason") or o["result"] for o in self.w.run()}
-        self.assertEqual((answers[marked[0]], answers[copy]), ("accepted", "superseded"))
+        self.assertEqual((answers[waiting], answers[copy]), ("accepted", "superseded"))
+        self.w.plan()
+        self.w.apply({}, started=["0" * 40, "x", None])
+        self.assertEqual(len(self.w.events()), 5, "a commit the judging step names and the write step does not derive marks nobody")
 
     def test_the_judging_has_a_time_allowed_and_what_it_had_time_for_is_recorded(self):
         """Candidates that never end cannot make the judging outlast the run: no judgement is started that could end
@@ -1519,19 +1590,19 @@ class TestSecondReview(Base):
                 config, tasks, ledger = self.w.load()
                 sh("git", "fetch", "--quiet", "origin", cwd=self.w.bench)
                 hive.read_bundle(self.w.bench, self.w.made, self.w.bundle)
-                verdicts, _ = hive.judge_plan(self.w.bench, self.w.made, config, tasks, ledger, slow, self.w.work,
-                                              save=lambda answers: saved.append(len(answers)))
+                verdicts, _, self.w.started = hive.judge_plan(self.w.bench, self.w.made, config, tasks, ledger, slow, self.w.work,
+                                                              save=lambda answers, begun: saved.append((len(answers), len(begun))))
             self.assertLessEqual(clock[0], 7200 + 120, "the judging stopped within its time")
-            self.assertEqual(saved, [1], "one never-ending candidate fits in the time allowed; its answer is saved at once")
+            self.assertEqual(saved, [(0, 1), (1, 1)], "what it starts on is saved before, its answer right after: one fits in the time")
             self.w.apply(verdicts)
-            self.assertEqual(sorted((e["type"], e["kind"]) for e in self.w.events()), [("error", "judge"), ("error", "none")],
-                             "the one judged, and the one at the head when the time ran out: both have their line")
+            self.assertEqual([(e["type"], e["kind"]) for e in self.w.events()], [("error", "judge")],
+                             "the one judged has its line; those the judging never reached are not marked for the time it used")
             runs = 0
             with mock.patch.object(hive.time, "monotonic", side_effect=lambda: clock[0]):
                 while honest not in {e["sha"] for e in self.w.events() if e.get("result") == "accepted"} and runs < 8:
                     clock[0], runs = 0.0, runs + 1
                     self.w.run(slow)
-        self.assertLessEqual(runs, 5, "the honest candidate is integrated within a few runs, whatever never ends before it")
+        self.assertEqual(runs, 1, "the next run: the member whose candidate never ended goes after the others")
         for sha in endless:
             self.assertLessEqual(len([e for e in self.w.events() if e["sha"] == sha and e.get("kind") == "judge"]), hive.JUDGE_ATTEMPTS)
 

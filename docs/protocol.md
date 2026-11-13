@@ -102,10 +102,13 @@ the hive runs those git commands with an empty attribute source.
 
 - **The forks are read once.** What the plan read is what the run is about: a branch taken away or pushed after
   that changes nothing in this run, for anybody.
-- **The judging job cannot change the plan**, and the write job takes one thing from it: the judge's answer for a
-  commit id the write job derived itself. An answer under any other id is nothing. So a judging job that was taken
-  over can lie about what the judge said, and nothing else: it cannot name a candidate, a member, a task or a path,
-  and of the judge's report only the figures the project lists are kept, as numbers.
+- **The judging job cannot change the plan**, and the write job takes two things from it: the judge's answer for a
+  commit id the write job derived itself (an answer under any other id is nothing), and which commits it started
+  on. So a judging job that was taken over can lie about what the judge said of a candidate, or stay silent about
+  it, and so decide which candidates are accepted among those that keep every structural rule. That is its limit:
+  it cannot name a candidate, a member, a task or a path, credit an account for work that is not in its fork,
+  change history, or write anything but the project's listed figures, as numbers, into the ledger. The judge's
+  container is what stands between a contribution and that job.
 - Both later jobs go through the same candidates, with the same ledger, tasks and instant (the plan's): they
   derive the same commits. A plan from the future, or more than six hours old, is not applied; nor is anything if
   the project's tip moved since the plan.
@@ -129,9 +132,9 @@ the hive runs those git commands with an empty attribute source.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**.
 - **The order: first pushed, first served.** A candidate's instant is the one GitHub recorded for its push. A copy
-  can only be pushed after its original: it comes after it, whatever the number of accounts that copy. When GitHub
-  has not yet said when a candidate was pushed, it waits one run, then takes the instant the hive first saw it;
-  what was pushed lately for the same task waits with it. Pushes of the very same instant are separated by a draw
+  can only be pushed after its original: it comes after it, whatever the number of accounts that copy (see "What
+  holds over time" for what happens while GitHub has not answered). Pushes of the very same instant are separated
+  by a draw
   from the member, the task and a key drawn after the forks were read: no commit can be made to come first. One
   candidate per member and task: the member's others are answered `duplicate`. When two candidates complete the
   same task, the first one judged correct is integrated and the other is `superseded`.
@@ -156,19 +159,28 @@ What makes them hold:
 
 - **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
   recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive
-  could not derive it (`hive`), or no answer came for it (`none`: only the candidate at the head when the judging
-  stopped). A marked candidate goes after the unmarked ones, the fewer marks the earlier, and those the project
-  declined go last, after which nothing more is judged in the run.
-- **Nothing pushed later for the same task passes an earlier push**: it goes right behind it, and is tried right
-  after it in the same run.
+  could not derive it (`hive`), or the judging stopped while it was on it (`none`: the judging step says which
+  commit it starts on before it starts). A candidate the judging never reached is not marked: nobody pays for the
+  time the others used up. A marked candidate goes after the unmarked ones, the fewer marks the earlier; those the
+  project declined go last, and nothing more is judged in the run once one of them is accepted.
+- **An account hurts the others once, not once per commit.** A member on whose candidate the judge failed, or
+  whose commit the project declined, in the last seven days, has all its candidates sent the same way.
+- **Nothing pushed later for the same task passes an earlier push**: it goes right behind it, and while the earlier
+  one has no answer it is not tried.
+- **One clock per task.** GitHub's, when it has said when every candidate for the task was pushed (the latest push
+  that brought the commit there: a commit kept in reserve, taken away and pushed again has the instant of its
+  return). While it has not, the task waits, a day at most; after that the instant the hive first saw each
+  candidate is used, for all of them. The two are never mixed.
 - **Marks end in an answer**: three failures of the judge, or three pushes declined once the hive has shown it can
-  push to the project, and the candidate is refused; six runs without an answer, and it is told to come back
-  (`not_answered`). An outage refuses nobody in less than six runs spent at the head of the line.
+  push to the project, and the candidate is refused; six runs stopped while on it, and it is told to come back
+  (`not_answered`).
 - **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
   the answers are saved as they come, so that a judging job that is stopped leaves what it had.
 - **One candidate at a time per member.** A candidate that waits is public. `hive.py next` gives no new task to a
   member who has a candidate waiting, or whose judgements for the day are used; a member with a single candidate
   waiting keeps its task even on such a day.
+- **The state survives a run that stops**: its files are written whole or not at all, one cut short is read as
+  empty, and a line of one run is recorded once however often the write job is run again.
 
 ## How the hive writes
 
@@ -194,7 +206,8 @@ the ledger.
 On the registry's `hive-state` branch, one folder per project:
 
 - `ledger.jsonl`: append-only, one JSON object per line: `claim`, `verdict`, `error` (a mark, with its kind),
-  `intent` and `void` (a promise, and a promise whose push never landed), `unused`. **It holds no
+  `intent` and `void` (a promise, and a promise whose push never landed), `unused`; all but the first two carry
+  the key of their run. **It holds no
   text a fork wrote**: logins, the numeric ids of the account and of its fork, task ids of the project (a task id a
   fork made up is not kept), commit ids, reason codes, a model identifier the project lists, whole numbers under
   the hive's own keys, and the judge's figures the project lists.
