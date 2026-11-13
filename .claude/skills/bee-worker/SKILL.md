@@ -36,7 +36,9 @@ git checkout -B "$(git branch --show-current)" <UPSTREAM>
 hive next --project <PROJECT> --state ../hive-state --login <LOGIN>
 ```
 
-- `NO_TASK`: nothing is open for you. Stop.
+- `NO_TASK`: nothing is open for you, or your last candidate has no answer yet, or your judgements for the day
+  are used. Stop: one candidate at a time. A candidate that waits is public, and a second one behind it could be
+  copied and judged first.
 - `TASK <id>` followed by the task's data: that is your task. Its `files` are the only paths you may change;
   `refusals` says how many candidates the judge already refused (a high number means it is hard: go carefully or
   stop early).

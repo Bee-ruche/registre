@@ -64,6 +64,7 @@ it**: exactly what would land.
 | Reason code | Refused when |
 | --- | --- |
 | `unknown_task`, `task_closed`, `superseded` | the task does not exist, is closed, or was just completed by another candidate |
+| `duplicate` | the member already has a candidate waiting for this task: one at a time |
 | `unrelated`, `too_many_commits`, `conflict`, `empty` | the branch does not come from the project, is too long, does not merge on the tip, or changes nothing |
 | `path_outside_task` | a changed path is not one of the task's files (a hard rule, not a warning) |
 | `protected_path` | a changed path is protected, **at any depth of the tree**: CI and editor automation (`.github/`, `.vscode/`, `.devcontainer/`…), what steers git (`.gitattributes`, `.gitmodules`), **agent instruction files and folders** (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.cursor/`…), the hive's files (`hive/` at the root), and what the project adds (its tests, its judge) |
@@ -74,10 +75,11 @@ it**: exactly what would land.
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
 | `judge_failed` | the judge could not judge this candidate (it ran out of time, for instance), three times |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |
+| `not_answered` | the hive spent six runs on the candidate without an answer (see "What holds over time"): push it again |
 
-Two limits protect the judge's time: judgements per member per day (5 by default; a candidate on which the judge
-or the push fails counts too), and answers per member per day (20). A candidate over a limit is not refused: it
-waits for the next day.
+Two limits protect the judge's time: judgements per member per day (5 by default; every run the hive spends on a
+candidate counts, whatever came of it), and answers per member per day (20). A candidate over a limit is not
+refused: it waits for the next day.
 
 Agent instruction files are protected because an integrated instruction would be read by every later worker: a
 stored prompt injection. Coding agents read such files in sub-folders too, so the rule holds at any depth. Changes
@@ -126,28 +128,62 @@ the hive runs those git commands with an empty attribute source.
   is refused when the project is loaded.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**.
-- **The order.** One candidate per member and task in a run. Those the hive saw in an earlier run go first, by
-  that run's instant. Then a draw, from the member, the task and a key drawn after the forks were read: no commit
-  can be made to come first, and pushing the same work twenty times gives one chance, not twenty. When two
-  candidates complete the same task, the first one judged correct is integrated and the other is `superseded`.
+- **The order: first pushed, first served.** A candidate's instant is the one GitHub recorded for its push. A copy
+  can only be pushed after its original: it comes after it, whatever the number of accounts that copy. When GitHub
+  has not yet said when a candidate was pushed, it waits one run, then takes the instant the hive first saw it;
+  what was pushed lately for the same task waits with it. Pushes of the very same instant are separated by a draw
+  from the member, the task and a key drawn after the forks were read: no commit can be made to come first. One
+  candidate per member and task: the member's others are answered `duplicate`. When two candidates complete the
+  same task, the first one judged correct is integrated and the other is `superseded`.
 - The integrated commit is a squash: its tree is the merged tree, its parent the tip, its author the fork's owner
   (`<id>+<login>@users.noreply.github.com`, so GitHub credits the member), its committer the hive. It is
   deterministic: the same tip, candidate, task and member always give the same commit id. The candidate's own
   commit messages and author fields never enter the project's history.
 
+## What holds over time
+
+The hive runs every hour, for ever, among accounts that may push what fails, what never ends or what the project's
+repository declines, and on machines that sometimes break. Four rules are written, and tested over schedules drawn
+at random (`tools/hive/test_schedule.py`):
+
+1. **An honest candidate is integrated, in its member's name**, within a few runs, whatever others push, copy,
+   take away or break.
+2. **No account gets the credit** for a task on which someone else's same work was pushed before its own.
+3. **Every run of the judge on a candidate leaves a line in the ledger.**
+4. **The project's branch only moves forward**, and each task is integrated once.
+
+What makes them hold:
+
+- **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
+  recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive
+  could not derive it (`hive`), or no answer came for it (`none`: only the candidate at the head when the judging
+  stopped). A marked candidate goes after the unmarked ones, the fewer marks the earlier, and those the project
+  declined go last, after which nothing more is judged in the run.
+- **Nothing pushed later for the same task passes an earlier push**: it goes right behind it, and is tried right
+  after it in the same run.
+- **Marks end in an answer**: three failures of the judge, or three pushes declined once the hive has shown it can
+  push to the project, and the candidate is refused; six runs without an answer, and it is told to come back
+  (`not_answered`). An outage refuses nobody in less than six runs spent at the head of the line.
+- **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
+  the answers are saved as they come, so that a judging job that is stopped leaves what it had.
+- **One candidate at a time per member.** A candidate that waits is public. `hive.py next` gives no new task to a
+  member who has a candidate waiting, or whose judgements for the day are used; a member with a single candidate
+  waiting keeps its task even on such a day.
+
 ## How the hive writes
 
 - **It promises, then pushes.** Before each push the write job records an *intent* in the ledger and saves the
-  state. If a run pushed and then could not record, the next run finds the promise, sees the promised commit in
-  the project's history, and completes the ledger. Nothing but the hive's own promise is believed: no field of a
-  commit on the project's branch is.
+  state. If a run pushed and then could not record, or could not tell whether its push landed, the next run finds
+  the promise, looks for the promised commit in the project's history, and completes the ledger. Nothing but the
+  hive's own promise is believed: no field of a commit on the project's branch is.
 - **The push can only add to the judged tip.** The hive checks that what it pushes descends from the tip that was
   judged, and pushes on the condition that the branch is still at that tip. A branch that a maintainer moved
   meanwhile, to take a commit back for instance, is left as they put it.
 - **Accepted commits are pushed one by one**, and what happened is recorded up to the first push that did not
-  land; what followed waits for the next run. A commit that the project's repository itself declines is a failure
-  counted against its candidate, and the run ends in error so that maintainers see it. If the hive has never
-  pushed to the project, a declined push blames no candidate: the hive's own right to push is what is in doubt.
+  land; what the judge ran on after it is recorded as `unused` and judged again, at no cost to its member. A
+  commit that the project's repository itself declines is a failure of its candidate's, and the run ends in error
+  so that maintainers see it. Until the hive has pushed to the project once, such a failure costs the candidate its
+  place and nothing more: the hive's own right to push is as likely the cause.
 - The write job run twice records nothing twice.
 
 Strings that come from a fork (ref names, commit messages, paths) never reach a shell, a workflow expression or
@@ -157,15 +193,16 @@ the ledger.
 
 On the registry's `hive-state` branch, one folder per project:
 
-- `ledger.jsonl`: append-only, one JSON object per line: `claim`, `verdict`, `error` (the judge, or the push,
-  failed on a candidate), `intent` and `void` (a promise, and a promise whose push never landed). **It holds no
+- `ledger.jsonl`: append-only, one JSON object per line: `claim`, `verdict`, `error` (a mark, with its kind),
+  `intent` and `void` (a promise, and a promise whose push never landed), `unused`. **It holds no
   text a fork wrote**: logins, the numeric ids of the account and of its fork, task ids of the project (a task id a
   fork made up is not kept), commit ids, reason codes, a model identifier the project lists, whole numbers under
   the hive's own keys, and the judge's figures the project lists.
 - `feed.json`: the project's tasks with their status (`open`, `claimed`, `done`, `closed`), the number of live
-  claims and of judged refusals, and the task's context. It holds nothing a contributor wrote.
-- `stats.json`: candidates judged and accepted, by member and by declared model.
-- `pending.json`: when the hive first saw each candidate it has not answered yet.
+  claims and of judged refusals, the task's context, and who has a candidate waiting, as hashes of logins that a
+  worker can compute for its own. It holds nothing a contributor wrote.
+- `stats.json`: candidates judged and accepted, by account and by declared model.
+- `pending.json`: when each candidate the hive has not answered yet was pushed, or first seen.
 - `ignored.json`: commits without a marker, and commits marked for another member than the fork's owner, so that
   they are not read again.
 
@@ -180,8 +217,9 @@ pool must stay well above the number of concurrent workers; the duplicate rate i
 A task the judge keeps refusing asks for a stronger worker: its tier rises by one for every three different
 members refused, among those the judge has accepted something from.
 
-When the time allowed to read the forks runs out, what is left waits for the next run; the list is read from a
-place that moves with the hour, so that no fork is always the one left.
+Each fork is read with one listing and one fetch, both limited in time. When the time allowed to read all the
+forks runs out, what is left waits for the next run; the forks are read in an order drawn anew each hour from the
+hour and the fork's own number, which adding forks to the list does not shift.
 
 ## A project's files
 

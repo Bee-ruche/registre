@@ -36,6 +36,7 @@ I wrote the first plan before building anything. Building, and having the result
 | Work handed to the hive through a pull request from the fork | Pull requests bring the first-contribution approval click, one merge a minute, and a flood for maintainers | **No pull request.** The hive integrates what its judge passed |
 | Redundancy (each result re-done by another worker) and reputation with decay | Designed for volunteers' machines that judge; the hive's judge runs on its own CI and decides alone. Machinery for a problem the hive does not have | **Dropped** until volunteers' machines judge |
 | "One invited project as pilot, still to study" | The opening depended on a stranger's yes | **A flagship the hive can start alone** (section 4.3), invitations second |
+| Tests of one run at a time | A third review showed that the third collector kept every property of integrity and none of liveness: a candidate the hive never answered kept its place, run after run, and could stall a task, a new project or the whole hive | **Rules written for what holds over time, and a test over schedules drawn at random** (docs/protocol.md, "What holds over time"), which the reviewer is then asked to break |
 | "The collector works: its tests pass" | A first adversarial review, by another model, returned twenty findings on my first collector, among them ways to take credit for someone else's work and to stall the hive; my own tests had been written so that one check hid the absence of the others. A second review returned twelve on my second one | **A fixed procedure for the hive's own tooling** (section 6.2): tests that fail when a check is removed, then a review by another model, before any claim |
 | Two jobs, one that judges and one that writes, each reading the forks | Two readings of the forks can be made to disagree, by anyone who pushes or deletes a branch between them, and the write job then drops what was judged | **Three jobs, each with one risk**: the forks are read once, by a job that holds nothing and runs nobody's code (section 2) |
 
@@ -115,6 +116,9 @@ candidates for different tasks independent of each other.
 - **A claim tells the others** to look elsewhere for three hours. It locks nothing and gives no rank. **Built.**
 - **A duplicate is cheap**: when a task was just completed, a second candidate for it is answered `superseded`
   before it costs any judgement. **Built.**
+- **First pushed, first served**: a candidate's place is the instant GitHub recorded for its push, so a copy comes
+  after its original, and a candidate the hive spent a run on without an answer goes after the others. **Built**;
+  the reading of GitHub's record of pushes is **to verify in phase 1** against the real service.
 - **The pool stays larger than the crowd**: the splitter keeps at least three open tasks per active worker; the
   project page shows the ratio. **Planned**, with the measure of the duplicate rate (phase 1).
 
@@ -315,7 +319,8 @@ assistant that can read a repository and run commands can use it.
 
 A change to `tools/hive/` or to the workflow that runs it is accepted only with, in this order:
 
-1. **A test for each refusal and each guarantee**, written to state the secure outcome.
+1. **A test for each refusal and each guarantee**, written to state the secure outcome, and **the rules that must
+   hold over many runs, written down and tested over schedules drawn at random**.
 2. **A mutation run**: each check removed or reversed in turn must make a test fail; a survivor is a missing test
    or dead code, and is settled before the review.
 3. **An adversarial review by a model other than the one that wrote the change**, given the code and the threat
