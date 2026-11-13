@@ -2,8 +2,8 @@
 
 *How work reaches the hive. Implemented by `tools/hive/hive.py`, tested by `tools/hive/test_hive.py`.*
 
-> **Status: a draft under adversarial review. Not in service, and not to be put in service as it stands.** Three
-> reviews, by a model other than the one that wrote the collector, have each found that the implementation does
+> **Status: a draft under adversarial review. Not in service, and not to be put in service as it stands.** Six
+> reviews, by a model other than the one that wrote the collector, have each found that the implementation did
 > not yet keep every guarantee this page states. This page describes the intended design; nothing is put in
 > service before a review finds nothing serious.
 
@@ -226,8 +226,9 @@ On the registry's `hive-state` branch, one folder per project:
   worker can compute for its own. It holds nothing a contributor wrote.
 - `stats.json`: candidates judged and accepted, by account and by declared model.
 - `pending.json`: when each candidate the hive has not answered yet was pushed, or first seen.
-- `ignored.json`: commits without a marker, and commits marked for another member than the fork's owner, so that
-  they are not read again.
+- `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
+  member, a claim it did not record). Only what is still at a tip of that fork is kept: what one fork pushes
+  never costs another its entries.
 
 **A claim is a hint, never a lock and never a rank**: it appears in the feed at the next run and expires after
 three hours. A claim the hive does not record is not read again. So that claims cannot be used to keep workers away from tasks, the hive records one live claim per

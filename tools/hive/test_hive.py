@@ -741,7 +741,7 @@ class TestMarkers(Base):
         self.alice.write("lib.c", LIB + "int x;\n").commit("plain work").push()
         self.assertEqual(self.w.run(), [])
         self.assertEqual(self.w.events(), [])
-        self.assertEqual(len(hive.read_ignored(self.w.state)), 1)
+        self.assertEqual({k: len(v) for k, v in hive.read_ignored(self.w.state).items()}, {"1101": 1})
         with mock.patch.object(hive, "fetch_heads", side_effect=AssertionError("fetched again")):
             self.assertEqual(self.w.run(), [])
 
@@ -926,7 +926,7 @@ class TestApply(Base):
                         {"queue": [{**queue[0], "member_id": "101"}]}, {"queue": [{**queue[0], "task": "../x"}]},
                         {"queue": [{**queue[0], "model": "not-listed"}]}, {"queue": [{**queue[0], "seen": "now"}]}, {"queue": [7]},
                         {"queue": [{**queue[0], "refusal": "banned"}]}, {"owners": {self.start: "alice"}}, {"owners": None},
-                        {"claims": [{"sha": self.start}]}, {"seen": {"x": NOW}}, {"ignored": ["x"]}, {"bundle_sha256": None}):
+                        {"claims": [{"sha": self.start}]}, {"seen": {"x": NOW}}, {"ignored": ["x"]}, {"ignored": {"alice": []}}, {"ignored": {"1101": ["HEAD"]}}, {"bundle_sha256": None}):
             with self.subTest(changes=changes), self.assertRaisesRegex(hive.HiveError, "unreadable"):
                 self.w.apply(self.verdicts, **changes)
         self.nothing_integrated()
@@ -1033,7 +1033,7 @@ class TestFirstReview(Base):
         sh("git", "push", "--quiet", "origin", ":refs/heads/claude/work", cwd=self.alice.work)
         self.assertEqual(self.w.run(), [], "in bob's fork alone, alice's commit is nothing")
         self.assertEqual(self.w.events(), [])
-        self.assertEqual(hive.read_ignored(self.w.state), [f"1102:{candidate}"], "nothing in bob's fork, and only there")
+        self.assertEqual(hive.read_ignored(self.w.state), {"1102": [candidate]}, "nothing in bob's fork, and only there")
         with mock.patch.object(hive, "commit_message", side_effect=AssertionError("read again")):
             self.assertEqual(self.w.run(), [], "and it is not read again in bob's fork")
         self.alice.push()
@@ -1616,7 +1616,7 @@ class TestSecondReview(Base):
             self.assertEqual((self.w.run(), self.w.events()), ([], []))
         sh("git", "push", "--quiet", "origin", ":refs/heads/a3", cwd=mallory.work)
         self.assertEqual(self.one(self.w.run())["sha"], hidden, "under the limit, all of it is read at once")
-        self.assertEqual(len(hive.read_ignored(self.w.state)), 3, "claims the hive does not record are not read again")
+        self.assertEqual(len(hive.read_ignored(self.w.state)["1666"]), 3, "claims the hive does not record are not read again")
         with mock.patch.object(hive, "commit_message", side_effect=AssertionError("read again")):
             self.assertEqual(self.w.run(), [])
 
@@ -1679,7 +1679,7 @@ class TestSecondReview(Base):
         self.w.apply({}, started=[])
         for name in ("pending.json", "ignored.json", "waiting.json"):
             (self.w.state / name).write_text('{"abc')
-        self.assertEqual((hive.read_pending(self.w.state), hive.read_ignored(self.w.state), hive.read_waiting(self.w.state)), ({}, [], []))
+        self.assertEqual((hive.read_pending(self.w.state), hive.read_ignored(self.w.state), hive.read_waiting(self.w.state)), ({}, {}, []))
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
         self.assertEqual(json.loads((self.w.state / "pending.json").read_text()), {}, "and they are written whole again")
         self.assertEqual([p.name for p in self.w.state.iterdir() if p.name.endswith(".tmp")], [])
@@ -1988,6 +1988,52 @@ class TestLedger(unittest.TestCase):
         self.assertTrue(cooling(self.ledger(claim, {**verdict, "member_id": 2}), "13:00:00"), "nor someone else's verdict")
         self.assertTrue(cooling(self.ledger(claim, {**verdict, "task": "toy-0002"}), "13:00:00"), "nor a verdict on another task")
         self.assertFalse(cooling(self.ledger(verdict), "13:00:00"), "no claim, no wait")
+
+
+class TestIgnoreList(Base):
+    """What the hive does not read again is kept fork by fork, and only for commits still at a tip of that fork."""
+
+    def test_what_one_fork_pushes_never_costs_another_its_entries(self):
+        self.w.set_config({"limits": {"heads_per_fork": 4}})
+        for i in range(3):
+            self.alice.fresh(f"notes{i}").write("lib.c", LIB + f"int n{i};\n").commit(f"plain work {i}").push()
+        self.assertEqual(self.w.run(), [])
+        mine = hive.read_ignored(self.w.state)["1101"]
+        self.assertEqual(len(mine), 3)
+        mallory = self.w.fork("mallory", 666)
+        for round_ in range(6):  # a flood of branches without a marker, replaced at each run
+            for i in range(4):
+                mallory.fresh(f"f{i}").write("lib.c", LIB + f"int f{round_}{i};\n").commit(f"flood {round_} {i}")
+                sh("git", "push", "--quiet", "--force", "origin", f"HEAD:refs/heads/f{i}", cwd=mallory.work)
+            self.assertEqual(self.w.run(), [])
+        ignored = hive.read_ignored(self.w.state)
+        self.assertEqual((sorted(ignored["1101"]), len(ignored["1666"])), (sorted(mine), 4),
+                         "alice's entries are untouched, and mallory's hold what is at her branch tips now, no more")
+        candidate = self.alice.fresh("work").submit("toy-0001")
+        with mock.patch.object(hive, "commit_message", side_effect=lambda repo, sha: self.assertEqual(sha, candidate) or
+                               sh("git", "cat-file", "commit", sha, cwd=repo).stdout.split("\n\n", 1)[1]):
+            self.assertEqual(self.one(self.w.run())["result"], "accepted", "her fork is still read, and only what is new in it")
+
+    def test_a_branch_that_is_gone_leaves_the_list_and_a_fork_that_is_gone_too(self):
+        self.alice.fresh("notes").write("lib.c", LIB + "int n;\n").commit("plain work").push()
+        bob = self.w.fork("bob", 102)
+        bob.fresh("notes").write("lib.c", LIB + "int b;\n").commit("plain work of bob's").push()
+        self.w.run()
+        self.assertEqual(sorted(hive.read_ignored(self.w.state)), ["1101", "1102"])
+        sh("git", "push", "--quiet", "origin", ":refs/heads/notes", cwd=self.alice.work)
+        del self.w.forks["bob"]
+        self.w.run()
+        self.assertEqual(hive.read_ignored(self.w.state), {})
+        self.assertEqual(hive.read_ignored(self.w.root), {}, "no file")
+        (self.w.state / "ignored.json").write_text(json.dumps(["a" * 40]))
+        self.assertEqual(hive.read_ignored(self.w.state), {}, "a list of another shape is read as empty")
+
+    def test_a_fork_with_more_branches_than_the_hive_lists_is_not_read(self):
+        self.alice.submit("toy-0001")
+        with mock.patch.object(hive, "HEADS_PER_FORK_MAX", 1), \
+                mock.patch.object(hive, "fetch_heads", side_effect=AssertionError("fetched")):
+            self.assertEqual(self.w.run(), [])
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
 
 class TestHostileData(Base):

@@ -461,7 +461,8 @@ class Ledger:
         return expired <= instant < expired + dt.timedelta(hours=hours)
 
 
-IGNORE_KEY = re.compile(r"(?:[0-9]{1,19}:)?[0-9a-f]{40}\Z")
+FORK_ID = re.compile(r"[0-9]{1,19}\Z")
+HEADS_PER_FORK_MAX = 2000  # a fork with more branches than this is not read at all
 
 
 def read_state(folder, name, default):
@@ -486,15 +487,21 @@ def write_state(folder, name, data):
     os.replace(temporary, Path(folder) / name)
 
 
+def ignored_ok(data):
+    return isinstance(data, dict) and all(isinstance(k, str) and FORK_ID.match(k) and isinstance(v, list) and all(is_sha(x) for x in v)
+                                          for k, v in data.items())
+
+
 def read_ignored(folder):
-    """What the hive does not read again: commits without a marker (by id), and commits marked for another member
-    than the fork's owner (« fork's id:commit »: they still count in their member's own fork)."""
-    data = read_state(folder, "ignored.json", [])
-    return [x for x in data if isinstance(x, str) and IGNORE_KEY.match(x)] if isinstance(data, list) else []
+    """What the hive does not read again, fork by fork: {fork's id: [commit ids]}: branch tips without a marker,
+    tips marked for another member than the fork's owner, claims the hive did not record. Kept per fork, and only
+    for commits still at a tip of that fork: what one fork pushes never costs another its entries."""
+    data = read_state(folder, "ignored.json", {})
+    return data if ignored_ok(data) else {}
 
 
-def write_ignored(folder, keys, limit=50_000):
-    write_state(folder, "ignored.json", list(dict.fromkeys(keys))[-limit:])
+def write_ignored(folder, mapping):
+    write_state(folder, "ignored.json", {k: sorted(set(v)) for k, v in mapping.items() if v})
 
 
 def stamp(value):
@@ -847,19 +854,21 @@ def in_upstream(repo, sha):
     return bool(git(repo, "for-each-ref", "--count=1", "--contains", sha, "refs/remotes/origin", "refs/heads").stdout.strip())
 
 
-def discover(repo, config, api, skip, instant, allow_local=False):
+def discover(repo, config, api, skip, instant, allow_local=False, known=None):
     """Lists the project's forks and returns (entries, ignored): one entry per marked commit at the tip of a branch
-    of an eligible member's fork, for commits the hive has not answered yet, and what need not be read again.
+    of an eligible member's fork, for commits the hive has not answered yet, and what need not be read again
+    (`known`, the list so far, brought up to date for each fork that was listed: see read_ignored).
 
     A commit counts only in the fork of the member its marker names: the same commit pushed to someone else's fork
     is nothing there. One fork that fails or stalls never stops the others: each is read with one listing and one
     fetch, both limited in time. A fork is read whole or not at all (heads_per_fork new branch tips at most). When the time allowed for all runs out, what is left waits for the next run, and
     the forks are read in an order drawn anew each hour, which no fork can shift."""
-    started, limits, entries, ignored, slot, members = time.monotonic(), config["limits"], [], [], 0, {}
-    skip = set(skip)
+    started, limits, entries, slot, members = time.monotonic(), config["limits"], [], 0, {}
+    skip, known = set(skip), known or {}
     hour = int(instant.timestamp() // 3600)
     forks = sorted((fork for fork in api.forks(config["repo"]) if fork_shape(fork)),
                    key=lambda fork: hashlib.sha256(f"{hour}:{fork['repo_id']}".encode()).hexdigest())
+    ignored = {str(fork["repo_id"]): list(known.get(str(fork["repo_id"]), ())) for fork in forks}  # forks that are gone drop out
     for fork in forks:
         if time.monotonic() - started > limits["discovery_seconds"]:
             log("discovery: time allowed used up; the forks left wait for the next run")
@@ -874,7 +883,11 @@ def discover(repo, config, api, skip, instant, allow_local=False):
                 sha, _, ref = line.partition("\t")
                 if is_sha(sha) and HEAD_REF.match(ref):
                     heads.setdefault(sha, ref)  # one commit on several branches is one commit
-            fresh = [(sha, ref) for sha, ref in heads.items() if sha not in skip and f"{fork['repo_id']}:{sha}" not in skip]
+            if len(heads) > HEADS_PER_FORK_MAX:
+                log("discovery: a fork has more branches than the hive lists; it is not read")
+                continue
+            mine = ignored[str(fork["repo_id"])] = [sha for sha in ignored[str(fork["repo_id"])] if sha in heads]  # still at a tip
+            fresh = [(sha, ref) for sha, ref in heads.items() if sha not in skip and sha not in mine]
             if len(fresh) > limits["heads_per_fork"]:
                 # All of a fork's new branch tips are read, or none: nothing can be pushed and kept out of the hive's
                 # sight behind the others, to come out later with an old instant.
@@ -892,15 +905,13 @@ def discover(repo, config, api, skip, instant, allow_local=False):
                     if sha not in got:
                         continue
                 elif in_upstream(repo, sha):
-                    ignored.append(sha)
-                    skip.add(sha)
+                    mine.append(sha)
                     continue
                 marker = read_marker(commit_message(repo, sha))
                 if not marker:
-                    ignored.append(sha)
-                    skip.add(sha)
+                    mine.append(sha)
                 elif marker["member"].lower() != fork["login"].lower():
-                    ignored.append(f"{fork['repo_id']}:{sha}")  # someone else's commit: nothing in THIS fork, for good
+                    mine.append(sha)  # someone else's commit: nothing in THIS fork, for good
                 else:
                     found.append({"sha": sha, "repo_id": fork["repo_id"], "login": fork["login"], "member_id": fork["id"],
                                   "task": marker["task"], "action": marker["action"], "model": marker["model"]})
@@ -950,8 +961,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     - equal instants are separated by a draw from the member, the task and a key drawn AFTER the forks were read."""
     instant, ttl = now(), config["claim_ttl_minutes"]
     ledger.append(settle(repo, need_sha(tip), ledger, instant), write=False)
-    old_ignored = read_ignored(state_folder)
-    entries, ignored = discover(repo, config, api, ledger.seen() | upstream_tips(repo) | set(old_ignored), instant, allow_local)
+    entries, ignored = discover(repo, config, api, ledger.seen() | upstream_tips(repo), instant, allow_local,
+                                read_ignored(state_folder))
     key = secrets.token_hex(16)
     first_sight, models = read_pending(state_folder), set(config["models"])
     held, done, claims, tickets, ranked, seen, known = ledger.live_claims(instant, ttl), ledger.done(), [], {}, [], {}, set()
@@ -964,7 +975,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             task = tasks.get(entry["task"])
             if task is None or task.get("closed") or entry["task"] in done or entry["member_id"] in held \
                     or ledger.cooling(entry["member_id"], entry["task"], instant, ttl, config["claim_cooldown_hours"]):
-                ignored.append(f"{entry['repo_id']}:{entry['sha']}")  # a claim the hive does not record is not read again
+                ignored[str(entry["repo_id"])].append(entry["sha"])  # a claim the hive does not record is not read again
                 continue
             held[entry["member_id"]] = (entry["task"], iso(instant))
             claims.append({"task": entry["task"], "member": entry["login"], "member_id": entry["member_id"],
@@ -1077,7 +1088,7 @@ def read_plan(plan_, config):
                   for k, v in plan_["seen"].items())
           and isinstance(plan_.get("owners"), dict) and all(is_sha(k) and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{16}", v)
                                                             for k, v in plan_["owners"].items())
-          and isinstance(plan_.get("ignored"), list) and all(isinstance(k, str) and IGNORE_KEY.match(k) for k in plan_["ignored"])
+          and ignored_ok(plan_.get("ignored"))
           and isinstance(plan_.get("bundle_sha256"), str))
     if not ok:
         raise HiveError("the plan is unreadable, or is not this project's")
@@ -1414,7 +1425,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
                "repo_id": o["repo_id"], "sha": o["sha"]} for o in outcomes[len(kept):]
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(claims + events_of(kept, instant, run) + voids + unused)
-    write_ignored(state_folder, read_ignored(state_folder) + plan_["ignored"])
+    write_ignored(state_folder, plan_["ignored"])
     answered = ledger.seen()
     write_state(state_folder, "waiting.json", sorted({mark for sha, mark in plan_["owners"].items() if sha not in answered}))
     # What the hive remembers of the candidates that wait is what this run's plan saw: a commit that was taken away
