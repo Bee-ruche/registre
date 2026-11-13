@@ -179,7 +179,7 @@ Two settings go with the keys (docs/hive-workflow.md, "The settings only the fou
   selected branches, the one rule `main`, no tag rule). An environment hands its secrets to any job that names it,
   on any ref it accepts: this setting is what decides who can read a key. To make before the keys are entered,
   or right after.
-- **Which version of the hive a run uses** is a choice still open: the commit of `main` that started the run (the
-  draft, as written), or one commit named in the workflow file and changed only by a pull request a person
-  reviewed (stricter: the hive's code, settings and tasks then change when a person says so). The builder
-  recommends the second for the pilot.
+- **Which version of the hive a run uses** is decided (13 November 2026, the founder having left the choice to what
+  suits the project best): one commit named in the workflow file, changed only by a pull request a person reviewed.
+  The hive's code, settings and tasks then change when a person says so. What it asks of the founder: after the
+  workflow is on `main`, one pull request that names the commit; and one more for each new batch of tasks.

@@ -990,7 +990,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "auto-integration.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
                        "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
-                       "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"},  # ruche-0132; ruche-0143
+                       "suite.yml": {"contents": "read"},  # ruche-0132 (the switch's own check, ruche-0143, went with the switch: November 2026)
                        "hive-tests.yml": {"contents": "read"}}  # the hive protocol's tests (docs/protocol.md)
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
         for name, expected_ones in permissions.items():
@@ -23446,9 +23446,12 @@ class TestHiveWorkflowDraft(unittest.TestCase):
     of a reviewer. The other tests say which rules that text obeys, and hold the two jobs that hold no key."""
 
     STATE, PROJECT = "Iv23liBJswEbZCt56yvz", "Iv23liKHEG0w2XgtSc9m"  # the two Apps' client ids (not secrets)
-    CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
-    APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"
-    REGISTRY = {"uses": CHECKOUT, "with": {"path": "registry", "persist-credentials": False}}
+    CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"  # v4.2.2
+    UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2: the writer tools/hive/artifact.py reads
+    DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
+    APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
+    PIN = "0" * 40  # the one commit of the registry every job runs: forty zeros until the founder's pull request names it
+    REGISTRY = {"uses": CHECKOUT, "with": {"path": "registry", "ref": PIN, "persist-credentials": False}}
     STATE_CHECKOUT = {"uses": CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "token": "${{ steps.state.outputs.token }}"}}
     TAKE = "python3 registry/tools/hive/artifact.py take"
 
@@ -23543,7 +23546,22 @@ class TestHiveWorkflowDraft(unittest.TestCase):
                     self.assertNotIn("${{", step.get("run", ""))
                     self.assertEqual("uses" in step, "run" not in step)
                     if "uses" in step:
-                        self.assertRegex(step["uses"], r"\Aactions/(checkout|upload-artifact|download-artifact|create-github-app-token)@[0-9a-f]{40}\Z")
+                        self.assertIn(step["uses"], (self.CHECKOUT, self.UPLOAD, self.DOWNLOAD, self.APP_TOKEN), "these four, at these commits")
+        self.assertEqual({name: sorted(set(self.uses(name)) - {""}) for name in self.jobs},
+                         {"plan": sorted([self.CHECKOUT, self.UPLOAD]), "record": sorted([self.CHECKOUT, self.APP_TOKEN]),
+                          "judge": sorted([self.CHECKOUT, self.DOWNLOAD, self.UPLOAD]), "apply": sorted([self.CHECKOUT, self.APP_TOKEN])})
+
+    def test_every_job_runs_the_registry_at_the_one_commit_the_file_names(self):
+        """The hive's code, settings and tasks: one commit, written in this file, the same for the four jobs, and nothing else of the
+        registry is checked out. Whoever changes it changes this file, in a pull request."""
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertEqual(job["steps"][0], self.REGISTRY, "the first step of every job")
+                registry = [step for step in job["steps"] if step.get("uses") == self.CHECKOUT and "repository" not in step["with"]]
+                self.assertEqual(registry, [self.REGISTRY])
+        self.assertRegex(self.PIN, r"\A[0-9a-f]{40}\Z")
+        self.assertEqual(self.text.count(f'ref: "{self.PIN}"'), 4, "quoted: a commit id made of digits only must stay a text")
+        self.assertEqual(len(re.findall(r"\bref\b\s*:", self.text)), 4, "no other ref: no branch, no tag, no second commit")
 
     def test_two_jobs_can_read_a_key_and_only_to_ask_for_a_token_of_one_repository(self):
         self.assertEqual({name: job.get("environment") for name, job in self.jobs.items()},

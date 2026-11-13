@@ -13,9 +13,9 @@ task is to keep them apart:
 
 | Job | Runs | May read | May write | Never |
 | --- | --- | --- | --- | --- |
-| `plan` | `hive.py plan` | the registry, the project, the forks (public) | nothing: it uploads `plan.json` and the bundle, and publishes the plan's SHA-256 as a job output | holds a key; runs code from a fork |
+| `plan` | `hive.py plan` | the registry, the project, the forks (public), the state repository (without credentials) | nothing: it uploads `plan.json` and the bundle, and publishes the plan's SHA-256 as a job output | holds a key; runs code from a fork |
 | `record` | `hive.py record` | the registry, the plan | the state repository (`Bee-ruche/hive-state`) | reads a fork; runs anyone's code; holds the project's key; unpacks another job's archive |
-| `judge` | `hive.py judge` | the registry, the project, the plan and the bundle | nothing: it uploads `verdicts.json` | holds a key; talks to a fork; has the network while a candidate's code runs |
+| `judge` | `hive.py judge` | the registry, the project, the plan and the bundle, the state repository (without credentials) | nothing: it uploads `verdicts.json` | holds a key; talks to a fork; has the network while a candidate's code runs |
 | `apply` | `hive.py apply` | the registry, the project, the plan, the bundle, the verdicts | the project's branch (integration identity) and the state repository | reads a fork; runs anyone's code; unpacks another job's archive |
 
 Five things carry it:
@@ -37,8 +37,9 @@ Five things carry it:
    (a setting, below), and the jobs that name them run on that ref only.
 5. **One run at a time per project** (`concurrency`, never cancelled in progress by a newer run): two runs
    overlapping are safe by the protocol (the jobs that write check the ledger the plan read), and wasteful.
-   **A run that a person cancels pushes nothing**: `apply` runs when the judging failed, never when the run was
-   cancelled.
+   **A run that a person cancels pushes nothing**: `apply` runs unless the run was cancelled or `plan` did not
+   succeed, so also when `record` or `judge` failed (the deals `record` did not write are then written by nobody:
+   those workers' asks stay, and the next run serves them).
 
 ## The settings only the founder can make
 
@@ -74,14 +75,16 @@ Five things carry it:
 5. **The repository variable `HIVE_PROJECTS`** (for instance `miniz`): the run does nothing while it is empty, in
    addition to each project's own `"paused": true`.
 6. **Actions settings**: workflows may not approve pull requests; artifacts kept a few days.
-7. **Which version of the hive a run uses** (a decision, not yet taken): the draft checks out the registry at
-   the commit of `main` that started the run. The stricter choice is one commit named in the workflow file, for
-   every job, changed only by a pull request a person reviewed: the hive's code, its settings and its tasks then
-   change when a person says so, and at no other time.
+7. **Which version of the hive a run uses: one commit, named in the workflow file** (decided 13 November 2026).
+   Every job checks out the registry at that commit and at no other: the hive's code, its settings and its tasks
+   change when a pull request that a person reviewed changes that line, and at no other time. The draft holds forty
+   zeros in its place, which no checkout can find: the line is set, by a pull request of its own, to the commit of
+   `main` that the founder accepted, after this file is on `main`. A new batch of tasks is such a pull request too.
 
 ## The draft
 
-One project per run of the matrix; `miniz` is written in full where a name is needed.
+One project per workflow file: `miniz` is written in full where a name is needed. `HIVE_PROJECTS` is a switch, not a list the
+run reads: the run does nothing while it is empty.
 
 ```yaml
 name: Hive
@@ -105,7 +108,7 @@ jobs:
       plan_sha256: ${{ steps.plan.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, persist-credentials: false }
+        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project, in full (its branches under refs/remotes/origin)
@@ -134,7 +137,7 @@ jobs:
       actions: read                  # to read this run's own artifacts
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, persist-credentials: false }
+        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
       - name: Take the plan (one named file, before this job holds any key)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -168,7 +171,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, persist-credentials: false }
+        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project
@@ -201,7 +204,7 @@ jobs:
       actions: read                  # to read this run's own artifacts
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, persist-credentials: false }
+        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
       - name: Take the plan, the candidates and the judge's answers (named files, before this job holds any key)
         env:
           GH_TOKEN: ${{ github.token }}
