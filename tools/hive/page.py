@@ -53,9 +53,11 @@ PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 REPO_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 JOIN_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:/[A-Za-z0-9._-]{1,100}){1,12}\Z")
 CARD_NAME = re.compile(r"members/[1-9][0-9]{0,18}\.svg\Z")
+BADGE_NAME = re.compile(r"members/[1-9][0-9]{0,18}-badge\.svg\Z")
 WIN_NAME = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
 METRIC = re.compile(r"[A-Za-z0-9_]{1,60}\Z")  # the <name> of a report's gain_<name> and sure_<name>
 FIXED_NAMES = ("index.html", "badge.svg", "summary.json")
+NAMES = (CARD_NAME, BADGE_NAME, WIN_NAME)  # with FIXED_NAMES, every name this tool writes a file under
 DEFAULT_JOIN_URL = "https://github.com/Bee-ruche/registre/blob/main/docs/join.md"
 ID_MAX = 2 ** 63 - 1  # an account's numeric id: a whole number in this range, never a string
 TASK_ID_MAX, PROJECT_MAX, LINE_MAX = 64, 40, 1_000_000
@@ -64,9 +66,7 @@ STATUS_WORDS = {"done": "done", "dealt": "being worked on", "open": "open", "clo
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 WEEK = dt.timedelta(days=7)
 YEARS = (2000, 2999)  # an instant outside these years is not one
-MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30
-WINS_MAX = 200  # win cards written: the most recent integrations
-MEMBER_CARDS_MAX = 2000  # member cards written: the members with the most integrations
+MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30  # rows of index.html's tables; the cards are not capped (render())
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 MEASURES_MAX = 40  # rows of « what the judge measured » kept for one integration
 COUNT_MAX = 10 ** 16 - 1  # a count in a report (outputs compared, files, lines): sixteen digits, as the hive reads them
@@ -413,9 +413,9 @@ def collect(state, now, tasks=None):
         return firsts.get(event["member_id"]) is event
 
     wins, written = [], set()
-    for at, _, event in recent:  # the latest integrations first; a commit has one card
+    for at, _, event in recent:  # every integration, the latest first; a commit has one card, and its latest line speaks
         name = win_name(event["commit"])
-        if name is None or name in written or len(wins) >= WINS_MAX:
+        if name is None or name in written:
             continue
         written.add(name)
         wins.append({"commit": event["commit"], "at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""),
@@ -496,9 +496,12 @@ def escaped(value):
 
 def el(name, /, *children, **attributes):
     """One element. Children that are not Markup are escaped; attribute values always are. No element that runs or
-    loads anything can be made: the names are listed, « on… » attributes are refused, and href takes a Link only."""
+    loads anything can be made: the names are listed, « on… » attributes are refused, href takes a Link only, and a
+    style holds one of this file's two constants (the pages' CSS, the cards' CARD_CSS) and nothing else."""
     if name not in TAGS:
         raise ValueError(f"element not allowed: {name}")
+    if name == "style" and not (len(children) == 1 and not attributes and (children[0] is CSS or children[0] is CARD_CSS)):
+        raise ValueError("a style is one of this file's two constants")
     written = []
     for key, value in attributes.items():
         if value is None:
@@ -674,7 +677,8 @@ def render_html(data, title, repo_url, join):
         members = [table([("Member", False), ("Integrations", True), ("Judged", True), ("Accepted", True), ("Last integration", True)], rows),
                    el("p", f"{note}. A member is a GitHub account, counted by its numeric id and shown under its latest login; "
                            "a name appears here only with work the judge accepted.", class_="note"),
-                   el("p", f"Every integration has its own card at wins/<commit>.svg (the latest {WINS_MAX} are kept).", class_="note")]
+                   el("p", "Every integration has its own card at wins/<commit>.svg, and every member here a card at members/<account id>.svg "
+                           "and a badge at members/<account id>-badge.svg. A card that exists stays.", class_="note")]
     else:
         members = el("p", "No member has an integration yet.", class_="soft")
     sections.append(el("section", el("h2", "Members"), members))
@@ -747,76 +751,229 @@ def render_html(data, title, repo_url, join):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The card and the badge (SVG, fixed width, nothing loaded, no script)
+# The cards and the badges (SVG, fixed width, nothing loaded, no script)
 
 SVG_NS = "http://www.w3.org/2000/svg"
-SANS = "Verdana,Geneva,DejaVu Sans,sans-serif"
+SANS = "Verdana,Geneva,DejaVu Sans,sans-serif"  # the badges' font: one every reader has, so a forced length is safe there
+TAGLINE = "Work by a volunteer's AI assistant, judged in a sandbox."  # what a stranger who meets a card must be told
+CELLS = 18  # hexagons drawn on a member's card, one per integration; beyond, the number says the rest
+WIDE, NARROW = frozenset("MWmw@%"), frozenset("iljtfrI1.,:;·'|() -")
+
+# The one style of every card, and the only <style> an SVG of this tool holds (el() refuses any other): the page's own
+# tokens, light then dark, so that ONE file reads on a light and on a dark page. The surface is opaque in both: a card
+# stays readable when the host page's theme is not the reader's system theme. Contrast of the text on the surface:
+# .i 19:1 and .j 7.8:1 in light, 15:1 and 9.6:1 in dark. It holds no address, no import and none of the characters
+# that HTML and XML write differently: the same bytes stand in a card's file and in the page that shows the card. Its
+# class names are single letters and the pages' are longer: neither restyles the other.
+CARD_CSS = Markup(
+    ".s{fill:#fcfcfb;stroke:#d9b56a}.i{fill:#0b0b0b}.j{fill:#52514e}.h{fill:#eda100}.e{fill:#b87900}.c{fill:#fcfcfb}"
+    ".l{stroke:#bdb9a6;fill:none}.k{stroke:#a86d00;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}"
+    ".b{font-weight:600}text{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}"
+    ".m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}"
+    "@media (prefers-color-scheme:dark){.s{fill:#1a1a19;stroke:#6b5a2c}.i{fill:#f0efec}.j{fill:#c3c2b7}.h{fill:#e9ab22}"
+    ".e{fill:#e9ab22}.c{fill:#1a1a19}.l{stroke:#55524a}.k{stroke:#e9ab22}}")
 
 
-def fitted(text, size, room, bold=False):
-    """textLength for a line that would not fit `room` pixels by a cautious estimate: the font is the reader's, so
-    the width is forced rather than guessed."""
-    estimate = len(text) * size * (0.68 if bold else 0.62)
-    return {"textLength": f"{room:.0f}", "lengthAdjust": "spacingAndGlyphs"} if estimate > room else {}
+def width(text, size, bold=False, mono=False):
+    """A cautious estimate of a line's width in pixels: the font is the reader's."""
+    if mono:
+        return len(text) * size * 0.62
+    units = sum(1.05 if unicodedata.east_asian_width(c) in "WF" else 0.95 if c in WIDE else 0.36 if c in NARROW
+                else 0.72 if c.isupper() else 0.62 for c in text)
+    return units * size * (1.07 if bold else 1.0)
+
+
+def wrap(text, size, room, lines, bold=False):
+    """The text on at most `lines` lines of `room` pixels, cut between words where it can (a word wider than the room
+    is broken where the room ends), and ended by « … » when there is more of it than the lines hold."""
+    out, words = [], text.split()
+    while words and len(out) < lines:
+        current = words.pop(0)
+        while words and width(f"{current} {words[0]}", size, bold) <= room:
+            current += " " + words.pop(0)
+        if len(current) > 1 and width(current, size, bold) > room:
+            fit = len(current) - 1
+            while fit > 1 and width(current[:fit], size, bold) > room:
+                fit -= 1
+            words.insert(0, current[fit:])
+            current = current[:fit]
+        out.append(current)
+    if words:
+        last = out[-1].rstrip("….,;: ")
+        while last and width(last + "…", size, bold) > room:
+            last = last[:-1]
+        out[-1] = last + "…"
+    return out
+
+
+def line(content, x, y, size, look="i", room=None, bold=False, mono=False, end=False, floor=0.78, whole=False):
+    """One line of a card. Too wide for its room by the estimate: a smaller size first (never under `floor` of the
+    size asked), then cut and ended by « … », unless `whole` (a login is never cut: a cut one could be another
+    account's). No forced length: textLength stretches a line as readily as it squeezes one, and both show."""
+    if room is not None and width(content, size, bold, mono) > room:
+        size = max(int(10 * size * floor) / 10, int(10 * size * room / width(content, size, bold, mono)) / 10)
+        while not whole and len(content) > 1 and width(content, size, bold, mono) > room:
+            content = content[:-2].rstrip() + "…"
+    return el("text", content, class_=look + (" b" if bold else "") + (" m" if mono else ""), x=f"{x:g}", y=f"{y:g}",
+              font_size=f"{size:g}", text_anchor="end" if end else None)
+
+
+def hexagon(x, y, r, look="h", hollow=True):
+    """The hive's mark: a hexagon of radius r centred on (x, y), with its hollow."""
+    def ring(radius):
+        dx = radius * 0.866
+        return (f"M{x:g} {y - radius:g}L{x + dx:.1f} {y - radius / 2:g}V{y + radius / 2:g}L{x:g} {y + radius:g}"
+                f"L{x - dx:.1f} {y + radius / 2:g}V{y - radius / 2:g}Z")
+    return [el("path", class_=look, d=ring(r)), el("path", class_="c", d=ring(r * 0.55)) if hollow else None]
+
+
+def card(wide, high, label, body, pad):
+    """A card's frame. The content sits in a nested svg that ends at the right padding: whatever font the reader has,
+    a line that the estimate got wrong is clipped there and never leaves the card. The label says, in whole words,
+    everything the lines show (a line may be cut; the label is not)."""
+    return el("svg", el("title", label), el("style", CARD_CSS),
+              el("rect", class_="s", x="0.5", y="0.5", width=f"{wide - 1}", height=f"{high - 1}", rx="10"),
+              el("svg", body, width=f"{wide - pad}", height=f"{high}"),
+              xmlns=SVG_NS, width=f"{wide}", height=f"{high}", viewBox=f"0 0 {wide} {high}", role="img", aria_label=label)
+
+
+def date(stamp):
+    """« 21 Oct 2026 » for 2026-10-21T19:12:00Z (a stamp this file wrote itself: iso())."""
+    return f"{int(stamp[8:10])} {MONTHS[int(stamp[5:7]) - 1]} {stamp[:4]}"
+
+
+def gain_text(gain):
+    """A fraction as a percentage with one decimal. A loss wears a real minus sign; what rounds to nothing is 0.0 %."""
+    return f"{round(100 * gain, 1) or 0.0:.1f} %".replace("-", "−")
+
+
+def better(metric):
+    """What follows a lead figure: a gain is above zero when the judge found the candidate better, and nothing more
+    is said than the figure's own name (an identifier of the project's judge)."""
+    return "better · " + metric.replace("_", " ")
+
+
+def head_of(project):
+    return "La Ruche" + (f" · {plain(project, 24)}" if project else "")
+
+
+def repo_name(repo_url):
+    """owner/name out of a checked repository address; None for anything else."""
+    return repo_url[len("https://github.com/"):] if matching(repo_url, REPO_URL) else None
+
+
+def render_win(project, win, repo_url=None):
+    """The card of one integration (wins/<commit>.svg): the figure the judge measured (read_report()'s lead figure),
+    what was compared, the task, who, when, the commit, and one line that says what La Ruche is. Every value is a
+    checked field or a constant of this file; the title is the task's, from the hive's feed."""
+    wide, pad = 440, 24
+    room, figure, tag, name = wide - 2 * pad, win["figure"], "accepted by the judge", plain(project, 24) if project else ""
+    head = head_of(project)
+    said = [head, tag]
+    parts = [hexagon(pad + 10, 32, 11), line(head, pad + 28, 37, 14, room=room - 28 - width(tag, 12) - 32, bold=True),
+             line(tag, wide - pad - 18, 37, 12, "j", end=True), el("path", class_="k", d=f"M{wide - pad - 13} 33l3.5 3.5 7.5-8.5")]
+    if figure:
+        what, y = better(figure["metric"]), 128
+        parts += [line(gain_text(figure["gain"]), pad - 2, 102, 58, room=room, bold=True), line(what, pad, y, 15.5, room=room, bold=True)]
+        said.append(f"measured {gain_text(figure['gain'])} {what}")
+    else:
+        y = 84
+        parts.append(line("Accepted by the judge", pad, y, 26, room=room, bold=True))
+    where = " · ".join(filter(None, [f"in {name}" if name else "", f"{win['outputs']:,} outputs identical to the base" if win["outputs"] else ""]))
+    if where:
+        y += 21
+        parts.append(line(where, pad, y, 13, "j", room=room))
+        said.append(where)
+    if win["task"]:
+        y += 29
+        parts.append(line(win["task"], pad, y, 12, "j", room=room, mono=True))
+        title = plain(win["title"], 100)
+        for text in wrap(title, 13.5, room, 2):
+            y += 19
+            parts.append(line(text, pad, y, 13.5, room=room))
+        said.append(f"{win['task']} · {title}" if title else win["task"])
+    y += 18
+    parts.append(el("path", class_="l", stroke_dasharray="2 4", d=f"M{pad} {y}H{wide - pad}"))
+    when = ("first integration · " if win["first"] else "integrated ") + date(win["at"])
+    y += 26
+    # Who: the login, whole (it shrinks, and takes the line for itself when it is long). When the login is no longer
+    # this account's, the account's number, which is what the ledger is sure of.
+    who = "@" + win["login"] if win["login"] else f"GitHub account {win['member_id']}" if win["member_id"] else ""
+    if who:
+        alone = width(who, 15, True) > room - width(when, 12) - 16
+        parts.append(line(who, pad, y, 15, room=room, bold=True, floor=0.55, whole=True))
+        y += 19 if alone else 0
+        parts.append(line(when, pad, y, 12, "j") if alone else line(when, wide - pad, y, 12, "j", end=True))
+        said.append(who)
+    else:
+        parts.append(line(when, pad, y, 12, "j"))
+    said.append(when)
+    more = [(f"declared model: {win['model']}", False)] if win["model"] else []
+    repo = repo_name(repo_url)  # the commit first: if the line must be cut, the repository's name is, not the commit's id
+    more += [(f"commit {win['commit'][:10]}" + (f" · {repo}" if repo else ""), True), (TAGLINE, False)]
+    for text, mono in more:
+        y += 19
+        parts.append(line(text, pad, y, 12, "j", room=room, mono=mono))
+        said.append(text)
+    return card(wide, y + 19, " · ".join(said), parts, pad)
+
+
+def accepted_words(count):
+    return ("contribution" if count == 1 else "contributions") + " accepted by the judge"
+
+
+def render_card(project, member):
+    """A member's card (members/<id>.svg): the number of contributions the judge accepted, the month of the first and
+    the day of the latest, one hexagon per integration (CELLS at most are drawn; the number says the rest), and the
+    account's number. It carries no login: the file is named by the account's id and stays right when the account is
+    renamed. No rank, no streak, no rate."""
+    wide, pad, count = 400, 22, member["integrations"]
+    head, first = head_of(project), instant_of(member["first_integration"])
+    since = f"first {MONTHS[first.month - 1]} {first.year} · latest {date(member['last_integration'])}"
+    number, account = f"{count:,}", f"GitHub account {member['id']}"
+    size = 44 if len(number) < 4 else 34 if len(number) < 6 else 26
+    x = pad + width(number, size, True) + 12
+    parts = [hexagon(pad + 10, 30, 11), line(head, pad + 28, 35, 14, room=wide - 2 * pad - 28 - width(account, 11.5) - 14, bold=True),
+             line(account, wide - pad, 35, 11.5, "j", end=True),
+             line(number, pad - 1, 86, size, bold=True), line(accepted_words(count), x, 68, 14, room=wide - pad - x, bold=True),
+             line(since, x, 87, 12.5, "j", room=wide - pad - x)]
+    shown = min(count, CELLS)
+    parts += [hexagon(pad + 8 + i * 17, 112, 8, "e", hollow=False) for i in range(shown)]
+    if count > shown:
+        parts.append(line(f"+{count - shown:,}", pad + 8 + shown * 17, 116, 11.5, "j"))
+    return card(wide, 132, f"{head} · {number} {accepted_words(count)} · {since} · {account}", parts, pad)
+
+
+def badge(left, right):
+    """A badge the size of a README's other badges, with the hive's mark. The badges' own way: fixed colours that read
+    on any page (white on #33322f is 12.6:1, on #855600 6.3:1) and a forced length, in a font every reader has."""
+    left_width, right_width = round(len(left) * 6.6) + 30, round(len(right) * 6.6) + 14
+    total = left_width + right_width
+
+    def part(text, start, room):
+        return el("text", text, x=f"{start}", y="14", fill="#ffffff", font_family=SANS, font_size="11",
+                  textLength=f"{room}", lengthAdjust="spacingAndGlyphs")
+    return el("svg", el("title", f"{left}: {right}"),
+              el("rect", width=f"{total}", height="20", rx="3", fill="#33322f"),
+              el("path", d=f"M{left_width} 0H{total - 3}A3 3 0 0 1 {total} 3V17A3 3 0 0 1 {total - 3} 20H{left_width}Z", fill="#855600"),
+              el("path", d="M12 4L17.2 7V13L12 16L6.8 13V7Z", fill="#eda100"),
+              el("path", d="M12 7L14.6 8.5V11.5L12 13L9.4 11.5V8.5Z", fill="#33322f"),
+              part(left, 23, left_width - 30), part(right, left_width + 7, right_width - 14),
+              xmlns=SVG_NS, width=f"{total}", height="20", viewBox=f"0 0 {total} 20", role="img", aria_label=f"{left}: {right}")
 
 
 def contributions(count):
     return f"{count} verified contribution" + ("" if count == 1 else "s")
 
 
-def render_card(project, member):
-    """A member's card: the hive, the project, the number of integrations, the month of the first one. It carries
-    no login: the file is named by the account's id and stays right when the account is renamed."""
-    first = instant_of(member["first_integration"])
-    top = "La Ruche" + (f" · {plain(project, 24)}" if project else "")
-    bottom = f"{contributions(member['integrations'])} · since {MONTHS[first.month - 1]} {first.year}"
-    return el("svg", el("title", f"{top} · {bottom}"),
-              el("rect", x="0.5", y="0.5", width="399", height="71", rx="8", fill="#fffaf0", stroke="#d9b56a"),
-              el("path", d="M34 16L51.3 26V46L34 56L16.7 46V26Z", fill="#eda100"),
-              el("path", d="M34 25L43.5 30.5V41.5L34 47L24.5 41.5V30.5Z", fill="#fffaf0"),
-              el("text", top, x="66", y="31", fill="#0b0b0b", font_family=SANS, font_size="15", font_weight="bold", **fitted(top, 15, 318, True)),
-              el("text", bottom, x="66", y="52", fill="#52514e", font_family=SANS, font_size="12.5", **fitted(bottom, 12.5, 318)),
-              xmlns=SVG_NS, width="400", height="72", viewBox="0 0 400 72", role="img", aria_label=f"{top} · {bottom}") + "\n"
-
-
-def render_win(project, win):
-    """The card of one integration: what the judge verified, in the member card's frame. Every line is also in the
-    aria-label and the title, in the same words. The figure is a fraction already checked (read_report())."""
-    figure = win["figure"]
-    lines = [("La Ruche" + (f" · {plain(project, 24)}" if project else ""), 15, True, "#0b0b0b"),
-             (f"accepted by the judge · measured {100 * figure['gain']:.1f} % better ({figure['metric'].replace('_', ' ')})" if figure
-              else "accepted by the judge", 14, True, "#0b0b0b")]
-    if win["task"]:
-        title = plain(win["title"], 60)
-        lines.append((f"{win['task']} · {title}" if title else win["task"], 12.5, False, "#0b0b0b"))
-    lines.append((f"by {win['login']} · {win['at'][:10]}" if win["login"] else win["at"][:10], 12.5, False, "#52514e"))
-    if win["model"]:
-        lines.append((f"declared model: {win['model']}", 12.5, False, "#52514e"))
-    ys = [31] + [54 + 21 * i for i in range(len(lines) - 1)]
-    label = " · ".join(text for text, _, _, _ in lines)
-    height = ys[-1] + 17
-    return el("svg", el("title", label),
-              el("rect", x="0.5", y="0.5", width="399", height=f"{height - 1}", rx="8", fill="#fffaf0", stroke="#d9b56a"),
-              el("path", d="M34 16L51.3 26V46L34 56L16.7 46V26Z", fill="#eda100"),
-              el("path", d="M34 25L43.5 30.5V41.5L34 47L24.5 41.5V30.5Z", fill="#fffaf0"),
-              [el("text", text, x="66", y=f"{y}", fill=fill, font_family=SANS, font_size=f"{size:g}",
-                  font_weight="bold" if bold else None, **fitted(text, size, 318, bold)) for (text, size, bold, fill), y in zip(lines, ys)],
-              xmlns=SVG_NS, width="400", height=f"{height}", viewBox=f"0 0 400 {height}", role="img", aria_label=label) + "\n"
-
-
 def render_badge(count):
-    left, right = "La Ruche", contributions(count)
-    left_width, right_width = round(len(left) * 6.6) + 12, round(len(right) * 6.6) + 12
-    width = left_width + right_width
+    """The project's badge (badge.svg)."""
+    return badge("La Ruche", contributions(count))
 
-    def label(text, start, room):
-        return el("text", text, x=f"{start + 6}", y="14", fill="#ffffff", font_family=SANS, font_size="11",
-                  textLength=f"{room - 12}", lengthAdjust="spacingAndGlyphs")
-    return el("svg", el("title", f"{left}: {right}"),
-              el("rect", width=f"{width}", height="20", rx="3", fill="#3b3b3b"),
-              el("path", d=f"M{left_width} 0H{width - 3}A3 3 0 0 1 {width} 3V17A3 3 0 0 1 {width - 3} 20H{left_width}Z", fill="#8a5a00"),
-              label(left, 0, left_width), label(right, left_width, right_width),
-              xmlns=SVG_NS, width=f"{width}", height="20", viewBox=f"0 0 {width} 20", role="img", aria_label=f"{left}: {right}") + "\n"
+
+def render_member_badge(project, member):
+    """A member's badge (members/<id>-badge.svg): the member card's first fact, the size of the other badges. No login."""
+    return badge(head_of(project), f"{member['integrations']:,} accepted by the judge")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -824,10 +981,18 @@ def render_badge(count):
 
 
 def card_name(member_id):
-    """The only file name that depends on the ledger: made from a whole number, never from a string."""
+    """members/<id>.svg. With badge_name(), the only file names that depend on a member: made from a whole number,
+    never from a string."""
     if account_id(member_id) is None:
         raise ValueError("a card is named by an account's numeric id")
     return f"members/{member_id:d}.svg"
+
+
+def badge_name(member_id):
+    """members/<id>-badge.svg, from the same whole number as the card's name."""
+    if account_id(member_id) is None:
+        raise ValueError("a badge is named by an account's numeric id")
+    return f"members/{member_id:d}-badge.svg"
 
 
 def summary_json(data):
@@ -839,23 +1004,31 @@ def summary_json(data):
 
 
 def render(data, title="", repo_url=None, join=None):
-    """{file name: text} for one project's page. The same data gives the same bytes."""
+    """{file name: text} for one project's page. The same data gives the same bytes.
+
+    Every integration has its card and every member with an integration has a card and a badge, at every run: a card
+    that someone embedded once is still there later, whatever came after it. Nothing is capped and nothing relies on
+    what an earlier run left in the folder: each file is derived again from the whole ledger, so a card also follows
+    what changed since (a login that passed to another account is no longer shown; a task's title is the feed's).
+    The cost is linear: about 3.5 kB per integration and 3 kB per member."""
     files = {"index.html": render_html(data, title, repo_url, join or Link(DEFAULT_JOIN_URL)),
-             "badge.svg": render_badge(data["totals"]["integrations"]), "summary.json": summary_json(data)}
-    for member in data["members"][:MEMBER_CARDS_MAX]:  # those with the most integrations first
-        files[card_name(member["id"])] = render_card(data["project"], member)
-    for win in data["_wins"][:WINS_MAX]:
+             "badge.svg": render_badge(data["totals"]["integrations"]) + "\n", "summary.json": summary_json(data)}
+    for member in data["members"]:
+        files[card_name(member["id"])] = render_card(data["project"], member) + "\n"
+        files[badge_name(member["id"])] = render_member_badge(data["project"], member) + "\n"
+    for win in data["_wins"]:
         name = win_name(win["commit"])
         if name is not None:
-            files[name] = render_win(data["project"], win)
+            files[name] = render_win(data["project"], win, repo_url) + "\n"
     return files
 
 
 def write(out, files):
     """Writes each file whole or not at all, under `out` and nowhere else: a name is one of the three constants,
-    members/<digits>.svg or wins/<40 hex>.svg, whatever asked for it."""
+    members/<digits>.svg, members/<digits>-badge.svg or wins/<40 hex>.svg, whatever asked for it. Nothing is ever
+    deleted: a file of an earlier run that this run does not write stays as it was."""
     out = Path(out)
-    if any(name not in FIXED_NAMES and not CARD_NAME.match(name) and not WIN_NAME.match(name) for name in files):
+    if any(name not in FIXED_NAMES and not any(pattern.match(name) for pattern in NAMES) for name in files):
         raise PageError("a file name this tool does not write")
     for name in sorted(files):
         target = out / name

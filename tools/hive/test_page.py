@@ -28,6 +28,12 @@ JOIN = page.DEFAULT_JOIN_URL
 MEMBER_HREF = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 COMMIT_HREF = re.compile(r"https://github\.com/Bee-ruche/toy/commit/[0-9a-f]{40}\Z")
 WIN_HREF = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
+# Every name the tool may write a file under, spelled here again: the tests do not rely on page.py's own patterns.
+NAMED = re.compile(r"index\.html|badge\.svg|summary\.json|members/[1-9][0-9]{0,18}(?:-badge)?\.svg|wins/[0-9a-f]{40}\.svg")
+# The elements an SVG of the tool may hold. « svg » is also a card's inner frame; « style » is there for one reason: a
+# card must read on a light and on a dark page in ONE file, which takes a prefers-color-scheme rule. A style can also
+# load and hide, so harmless() accepts one only when it is page.CARD_CSS, byte for byte, directly under the root.
+SVG_TAGS = ("svg", "title", "style", "rect", "path", "text")
 NEEDLES = ("<script", "onerror=", "onload=", "onmouseover", "javascript:", "<img", "../../etc", "alert(1)")
 LOGINS = ('"><script>alert(1)</script>', 'a"onmouseover="x', "-dash", "a" * 40, "é", "a b", "a/b", "", "x\n")
 
@@ -154,16 +160,23 @@ class Case(unittest.TestCase):
         handler, nothing loaded; no link but a member's profile, an integrated commit or the join page; SVGs that
         parse."""
         for name, text in files.items():
-            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name)
-                            or re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name), name)
+            self.assertTrue(NAMED.fullmatch(name), name)
             if name.endswith(".svg"):
                 root = minidom.parseString(text.encode("utf-8")).documentElement
                 self.assertEqual(root.tagName, "svg")
                 self.assertTrue(root.getAttribute("width").isdigit() and root.getAttribute("height").isdigit(), "a fixed size")
-                for node in [root, *root.getElementsByTagName("*")]:
-                    self.assertIn(node.tagName, ("svg", "title", "rect", "path", "text"), name)
+                nodes = [root, *root.getElementsByTagName("*")]
+                for node in nodes:
+                    self.assertIn(node.tagName, SVG_TAGS, name)
                     for key in node.attributes.keys():
                         self.assertFalse(key.lower().startswith("on") or key.lower() in ("href", "xlink:href", "style", "src"), (name, key))
+                styles = [node for node in nodes if node.tagName == "style"]
+                self.assertLessEqual(len(styles), 1, name)
+                for style in styles:
+                    self.assertIs(style.parentNode, root, name)
+                    self.assertEqual((len(style.childNodes), style.firstChild.data, len(style.attributes)), (1, str(page.CARD_CSS), 0), name)
+                self.assertEqual((text.count("<style"), text.count(f"<style>{page.CARD_CSS}</style>")), (len(styles), len(styles)),
+                                 "a style is the cards' constant, byte for byte, or it is not there")
                 self.assertEqual(re.findall(r"https?://[^\"<> ]*", text), ["http://www.w3.org/2000/svg"], "nothing but the namespace")
             if name.endswith(".json"):
                 json.loads(text)
@@ -248,11 +261,16 @@ class TestFigures(Case):
         self.assertIsNone(seen.row("alice"), "the former login has no row")
         self.assertIn("https://github.com/alice-new", seen.hrefs)
         self.assertNotIn("https://github.com/alice", seen.hrefs)
-        self.assertEqual(sorted(name for name in files if name.startswith("members/")), ["members/101.svg", "members/103.svg"],
-                         "one card per account with an integration, named by its number")
-        self.assertIn("La Ruche · toy · 2 verified contributions · since Nov 2026", files["members/101.svg"])
-        self.assertIn("1 verified contribution · since Nov 2026", files["members/103.svg"])
-        self.assertNotIn("alice", files["members/101.svg"], "a card carries no login: it stays right when the account is renamed")
+        self.assertEqual(sorted(name for name in files if name.startswith("members/")),
+                         ["members/101-badge.svg", "members/101.svg", "members/103-badge.svg", "members/103.svg"],
+                         "one card and one badge per account with an integration, named by its number")
+        self.assertIn('aria-label="La Ruche · toy · 2 contributions accepted by the judge · first Nov 2026 · latest 10 Nov 2026 · GitHub account 101"',
+                      files["members/101.svg"])
+        self.assertIn('aria-label="La Ruche · toy · 1 contribution accepted by the judge · first Nov 2026 · latest 12 Nov 2026 · GitHub account 103"',
+                      files["members/103.svg"])
+        self.assertIn('aria-label="La Ruche · toy: 2 accepted by the judge"', files["members/101-badge.svg"])
+        for name in ("members/101.svg", "members/101-badge.svg"):
+            self.assertNotIn("alice", files[name], "a card carries no login: it stays right when the account is renamed")
 
     def test_a_member_is_named_only_for_accepted_work(self):
         files = self.make()
@@ -291,7 +309,9 @@ class TestFigures(Case):
         self.assertEqual(len(data["recent"]), 30)
         self.assertEqual([r["at"] for r in data["recent"]], sorted((r["at"] for r in data["recent"]), reverse=True))
         self.assertEqual({r["login"] for r in data["recent"]}, {"m00"})
-        self.assertEqual(len([name for name in files if name.startswith("members/")]), 60)
+        self.assertEqual(sorted(name for name in files if name.startswith("members/")),
+                         sorted(f"members/{1000 + member}{end}.svg" for member in range(60) for end in ("", "-badge")),
+                         "a card and a badge for every member with an integration, not only for those the table shows")
 
     def test_candidates_that_wait_are_counted_and_the_time_to_an_answer_is_not_invented(self):
         deals = {mark(1): deal(at="2026-11-12T07:00:00Z"), mark(2): deal("toy-0006", at="2026-11-12T11:00:00Z"),
@@ -382,7 +402,8 @@ class TestHostile(Case):
         valid = [201 + i for i, login in enumerate(LOGINS)] + [300, 398, 399, 500]
         wins = sorted(f"wins/{win['commit']}.svg" for win in page.collect(self.state, page.instant_of(NOW))["_wins"])
         self.assertTrue(0 < len(wins) <= 35 and all(re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name) for name in wins))
-        self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid), *wins]))
+        self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid),
+                                                *(f"members/{i}-badge.svg" for i in valid), *wins]))
         self.assertEqual(sorted(after), sorted(["bystander.txt", "state", "state/toy", *(f"state/toy/{n}" for n in ("ledger.jsonl", "feed.json", "stats.json")),
                                                 "site", "site/members", "site/wins", *(f"site/{name}" for name in files)]), "no temporary file is left")
         for name, text in files.items():
@@ -430,12 +451,14 @@ class TestHostile(Case):
         for href in seen.hrefs:
             self.assertTrue(href == JOIN or re.match(r"https://github\.com/[A-Za-z0-9%._~-]*\Z", href) or (WIN_HREF.match(href) and href in files), href)
         for name, content in files.items():
-            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name)
-                            or re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name), name)
+            self.assertTrue(NAMED.fullmatch(name), name)
             if name.endswith(".svg"):
                 root = minidom.parseString(content.encode("utf-8")).documentElement
-                self.assertEqual({node.tagName for node in root.getElementsByTagName("*")} - {"title", "rect", "path", "text"}, set())
+                self.assertEqual({node.tagName for node in root.getElementsByTagName("*")} - set(SVG_TAGS), set())
                 self.assertEqual([key for node in [root, *root.getElementsByTagName("*")] for key in node.attributes.keys() if key.startswith("on")], [])
+                self.assertEqual([node.firstChild.data for node in root.getElementsByTagName("style")], [str(page.CARD_CSS)] * content.count("<style"))
+        card = files[f"wins/{sha(5020)}.svg"]  # the first hostile login's integration
+        self.assertIn("@&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;", card, "the hostile login did reach the card's builder too")
         self.assertNotRegex(files["summary.json"], r"[<>&]")
         self.assertIn("\\u003cscript\\u003e", files["summary.json"])
 
@@ -472,9 +495,13 @@ class TestHostile(Case):
             self.assertIsNone(page.account_id(value), repr(value))
             with self.assertRaises(ValueError):
                 page.card_name(value)
-        self.assertEqual(page.card_name(101), "members/101.svg")
+            with self.assertRaises(ValueError):
+                page.badge_name(value)
+        self.assertEqual((page.card_name(101), page.badge_name(101)), ("members/101.svg", "members/101-badge.svg"))
         for name in ("../x.svg", "members/../../x.svg", "members/abc.svg", "members/1.svg/../../x", "/etc/passwd", "members/0.svg",
-                     "members/1.svg\n", "index.html/../x", "members/-1.svg", "x.html", ""):
+                     "members/1.svg\n", "index.html/../x", "members/-1.svg", "x.html", "", "members/1-badge.svg\n", "members/0-badge.svg",
+                     "members/-badge.svg", "members/1-badge.svg/../../x", "members/1-badge-badge.svg", "members/1-BADGE.svg", "members/1-badge.html",
+                     "wins/1-badge.svg", "members/" + sha(1) + ".svg", "wins/101.svg"):
             with self.assertRaises(page.PageError):
                 page.write(self.out, {name: "x"})
         for name in ("wins/x.svg", "wins/" + sha(10).upper() + ".svg", "wins/" + sha(1) + ".svg/../../x", "wins/../x.svg", "wins/" + sha(1)[:-1] + ".svg",
@@ -530,7 +557,7 @@ class TestWins(Case):
         figure, card = self.headline_of({"gain_instructions_n6": 0.032, "sure_instructions_n6": 1, "gain_time": 0.5, "sure_time": 0,
                                          "gain_size": 0.01, "sure_size": 1, "outputs_compared": 96})
         self.assertEqual(figure, {"metric": "instructions_n6", "gain": 0.032})
-        self.assertIn("accepted by the judge · measured 3.2 % better (instructions n6)", card)
+        self.assertIn("accepted by the judge · measured 3.2 % better · instructions n6 · in toy · 96 outputs identical to the base", card)
         self.assertNotIn("50.0", card)
 
     def test_a_gain_that_is_not_sure_negative_zero_or_alone_is_no_headline(self):
@@ -579,7 +606,8 @@ class TestWins(Case):
     def test_a_gain_of_a_thousand_percent_is_the_last_one_shown(self):
         figure, card = self.headline_of({"gain_a": 10, "sure_a": 1})
         self.assertEqual(figure, {"metric": "a", "gain": 10.0})
-        self.assertIn("measured 1000.0 % better (a)", card)
+        self.assertIn("measured 1000.0 % better · a", card)
+        self.assertIn(">1000.0 %<", card)
 
     def card_text(self, text):
         root = minidom.parseString(text.encode("utf-8")).documentElement
@@ -600,24 +628,102 @@ class TestWins(Case):
         self.assertEqual(sorted(wins), [f"wins/{sha(5000 + n)}.svg" for n in (1, 2, 3)], "no card for a refusal or for a commit that is not one")
         for name, text in wins.items():
             self.assertNotIn("<script", text.lower())
-            root, visible = self.card_text(text)
-            self.assertEqual(root.getAttribute("aria-label"), " · ".join(visible), name)
-            self.assertEqual(root.getElementsByTagName("title")[0].firstChild.data, root.getAttribute("aria-label"))
-        _, first = self.card_text(wins[f"wins/{sha(5001)}.svg"])
-        self.assertEqual(first, ["La Ruche · toy", "accepted by the judge · measured 3.2 % better (instructions n6)", "toy-0001 · <script>x</script> & \"q\"",
-                                 "by alice · 2026-11-01", "declared model: claude-fable-5-2"])
+            self.said_whole(name, text)
+        root, first = self.card_text(wins[f"wins/{sha(5001)}.svg"])
+        short = "commit 0000000000 · Bee-ruche/toy"
+        self.assertEqual(first, ["La Ruche · toy", "accepted by the judge", "3.2 %", "better · instructions n6", "in toy", "toy-0001",
+                                 "<script>x</script> & \"q\"", "@alice", "first integration · 1 Nov 2026", "declared model: claude-fable-5-2",
+                                 short, page.TAGLINE])
+        self.assertEqual(root.getAttribute("aria-label"),
+                         "La Ruche · toy · accepted by the judge · measured 3.2 % better · instructions n6 · in toy · toy-0001 · <script>x</script> & \"q\" · "
+                         f"@alice · first integration · 1 Nov 2026 · declared model: claude-fable-5-2 · {short} · {page.TAGLINE}")
         _, second = self.card_text(wins[f"wins/{sha(5002)}.svg"])
-        self.assertEqual(second, ["La Ruche · toy", "accepted by the judge", "toy-0001 · <script>x</script> & \"q\"", "by alice · 2026-11-02"])
+        self.assertEqual(second, ["La Ruche · toy", "accepted by the judge", "Accepted by the judge", "in toy", "toy-0001", "<script>x</script> & \"q\"",
+                                  "@alice", "integrated 2 Nov 2026", short, page.TAGLINE])
         _, third = self.card_text(wins[f"wins/{sha(5003)}.svg"])
-        self.assertEqual(third, ["La Ruche · toy", "accepted by the judge · measured 10.0 % better (t)", "toy-9999", "by bob · 2026-11-03"],
+        self.assertEqual(third, ["La Ruche · toy", "accepted by the judge", "10.0 %", "better · t", "in toy", "toy-9999", "@bob",
+                                 "first integration · 3 Nov 2026", short, page.TAGLINE],
                          "a task not in the feed shows its id alone; a model that is not an identifier is not shown")
+        bare = self.card_text(self.wins(self.make())[f"wins/{sha(5003)}.svg"])[1]
+        self.assertEqual(bare[-2:], ["commit 0000000000", page.TAGLINE], "without --repo-url, the commit's id alone")
+
+    def said_whole(self, name, text):
+        """A card's label and title say, in whole words, everything its lines show: a line may be shrunk, wrapped or
+        cut (it then ends with « … »), the label is not."""
+        root, visible = self.card_text(text)
+        label = root.getAttribute("aria-label")
+        self.assertEqual(root.getElementsByTagName("title")[0].firstChild.data, label, name)
+        for shown in visible:
+            if not re.fullmatch(r"\+[0-9,]+", shown):  # a member card's « +1,982 »: the cells not drawn; the label gives the number
+                self.assertIn(shown.rstrip("…").lower(), label.lower(), (name, shown))
+        return label, visible
+
+    def test_the_longest_values_stay_inside_the_card_and_a_login_is_never_cut(self):
+        login, long_task, model = "W" * 20 + "m" * 19, "toy-" + "a-" * 27 + "x-0001", "M" * 40
+        self.assertEqual((len(login), len(long_task), len(model)), (39, 64, 40), "the longest a login, a task id and a model can be")
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", login, 101, long_task, model=model,
+                             report={"gain_" + "W" * 60: 10, "sure_" + "W" * 60: 1, "outputs_compared": page.COUNT_MAX}),
+                     verdict(2, "2026-11-02T09:00:00Z", "x", page.ID_MAX, "toy-0002"),
+                     *(verdict(n, "2026-11-03T09:00:00Z", "y", 102, "toy-0002") for n in range(3, 2003))])
+        self.put("feed.json", feed({long_task: "done", "toy-0002": "done"}, project="p" * 40,
+                                   titles={long_task: "Wide words " * 9, "toy-0002": "圧縮" * 50}))
+        files = self.make("--repo-url", "https://github.com/" + "O" * 39 + "/" + "R" * 100)
+        for name in (f"wins/{sha(5001)}.svg", f"wins/{sha(5002)}.svg", f"wins/{sha(5003)}.svg", "members/101.svg", "members/102.svg",
+                     f"members/{page.ID_MAX}.svg"):
+            label, visible = self.said_whole(name, files[name])
+            root = minidom.parseString(files[name].encode("utf-8")).documentElement
+            inner = [node for node in root.childNodes if node.nodeType == node.ELEMENT_NODE and node.tagName == "svg"]
+            self.assertEqual(len(inner), 1, "the lines sit in one inner frame, which clips what the estimate got wrong")
+            self.assertLess(int(inner[0].getAttribute("width")), int(root.getAttribute("width")))
+            self.assertEqual([node.parentNode is inner[0] for node in root.getElementsByTagName("text")], [True] * len(visible))
+            for node in root.getElementsByTagName("text"):
+                self.assertGreaterEqual(float(node.getAttribute("font-size")), 8, (name, node.firstChild.data))
+                self.assertFalse(node.hasAttribute("textLength"), "a card's line is never squeezed or stretched")
+        _, worst = self.card_text(files[f"wins/{sha(5001)}.svg"])
+        self.assertIn("@" + login, worst, "the login is whole: a cut one could be another account's")
+        self.assertIn("1000.0 %", worst)
+        self.assertIn(long_task, worst, "and so is the task's id")
+        self.assertTrue(any(shown.endswith("…") for shown in worst), "what is cut says so")
+        _, wide = self.card_text(files[f"wins/{sha(5002)}.svg"])
+        self.assertEqual([shown for shown in wide if "圧" in shown], ["圧縮" * 13 + "圧", "縮圧" * 13 + "縮…"],
+                         "a title without spaces is broken where the room ends, and wide characters count for what they are")
+        _, member = self.card_text(files["members/102.svg"])
+        self.assertEqual(member[1:], ["GitHub account 102", "2,000", "contributions accepted by the judge", "first Nov 2026 · latest 3 Nov 2026", "+1,982"])
+        self.assertEqual(files["members/102.svg"].count('<path class="e"'), page.CELLS, "the drawing is capped; the number is not")
+        self.assertIn(f"GitHub account {page.ID_MAX}", self.card_text(files[f"members/{page.ID_MAX}.svg"])[1])
+
+    def test_the_cards_style_is_one_constant_that_loads_nothing_and_the_builder_makes_no_other(self):
+        for needle in ("<", ">", "&", '"', "'", "\\", "url(", "@import", "http", "expression(", "/*", "\n"):
+            self.assertNotIn(needle, page.CARD_CSS.lower(), needle)
+        self.assertIn("@media (prefers-color-scheme:dark)", page.CARD_CSS, "one file for a light and a dark page")
+        self.assertEqual(page.el("style", page.CARD_CSS), f"<style>{page.CARD_CSS}</style>")
+        self.assertEqual(page.el("style", page.CSS), f"<style>{page.CSS}</style>")
+        for refused in (lambda: page.el("style", "x{}"), lambda: page.el("style", page.Markup("x{}")), lambda: page.el("style"),
+                        lambda: page.el("style", page.Markup(str(page.CARD_CSS))), lambda: page.el("style", page.CARD_CSS, page.CARD_CSS),
+                        lambda: page.el("style", page.CARD_CSS + "x{}"), lambda: page.el("style", page.CARD_CSS, media="all"),
+                        lambda: page.el("style", page.Markup("@import url(https://evil.example/x.css);"))):
+            with self.assertRaises(ValueError):
+                refused()
+        # The cards' class names and the pages' are apart: with a card inlined in a page, neither restyles the other.
+        names = lambda css: set(re.findall(r"\.([a-z][a-z0-9-]*)", re.sub(r"[0-9]\.[0-9a-z]+", "", css)))  # noqa: E731
+        self.assertEqual(names(page.CARD_CSS) & names(page.CSS), set())
+        self.assertTrue(names(page.CARD_CSS) and all(len(name) == 1 for name in names(page.CARD_CSS)))
+        self.ledger([report_verdict(1, {})])
+        files = self.make()
+        self.assertEqual({name: text.count("<style>") for name, text in files.items() if name.endswith(".svg")},
+                         {"badge.svg": 0, "members/101.svg": 1, "members/101-badge.svg": 0, f"wins/{sha(5001)}.svg": 1})
 
     def test_the_login_is_not_shown_when_it_is_no_longer_the_account_s(self):
         self.ledger([verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0002")])
         files = self.make()
         _, first = self.card_text(files[f"wins/{sha(5001)}.svg"])
         _, second = self.card_text(files[f"wins/{sha(5002)}.svg"])
-        self.assertEqual((first[-1], second[-1]), ("2026-11-01", "by Alice · 2026-11-02"))
+        self.assertIn("GitHub account 101", first, "the account's number, which is what the ledger is sure of")
+        self.assertNotIn("alice", files[f"wins/{sha(5001)}.svg"].lower())
+        self.assertIn("@Alice", second)
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "alice", None, "toy-0001")])
+        _, nobody = self.card_text(self.make()[f"wins/{sha(5001)}.svg"])
+        self.assertEqual(nobody[-3:], ["integrated 1 Nov 2026", "commit 0000000000", page.TAGLINE], "no account, no name and no « first »")
 
     def test_the_index_and_the_summary_link_the_cards(self):
         self.ledger([report_verdict(1, {"gain_a": 0.25, "sure_a": 1}), report_verdict(2, {}), report_verdict(3, {}, commit="x")])
@@ -632,17 +738,27 @@ class TestWins(Case):
         self.assertIn("wins/&lt;commit&gt;.svg", files["index.html"])
         self.assertNotIn("_wins", files["summary.json"])
 
-    def test_at_most_the_latest_two_hundred_cards_are_written(self):
-        self.assertEqual(page.WINS_MAX, 200)
+    def test_every_integration_keeps_its_card_whatever_comes_after(self):
+        """A card that someone embedded must still be there later. Nothing is capped; a later run on a longer ledger
+        writes every name an earlier run wrote; and the tool deletes nothing it finds in the folder."""
         lines = [verdict(n, f"2026-{1 + n // 28:02d}-{1 + n % 28:02d}T09:00:00Z", "alice", 101, "toy-0001") for n in range(1, 251)]
         self.ledger(lines)
         files = self.make()
         self.harmless(files)
         wins = self.wins(files)
-        self.assertEqual(len(wins), 200)
-        newest = sorted(lines, key=lambda line: line["at"], reverse=True)[:200]
-        self.assertEqual(sorted(wins), sorted(f"wins/{line['commit']}.svg" for line in newest))
-        self.assertEqual(len(self.summary(files)["recent"]), page.RECENT_SHOWN)
+        self.assertEqual(sorted(wins), sorted(f"wins/{line['commit']}.svg" for line in lines), "250 integrations, 250 cards")
+        self.assertEqual(len(self.summary(files)["recent"]), page.RECENT_SHOWN, "the page's table shows the latest thirty")
+        left = f"wins/{sha(9999)}.svg"
+        (self.out / left).write_text("a card of an earlier run that this ledger no longer explains")
+        more = [verdict(n, f"2027-01-{n - 250:02d}T09:00:00Z", "bob" if n % 2 else "alice", 102 if n % 2 else 101, "toy-0002") for n in range(251, 261)]
+        self.ledger(lines + more)
+        later = self.make("--now", "2027-02-01T00:00:00Z")
+        self.assertEqual(set(files) - set(later), set(), "every file of the first run is written by the second")
+        self.assertEqual(len(self.wins(later)), 260 + 1)
+        self.assertEqual(later[left], "a card of an earlier run that this ledger no longer explains", "nothing is deleted")
+        self.assertEqual([name for name in wins if later[name] != wins[name]], [], "a card whose integration did not change keeps its bytes")
+        self.assertEqual(sorted(name for name in later if name.startswith("members/")),
+                         ["members/101-badge.svg", "members/101.svg", "members/102-badge.svg", "members/102.svg"])
 
     def test_a_commit_integrated_twice_has_one_card_and_the_same_one_is_rewritten(self):
         self.ledger([report_verdict(1, {}), {**report_verdict(2, {"gain_a": 0.1, "sure_a": 1}), "commit": sha(5001)}])
@@ -823,8 +939,9 @@ class TestEmpty(Case):
         self.put("feed.json", feed({"toy-0001": "done"}, project="a" * 40))
         self.ledger([verdict(1, "2026-11-10T00:00:00Z", "alice", 101, "toy-0001")])
         files = self.make()
-        self.assertIn(">La Ruche · " + "a" * 23 + "…<", files["members/101.svg"])
-        self.assertNotIn("a" * 24, files["members/101.svg"], "a card has a fixed width: a long name is cut")
+        self.assertIn('aria-label="La Ruche · ' + "a" * 23 + "… · 1 contribution accepted by the judge", files["members/101.svg"])
+        for name in ("members/101.svg", "members/101-badge.svg", f"wins/{sha(5001)}.svg"):
+            self.assertNotIn("a" * 24, files[name], "a card has a fixed width: a long name is cut")
         self.harmless(files)
         self.state = self.root / "state" / "Not an <id>"
         self.state.mkdir()
@@ -877,7 +994,8 @@ class TestEndToEnd(test_hive.Base):
         dealt = self.w.deal(carol, self.w.dealt_by_runs()[0][0])
         out = self.w.root / "site"
         with contextlib.redirect_stdout(io.StringIO()):
-            page.main(["--state", str(self.w.state), "--out", str(out), "--title", "A toy project", "--repo-url", "https://github.com/Bee-ruche/toy"])
+            page.main(["--state", str(self.w.state), "--out", str(out), "--title", "A toy project", "--repo-url", "https://github.com/Bee-ruche/toy",
+                       "--tasks", str(self.w.registry / "hive/tasks/toy.jsonl")])  # the registry's own task file, as a run has it
         text, data = (out / "index.html").read_text(encoding="utf-8"), json.loads((out / "summary.json").read_text())
         seen = Seen(text)
         self.assertEqual(seen.row("alice"), ["alice", "1", "1", "100 % (1 of 1)", "2026-11-12"])
@@ -893,12 +1011,15 @@ class TestEndToEnd(test_hive.Base):
         self.assertEqual((dealt, data["measures"]["waiting"]), (test_hive.NOW, None), "carol's task is dealt; no candidate waits")
         self.assertEqual([(m["id"], m["login"], m["integrations"]) for m in data["members"]], [(101, "alice", 1)])
         self.assertEqual(data["measures"]["yield"], 0.5)
-        self.assertEqual(sorted(path.name for path in (out / "members").iterdir()), ["101.svg"])
+        self.assertEqual(sorted(path.name for path in (out / "members").iterdir()), ["101-badge.svg", "101.svg"])
         card = minidom.parse(str(out / "members" / "101.svg")).documentElement
-        self.assertEqual(card.getAttribute("aria-label"), "La Ruche · toy · 1 verified contribution · since Nov 2026")
+        self.assertEqual(card.getAttribute("aria-label"),
+                         "La Ruche · toy · 1 contribution accepted by the judge · first Nov 2026 · latest 12 Nov 2026 · GitHub account 101")
         self.assertIn("1 verified contribution<", (out / "badge.svg").read_text(encoding="utf-8"))
+        self.assertIn(">1 accepted by the judge<", (out / "members" / "101-badge.svg").read_text(encoding="utf-8"))
         win = minidom.parse(str(out / "wins" / f"{self.w.tip()}.svg")).documentElement
-        self.assertIn("by alice", win.getAttribute("aria-label"))
+        self.assertIn(f"@alice · first integration · 12 Nov 2026 · declared model: claude-fable-5-2 · commit {self.w.tip()[:10]} · Bee-ruche/toy",
+                      win.getAttribute("aria-label"))
         self.assertIn("toy-0001 · Make f0 faster", win.getAttribute("aria-label"))
         self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.svg"])
         self.assertNotIn("<script", text)
