@@ -141,7 +141,7 @@ class Schedule:
                     former = self.last_deal.get(fork.login)
                     if lazy and wait and former and former["at"] not in done and rng.random() < 0.5:
                         done.add(former["at"])  # its time was up: it pushes its work all the same
-                        self.push(fork, former["task"], "late", former["at"])
+                        self.push(fork, former["task"], "stray", former["at"])  # too late: not a candidate any more
                     elif not wait:
                         fork.ready()
                     continue
@@ -236,7 +236,7 @@ class Schedule:
                     self.w.plan()
                 if fault != "norecord":
                     self.w.record()
-                pushed = [c for c in self.tokens.values() if c["kind"] not in ("honest", "late")]
+                pushed = [c for c in self.tokens.values() if c["kind"] != "honest"]
                 if fault == "withdrawn" and pushed:  # an honest member leaves its branch where it is
                     gone = rng.choice(pushed)
                     th.sh("git", "push", "--quiet", "origin", f":refs/heads/{gone['branch']}", cwd=gone["fork"].work, check=False)

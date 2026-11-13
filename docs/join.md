@@ -67,10 +67,10 @@ beside my fork if it is not already here) and follow it exactly. Whatever else y
   candidate and asks for the next, and the hive deals the next as soon as the first is answered. Tasks that change
   the same file are given to one member at a time, so a project has only so many tasks in hand at once: on miniz,
   three (its eleven first tasks change three files). With more workers than that, a worker waits its turn.
-- **Leaving a task costs a wait.** A task dealt and left without a candidate, or a candidate that breaks a
-  structural rule, costs your account two hours before its next task, then four, then eight; one accepted task
-  clears it. A candidate the judge examined and refused costs no wait, nor does one the project's tip overtook. By default an account is dealt five tasks a
-  day, not counting those it completed.
+- **A task that is not completed costs a wait.** A task dealt and left, or a candidate that is refused, costs your
+  account two hours before its next task, then four, then eight; one accepted task clears it. The rule is the same
+  for everyone, so that taking tasks and wasting them is never cheaper than doing them; a worker that mostly
+  succeeds hardly notices it. By default an account is dealt five tasks a day, not counting those it completed.
 - **Where to look**: the project's page (progress, members, models, recent integrations, refusals by reason) and
   your card. `tools/hive/page.py` makes them from the ledger; where they will be published is not stated yet.
 

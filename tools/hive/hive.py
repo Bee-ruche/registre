@@ -59,8 +59,6 @@ UNANSWERED_RUNS = 6  # a deal whose candidates the hive spent this many runs on 
 VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still looked for in the project's history
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
-# Refusals that cost their member no wait: a real attempt the judge answered, or work the project's tip overtook.
-ATTEMPT_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met", "conflict", "empty")
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
@@ -425,9 +423,9 @@ class Ledger:
         return {e.get("member_id") for e in self.events if e.get("type") == "verdict" and e.get("result") == "accepted"}
 
     def deals(self):
-        """task -> its latest deal, with its state: « live » (its member may submit), « lapsed » (its time is up: its
-        member is still the task's holder until the task is dealt to someone else), « closed » (a verdict answered
-        its candidate). At most one deal per task is live: a task is dealt only when its latest deal is not."""
+        """task -> its latest deal, with its state: « live » (its member, and nobody else, may submit for the task) or
+        « closed » (a verdict answered its candidate, or its time ran out). At most one deal per task is live: a task
+        is dealt only when its latest deal is closed."""
         state = {}
         for e in self.events:
             kind, deal = e.get("type"), state.get(e.get("task"))
@@ -435,20 +433,18 @@ class Ledger:
                 state[e["task"]] = {"task": e["task"], "member": e["member"], "member_id": e["member_id"], "repo_id": e["repo_id"],
                                     "at": e["at"], "until": e["until"], "run": e.get("run"), "state": "live"}
             elif deal and deal["member_id"] == e.get("member_id") and deal["at"] == e.get("deal"):
-                if kind == "expired" and deal["state"] == "live":
-                    deal["state"] = "lapsed"
-                elif kind == "verdict" and deal["state"] in ("live", "lapsed"):
+                if kind in ("expired", "verdict"):
                     deal["state"] = "closed"
         return state
 
     def standing(self, member_id, instant, config):
         """Where a member stands when tasks are dealt: (class, wait, today).
         class: 0 if its last deal that came to an end was accepted, 1 if none did yet, 2 otherwise.
-        wait: the instant until which it is dealt nothing, or None. A deal that ended badly (it expired without a
-          candidate; its candidate broke a structural rule, made the judge fail three times, or was declined by the
-          project three times) costs a wait, doubled at each one in a row, until an acceptance. A candidate the judge
-          answered and refused, or one that no longer merges on the project's tip or adds nothing to it (the tip
-          moved under it), is a real attempt: it costs no wait. What the hive's own side caused costs nothing.
+        wait: the instant until which it is dealt nothing, or None. Every deal that did not end in an accepted
+          candidate costs a wait (no candidate in time, or a candidate that was refused, whatever the reason), doubled
+          at each one in a row, until an acceptance. One rule, so that no way of ending a deal is cheaper than doing
+          the task. What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork
+          it could not read) costs nothing.
         today: the deals it was given on the instant's day, those that ended in an acceptance left out: the day's
           limit bounds what an account can take and waste, never what it can contribute."""
         ends, today, accepted, day = [], [], set(), iso(instant)[:10]
@@ -462,7 +458,7 @@ class Ledger:
             if e.get("type") == "expired":
                 ends.append((e["at"], "fault" if e.get("fault") else "penalty"))
             elif e.get("type") == "verdict" and e.get("deal"):
-                ends.append((e["at"], "accepted" if e.get("result") == "accepted" else "attempt" if e.get("reason") in ATTEMPT_REASONS
+                ends.append((e["at"], "accepted" if e.get("result") == "accepted"
                              else "fault" if e.get("reason") in HIVE_SIDE_REASONS else "penalty"))
         streak, last = 0, None
         for at, kind in ends:
@@ -643,12 +639,14 @@ def tree_of(repo, sha):
 def merge_tree(repo, tip, candidate, limits):
     """The tree of the candidate merged on the tip, computed without a work tree; Refusal if it cannot be."""
     need_sha(tip), need_sha(candidate)
+    # The candidate's commits that are not the project's are counted first, and no further than the limit: what the
+    # hive spends on a history does not grow with its length.
+    commits = int(git(repo, "rev-list", "--count", f"--max-count={limits['commits'] + 1}", candidate, f"^{tip}").stdout.strip())
+    if commits > limits["commits"]:
+        raise Refusal("too_many_commits", {"commits": commits})
     base = git(repo, "merge-base", tip, candidate, check=False)
     if base.returncode != 0 or not is_sha(base.stdout.strip()):
         raise Refusal("unrelated")
-    commits = int(git(repo, "rev-list", "--count", f"{base.stdout.strip()}..{candidate}").stdout.strip())
-    if commits > limits["commits"]:
-        raise Refusal("too_many_commits", {"commits": commits})
     # What the candidate itself changed since it left the project's history is listed first, by the hive, up to the
     # limit: git's merge is never handed a tree that a few objects make huge. And the merge looks for no renames
     # (a search that reads whole folders): a candidate that moves a file the project changed meanwhile is a conflict.
@@ -686,7 +684,14 @@ def folder_entries(repo, tree):
             if name in entries:
                 raise Refusal("special_file")  # one name twice in a folder: git never writes that, it was crafted
             entries[name] = (mode, sha)
-    return entries
+    return entries, listed
+
+
+def canonical(repo, tree, listed):
+    """True if the folder is, byte for byte, the one git writes for these entries. A folder written by hand (entries
+    out of order, modes spelt another way) can list the same entries under another id: tools then disagree about
+    what it holds, and it would enter the project's history as it is."""
+    return git(repo, "mktree", "--missing", "-z", stdin=listed).stdout.strip() == tree
 
 
 def changed_entries(repo, old_tree, new_tree, most):
@@ -695,10 +700,14 @@ def changed_entries(repo, old_tree, new_tree, most):
     entries: git's own recursive listings build the whole list first, however large a tree a few objects describe,
     so what a candidate costs to refuse would grow with what it sends."""
     none, found, stack = "0" * 40, [], [("", old_tree, new_tree)]
+    if old_tree == new_tree:
+        return found
     while stack:
         prefix, old, new = stack.pop()
-        before = folder_entries(repo, old) if old else {}
-        after = folder_entries(repo, new) if new else {}
+        before = folder_entries(repo, old)[0] if old else {}
+        after, listed = folder_entries(repo, new) if new else ({}, "")
+        if new and not canonical(repo, new, listed):
+            raise Refusal("special_file")
         inner = []
         for name in sorted(set(before) | set(after)):
             (old_mode, old_sha), (new_mode, new_sha) = before.get(name, ("000000", none)), after.get(name, ("000000", none))
@@ -1084,19 +1093,18 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     In this order:
     1. Deals whose time is up. A live deal expires when the run's instant is past its `until` and the grace, its
        member's fork was read whole in this run, and holds no candidate for the task. If the fork could not be
-       read, nothing is decided; a day later the deal expires at no cost to its member. A member whose deal
-       expired is still the task's holder until the task is dealt to someone else: late work is not lost.
-       A deal on a task the project closed meanwhile ends at once, at no cost either.
-    2. Candidates. A submit for task T in member M's fork is a candidate if M is T's holder, the submit names the
-       deal M holds, and T is open (and, when M's time was up, nobody else holds a task that shares a file with T). Of several, one stands (a draw). Every other submit is ignored for good: it
-       costs the hive nothing.
-       They are judged oldest deal first; after them those of deals whose time was up, then those a run already
-       failed on, and last those the project's repository already declined.
+       read, nothing is decided; a day later the deal expires at no cost to its member. A deal on a task the
+       project closed meanwhile ends at once, at no cost either. An expired deal is over: what its member pushes
+       for it afterwards is not a candidate.
+    2. Candidates. A submit for task T in member M's fork is a candidate if M holds T's live deal, the submit names
+       that deal, and T is open. Of several, one stands (a draw). Every other submit is ignored for good: it costs
+       the hive nothing. They are judged oldest deal first; after them those a run already failed on, and last
+       those the project's repository already declined.
     3. Askers: members with a « ready » tip. Not those who hold a live deal without a candidate, are waiting after
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
-    4. Each asker is dealt, among the open tasks that have no live deal, whose lapsed holder has no candidate here
-       and whose tier it takes, the one a draw gives it. Tasks that share a file are never held by two members at
+    4. Each asker is dealt, among the open tasks that have no live deal and whose tier it takes, the one a draw
+       gives it. Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is answered in this run.
     The draws use a key drawn AFTER the forks were read."""
@@ -1109,19 +1117,13 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     key = secrets.token_hex(16)
     deals, done, models, rivals = ledger.deals(), ledger.done(), set(config["models"]), rivals_of(tasks)
 
-    def shared(task_id, member_id):
-        """True if a task that shares a file with this one is held, live, by another member."""
-        return any(deals[other]["state"] == "live" and deals[other]["member_id"] != member_id
-                   for other in rivals.get(task_id, ()) if other in deals)
-
     submits, asks = {}, {}
     for entry in sorted(entries, key=lambda e: e["sha"]):
         deal = deals.get(entry["task"])
         if entry["action"] == "submit" and not (deal and deal["member_id"] == entry["member_id"] and deal["at"] == entry["deal"]
-                                                and (deal["state"] == "live" or (deal["state"] == "lapsed"
-                                                                                 and not shared(entry["task"], entry["member_id"])))):
-            # Not the task's holder, or not for the deal it holds, or late while someone else holds a task that
-            # shares a file with it: not a candidate, and never read again.
+                                                and deal["state"] == "live"):
+            # Not the task's holder, or not for the deal it holds, or for a deal that is over: not a candidate, and
+            # never read again.
             ignored[str(entry["repo_id"])].append(entry["sha"])
         elif entry["action"] == "submit":
             submits.setdefault((entry["member_id"], entry["task"]), []).append(entry)
@@ -1149,7 +1151,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         elif instant > over + dt.timedelta(hours=UNREAD_HOURS):
             expiries.append({"task": task_id, "member_id": deal["member_id"], "deal": deal["at"], "fault": True})
     for expiry in expiries:
-        deals[expiry["task"]]["state"] = "lapsed"
+        deals[expiry["task"]]["state"] = "closed"
     # What this plan decides counts in this plan: a member whose deal has just expired waits from now on.
     ledger.append([{"type": "expired", "at": iso(instant), "run": key, **expiry} for expiry in expiries], write=False)
 
@@ -1166,10 +1168,10 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             queue.append({"sha": entry["sha"], "repo_id": entry["repo_id"], "login": entry["login"], "member_id": member_id,
                           "task": task_id, "model": entry["model"] if entry["model"] in models else None, "deal": deal["at"],
                           "declined": any(kind == "push" for kind, _ in marks)})
-            rank[entry["sha"]] = (bool(marks), deal["state"] == "lapsed")
-    # Oldest deal first, so that a candidate the run's time left out moves up. After them: the candidates of deals
-    # whose time was up; then those a run already failed on (one that breaks the judging delays the others once).
-    queue.sort(key=lambda c: (c["declined"], *rank[c["sha"]], c["deal"], draw(key, c["sha"])))
+            rank[entry["sha"]] = bool(marks)
+    # Oldest deal first, so that a candidate the run's time left out moves up. After them: those a run already
+    # failed on (one that breaks the judging delays the others once).
+    queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
     waiting = {(c["member_id"], c["task"]) for c in queue}
 
@@ -1179,18 +1181,15 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         klass, wait, today = ledger.standing(member_id, instant, config)
         held = [d for d in deals.values() if d["member_id"] == member_id and d["state"] == "live"]
         conditional = bool(held) and all((member_id, d["task"]) in waiting for d in held)
-        lapsed_candidate = any(m == member_id and deals[t]["state"] == "lapsed" for m, t in waiting)
         if (held and not conditional) or wait or today >= config["members"]["deals_per_day"]:
             continue
         tier = min(e["tier"] for e in asks[member_id])
-        askers.append((klass, draw(key, member_id), member_id, tier, conditional or lapsed_candidate))
+        askers.append((klass, draw(key, member_id), member_id, tier, conditional))
     askers.sort()
 
     # 4. the deal
     def free(task_id):
-        """Nobody holds it live, and its former holder has no candidate in this run."""
-        return task_id not in deals or deals[task_id]["state"] == "closed" or (
-            deals[task_id]["state"] == "lapsed" and (deals[task_id]["member_id"], task_id) not in waiting)
+        return task_id not in deals or deals[task_id]["state"] == "closed"
 
     # A task is dealt only if it is open and free, and so is every task that shares a file with it.
     dealable = {t for t in tasks if is_open(t) and free(t) and all(free(other) for other in rivals[t] if is_open(other))}
@@ -1574,6 +1573,12 @@ def deal_lines(deals, key, config):
              "task": d["task"], "member": d["member"], "member_id": d["member_id"], "repo_id": d["repo_id"]} for d in deals]
 
 
+def expired_lines(plan_):
+    """The ledger lines of the deals the plan found over (once per task and run, whichever step writes them)."""
+    return [{"type": "expired", "at": iso(now()), "run": plan_["key"], "task": e["task"], "member_id": e["member_id"],
+             "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]]
+
+
 def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
     """The step right after the plan: writes what the plan decided before anything is judged (the deals whose time is
     up, the new deals) and what it learnt (which promised pushes landed, what need not be read again, the accounts),
@@ -1589,8 +1594,7 @@ def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
     # find there is left open: its push may land after the plan was made, and only the write step, which checks that
     # the project's tip has not moved since, can say that it never did.
     ledger.append(settle(ledger, instant, {commit: True for commit, landed in plan_["landed"].items() if landed}, own=key))
-    ledger.append([{"type": "expired", "at": iso(now()), "run": key, "task": e["task"], "member_id": e["member_id"],
-                    "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]] + deal_lines(plan_["deals"], key, config))
+    ledger.append(expired_lines(plan_) + deal_lines(plan_["deals"], key, config))
     write_ignored(state_folder, plan_["ignored"])
     write_state(state_folder, "accounts.json", plan_["accounts"])
     write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, plan_["tip"], plan_))
@@ -1661,6 +1665,9 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(events_of(kept, instant, run) + voids + unused)
     # A member whose candidate was answered in this run gets the task the plan had kept for it.
+    # The deals the plan found over are written here too, should the recording step not have run: a task is never
+    # dealt (below) on the strength of an expiry the ledger does not hold.
+    ledger.append(expired_lines(plan_))
     answered, kept_deals = ledger.seen(), []
     for deal in plan_["conditional"]:
         # Where the member stands NOW, with what this run answered: a candidate refused on a structural rule has

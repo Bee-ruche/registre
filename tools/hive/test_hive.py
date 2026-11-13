@@ -637,6 +637,40 @@ class TestStructure(Base):
             self.refused("too_many_files")
         self.assertIn("merge.renames=false", hive.GIT_BASE)
 
+    def test_a_folder_that_git_would_not_have_written_that_way_is_refused(self):
+        """The same entries, out of order or with a mode spelt another way, are another object: tools disagree about
+        such a folder, and it would enter the project's history as it is."""
+        entries = {line.split("\t")[1]: line.split()[2] for line in self.listing("HEAD:src")}
+        added = sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin="int z;\n").stdout.strip()
+        entries["z.c"] = added
+        for label, raw in (("out of order", b"".join(b"100644 " + name.encode() + b"\0" + bytes.fromhex(sha)
+                                                     for name, sha in sorted(entries.items(), reverse=True))),
+                           ("a mode with a zero in front", b"".join(b"0100644 " + name.encode() + b"\0" + bytes.fromhex(sha)
+                                                                    for name, sha in sorted(entries.items())))):
+            with self.subTest(label):
+                src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
+                                     capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+                self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
+                self.refused("special_file", self.w.run())
+        self.alice.write("src/z.c", "int z;\n").commit().marker("toy-0002").push()
+        self.assertEqual(self.one(self.w.run())["result"], "accepted", "the same change, as git writes it, is fine")
+
+    def test_a_long_history_is_counted_no_further_than_the_limit(self):
+        for i in range(8):
+            self.alice.write("src/n.c", f"int n{i};\n").commit(f"step {i}")
+        self.alice.marker("toy-0002").push()
+        real, counted = hive.git, []
+
+        def spy(repo, *args, **options):
+            if args[0] == "rev-list":
+                counted.append(args)
+            self.assertNotEqual(args[0], "merge-base", "the history is walked before it is counted")
+            return real(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=spy):
+            self.assertEqual(self.refused("too_many_commits")["detail"], {"commits": 6}, "five allowed: counted up to six")
+        self.assertTrue(counted and all("--max-count=6" in args for args in counted))
+
     def test_a_folder_that_lists_one_name_twice_is_refused(self):
         """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
         tool's affair. The hive refuses the candidate."""
@@ -1971,12 +2005,12 @@ class TestDealing(Base):
         """Live deals written by the test: these tasks are out of the dealing."""
         return [self.w.deal(fork, task, fresh=True) for task in tasks]
 
-    def answered(self, fork, task, reason=None):
+    def answered(self, fork, task, reason=None, at=NOW):
         """A deal of `fork` on `task` that came to an end, written by the test: accepted, or refused for `reason`."""
         self.answers += 1
         end = {"reason": reason, "detail": {}} if reason else {"commit": "c" * 40, "figures": {}, "report": {}}
         hive.Ledger(self.w.state).append([{
-            "type": "verdict", "at": NOW, "task": task, "deal": self.w.deal(fork, task, fresh=True), "member": fork.login,
+            "type": "verdict", "at": at, "task": task, "deal": self.w.deal(fork, task, fresh=True), "member": fork.login,
             "member_id": fork.id, "repo_id": fork.id + 1000, "sha": f"{self.answers:040x}", "judged": True, "model": None,
             "result": "refused" if reason else "accepted", **end}])
 
@@ -2046,12 +2080,7 @@ class TestDealing(Base):
         self.assertEqual(self.one(self.w.run() if self.alice.submit("toy-0001", deal=first) else [])["result"], "accepted")
         self.w.run()
         self.assertEqual(len(self.lines("deal")), 2, "toy-0001 is done: one of the two others is dealt")
-        late = self.w.deal(carol, "toy-0005", at="2026-11-12T07:00:00Z", fresh=True) if self.w.deals().get("toy-0005", ("", ""))[1] != "live" else None
-        if late:  # carol's time on toy-0005 is long up, and someone else now holds toy-0004: her late work is not a candidate
-            self.assertEqual(self.w.deals()["toy-0004"][1], "live")
-            self.w.run()
-            stray = carol.fresh("late").submit("toy-0005", content=LIB + "/* late */\n", deal=late)
-            self.assertEqual((self.w.run(), stray in hive.read_ignored(self.w.state)["1103"]), ([], True))
+        self.assertEqual(sorted(state for _, state in self.w.deals().values()), ["closed", "live", "live"])
 
     def test_each_asker_gets_one_task_and_no_task_goes_to_two(self):
         askers = [self.alice, self.bob] + [self.w.fork(f"m{i}", 120 + i) for i in range(4)]
@@ -2074,7 +2103,7 @@ class TestDealing(Base):
         that changes at every run."""
         ace, new, poor, holder = (self.w.fork(login, 130 + i) for i, login in enumerate(("ace", "new", "poor", "holder")))
         self.answered(ace, "toy-0005")
-        self.answered(poor, "toy-0004", "judge_refused")
+        self.answered(poor, "toy-0004", "judge_refused", at="2026-11-12T09:00:00Z")  # its wait is over
         self.hold(holder, "toy-0002")  # toy-0001 and toy-0004 are left, and share a file: one deal at a time
         for fork in (ace, new, poor, self.alice, self.bob):
             fork.ready()
@@ -2109,7 +2138,7 @@ class TestDealing(Base):
             self.w.run()
             self.assertEqual(self.lines("expired"), [{"type": "expired", "at": "2026-11-12T16:00:01Z", "run": mock.ANY, "task": task,
                                                       "member_id": 101, "deal": NOW, "fault": False}])
-            self.assertEqual(self.w.deals()[task], ("alice", "lapsed"))
+            self.assertEqual(self.w.deals()[task], ("alice", "closed"))
             feed = self.w.feed_file()
             self.assertEqual((feed["deals"], feed["wait"]), ({}, {hive.member_mark("alice"): "2026-11-12T18:00:01Z"}))
             self.assertEqual({t["id"]: t["status"] for t in feed["tasks"]}[task], "open")
@@ -2160,14 +2189,13 @@ class TestDealing(Base):
         self.assertIn(late, hive.read_ignored(self.w.state)["1101"])
         self.assertEqual(len(self.lines("deal")), 1, "and its member is dealt another task in the same run")
 
-    def test_a_late_candidate_counts_until_the_task_is_dealt_to_someone_else(self):
+    def test_what_a_member_pushes_after_its_deal_expired_is_not_a_candidate(self):
         dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T07:00:00Z")
         self.w.run()
-        self.assertEqual(self.w.deals()["toy-0001"], ("alice", "lapsed"))
+        self.assertEqual(self.w.deals()["toy-0001"], ("alice", "closed"))
         late = self.alice.submit("toy-0001", deal=dealt)
-        outcome = self.one(self.w.run())
-        self.assertEqual((outcome["sha"], outcome["result"], outcome["deal"]), (late, "accepted", dealt), "late work is not lost")
-        self.assertEqual(self.standing(self.alice)[:2], (0, None), "and the acceptance clears the wait")
+        self.assertEqual((self.w.run(), self.w.events(), judge_by_content.seen), ([], [], []))
+        self.assertEqual(hive.read_ignored(self.w.state)["1101"], [late], "and it is not read again")
 
     def test_a_late_candidate_for_a_task_dealt_to_someone_else_is_not_a_candidate(self):
         dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T07:00:00Z")
@@ -2178,20 +2206,6 @@ class TestDealing(Base):
         outcome = self.one(self.w.run())
         self.assertEqual((outcome["sha"], outcome["login"], outcome["result"]), (mine, "bob", "accepted"))
         self.assertEqual((hive.read_ignored(self.w.state)["1101"], len(judge_by_content.seen)), ([late], 1))
-
-    def test_a_task_whose_former_holder_has_a_candidate_in_this_run_is_not_dealt(self):
-        dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T07:00:00Z")
-        self.w.run()
-        self.hold(self.w.fork("holder", 133), "toy-0002")
-        for task in ("toy-0004", "toy-0005"):
-            self.answered(self.w.forks["holder"], task)  # done: toy-0001 is the only task left
-        late = self.alice.submit("toy-0001", content=LIB + "/* REFUSE */\n", deal=dealt)
-        self.bob.ready()
-        made = self.w.plan()
-        self.assertEqual(([c["sha"] for c in made["queue"]], made["deals"], made["conditional"]), ([late], [], []))
-        self.assertEqual(self.one(self.w.run())["reason"], "judge_refused")
-        self.w.run()
-        self.assertEqual([(d["task"], d["member"]) for d in self.lines("deal")], [("toy-0001", "bob")], "the next run deals it")
 
     def test_a_member_who_submits_and_asks_is_dealt_its_next_task_when_its_candidate_is_answered(self):
         dealt = self.hold(self.alice, "toy-0001")[0]
@@ -2227,21 +2241,54 @@ class TestDealing(Base):
             self.w.run()
             self.assertEqual([d["member"] for d in self.lines("deal")], ["alice"], "once the wait is over, it is")
 
-    def test_a_refused_attempt_costs_no_wait_and_a_days_deals_are_counted(self):
-        self.w.set_config({"members": {"deals_per_day": 3}})
+    def test_a_task_freed_by_an_expiry_is_never_dealt_without_the_expiry_being_recorded(self):
+        """The recording step did not run (it was stopped): the write step, which deals a member its next task once
+        its candidate is answered, writes the plan's expiries before it deals."""
+        self.hold(self.w.fork("holder", 133), "toy-0002")
+        for task in ("toy-0004", "toy-0005"):
+            self.answered(self.w.forks["holder"], task)  # done
+        self.w.deal(self.bob, "toy-0001", at="2026-11-12T07:00:00Z")  # bob left toy-0001: the only task that can be dealt
+        dealt = self.w.deal(self.alice, "toy-0002", fresh=True)
+        self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002", deal=dealt).push()
+        self.alice.ready()
+        made = self.w.plan()
+        self.assertEqual(([e["task"] for e in made["expiries"]], [d["task"] for d in made["conditional"]]), (["toy-0001"], ["toy-0001"]))
+        verdicts, _ = self.w.judge()  # no recording step in this run
+        self.assertEqual(self.one(self.w.apply(verdicts)[0])["result"], "accepted")
+        lines = [(e["type"], e["task"]) for e in self.w.load()[2].events if e["type"] in ("expired", "deal") and not e["run"].startswith("test")]
+        self.assertEqual(lines, [("expired", "toy-0001"), ("deal", "toy-0001")], "the expiry first, then the deal")
+        self.assertEqual(self.w.deals()["toy-0001"], ("alice", "live"))
+
+    def test_a_candidate_that_changes_nothing_holds_nothing(self):
+        """An account cannot keep a task by pushing, at the last minute, a candidate that is the project as it is."""
+        self.hold(self.alice, "toy-0001")
+        self.alice.marker("toy-0001").push()
+        self.alice.ready()
+        self.assertEqual(self.one(self.w.run())["reason"], "empty")
+        self.assertEqual((self.lines("deal"), self.standing(self.alice)[:2], judge_by_content.seen), ([], (2, "2026-11-12T14:00:00Z"), []))
+
+    def test_a_refused_candidate_costs_the_same_wait_as_none_and_a_days_deals_are_counted(self):
+        """No way of ending a deal is cheaper than doing the task: junk that the judge refuses, a candidate that does
+        not merge, one that changes nothing, all cost what leaving the task costs."""
+        self.w.set_config({"members": {"deals_per_day": 2}})
         self.alice.ready()
         self.w.run()
-        for _ in range(4):
-            deals = self.lines("deal")
-            self.alice.attempt(deals[-1]["task"], deals[-1]["at"])
-            self.alice.ready()
-            if self.w.run(lambda *a: {"code": 1}):
-                self.assertEqual(self.w.events()[-1]["reason"], "judge_refused")
-        self.assertEqual((len(self.lines("deal")), self.standing(self.alice)), (3, (2, None, 3)), "three deals a day, and no wait")
-        self.assertEqual(len([e for e in self.w.events() if e["type"] == "verdict"]), 3)
+        for clock, wait in (("12:30:00", "2026-11-12T14:30:00Z"), ("14:30:00", "2026-11-12T18:30:00Z")):
+            with self.at(clock):
+                if clock != "12:30:00":
+                    self.w.run()  # the wait is over: the ask, still there, is dealt
+                deal = self.lines("deal")[-1]
+                self.alice.attempt(deal["task"], deal["at"])
+                self.alice.ready()
+                self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
+                self.assertEqual(self.standing(self.alice)[:2], (2, wait))
+        self.assertEqual(len(self.lines("deal")), 2, "no next task in the run that refused its candidate")
+        with self.at("18:30:00"):
+            self.w.run()
+            self.assertEqual((len(self.lines("deal")), self.standing(self.alice)), (2, (2, None, 2)), "its wait is over; its day is used")
         with self.at("00:00:00", "13"):
             self.w.run()
-            self.assertEqual(len(self.lines("deal")), 4, "the next day it is dealt again")
+            self.assertEqual(len(self.lines("deal")), 3, "the next day it is dealt again")
 
     def test_several_candidates_for_one_deal_are_one_candidate(self):
         self.hold(self.alice, "toy-0001")
@@ -2309,10 +2356,8 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(state(deal), {t: (1, "live")})
         self.assertEqual(self.ledger(deal).deals()[t], {"task": t, "member": "m1", "member_id": 1, "repo_id": 1001, "at": self.at("09:00:00"),
                                                         "until": self.at("12:00:00"), "run": "r09:00:0012", "state": "live"})
-        self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01")), {t: (1, "lapsed")}, "its time is up: still the holder")
+        self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01")), {t: (1, "closed")}, "its time is up: the deal is over")
         self.assertEqual(state(deal, self.end(1, t, "09:00:00", "10:00:00")), {t: (1, "closed")})
-        self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01"), self.end(1, t, "09:00:00", "14:00:00", "judge_refused")),
-                         {t: (1, "closed")}, "a late candidate was answered")
         self.assertEqual(state(deal, self.end(1, t, "09:00:00", "10:00:00"), self.expired(1, t, "09:00:00", "13:00:01")), {t: (1, "closed")},
                          "what is closed stays closed")
         for other in (self.expired(2, t, "09:00:00", "13:00:01"), self.expired(1, t, "08:00:00", "13:00:01"),
@@ -2322,6 +2367,8 @@ class TestLedger(unittest.TestCase):
             self.assertEqual(state(deal, other)[t], (1, "live"), "someone else's line, another deal's, another task's, or a failure")
         again = self.deal(2, t, "14:00:00")
         self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01"), again), {t: (2, "live")}, "dealt again: a new holder")
+        self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01"), again, self.expired(1, t, "09:00:00", "15:00:00")),
+                         {t: (2, "live")})
         self.assertEqual(state(deal, self.expired(1, t, "09:00:00", "13:00:01"), again, self.end(1, t, "09:00:00", "15:00:00")),
                          {t: (2, "live")}, "and nothing about the former deal touches the new one")
         self.assertEqual(state(deal, self.deal(1, "toy-0002", "09:30:00")), {t: (1, "live"), "toy-0002": (1, "live")})
@@ -2333,18 +2380,12 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(self.standing(self.ledger(self.deal(1, t, "09:00:00")), "12:00:00"), (1, None, 1), "a deal that has not ended")
         accepted = [self.deal(1, t, "09:00:00"), self.end(1, t, "09:00:00", "10:00:00")]
         self.assertEqual(self.standing(self.ledger(*accepted), "12:00:00"), (0, None, 0), "an accepted deal is not counted in the day")
-        for reason in hive.ATTEMPT_REASONS:
-            self.assertEqual(self.standing(self.ledger(*bad("09:00:00", "10:00:00", reason)), "10:00:01")[:2], (2, None),
-                             f"{reason}: a real attempt costs no wait")
         for reason in hive.HIVE_SIDE_REASONS:
             self.assertEqual(self.standing(self.ledger(*bad("09:00:00", "10:00:00", reason)), "10:00:01")[:2], (1, None),
                              f"{reason}: not the member's doing, no cost at all")
             self.assertEqual(self.standing(self.ledger(*accepted, *bad("10:30:00", "11:00:00", reason)), "11:00:01")[0], 0)
-        self.assertEqual(sorted(set(hive.REASONS) - set(hive.ATTEMPT_REASONS) - set(hive.HIVE_SIDE_REASONS)),
-                         ["bad_path", "binary", "file_too_big", "judge_failed", "line_too_long", "mode_change", "path_outside_task",
-                          "protected_path", "push_refused", "special_file", "too_large", "too_many_commits", "too_many_files", "unrelated"],
-                         "every other refusal is the candidate's own doing")
-        for reason in ("path_outside_task", "judge_failed", "push_refused", "too_large"):
+        self.assertEqual(hive.HIVE_SIDE_REASONS, ("not_answered", "task_closed"))
+        for reason in sorted(set(hive.REASONS) - set(hive.HIVE_SIDE_REASONS)):  # one rule: no way to end a deal is cheaper than doing the task
             one = self.ledger(*bad("09:00:00", "10:00:00", reason))
             self.assertEqual([self.standing(one, clock)[:2] for clock in ("10:00:00", "11:59:59", "12:00:00")],
                              [(2, self.at("12:00:00")), (2, self.at("12:00:00")), (2, None)], f"{reason}: two hours")
@@ -2362,8 +2403,8 @@ class TestLedger(unittest.TestCase):
         reset = self.ledger(*bad("03:00:00", "04:00:00"), self.deal(1, t, "06:00:00"), self.end(1, t, "06:00:00", "07:00:00"),
                             *bad("09:00:00", "10:00:00"))
         self.assertEqual(self.standing(reset, "10:00:01")[:2], (2, self.at("12:00:00")), "an acceptance starts the count again")
-        kept = self.ledger(*bad("03:00:00", "04:00:00"), *bad("06:00:00", "07:00:00", "judge_refused"), *bad("09:00:00", "10:00:00"))
-        self.assertEqual(self.standing(kept, "10:00:01")[1], self.at("14:00:00"), "a refused attempt does not")
+        kept = self.ledger(*bad("03:00:00", "04:00:00"), *bad("06:00:00", "07:00:00", "not_answered"), *bad("09:00:00", "10:00:00"))
+        self.assertEqual(self.standing(kept, "10:00:01")[1], self.at("14:00:00"), "what the hive's side caused does not, and adds nothing")
         self.assertEqual(self.standing(two, "10:00:01", member=2), (1, None, 0), "someone else's deals are nothing here")
         days = self.ledger(self.deal(1, t, "23:59:59", "11"), self.deal(1, t, "00:00:00"), self.deal(1, "toy-0002", "09:00:00"),
                            self.deal(2, "toy-0004", "09:00:00"), self.deal(1, t, "00:00:00", "13"))

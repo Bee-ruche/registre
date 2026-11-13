@@ -88,8 +88,8 @@ Each run, after the forks were read, in this order:
    After that, if the member's fork was read whole in this run and holds no candidate for the task, the deal
    *expires*. If the fork could not be read, nothing is decided; a day later the task is freed at no cost to the
    member. A deal on a task the project closed meanwhile ends at once, at no cost either.
-2. **Candidates.** A submit is a candidate if its member holds the task and it names the deal. A member whose
-   deal expired **still holds the task until it is dealt to someone else**: late work is not lost.
+2. **Candidates.** A submit is a candidate if its member holds the task's live deal and it names that deal. An
+   expired deal is over: what its member pushes for it afterwards is not a candidate.
 3. **Askers.** Members with an ask at a branch tip, except those who hold a deal without a candidate, are waiting
    after a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was
    accepted, then those who never had one, then the others; within each group, a draw.
@@ -99,8 +99,7 @@ Each run, after the forks were read, in this order:
 
 **Tasks that may change the same file are never held by two members at once.** What a member pushes for its task
 is public; someone holding another task on the same file could put that work into its own candidate. So such a task
-is dealt only when the others are free, and a late candidate does not count while someone else holds one of them.
-A project whose tasks name separate files loses nothing; one whose tasks share a file does them one at a time.
+is dealt only when the others are free. A project whose tasks name separate files loses nothing; one whose tasks share a file does them one at a time.
 
 A member who pushes a candidate *and* an ask is dealt its next task **in the same run, once that candidate is
 answered**: a worker that runs every hour gets a task per run. If the answer costs it a wait, the ask stays for
@@ -111,13 +110,13 @@ What ends a deal, and what it costs its member:
 | The deal ends when | Cost to the member |
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
-| the judge refuses it (`judge_refused`, `goal_not_met`, `requirement_not_met`), or the project's tip moved under it: it no longer merges (`conflict`) or adds nothing (`empty`) | none: a real attempt |
-| it breaks a structural rule, makes the judge fail three times (`judge_failed`), or the project's repository declines it three times (`push_refused`) | a wait |
-| its time is up and the fork holds no candidate | a wait |
+| its candidate is refused, whatever the reason: by the judge, on a structural rule, because it does not merge or changes nothing, after three failures of the judge on it (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait |
+| its time is up and the fork holds no candidate | the same wait |
 | the hive could not answer it in six runs (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
-**The wait** is two hours, doubled at each deal in a row that ended with a cost, seven days at most; an acceptance
-starts the count again. A project also limits the deals an account is given in a day (5 by default), **not
+**One rule: a deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is
+cheaper than doing the task. The wait is two hours, doubled at each such deal in a row, seven days at most; an
+acceptance starts the count again. A project also limits the deals an account is given in a day (5 by default), **not
 counting those whose candidate was accepted**: the limit bounds what an account can take and waste, never what it
 can contribute.
 
@@ -134,7 +133,7 @@ it**: exactly what would land.
 | `unrelated`, `too_many_commits`, `conflict`, `empty` | the branch does not come from the project, is too long, does not merge on the tip, or changes nothing |
 | `path_outside_task` | a changed path is not one of the task's files (a hard rule, not a warning) |
 | `protected_path` | a changed path is protected, **at any depth of the tree**: CI and editor automation (`.github/`, `.vscode/`, `.devcontainer/`…), what steers git (`.gitattributes`, `.gitmodules`), **agent instruction files and folders** (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.cursor/`…), the hive's files (`hive/` at the root), and what the project adds (its tests, its judge) |
-| `special_file`, `mode_change` | a symbolic link or submodule, an empty folder (git never writes one: it was crafted), a changed file mode |
+| `special_file`, `mode_change` | a symbolic link or submodule, an empty folder or a folder that is not, byte for byte, the one git writes for its entries (written by hand: an entry twice, entries out of order), a changed file mode |
 | `bad_path` | a path that is not plain printable ASCII, or a **new** name that is not an identifier: letters, digits, `. _ + -`, 64 characters at most per part, not starting with a dot or a dash, not ending with a dot |
 | `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
 | `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe |
@@ -227,7 +226,8 @@ What makes them hold:
 - **One holder per task.** There is no order to decide among members, no instant to trust, and nothing a member
   can push that changes what another member's candidate is worth.
 - **A task is held for a bounded time.** Three hours and one of grace, by one account, which then waits twice as
-  long each time. A candidate that waits to be judged keeps its task: that is the hive's delay, not the member's.
+  long each time, however the deal ended short of an acceptance. A candidate that waits to be judged keeps its
+  task: that is the hive's delay, not the member's.
 - **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
   recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive
   could not derive it (`hive`), or the judging stopped while it was on it (`none`: the judging step says which
