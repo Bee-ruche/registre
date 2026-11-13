@@ -1511,8 +1511,13 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(events_of(kept, instant, run) + voids + unused)
     # A member whose candidate was answered in this run gets the task the plan had kept for it.
-    answered = ledger.seen()
-    kept_deals = [d for d in plan_["conditional"] if all(sha in answered for sha in d["after"])]
+    answered, kept_deals = ledger.seen(), []
+    for deal in plan_["conditional"]:
+        # Where the member stands NOW, with what this run answered: a candidate refused on a structural rule has
+        # just cost it a wait, and its ask stays for later.
+        _, wait, today = ledger.standing(deal["member_id"], now(), config)
+        if all(sha in answered for sha in deal["after"]) and not wait and today < config["members"]["deals_per_day"]:
+            kept_deals.append(deal)
     ledger.append(deal_lines(kept_deals, run, config))
     if kept_deals:
         ignored = read_ignored(state_folder)
@@ -1951,6 +1956,9 @@ def cmd_submit(args):
     marker_commit(lines)
     print(f"Marker commit created (submit {args.task}, member {login}). Push it to your own fork: "
           f"git push --force origin HEAD:refs/heads/{SUBMIT_BRANCH.format(task=args.task)}")
+    print("If this worker runs again within the next three hours, ask for its next task now as well (hive.py ready, then the "
+          "push it prints): the hive deals it as soon as this candidate is answered. If it will not run again, do not ask: "
+          "a task dealt and left costs you a wait.")
 
 
 def main(argv=None):

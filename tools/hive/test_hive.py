@@ -2032,6 +2032,18 @@ class TestDealing(Base):
         self.assertEqual(self.w.run(), [])
         self.assertEqual(len(self.lines("deal")), 1)
 
+    def test_a_candidate_that_costs_a_wait_gets_no_next_task_in_the_same_run(self):
+        self.hold(self.alice, "toy-0001")
+        self.alice.write("src/outside.c", "int x;\n").commit().marker("toy-0001").push()  # outside the task's files
+        ask = self.alice.ready()
+        self.assertEqual([d["member"] for d in self.w.plan()["conditional"]], ["alice"], "kept for after the judging")
+        self.assertEqual(self.one(self.w.run())["reason"], "path_outside_task")
+        self.assertEqual((self.lines("deal"), self.standing(self.alice)[:2]), ([], (2, "2026-11-12T14:00:00Z")))
+        self.assertNotIn(ask, hive.read_ignored(self.w.state).get("1101", []), "its ask is not used")
+        with self.at("14:00:00"):
+            self.w.run()
+            self.assertEqual([d["member"] for d in self.lines("deal")], ["alice"], "once the wait is over, it is")
+
     def test_a_refused_attempt_costs_no_wait_and_a_days_deals_are_counted(self):
         self.w.set_config({"members": {"deals_per_day": 3}})
         self.alice.ready()

@@ -566,8 +566,10 @@ class TestEndToEnd(test_hive.Base):
         bob.submit("toy-0004", content=test_hive.LIB + "/* REFUSE */\n")
         results = {result["login"]: result for result in self.w.run()}
         self.assertEqual((results["alice"]["result"], results["bob"]["result"], results["bob"]["reason"]), ("accepted", "refused", "judge_refused"))
-        hive.write_json(self.w.state / "feed.json", self.w.feed_file())
-        hive.write_json(self.w.state / "stats.json", hive.build_stats(hive.Ledger(self.w.state)))
+        carol = self.w.fork("carol", 103)
+        carol.ready()
+        self.w.run()  # carol is dealt one of the three tasks left; the feed and the statistics are the run's own files
+        dealt = self.w.deal(carol, self.w.dealt_by_runs()[0][0])
         out = self.w.root / "site"
         with contextlib.redirect_stdout(io.StringIO()):
             page.main(["--state", str(self.w.state), "--out", str(out), "--title", "A toy project", "--repo-url", "https://github.com/Bee-ruche/toy"])
@@ -582,8 +584,8 @@ class TestEndToEnd(test_hive.Base):
         self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
         self.assertEqual(seen.row("undeclared"), ["undeclared", "1", "0", "0 %"])
         self.assertEqual((data["project"], data["totals"]["integrations"], data["totals"]["judged"], data["stats_json"]), ("toy", 1, 2, "agrees"))
-        self.assertEqual({k: v for k, v in data["tasks"].items() if k not in ("dealt", "open")}, {"done": 1, "closed": 1, "total": 5})
-        self.assertEqual(data["tasks"]["dealt"] + data["tasks"]["open"], 3, "the others are open or dealt, as the hive wrote them")
+        self.assertEqual(data["tasks"], {"done": 1, "dealt": 1, "open": 2, "closed": 1, "total": 5})
+        self.assertEqual((dealt, data["measures"]["waiting"]), (test_hive.NOW, None), "carol's task is dealt; no candidate waits")
         self.assertEqual([(m["id"], m["login"], m["integrations"]) for m in data["members"]], [(101, "alice", 1)])
         self.assertEqual(data["measures"]["yield"], 0.5)
         self.assertEqual(sorted(path.name for path in (out / "members").iterdir()), ["101.svg"])
