@@ -37,7 +37,9 @@ import hive  # noqa: E402
 import test_hive as th  # noqa: E402
 
 POOL = 14
-TASKS = [{"id": f"pool-{i:04d}", "title": f"Fill p{i:02d}", "files": [f"pool/p{i:02d}.c"]} for i in range(POOL)]
+# Each task has a file of its own, but the last three, which share one: the hive deals those one at a time.
+TASKS = [{"id": f"pool-{i:04d}", "title": f"Fill p{i:02d}", "files": [f"pool/p{min(i, POOL - 3):02d}.c"]} for i in range(POOL)]
+FILE = {task["id"]: task["files"][0] for task in TASKS}
 START = dt.datetime(2026, 11, 12, 12, 0, 0, tzinfo=dt.timezone.utc)
 HOOK = ("#!/bin/sh\nwhile read old new ref; do\n  if git log -p \"$old..$new\" | grep -q 'AKIA[0-9A-Z]\\{16\\}'; then\n"
         "    echo 'push protection' >&2; exit 1\n  fi\ndone\nexit 0\n")
@@ -54,18 +56,28 @@ def pool_world(root, hook=False):
     return world
 
 
+def start(fork, branch):
+    """A new branch of the fork's clone, from the project's tip as it is now: where a worker starts its work."""
+    fork.branch = branch
+    th.sh("git", "fetch", "--quiet", str(fork.world.upstream), "main", cwd=fork.work)
+    th.sh("git", "checkout", "--quiet", "-B", branch, "FETCH_HEAD", cwd=fork.work)
+
+
 def feed_of(world):
     path = world.state / "feed.json"
     return json.loads(path.read_text()) if path.exists() else None
 
 
 def replay(test, events, per_day):
-    """R4 on the ledger alone: a task is dealt only when its previous deal is not live; an account is dealt a task
-    only when it holds no live deal; and never more deals in a day than allowed (those accepted left out)."""
+    """R4 on the ledger alone: a task is dealt only when its previous deal is not live, nor that of a task that shares
+    a file with it; an account is dealt a task only when it holds no live deal; and never more deals in a day than
+    allowed (those accepted left out)."""
     live, holder, day = {}, {}, {}
     for e in events:
         if e["type"] == "deal":
             test.assertNotIn(e["task"], live, f"R4: {e['task']} dealt while its deal to {live.get(e['task'])} is live")
+            shared = [task for task in live if task in FILE and FILE[task] == FILE.get(e["task"])]
+            test.assertEqual(shared, [], f"R4: {e['task']} dealt while {shared}, which may change the same file, is held")
             test.assertNotIn(e["member_id"], holder, f"R4: {e['member']} dealt {e['task']} while it holds {holder.get(e['member_id'])}")
             live[e["task"]], holder[e["member_id"]] = (e["member_id"], e["at"]), e["task"]
             day.setdefault((e["member_id"], e["at"][:10]), set()).add(e["at"])
@@ -109,8 +121,8 @@ class Schedule:
         token = f"t{len(self.tokens):03d}"
         self.branches += 1
         content = (f"int v; /* id:{copy_of} */\n" if copy_of else f"int v; /* id:{token} {body} */\n")
-        sha = fork.fresh(f"b{self.branches}").write(f"pool/p{int(task[-4:]):02d}.c", content).commit(f"work {token}") \
-            .marker(task, deal=deal).push()
+        start(fork, f"b{self.branches}")
+        sha = fork.write(FILE[task], content).commit(f"work {token}").marker(task, deal=deal).push()
         self.tokens[token] = {"sha": sha, "login": fork.login, "task": task, "kind": kind, "at": self.hour, "copy_of": copy_of,
                               "fork": fork, "branch": fork.branch, "deal": deal}
         return token
@@ -356,8 +368,8 @@ class Sim:
     def push(self, fork, task, token, body, deal=None):
         """A candidate of `fork` for `task`; by default for a deal the hive made to it an hour or so before."""
         self.count += 1
-        sha = fork.fresh(f"b{self.count}").write(f"pool/p{int(task[-4:]):02d}.c", f"int v; /* id:{token} {body} */\n") \
-            .commit(f"work {token}").marker(task, deal=deal).push()
+        start(fork, f"b{self.count}")
+        sha = fork.write(FILE[task], f"int v; /* id:{token} {body} */\n").commit(f"work {token}").marker(task, deal=deal).push()
         return sha, fork.branch
 
     def run(self, when, lost=False, applies=1):
