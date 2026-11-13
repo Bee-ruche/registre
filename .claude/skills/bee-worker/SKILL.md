@@ -31,7 +31,7 @@ If a permission is refused, do not work around it: stop.
 
 ```bash
 git clone --depth 1 https://github.com/Bee-ruche/registre ../registre
-git clone --depth 1 --branch hive-state https://github.com/Bee-ruche/registre ../hive-state
+git clone --depth 1 https://github.com/Bee-ruche/hive-state ../hive-state
 hive setup            # prints PROJECT, LOGIN and UPSTREAM; add --project <id> if it asks
 hive next --project <PROJECT> --state ../hive-state --login <LOGIN>
 ```

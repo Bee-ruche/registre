@@ -760,7 +760,7 @@ def write(out, files):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="The public page of one hive project, from its state folder.")
-    parser.add_argument("--state", required=True, help="the project's folder of the state branch (ledger.jsonl, feed.json, stats.json)")
+    parser.add_argument("--state", required=True, help="the project's folder of the state repository (ledger.jsonl, feed.json, stats.json)")
     parser.add_argument("--out", required=True, help="where index.html, badge.svg, summary.json, members/ and wins/ are written")
     parser.add_argument("--title", default="", help="one line saying what the project is, shown under its name")
     parser.add_argument("--repo-url", help="https://github.com/owner/name: integrations then link to their commit")

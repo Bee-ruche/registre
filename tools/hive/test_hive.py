@@ -490,6 +490,32 @@ class TestIntegration(Base):
         with fails_on(lambda candidate: True):  # the hive's machine is down: it cannot derive the project's own tip either
             self.assertEqual([o["result"] for o in self.w.run()], ["skipped", "skipped"])
             self.assertEqual(self.w.events(), [], "nobody is marked for the breakdown")
+        real_git = hive.git
+
+        def cannot_write(repo, *args, **options):  # a full disk: the merge is computed, and no commit can be written
+            if args[0] == "commit-tree":
+                raise hive.HiveError("git commit-tree failed (1): error: unable to create temporary file")
+            return real_git(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=cannot_write):
+            self.assertEqual([o["result"] for o in self.w.run()], ["skipped", "skipped"])
+            self.assertEqual(self.w.events(), [], "a store the hive cannot write is the hive's trouble, not a candidate's")
+
+        def slow(repo, tip, candidate, limits):
+            if candidate == odd:
+                raise hive.HiveError("git merge-tree: timeout after 300 s")
+            return real(repo, tip, candidate, limits)
+
+        with mock.patch.object(hive, "merge_tree", side_effect=slow):
+            for _ in range(hive.JUDGE_ATTEMPTS + 1):
+                self.w.plan()
+                self.w.record()
+                outcomes, _ = self.w.apply({}, started=[])  # (nothing is judged: the other candidate stays for the next part)
+                self.assertEqual([(o["result"], o.get("kind"), o.get("unproven")) for o in outcomes if o["sha"] == odd], [("error", "hive", True)])
+        self.assertEqual({(e["type"], e["kind"], e.get("unproven")) for e in self.w.events()}, {("error", "hive", True)},
+                         "a slow machine proves nothing against a candidate: four such runs, and no refusal")
+        self.w.state.joinpath("ledger.jsonl").write_text("".join(
+            line + "\n" for line in self.w.state.joinpath("ledger.jsonl").read_text().splitlines() if '"error"' not in line))
         with fails_on(lambda candidate: candidate == odd):  # it fails on this candidate alone
             seen = []
             for _ in range(hive.JUDGE_ATTEMPTS):
@@ -685,6 +711,19 @@ class TestStructure(Base):
         self.alice.write("src/z.c", "int z;\n").commit().marker("toy-0002").push()
         self.assertEqual(self.one(self.w.run())["result"], "accepted", "the same change, as git writes it, is fine")
 
+    def test_a_candidate_with_too_long_a_history_is_not_carried_to_the_other_steps(self):
+        for i in range(8):
+            self.alice.write("src/n.c", f"int n{i};\n").commit(f"step {i}")
+        long = self.alice.marker("toy-0002").push()
+        fine = self.w.fork("bob", 102).submit("toy-0001")
+        made = self.w.plan()
+        self.assertEqual({c["sha"]: c["long"] for c in made["queue"]}, {long: True, fine: False})
+        listed = sh("git", "bundle", "list-heads", str(self.w.bundle), cwd=self.w.harvest).stdout
+        self.assertEqual((fine in listed, long in listed), (True, False), "its history stays in the plan's clone")
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {long: "too_many_commits", fine: "accepted"})
+
     def test_a_long_history_is_counted_no_further_than_the_limit(self):
         for i in range(8):
             self.alice.write("src/n.c", f"int n{i};\n").commit(f"step {i}")
@@ -716,6 +755,17 @@ class TestStructure(Base):
         self.assertEqual([e["type"] for e in self.w.events()], ["verdict"], "answered, not marked")
         config, _, ledger = self.w.load()
         self.assertIsNotNone(ledger.standing(101, hive.now(), config)[1], "with its cost")
+
+    def test_a_file_of_the_project_whose_name_is_not_utf8_does_not_make_its_folder_look_hand_written(self):
+        name = b"caf\xe9.txt"  # a name git allows, written long ago by the project itself
+        with open(os.path.join(os.fsencode(str(self.w.seed)), b"src", name), "wb") as f:
+            f.write(b"x\n")
+        sh("git", "add", "-A", cwd=self.w.seed)
+        sh("git", "commit", "--quiet", "-m", "an old name", cwd=self.w.seed)
+        sh("git", "push", "--quiet", "origin", "main", cwd=self.w.seed)
+        sh("git", "pull", "--quiet", str(self.w.upstream), "main", cwd=self.alice.work)
+        self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
     def test_a_folder_that_lists_one_name_twice_is_refused(self):
         """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
@@ -1131,17 +1181,20 @@ class TestApply(Base):
         self.nothing_integrated()
         self.assertEqual(self.w.events(), [])
 
-    def test_both_steps_live_at_the_plans_instant(self):
-        """The write step may run on another day than the plan: what it records about candidates is dated at one instant."""
+    def test_what_the_write_step_records_is_dated_when_it_records_it(self):
+        """A wait counts from the moment its member can see the answer, however long the judging took."""
         world, night = World(tempfile.mkdtemp(dir=self.tmp.name)), "2026-11-12T23:50:00Z"
         alice = world.fork("alice", 101)
         with mock.patch.dict(os.environ, {"HIVE_NOW": night}):
-            alice.submit("toy-0001")
+            alice.submit("toy-0001", content=LIB + "/* REFUSE */\n")
+            alice.ready()
             _, verdicts, _ = world.sweep()
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T00:20:00Z"}):
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T02:20:00Z"}):  # the judging took two and a half hours
             outcomes, _ = world.apply(verdicts)
-        self.assertEqual([o["result"] for o in outcomes], ["accepted"])
-        self.assertEqual([e["at"] for e in world.events()], [night])
+            config, _, ledger = world.load()
+            self.assertEqual(([o["reason"] for o in outcomes], [e["at"] for e in world.events()]), (["judge_refused"], ["2026-11-13T02:20:00Z"]))
+            self.assertEqual(ledger.standing(101, hive.now(), config)[1], "2026-11-13T04:20:00Z")
+            self.assertEqual(world.dealt_by_runs(), [], "no next task in this run: the wait starts now, not at the plan")
 
     def test_the_projects_tip_moved(self):
         self.w.upstream_commit("src/a.c", "int moved;\n")

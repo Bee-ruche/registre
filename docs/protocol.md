@@ -237,8 +237,9 @@ What makes them hold:
   and nothing more is judged in the run once one of them is accepted.
 - **Marks end in an answer**, and are counted for the deal, not for the commit. Three marks that are the
   candidate's own doing, and it is refused, with its cost: the judge failed on it while its machine works, the
-  hive could not derive it while it derives the project's own tip, or the project's repository declined it right
-  after another push of the same run landed. Six runs without an answer for any other cause (the judging stopped
+  hive could not derive it while it can still do all of that for the project's own tip (a failure that is only
+  slowness is never counted), or the project's repository declined it right after another push of the same run
+  landed. Six runs without an answer for any other cause (the judging stopped
   while on it; the project declines every push), and the deal is closed at no cost to its member. Taking a
   candidate away before its third failure and putting another in its place starts nothing afresh. And a candidate
   that git itself cannot read as it is written is refused at once.
@@ -274,7 +275,8 @@ with it the tasks that share a file with that one.
   otherwise the hive's own right to push is as likely the cause (a rule added, a token that lost its rights), and
   the candidate only loses its place.
 - **A deal's time starts when it is published**, not when it was planned: the `record` job writes it, with the
-  feed, before anything is judged.
+  feed, before anything is judged. In the same way, a verdict is dated when the write job records it: a wait
+  counts from the moment its member can see the answer, however long the judging took.
 - A job run twice records nothing twice.
 
 Strings that come from a fork (ref names, commit messages, paths) never reach a shell, a workflow expression or
@@ -282,7 +284,7 @@ the ledger.
 
 ## The ledger and the feed
 
-On the registry's `hive-state` branch, one folder per project:
+In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
 
 - `ledger.jsonl`: append-only, one JSON object per line: `deal`, `expired`, `verdict`, `error` (a mark, with its
   kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`; each carries the key of
@@ -322,7 +324,7 @@ hour and the fork's own number, which adding forks to the list does not shift.
 ## What this version does not do yet
 
 - Run in service: the workflow (four jobs; the plan's SHA-256 as a job output; the right to write the project in
-  `apply` alone, the right to write the state in `record` and `apply`), the state branch and the first project's
+  `apply` alone, the right to write the state in `record` and `apply`), the state repository and the first project's
   files are phase 1.
 - Deal more often than it judges (a light run of `plan` and `record` between two full runs), so that a worker
   waits minutes, not up to an hour, for its first task.

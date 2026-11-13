@@ -14,9 +14,9 @@ task is to keep them apart:
 | Job | Runs | May read | May write | Never |
 | --- | --- | --- | --- | --- |
 | `plan` | `hive.py plan` | the registry, the project, the forks (public) | nothing: it uploads `plan.json` and the bundle, and publishes the plan's SHA-256 as a job output | holds a secret; runs code from a fork |
-| `record` | `hive.py record` | the registry, the plan | the registry's `hive-state` branch | reads a fork; runs anyone's code; holds the project's token |
+| `record` | `hive.py record` | the registry, the plan | the state repository (`Bee-ruche/hive-state`) | reads a fork; runs anyone's code; holds the project's token |
 | `judge` | `hive.py judge` | the registry, the project, the plan and the bundle | nothing: it uploads `verdicts.json` | holds a secret; talks to a fork; has the network while a candidate's code runs |
-| `apply` | `hive.py apply` | the registry, the project, the plan, the bundle, the verdicts | the project's branch (integration identity) and `hive-state` | reads a fork; runs anyone's code |
+| `apply` | `hive.py apply` | the registry, the project, the plan, the bundle, the verdicts | the project's branch (integration identity) and the state repository | reads a fork; runs anyone's code |
 
 Three things carry it:
 
@@ -29,9 +29,10 @@ Three things carry it:
 
 ## The settings only the founder can make
 
-1. **`hive-state`**: an empty orphan branch of the registry, or better a repository of its own
-   (`Bee-ruche/hive-state`): then the jobs that write the state hold no right on the registry at all. With a branch
-   of the registry, `main` must be protected so that the workflow's token cannot push to it.
+1. **The state repository**: `Bee-ruche/hive-state`, empty and public (the founder's choice: a repository of its
+   own, so that the jobs that write the state hold no right on the registry at all). A token that can write to it
+   and to nothing else goes in an environment secret (`HIVE_STATE_TOKEN`) of an environment (`hive-state`) that
+   only the `record` and `apply` jobs use.
 2. **The integration identity**: a GitHub App installed on the hosted projects only, with "Contents: read and
    write" and nothing else; or a fine-grained token with the same reach. Its token goes in an environment secret
    (`HIVE_PROJECT_TOKEN`) of an environment (`hive-apply`) that only this workflow's `apply` job uses.
@@ -69,7 +70,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: state, ref: hive-state, persist-credentials: false }
+        with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project, in full (its branches under refs/remotes/origin)
         run: git clone --quiet https://github.com/Bee-ruche/minizBee project
       - name: Plan (reads the forks, once; no secret but the read-only token gh needs to list forks)
@@ -87,13 +88,14 @@ jobs:
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    environment: hive-state          # the only place the state's token can be read, with `apply`'s
     permissions:
-      contents: write                # the registry's hive-state branch (main is protected)
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: state, ref: hive-state }
+        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ secrets.HIVE_STATE_TOKEN }}" }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: plan }
       - name: Record the deals and publish the feed
@@ -113,7 +115,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: state, ref: hive-state, persist-credentials: false }
+        with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project
         run: git clone --quiet https://github.com/Bee-ruche/minizBee project
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -135,14 +137,14 @@ jobs:
     if: always() && needs.plan.result == 'success'   # even when the judging failed: what it left is used
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: hive-apply          # the only place the project's token can be read
+    environment: hive-apply          # the only place the project's token can be read (it also holds the state's)
     permissions:
-      contents: write                # the registry's hive-state branch
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: state, ref: hive-state }
+        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ secrets.HIVE_STATE_TOKEN }}" }
       - name: The project
         run: git clone --quiet https://github.com/Bee-ruche/minizBee project
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -169,8 +171,9 @@ Notes on the draft:
   passed through `env:`.
 - `plan` prints `plan_sha256=…` on its standard output and its figures on its error output: the first goes to
   `$GITHUB_OUTPUT`.
-- `record` and `apply` check out `hive-state` with the workflow's own token, which `hive.py --commit-state`
-  uses to push the state. `plan` and `judge` check it out without credentials.
+- `record` and `apply` check out the state repository with the state's token, which `hive.py --commit-state`
+  uses to push the state. `plan` and `judge` check it out without credentials. No job has a right to write to
+  the registry.
 - The page (`tools/hive/page.py`) is one more job after `apply`, without any right but to publish: it is not in
   this draft.
 - A second, lighter workflow that runs `plan` and `record` only, every ten minutes, would deal tasks sooner
@@ -178,7 +181,7 @@ Notes on the draft:
 
 ## What could not be tried here
 
-- The whole run: there is no Docker in the builder's environment, no integration identity, no `hive-state`.
+- The whole run: there is no Docker in the builder's environment, no integration identity, no state repository.
 - That `gh api` lists a public repository's forks with the workflow's read-only token (it should: the data is
   public).
 - That the common judge builds its image from a clone of the project (`--tooling project --image-only`) outside

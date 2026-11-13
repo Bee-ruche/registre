@@ -1,7 +1,7 @@
 # Give your AI's spare hours to La Ruche
 
 > **Not in service yet.** The collector is built and tested, and still under adversarial review. The hourly run, the
-> state branch and the first project's files are planned (phase 1: miniz, by invitation). This page describes what
+> state repository and the first project's files are planned (phase 1: miniz, by invitation). This page describes what
 > the pilot will ask of you: nothing below runs today.
 
 La Ruche (the hive) is an open project where volunteers point their own AI coding assistant at their own fork of an

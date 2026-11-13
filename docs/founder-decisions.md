@@ -170,5 +170,5 @@ integration identity, access to the two forks, and phase 1's three volunteers (D
 before these, and the builder does none of them.
 
 The integration identity is two rights, kept apart: the right to write a project's branch, given to the `apply` job
-alone; and the right to write the registry's `hive-state` branch, given to the `record` and `apply` jobs. The `plan`
+alone; and the right to write the hive's state, a repository of its own (`Bee-ruche/hive-state`, the founder's choice of 13 November: the jobs that write the state then hold no right on the registry), given to the `record` and `apply` jobs. The `plan`
 and `judge` jobs hold nothing.

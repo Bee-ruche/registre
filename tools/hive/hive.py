@@ -200,7 +200,7 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
 
 
 def git_capped(repo, *args, limit, timeout=300):
-    """The output of a git command that lists one object of a candidate, or None if it is longer than `limit` bytes:
+    """The output (bytes) of a git command that lists one object of a candidate, or None if it is longer than `limit` bytes:
     the command is stopped there, so that what the hive reads does not grow with what a fork sends."""
     try:
         process = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -224,7 +224,7 @@ def git_capped(repo, *args, limit, timeout=300):
         return None
     if code != 0:
         raise HiveError(f"git {args[0]} failed ({code})")
-    return data.decode("utf-8", errors="replace")
+    return data
 
 
 def is_sha(value):
@@ -695,7 +695,8 @@ def folder_entries(repo, tree, theirs=False):
         if listed is None:
             raise Refusal("too_many_files")
         entries = {}
-        for record in listed.split("\0"):
+        # Names are bytes for git: one that is not UTF-8 is kept (as an escape) and never rewritten.
+        for record in listed.decode("utf-8", errors="surrogateescape").split("\0"):
             if record:
                 meta, _, name = record.partition("\t")
                 mode, _, sha = meta.split(" ")
@@ -713,8 +714,12 @@ def canonical(repo, tree, listed):
     """True if the folder is, byte for byte, the one git writes for these entries. A folder written by hand (entries
     out of order, modes spelt another way) can list the same entries under another id: tools then disagree about
     what it holds, and it would enter the project's history as it is."""
-    written = git(repo, "mktree", "--missing", "-z", stdin=listed, check=False)  # git refuses entries that lie about their kind
-    return written.returncode == 0 and written.stdout.strip() == tree
+    try:  # the listing goes back to git as the bytes git gave; git refuses entries that lie about their kind
+        written = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "mktree", "--missing", "-z"], input=listed, capture_output=True,
+                                 timeout=120, env={**os.environ, **GIT_ISOLATED})
+    except subprocess.TimeoutExpired as e:
+        raise HiveError("git mktree: timeout after 120 s") from e
+    return written.returncode == 0 and written.stdout.decode("ascii", errors="replace").strip() == tree
 
 
 def changed_entries(repo, old_tree, new_tree, most):
@@ -728,7 +733,7 @@ def changed_entries(repo, old_tree, new_tree, most):
     while stack:
         prefix, old, new = stack.pop()
         before = folder_entries(repo, old)[0] if old else {}
-        after, listed = folder_entries(repo, new, theirs=True) if new else ({}, "")
+        after, listed = folder_entries(repo, new, theirs=True) if new else ({}, b"")
         if new and not canonical(repo, new, listed):
             raise Refusal("special_file")
         inner = []
@@ -1196,6 +1201,11 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     # failed on (one that breaks the judging delays the others once).
     queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
+    for candidate in queue:
+        # Its commits that are not the project's, counted no further than the limit: one with too many is refused
+        # without its history being carried to the other steps.
+        count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}")
+        candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
     waiting = {(c["member_id"], c["task"]) for c in queue}
 
     # 3. askers
@@ -1246,7 +1256,7 @@ def member_mark(login):
 def write_bundle(repo, plan_, path):
     """The candidates' objects in one file, for the steps that never talk to a fork; records its SHA-256 in the plan.
     No file when there is no candidate."""
-    shas = [candidate["sha"] for candidate in plan_["queue"]]
+    shas = [candidate["sha"] for candidate in plan_["queue"] if not candidate["long"]]
     if not shas:
         return
     refs = []
@@ -1263,12 +1273,13 @@ def write_bundle(repo, plan_, path):
 
 def read_bundle(repo, plan_, path):
     """Brings the plan's candidates into this clone from the plan's own file, checked against the plan."""
-    if not plan_["queue"]:
+    carried = [candidate for candidate in plan_["queue"] if not candidate["long"]]
+    if not carried:
         return
     if not plan_["bundle_sha256"] or file_sha256(path) != plan_["bundle_sha256"]:
         raise HiveError("the bundle is not the plan's")
     git(repo, "bundle", "unbundle", str(path), timeout=900)
-    for candidate in plan_["queue"]:
+    for candidate in carried:
         if git(repo, "cat-file", "-e", f"{need_sha(candidate['sha'])}^{{commit}}", check=False).returncode != 0:
             raise HiveError("the bundle lacks one of the plan's candidates")
 
@@ -1292,7 +1303,7 @@ def read_plan(plan_, config):
     def candidate_ok(c):
         return (member_ok(c) and is_sha(c.get("sha")) and isinstance(c.get("login"), str) and LOGIN.match(c["login"])
                 and (c.get("model") is None or c["model"] in config["models"]) and stamp(c.get("deal"))
-                and type(c.get("declined")) is bool)
+                and type(c.get("declined")) is bool and type(c.get("long")) is bool)
 
     def deal_ok(c):
         return (member_ok(c) and isinstance(c.get("member"), str) and bool(LOGIN.match(c["member"]))
@@ -1413,11 +1424,13 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             # could not derive it while it derives the project's own tip, the project declined it right after another
             # push landed. The others (the judging stopped while on it; a push declined when nothing else landed)
             # may be the hive's own trouble: they never lead to a refusal.
-            strikes = [kind for kind, unproven in marks if kind in ("judge", "hive") or (kind == "push" and not unproven)]
+            strikes = [kind for kind, unproven in marks if kind in ("judge", "hive", "push") and not unproven]
             if len(strikes) >= JUDGE_ATTEMPTS:
                 raise Refusal("push_refused" if "push" in strikes else "judge_failed")
             if len(marks) >= UNANSWERED_RUNS:
                 raise Refusal("not_answered")
+            if entry["long"]:  # the plan counted its commits: its objects were not carried to this step
+                raise Refusal("too_many_commits", {"commits": config["limits"]["commits"] + 1})
             if halt or broken or judged >= budget:
                 continue  # not tried in this run; oldest deal first: it is first at the next
             tree, figures, commit = derive(repo, tip, entry, task, config)
@@ -1451,7 +1464,9 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             log(f"{entry['sha'][:12]}: {error}")
             # A failure to derive is the candidate's doing only if the hive's machine works: it is asked to derive the
             # project's own tip. If it cannot, nobody is marked for the breakdown and nothing more is tried.
-            if derives(repo, tip, config):
+            if "timeout" in str(error):
+                outcome.update(result="error", kind="hive", unproven=True)  # a slow machine proves nothing about a candidate
+            elif derives(repo, tip, config):
                 outcome.update(result="error", kind="hive")
             else:
                 log("the hive cannot derive the project's own tip: its machine is down, nothing more is tried in this run")
@@ -1460,9 +1475,19 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
 
 
 def derives(repo, tip, config):
-    """True if the hive, here and now, can do for the project's own tip what it does for a candidate."""
+    """True if the hive, here and now, can do for the project's own tip what it does for a candidate: write objects,
+    list a change, merge it and build the commit. Asked when deriving a candidate failed: if this fails too, the
+    hive's machine is the cause (a disk that is full, a store it cannot write)."""
     try:
-        return merge_tree(repo, tip, tip, config["limits"]) == tree_of(repo, tip)
+        blob = git(repo, "hash-object", "-w", "--stdin", stdin=f"probe {tip}\n").stdout.strip()
+        listing = git(repo, "ls-tree", "-z", need_sha(tip)).stdout
+        tree = git(repo, "mktree", "-z", stdin=listing + f"100644 blob {blob}\thive-probe\0").stdout.strip()
+        identity = {"GIT_AUTHOR_NAME": ROBOT[0], "GIT_AUTHOR_EMAIL": ROBOT[1], "GIT_COMMITTER_NAME": ROBOT[0],
+                    "GIT_COMMITTER_EMAIL": ROBOT[1]}
+        probe = git(repo, "commit-tree", tree, "-p", need_sha(tip), stdin="probe\n", env=identity).stdout.strip()
+        merged = merge_tree(repo, tip, probe, config["limits"])
+        squash_commit(repo, merged, tip, {"id": "probe-0000", "title": "probe"}, {"login": "hive", "id": 0}, probe)
+        return merged == tree
     except (HiveError, Refusal):
         return False
 
@@ -1629,10 +1654,10 @@ def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
     and publishes the feed. It
     holds the state's write token only, runs nobody's code and talks to no fork. Members see their deal within
     minutes of the run's start, not after the judging. Run again, it writes nothing twice."""
-    instant, plan_ = read_plan(plan_, config)
+    _, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is recorded")
-    key = plan_["key"]
+    key, instant = plan_["key"], now()  # what this step writes is dated now, when it becomes visible
     # First, the pushes earlier runs promised that the plan found IN the project's history: so that the ledger never
     # shows a member with a task it has in fact finished next to the one it is dealt now. A promise the plan did not
     # find there is left open: its push may land after the plan was made, and only the write step, which checks that
@@ -1658,10 +1683,12 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     itself declines is a failure of its candidate's, as when the judge fails on it. A push the hive cannot tell
     the fate of keeps its promise open: the next run looks. Returns (outcomes recorded, tip reached); raises
     HiveError, after recording, if a push did not land."""
-    instant, plan_ = read_plan(plan_, config)
+    _, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is applied")
-    tip = plan_["tip"]
+    # What this step writes is dated now, when it is written: a wait counts from the moment its member can see the
+    # answer, however long the judging took.
+    tip, instant = plan_["tip"], now()
     current = git(repo, "ls-remote", remote, f"refs/heads/{config['branch']}", timeout=60,
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
     if current != tip:
@@ -1716,7 +1743,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     for deal in plan_["conditional"]:
         # Where the member stands NOW, with what this run answered: a candidate refused on a structural rule has
         # just cost it a wait, and its ask stays for later.
-        _, wait, today = ledger.standing(deal["member_id"], now(), config)
+        _, wait, today = ledger.standing(deal["member_id"], instant, config)
         if all(sha in answered for sha in deal["after"]) and not wait and today < config["members"]["deals_per_day"]:
             kept_deals.append(deal)
     ledger.append(deal_lines(kept_deals, run, config))
@@ -1950,7 +1977,7 @@ def cmd_judge(args):
 
 
 def save_state(state_root, project, instant):
-    """Commits and pushes the project's folder of the state branch (the ledger, the feed): the hive's memory."""
+    """Commits and pushes the project's folder of the state repository (the ledger, the feed): the hive's memory."""
     git(state_root, "add", "--all", "--", project)
     if git(state_root, "diff", "--cached", "--quiet", "--", project, check=False).returncode == 0:
         return
@@ -2169,7 +2196,7 @@ def main(argv=None):
     def hive_side(p):
         p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]), help="the registry's tree (trusted)")
         p.add_argument("--project", required=True)
-        p.add_argument("--state", required=True, help="the state folder (the registry's hive-state branch)")
+        p.add_argument("--state", required=True, help="the state folder (a clone of the hive's state repository)")
 
     def from_plan(p):
         p.add_argument("--plan", required=True)
