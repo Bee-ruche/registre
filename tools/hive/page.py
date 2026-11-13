@@ -3,6 +3,7 @@
 
     python3 tools/hive/page.py --state <state folder of one project> --out <folder>
                                [--title "..."] [--repo-url https://github.com/owner/name]
+                               [--tasks <the registry's hive/tasks/<project>.jsonl>]
                                [--join | --join-url https://github.com/...] [--now 2026-11-13T00:00:00Z]
 
 It reads ledger.jsonl, feed.json and stats.json and writes static files that a GitHub Pages site or a README can
@@ -12,7 +13,8 @@ accepted, and how many dealt candidates wait for the judge (from the feed's deal
   index.html              one page: progress, this week, members, models, integrations, refusals, measures
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
   wins/<commit>.svg       a card for each of the latest integrations, named by the integrated commit's 40-hex id: the
-                          task, the member, the date and the judge's headline figure, if its report has a sure one
+                          task, the member, the date and one figure the judge measured: the one the task asked for
+                          when --tasks says which and the report holds it, else the largest gain beyond the noise
   badge.svg               the project's badge
   summary.json            the same figures, for other tools
 
@@ -66,6 +68,8 @@ MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30
 WINS_MAX = 200  # win cards written: the most recent integrations
 MEMBER_CARDS_MAX = 2000  # member cards written: the members with the most integrations
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
+MEASURES_MAX = 40  # rows of « what the judge measured » kept for one integration
+COUNT_MAX = 10 ** 16 - 1  # a count in a report (outputs compared, files, lines): sixteen digits, as the hive reads them
 
 
 class PageError(Exception):
@@ -141,6 +145,96 @@ def headline(report):
     return None if best is None else {"metric": best[0], "gain": best[1]}
 
 
+def shows(gain):
+    """True for a gain that is one and would not print as 0.0 %: above zero, at most GAIN_MAX."""
+    return 0 < gain <= GAIN_MAX and round(100 * gain, 1) > 0
+
+
+def whole(value):
+    """A count: a whole number from 0 to COUNT_MAX, never a boolean, a float or a string of digits; else None."""
+    return value if type(value) is int and 0 <= value <= COUNT_MAX else None
+
+
+def flag(value):
+    """A report's yes or no: 1 or 0 when the value is that number (not a boolean, not a string), else None."""
+    return int(value) if type(value) in (int, float) and value in (0, 1) else None
+
+
+def read_report(report, goal=None):
+    """What the page keeps of an accepted verdict's report; every value is a number checked here, every name an
+    identifier, and nothing else of the report goes further.
+
+      headline   headline(report): the largest gain whose sure_ flag is 1
+      measures   a row {"metric", "gain", "sure", "worse", "goal"} for each gain_<metric> that is a finite number
+                 between -GAIN_MAX and GAIN_MAX; sure and worse are the report's sure_<metric> and worse_<metric>
+                 (1, 0, or None when the report has no such number); goal marks the task's own figure. The goal's row
+                 comes first, then the rows beyond the noise, then the others; at most MEASURES_MAX are kept
+      figure     the figure a card leads with, {"metric", "gain", "goal"}: the task's own (`goal`, the <metric> its
+                 goal names) when the report holds it, it shows above 0.0 %, it is not marked worse, and its sure_
+                 flag is 1 or the report keeps none for it (a project lists the flags it keeps: miniz keeps none for
+                 its instruction counts); otherwise the headline, with goal False; None when there is neither
+      outputs    outputs_compared when it is a whole number above zero; suspects, when it is a whole number
+    """
+    report = report if isinstance(report, dict) else {}
+    best, rows = headline(report), []
+    for key, value in report.items():
+        if not isinstance(key, str) or not key.startswith("gain_") or not matching(key[5:], METRIC):
+            continue
+        if type(value) not in (int, float) or (type(value) is float and not math.isfinite(value)) or not -GAIN_MAX <= value <= GAIN_MAX:
+            continue
+        rows.append({"metric": key[5:], "gain": round(float(value), 6), "sure": flag(report.get("sure_" + key[5:])),
+                     "worse": flag(report.get("worse_" + key[5:])), "goal": goal is not None and key[5:] == goal})
+    rows.sort(key=lambda row: (not row["goal"], row["sure"] != 1 and row["worse"] != 1, -row["gain"], row["metric"]))
+    asked = rows[0] if rows and rows[0]["goal"] else None
+    if asked is not None and shows(asked["gain"]) and asked["worse"] != 1 and (asked["sure"] == 1 or "sure_" + asked["metric"] not in report):
+        figure = {"metric": asked["metric"], "gain": asked["gain"], "goal": True}
+    else:
+        figure = None if best is None else {**best, "goal": False}
+    return {"headline": best, "figure": figure, "measures": rows[:MEASURES_MAX], "measures_left_out": max(0, len(rows) - MEASURES_MAX),
+            "outputs": whole(report.get("outputs_compared")) or None, "suspects": whole(report.get("suspects"))}
+
+
+def read_changed(figures):
+    """{"files": n, "lines": n} from a verdict's figures (what the hive counted of the change), or None."""
+    if not isinstance(figures, dict) or whole(figures.get("files")) is None or whole(figures.get("lines")) is None:
+        return None
+    return {"files": figures["files"], "lines": figures["lines"]}
+
+
+def goal_metric(task):
+    """The <metric> of the figure gain_<metric> that a task's goal asks for, or None: a goal of another kind (« correct »,
+    the default), on a figure that is not a gain, or under a name that is not an identifier gives no figure to lead with."""
+    goal = task.get("goal")
+    name = goal.get("name") if isinstance(goal, dict) and isinstance(goal.get("kind"), str) and goal["kind"] == "metric" else None
+    return matching(name[5:], METRIC) if isinstance(name, str) and name.startswith("gain_") else None
+
+
+def read_goals(path):
+    """{task id: metric} from the registry's task file of the project (hive/tasks/<project>.jsonl), for the tasks
+    whose goal is a gain (goal_metric). It is the hive's own file, trusted as the feed is, and read with the same care:
+    a line that is not a task says nothing, a task listed twice is read once, and only an identifier is kept of it.
+    The feed does not carry a task's goal; without this file a card leads with headline()'s figure. Raises PageError
+    when the file cannot be read at all: it was named on the command line."""
+    goals, seen = {}, set()
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    task = json.loads(line) if line.strip() and len(line) <= LINE_MAX else None
+                except (ValueError, RecursionError):
+                    task = None
+                identifier = matching(task.get("id"), TASK_ID, TASK_ID_MAX) if isinstance(task, dict) else None
+                if identifier is None or identifier in seen:
+                    continue
+                seen.add(identifier)
+                metric = goal_metric(task)
+                if metric is not None:
+                    goals[identifier] = metric
+    except OSError:
+        raise PageError("--tasks: the project's task file in the registry (hive/tasks/<project>.jsonl)") from None
+    return goals
+
+
 def read_json(folder, name):
     """A state file's content, or None when it is absent or unreadable: the page says less, and is still made."""
     try:
@@ -177,9 +271,10 @@ def read_ledger(folder):
     return objects, skipped
 
 
-def clean_event(raw):
+def clean_event(raw, goals=None):
     """One ledger line as the page uses it, every field checked again, or None if the line says nothing usable.
-    A field that does not match its pattern becomes None (shown as « unknown », never linked)."""
+    A field that does not match its pattern becomes None (shown as « unknown », never linked). `goals` is
+    read_goals()'s: the figure each task asked for, when the page was told."""
     kind, at = raw.get("type"), instant_of(raw.get("at"))
     if not isinstance(kind, str) or at is None:
         return None
@@ -190,12 +285,12 @@ def clean_event(raw):
         result = raw.get("result")
         if not isinstance(result, str) or result not in ("accepted", "refused"):
             return None
-        reason = raw.get("reason")
-        event.update(accepted=result == "accepted", judged=raw.get("judged") is True,
-                     task=matching(raw.get("task"), TASK_ID, TASK_ID_MAX), model=matching(raw.get("model"), MODEL),
-                     commit=matching(raw.get("commit"), SHA),
-                     headline=headline(raw.get("report")) if result == "accepted" else None,
+        reason, task = raw.get("reason"), matching(raw.get("task"), TASK_ID, TASK_ID_MAX)
+        event.update(accepted=result == "accepted", judged=raw.get("judged") is True, task=task, model=matching(raw.get("model"), MODEL),
+                     commit=matching(raw.get("commit"), SHA), headline=None,
                      reason=reason if isinstance(reason, str) and reason in hive.REASONS else None)
+        if result == "accepted":
+            event.update(read_report(raw.get("report"), (goals or {}).get(task)), changed=read_changed(raw.get("figures")))
     return event
 
 
@@ -245,11 +340,13 @@ def rate(part, whole):
     return round(part / whole, 4) if whole else None
 
 
-def collect(state, now):
+def collect(state, now, tasks=None):
     """Everything the page shows, as plain data (it is also summary.json). Members are counted by account id and
-    named by the login of their latest event; only members with an integration are named at all."""
+    named by the login of their latest event; only members with an integration are named at all. `tasks` is the path
+    of the registry's task file of the project, or None: it says which figure each task asked for (read_goals)."""
+    goals = read_goals(tasks) if tasks is not None else {}
     objects, skipped = read_ledger(state)
-    events = [event for event in map(clean_event, objects) if event is not None]
+    events = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
     verdicts = [event for event in events if event["type"] == "verdict"]
     project, tasks, titles = read_feed(state)
     project = project or matching(Path(state).resolve().name, PROJECT, PROJECT_MAX)
@@ -267,7 +364,7 @@ def collect(state, now):
         return login if login is not None and holder[login.lower()][1] == member_id else None
 
     since = now - WEEK
-    members, models, refusals, recent = {}, {}, {}, []
+    members, models, refusals, recent, firsts = {}, {}, {}, [], {}
     totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "judge_failures"), 0)
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
@@ -300,6 +397,8 @@ def collect(state, now):
                 row["last"] = max(row["last"] or event["at"], event["at"])
         if accepted:
             recent.append((event["at"], position, event))
+            if member_id is not None and (member_id not in firsts or event["at"] < firsts[member_id]["at"]):
+                firsts[member_id] = event  # the account's first integration: the earliest instant, then the ledger's order
     totals["judge_failures"] = sum(1 for event in events if event["type"] == "error" and event["judge"])
 
     named = sorted(((member_id, row) for member_id, row in members.items() if row["integrations"]),
@@ -307,6 +406,12 @@ def collect(state, now):
     recent.sort(key=lambda item: (item[0], item[1]), reverse=True)
     model_rows = sorted(models.items(), key=lambda item: (-item[1]["judged"], -item[1]["accepted"], item[0] or ""))
     integrations = totals["integrations"]
+
+    def first(event):
+        """True for the first integration of its account in this project, over the whole ledger (never for an
+        account the ledger does not number)."""
+        return firsts.get(event["member_id"]) is event
+
     wins, written = [], set()
     for at, _, event in recent:  # the latest integrations first; a commit has one card
         name = win_name(event["commit"])
@@ -314,7 +419,9 @@ def collect(state, now):
             continue
         written.add(name)
         wins.append({"commit": event["commit"], "at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""),
-                     "login": login_of(event["member_id"]), "model": event["model"], "headline": event["headline"]})
+                     "member_id": event["member_id"], "login": login_of(event["member_id"]), "model": event["model"],
+                     "first": first(event), "judged": event["judged"], "changed": event["changed"],
+                     **{key: event[key] for key in ("headline", "figure", "measures", "measures_left_out", "outputs", "suspects")}})
     data = {
         "protocol": hive.PROTOCOL,
         "project": project,
@@ -331,6 +438,7 @@ def collect(state, now):
                     "acceptance_rate": rate(row["accepted"], row["judged"])} for model, row in model_rows],
         "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), "member_id": event["member_id"],
                     "login": login_of(event["member_id"]), "commit": event["commit"], "headline": event["headline"],
+                    "figure": event["figure"], "first": first(event),
                     "card": win_name(event["commit"])} for at, _, event in recent[:RECENT_SHOWN]],
         "refusals": [{"reason": reason, "count": count}
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
@@ -673,8 +781,8 @@ def render_card(project, member):
 
 def render_win(project, win):
     """The card of one integration: what the judge verified, in the member card's frame. Every line is also in the
-    aria-label and the title, in the same words. The figure is a fraction already checked (headline())."""
-    figure = win["headline"]
+    aria-label and the title, in the same words. The figure is a fraction already checked (read_report())."""
+    figure = win["figure"]
     lines = [("La Ruche" + (f" · {plain(project, 24)}" if project else ""), 15, True, "#0b0b0b"),
              (f"accepted by the judge · measured {100 * figure['gain']:.1f} % better ({figure['metric'].replace('_', ' ')})" if figure
               else "accepted by the judge", 14, True, "#0b0b0b")]
@@ -764,6 +872,8 @@ def main(argv=None):
     parser.add_argument("--out", required=True, help="where index.html, badge.svg, summary.json, members/ and wins/ are written")
     parser.add_argument("--title", default="", help="one line saying what the project is, shown under its name")
     parser.add_argument("--repo-url", help="https://github.com/owner/name: integrations then link to their commit")
+    parser.add_argument("--tasks", help="the project's task file in the registry (hive/tasks/<project>.jsonl): a card then leads with "
+                                        "the figure its task asked for")
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--join", action="store_true", help="the join page is join.html, beside index.html")
     where.add_argument("--join-url", help=f"the join page's address on github.com (default: {DEFAULT_JOIN_URL})")
@@ -783,7 +893,7 @@ def main(argv=None):
         if not Path(args.state).is_dir():
             raise PageError("--state: the folder of one project's state")
         join = Link("join.html") if args.join else Link(args.join_url or DEFAULT_JOIN_URL)
-        files = render(collect(args.state, now), plain(args.title, 160), args.repo_url, join)
+        files = render(collect(args.state, now, args.tasks), plain(args.title, 160), args.repo_url, join)
         write(args.out, files)
     except PageError as error:
         print(f"page: {hive.safe_text(error, 400)}", file=sys.stderr)

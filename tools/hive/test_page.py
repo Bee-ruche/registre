@@ -124,6 +124,15 @@ class Case(unittest.TestCase):
     def put(self, name, data):
         (self.state / name).write_text(data if isinstance(data, str) else json.dumps(data))
 
+    def tasks(self, lines):
+        """Writes a task file as the registry keeps one (hive/tasks/<project>.jsonl) and returns its path: dicts as
+        JSON, strings and bytes as they are."""
+        path = self.root / "registry-tasks.jsonl"
+        with open(path, "wb") as f:
+            for line in lines:
+                f.write((line if isinstance(line, bytes) else line.encode() if isinstance(line, str) else json.dumps(line).encode()) + b"\n")
+        return str(path)
+
     def make(self, *options, out=None, code=None):
         """Runs the tool as the command line does; returns {file name: text} of what is under --out."""
         out = out or self.out
@@ -640,6 +649,151 @@ class TestWins(Case):
         files = self.make()
         self.assertEqual(sorted(self.wins(files)), [f"wins/{sha(5001)}.svg"])
         self.assertIn("10.0 % better", files[f"wins/{sha(5001)}.svg"], "the latest integration speaks")
+
+
+def task(identifier, goal=None, **more):
+    """A task line as the registry's task file holds one."""
+    return {"id": identifier, "title": f"Title of {identifier}", "files": ["lib.c"], **({"goal": goal} if goal is not None else {}), **more}
+
+
+def gain_goal(name, **more):
+    return {"kind": "metric", "name": name, "min": 0.02, **more}
+
+
+MINIZ = {"suspects": 0, "outputs_compared": 9289, "gain_compression_throughput_n6": 0.037, "sure_compression_throughput_n6": 1,
+         "worse_compression_throughput_n6": 0, "gain_compression_throughput_n9": 0.052, "sure_compression_throughput_n9": 1,
+         "worse_compression_throughput_n9": 0, "gain_ratio_n6": 0.001, "sure_ratio_n6": 0, "worse_ratio_n6": 0,
+         "gain_instructions_n6": 0.043, "gain_instructions_n9": 0.061}  # as miniz's ledger keeps one: no sure_instructions_*
+
+
+class TestGoal(Case):
+    """The figure a card leads with is the one its task asked for, when the page is told which (--tasks) and the
+    judge's report holds it; otherwise the largest gain beyond the noise, as before."""
+
+    def figure_of(self, report, goal, *options):
+        self.ledger([report_verdict(1, report)])
+        files = self.make("--tasks", self.tasks([task("toy-0001", goal)]), *options)
+        self.harmless(files)
+        recent = self.summary(files)["recent"][0]
+        return recent["figure"], recent["headline"], files[f"wins/{sha(5001)}.svg"]
+
+    def test_the_card_leads_with_the_figure_the_task_asked_for(self):
+        figure, headline, card = self.figure_of(MINIZ, gain_goal("gain_instructions_n6", **{"and": [{"name": "sure_compression_throughput_n6", "min": 1}]}))
+        self.assertEqual(figure, {"metric": "instructions_n6", "gain": 0.043, "goal": True})
+        self.assertEqual(headline, {"metric": "compression_throughput_n9", "gain": 0.052}, "the headline keeps its meaning in summary.json")
+        self.assertIn("4.3 %", card)
+        self.assertIn("instructions n6", card)
+        self.assertNotIn("5.2 %", card)
+        self.assertNotIn("6.1 %", card, "a larger gain that the task did not ask for does not lead")
+
+    def test_without_the_task_file_the_headline_leads_as_before(self):
+        self.ledger([report_verdict(1, MINIZ)])
+        files = self.make()
+        recent = self.summary(files)["recent"][0]
+        self.assertEqual(recent["figure"], {"metric": "compression_throughput_n9", "gain": 0.052, "goal": False})
+        self.assertEqual(recent["headline"], {"metric": "compression_throughput_n9", "gain": 0.052})
+        self.assertIn("5.2 %", files[f"wins/{sha(5001)}.svg"])
+        self.ledger([report_verdict(1, {})])
+        self.assertIsNone(self.summary(self.make())["recent"][0]["figure"], "no figure at all: none is invented")
+
+    def test_a_goal_whose_figure_is_beyond_the_noise_leads_too(self):
+        figure, _, _ = self.figure_of({"gain_a": 0.03, "sure_a": 1, "worse_a": 0, "gain_b": 0.5, "sure_b": 1}, gain_goal("gain_a"))
+        self.assertEqual(figure, {"metric": "a", "gain": 0.03, "goal": True})
+
+    def test_the_goal_s_figure_gives_way_to_the_headline_when_it_cannot_lead(self):
+        other = {"gain_b": 0.5, "sure_b": 1}
+        for report in ({}, {"gain_a": 0.3, "sure_a": 0}, {"gain_a": 0.3, "sure_a": 0.5}, {"gain_a": 0.3, "sure_a": "1"}, {"gain_a": 0.3, "sure_a": True},
+                       {"gain_a": 0.3, "sure_a": None}, {"gain_a": 0.3, "sure_a": 2}, {"gain_a": 0.3, "worse_a": 1}, {"gain_a": -0.1}, {"gain_a": 0},
+                       {"gain_a": 0.0004}, {"gain_a": 10.01}, {"gain_a": "0.3"}, {"gain_a": True}, {"gain_a": None}, {"gain_a": [0.3]}, {"gain_a": 1e300},
+                       {"gain_a": 10 ** 500}):
+            with self.subTest(report=report):
+                figure, _, card = self.figure_of({**report, **other}, gain_goal("gain_a"))
+                self.assertEqual(figure, {"metric": "b", "gain": 0.5, "goal": False})
+                self.assertIn("50.0 %", card)
+                figure, _, card = self.figure_of(report, gain_goal("gain_a"))
+                self.assertIsNone(figure, "and with no other sure gain, no figure at all")
+                self.assertNotIn("%", card)
+
+    def test_a_goal_that_is_not_a_gain_names_no_figure(self):
+        goals = ({"kind": "correct"}, {"kind": "metric", "name": "suspects", "max": 0}, {"kind": "metric", "name": "sure_a", "min": 1},
+                 {"kind": "metric", "name": "outputs_compared", "min": 1}, {"kind": "metric", "name": "gain_"}, {"kind": "metric", "name": "gain_a b"},
+                 {"kind": "metric", "name": "gain_<script>alert(1)</script>"}, {"kind": "metric", "name": "gain_" + "a" * 61},
+                 {"kind": "metric", "name": "GAIN_a"}, {"kind": "metric", "name": ["gain_a"]}, {"kind": "metric", "name": 5}, {"kind": "metric"},
+                 {"kind": ["metric"], "name": "gain_a"}, {"kind": "other", "name": "gain_a"}, {"name": "gain_a"}, "gain_a", ["gain_a"], 7, True)
+        for goal in goals:
+            with self.subTest(goal=goal):
+                figure, _, card = self.figure_of({"gain_a": 0.3, "gain_b": 0.5, "sure_b": 1}, goal)
+                self.assertEqual(figure, {"metric": "b", "gain": 0.5, "goal": False})
+                self.assertNotIn("30.0 %", card)
+        self.assertEqual([page.goal_metric({"goal": goal}) for goal in goals], [None] * len(goals))
+        self.assertEqual(page.goal_metric({"goal": gain_goal("gain_instructions_n6")}), "instructions_n6")
+        self.assertIsNone(page.goal_metric({}))
+
+    def test_a_hostile_task_file_says_nothing_of_itself(self):
+        deep = "[" * 100_000 + "]" * 100_000
+        path = self.tasks([
+            task("toy-0001", gain_goal("gain_a")), task("toy-0001", gain_goal("gain_b")),  # the first line of a task speaks
+            task("toy-0002", gain_goal("gain_<script>alert(1)</script>")), task("../../etc", gain_goal("gain_a")),
+            task("toy-0003<script>", gain_goal("gain_a")), task(["toy-0004"], gain_goal("gain_a")), task(5, gain_goal("gain_a")),
+            {**task("toy-0005", gain_goal("gain_a")), "title": "<script>alert(1)</script>", "context": "<img src=x onerror=alert(1)>"},
+            json.dumps({**task("toy-0006", gain_goal("gain_a")), "padding": "x" * page.LINE_MAX}),
+            "[]", "null", "7", '"<script>alert(1)</script>"', "{broken <script>alert(1)</script>", deep, "",
+            b'{"id":"toy-0007","goal":{"kind":"metric","name":"gain_\xff\xfe"}}', '{"id":"toy-0008","goal":{"kind":"metric","name":"gain_\\ud800"}}',
+            '{"id":"toy-0009","goal":{"kind":"metric","name":"gain_a","min":NaN}}', '{"id":"toy-0010","goal":' + "9" * 5000 + '}',
+        ])
+        self.assertEqual(page.read_goals(path), {"toy-0001": "a", "toy-0005": "a", "toy-0009": "a"}, "only an identifier is kept of a goal")
+        self.ledger([verdict(n, f"2026-11-{n:02d}T09:00:00Z", "alice", 101, f"toy-{n:04d}", report={"gain_a": 0.3, "gain_b": 0.5, "sure_b": 1})
+                     for n in range(1, 11)])
+        files = self.make("--tasks", path)
+        self.harmless(files)
+        for name, text in files.items():
+            for needle in NEEDLES:
+                self.assertNotIn(needle, text.lower(), (name, needle))
+        figures = {r["task"]: r["figure"]["metric"] for r in self.summary(files)["recent"]}
+        self.assertEqual(figures, {"toy-0001": "a", "toy-0005": "a", "toy-0009": "a", **{f"toy-{n:04d}": "b" for n in (2, 3, 4, 6, 7, 8, 10)}})
+
+    def test_a_task_file_that_cannot_be_read_stops_the_tool_and_an_empty_one_does_not(self):
+        self.ledger([report_verdict(1, MINIZ)])
+        self.assertEqual(self.make("--tasks", str(self.root / "nowhere.jsonl"), code=2), {})
+        self.assertEqual(self.make("--tasks", str(self.root), code=2), {}, "a folder is not a task file")
+        self.assertFalse(self.out.exists(), "a refused argument writes nothing")
+        files = self.make("--tasks", self.tasks([]))
+        self.assertEqual(self.summary(files)["recent"][0]["figure"]["goal"], False)
+
+    def test_what_the_judge_measured_is_kept_as_numbers_under_identifiers(self):
+        kept = page.read_report({**MINIZ, "gain_lost": -0.03, "sure_lost": 0, "worse_lost": 1, "gain_flagless": -0.002,
+                                 "gain_<script>": 0.5, "gain_text": "0.5", "gain_bool": True, "gain_nan": float("nan"), "gain_inf": float("inf"),
+                                 "gain_huge": 10.5, "gain_list": [1], "sure_text": 1, "gain_odd": 0.2, "sure_odd": "1", "worse_odd": True,
+                                 "outputs_compared": 9289, "suspects": 0, 5: 1}, "instructions_n6")
+        self.assertEqual([(row["metric"], row["gain"], row["sure"], row["worse"], row["goal"]) for row in kept["measures"]], [
+            ("instructions_n6", 0.043, None, None, True),
+            ("compression_throughput_n9", 0.052, 1, 0, False), ("compression_throughput_n6", 0.037, 1, 0, False), ("lost", -0.03, 0, 1, False),
+            ("odd", 0.2, None, None, False), ("instructions_n9", 0.061, None, None, False), ("ratio_n6", 0.001, 0, 0, False),
+            ("flagless", -0.002, None, None, False)])
+        self.assertEqual((kept["outputs"], kept["suspects"], kept["measures_left_out"]), (9289, 0, 0))
+        for report in ("<script>", ["gain_a", 1], None, 5, True, {}):
+            self.assertEqual(page.read_report(report), {"headline": None, "figure": None, "measures": [], "measures_left_out": 0,
+                                                        "outputs": None, "suspects": None})
+        for value in ("9289", 9289.0, True, -1, 10 ** 16, [1], None, float("nan")):
+            self.assertEqual(page.read_report({"outputs_compared": value, "suspects": value})["outputs"], None, repr(value))
+            self.assertEqual(page.read_report({"outputs_compared": value, "suspects": value})["suspects"], None, repr(value))
+        many = page.read_report({f"gain_m{n:03d}": n / 1000 for n in range(1, 101)}, "m001")
+        self.assertEqual((len(many["measures"]), many["measures_left_out"]), (page.MEASURES_MAX, 100 - page.MEASURES_MAX))
+        self.assertEqual(many["measures"][0]["metric"], "m001", "the goal's row is kept whatever the number of rows")
+        self.assertEqual(page.read_changed({"files": 1, "lines": 17}), {"files": 1, "lines": 17})
+        for figures in (None, "x", {"files": "1", "lines": 3}, {"files": 1}, {"files": True, "lines": 3}, {"files": 1, "lines": -3}, {"files": 1.0, "lines": 3}):
+            self.assertIsNone(page.read_changed(figures), figures)
+
+    def test_the_first_integration_of_an_account_is_the_earliest_one_over_the_whole_ledger(self):
+        self.ledger([
+            verdict(1, "2026-11-03T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-03T09:00:00Z", "alice", 101, "toy-0002"),
+            verdict(3, "2026-11-01T09:00:00Z", "bob", 102, "toy-0003", "refused", reason="judge_refused"),
+            verdict(4, "2026-11-04T09:00:00Z", "bob", 102, "toy-0003"), verdict(5, "2026-11-02T09:00:00Z", "bob", 102, "toy-0004"),
+            verdict(6, "2026-11-05T09:00:00Z", "eve", "103", "toy-0005"), verdict(7, "2026-11-06T09:00:00Z", "eve", None, "toy-0006"),
+        ])
+        firsts = {r["commit"]: r["first"] for r in self.summary(self.make())["recent"]}
+        self.assertEqual(firsts, {sha(5001): True, sha(5002): False, sha(5004): False, sha(5005): True, sha(5006): False, sha(5007): False},
+                         "one per account: the earliest instant, then the ledger's order; never for an account without a number")
 
 
 class TestEmpty(Case):
