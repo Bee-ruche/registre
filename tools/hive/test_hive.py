@@ -380,6 +380,15 @@ class TestIntegration(Base):
         self.assertIn("src/b.c", files)
         self.assertIn("tuned", sh("git", "show", "main:lib.c", cwd=self.w.upstream).stdout)
 
+    def test_a_run_judges_so_many_candidates_and_those_left_out_move_up(self):
+        self.w.set_config({"limits": {"judgements_per_sweep": 1}})
+        first = self.alice.submit("toy-0001")
+        second = self.w.fork("bob", 102).write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        self.assertEqual({o["sha"]: o["result"] for o in self.w.run()}, {first: "accepted", second: "skipped"})
+        self.assertEqual(([e["sha"] for e in self.w.events()], len(judge_by_content.seen)), ([first], 1),
+                         "the one left out is not judged, not answered and not marked")
+        self.assertEqual({o["sha"]: o["result"] for o in self.w.run()}, {second: "accepted"}, "and it is first at the next run")
+
     def test_a_submit_from_a_member_who_does_not_hold_the_task_is_not_a_candidate(self):
         """Only the member the hive dealt the task to may submit for it: whatever anyone else pushes for it is not
         judged, not answered, not recorded, and not read again."""
@@ -2206,7 +2215,7 @@ class TestProjectFiles(unittest.TestCase):
     """The projects the registry declares (hive/projects, hive/tasks) load, and each goal names figures the judge gives."""
 
     def test_every_declared_project_loads_and_starts_closed(self):
-        registry = Path(hive.__file__).resolve().parents[2]
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])  # set when the tests run on a copy
         projects = sorted((registry / "hive/projects").glob("*.json"))
         self.assertTrue(projects, "no project declared")
         for path in projects:
@@ -2215,6 +2224,7 @@ class TestProjectFiles(unittest.TestCase):
                 tasks = hive.load_tasks(registry / config["tasks"])
                 hive.check_goals(config, tasks)
                 self.assertEqual(config["project"], path.stem)
+                self.assertEqual((config["deal_hours"], config["grace_hours"], config["backoff_hours"]), (3, 1, 2))
                 self.assertTrue(tasks)
                 self.assertTrue(all(task["id"].startswith(config["project"] + "-") for task in tasks.values()))
                 self.assertTrue(all(not hive.protected(f.rstrip("/"), config["protected"]) for task in tasks.values() for f in task["files"]),
@@ -2222,6 +2232,23 @@ class TestProjectFiles(unittest.TestCase):
                 if not json.loads(path.read_text()).get("in_service"):
                     self.assertTrue(config.get("paused") or config["members"]["only"] is not None,
                                     "a project not yet in service is paused, or open by invitation")
+
+
+class TestProjectSettings(Base):
+    def test_a_projects_dealing_settings_are_checked_when_it_is_loaded(self):
+        path = self.w.registry / "hive/projects/toy.json"
+        for wrong in ({"deal_hours": 0}, {"deal_hours": "3"}, {"deal_hours": 2.5}, {"deal_hours": True}, {"grace_hours": -1},
+                      {"backoff_hours": 0}, {"backoff_hours": 169}, {"members": {"deals_per_day": 0}}, {"members": {"deals_per_day": "5"}}):
+            self.w.set_config(wrong)
+            with self.subTest(wrong=wrong), self.assertRaises(hive.HiveError):
+                hive.load_config(path)
+        self.w.set_config({"deal_hours": 6, "grace_hours": 0, "backoff_hours": 1, "members": {"deals_per_day": 1}})
+        config = hive.load_config(path)
+        self.assertEqual((config["deal_hours"], config["grace_hours"], config["backoff_hours"], config["members"]["deals_per_day"]), (6, 0, 1, 1))
+        self.alice.ready()
+        self.w.run()
+        deal = [e for e in self.w.load()[2].events if e["type"] == "deal"][0]
+        self.assertEqual((deal["at"], deal["until"]), (NOW, "2026-11-12T18:00:00Z"), "the project's own length of a deal")
 
 
 class TestIgnoreList(Base):
