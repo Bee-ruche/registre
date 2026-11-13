@@ -1,4 +1,5 @@
-# Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py and test_schedule.py, on local git repositories, without network.
+# Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py, test_schedule.py, test_page.py and test_artifact.py, on local git
+# repositories and archives the tests make, without network.
 # Read-only: no secret, no write, nothing of a pull request runs with more than a read token.
 name: Hive protocol tests
 
@@ -31,3 +32,5 @@ jobs:
         run: python3 tools/hive/test_schedule.py
       - name: The project page (what the public reads)
         run: python3 tools/hive/test_page.py
+      - name: What a job takes from an earlier job's archive
+        run: python3 tools/hive/test_artifact.py

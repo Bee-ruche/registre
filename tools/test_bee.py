@@ -23404,5 +23404,124 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         self.assertEqual(set(report.ISSUES.values()), set(self.names["domains"]["judge_outcome"].values()))
         self.assertEqual(report.DATE_D, bee.DATE_D)
 
+
+class TestHiveWorkflowDraft(unittest.TestCase):
+    """The hive's hourly run (docs/hive-workflow.md), while it is a draft in a document: the rules that keep its four jobs apart,
+    read on the draft itself. The day the draft becomes a file under .github/workflows/, this class reads that file."""
+
+    STATE, PROJECT = "Iv23liBJswEbZCt56yvz", "Iv23liKHEG0w2XgtSc9m"  # the two Apps' client ids (not secrets)
+
+    @classmethod
+    def setUpClass(cls):
+        blocks = re.findall(r"^```yaml\n(.*?)^```$", (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8"), re.S | re.M)
+        assert len(blocks) == 1, "one draft, in one block"
+        cls.text, cls.stream = blocks[0], yaml.safe_load(blocks[0])
+        cls.jobs = cls.stream["jobs"]
+
+    def uses(self, job):
+        return [step.get("uses", "") for step in self.jobs[job]["steps"]]
+
+    def test_the_triggers_the_permissions_and_one_run_at_a_time(self):
+        self.assertEqual(set(self.stream[True]), {"schedule", "workflow_dispatch"})  # (« on » is True for YAML)
+        self.assertNotIn("pull_request", self.text)
+        self.assertEqual(self.stream["permissions"], {})
+        self.assertEqual({name: job["permissions"] for name, job in self.jobs.items()},
+                         {"plan": {"contents": "read"}, "judge": {"contents": "read"},
+                          "record": {"contents": "read", "actions": "read"}, "apply": {"contents": "read", "actions": "read"}},
+                         "no job may write to the registry; the two that take artifacts by themselves may read the run's")
+        self.assertEqual(self.stream["concurrency"], {"group": "hive-miniz", "cancel-in-progress": False})
+
+    def test_no_text_becomes_code_and_every_action_is_pinned(self):
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                with self.subTest(job=name, step=step.get("name") or step.get("uses")):
+                    self.assertNotIn("${{", step.get("run", ""))
+                    self.assertEqual("uses" in step, "run" not in step)
+                    if "uses" in step:
+                        self.assertRegex(step["uses"], r"\Aactions/(checkout|upload-artifact|download-artifact|create-github-app-token)@[0-9a-f]{40}\Z")
+
+    def test_two_jobs_can_read_a_key_and_only_to_ask_for_a_token_of_one_repository(self):
+        self.assertEqual({name: job.get("environment") for name, job in self.jobs.items()},
+                         {"plan": None, "judge": None, "record": "hive-state", "apply": "hive-apply"})
+        asked = []
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                if "secrets." in json.dumps(step):
+                    self.assertRegex(step["uses"], r"\Aactions/create-github-app-token@")
+                    self.assertEqual(sorted(step["with"]), ["client-id", "owner", "permission-contents", "private-key", "repositories"])
+                    self.assertEqual((step["with"]["owner"], step["with"]["permission-contents"]), ("Bee-ruche", "write"))
+                    asked.append((name, step["id"], step["with"]["private-key"], step["with"]["repositories"], step["with"]["client-id"]))
+        self.assertEqual(asked, [("record", "state", "${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}", "hive-state", self.STATE),
+                                 ("apply", "state", "${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}", "hive-state", self.STATE),
+                                 ("apply", "project", "${{ secrets.HIVE_PROJECT_APP_PRIVATE_KEY }}", "minizBee", self.PROJECT)])
+        self.assertEqual(self.text.count("secrets."), 3, "a key appears nowhere else")
+        self.assertEqual(sum("create-github-app-token" in u for job in self.jobs for u in self.uses(job)), 3)
+
+    def test_a_job_that_holds_a_key_unpacks_no_archive_and_takes_its_files_before_the_key(self):
+        taken = {}
+        for name in ("record", "apply"):
+            steps, uses = self.jobs[name]["steps"], self.uses(name)
+            self.assertFalse([u for u in uses if "artifact" in u], "neither the common download nor an upload, in a job with a key")
+            first_key = min(i for i, u in enumerate(uses) if "create-github-app-token" in u)
+            takes = [i for i, step in enumerate(steps) if "artifact.py" in step.get("run", "")]
+            self.assertEqual((takes, first_key), ([1], 2), "the registry, then the files, then the first key")
+            self.assertEqual(steps[0], {"uses": uses[0], "with": {"path": "registry", "persist-credentials": False}})
+            self.assertRegex(uses[0], r"\Aactions/checkout@")
+            self.assertEqual(steps[1]["env"], {"GH_TOKEN": "${{ github.token }}"}, "the run's own read-only token, and nothing else")
+            taken[name] = re.findall(r"registry/tools/hive/artifact\.py take --name (\S+) --member (\S+)\s+(?:\\\s+)?--into (\S+)", steps[1]["run"])
+            self.assertEqual(steps[1]["run"].count("artifact.py"), len(taken[name]))
+            later = "\n".join(step.get("run", "") for step in steps[2:])
+            self.assertEqual(re.findall(r"--(plan|bundle|verdicts) (\S+)", later),
+                             [(option, path) for option, path in (("plan", "taken/plan/plan.json"), ("bundle", "taken/candidates/candidates.bundle"),
+                                                                 ("verdicts", "taken/verdicts/verdicts.json")) if f"--{option} " in later],
+                             "what the step with the key reads is what was taken")
+        self.assertEqual(taken, {"record": [("plan", "plan.json:67108864", "taken/plan")],
+                                 "apply": [("plan", "plan.json:67108864", "taken/plan"),
+                                           ("candidates", "candidates.bundle:2147483648", "taken/candidates"),
+                                           ("verdicts", "verdicts.json:16777216", "taken/verdicts")]})
+        uploads = {step["with"]["name"]: step["with"]["path"] for job in self.jobs.values() for step in job["steps"]
+                   if "upload-artifact" in step.get("uses", "")}
+        self.assertEqual(uploads, {"plan": "plan.json", "candidates": "candidates.bundle", "verdicts": "verdicts.json"},
+                         "one file per artifact, under the name the taker expects")
+        self.assertTrue((ROOT / "tools/hive/artifact.py").is_file())
+
+    def test_the_jobs_run_on_main_only_and_a_cancelled_run_pushes_nothing(self):
+        self.assertEqual({name: (job.get("needs"), job["if"]) for name, job in self.jobs.items()},
+                         {"plan": (None, "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'"),
+                          "record": ("plan", "github.ref == 'refs/heads/main'"),
+                          "judge": (["plan", "record"], "github.ref == 'refs/heads/main'"),
+                          "apply": (["plan", "record", "judge"],
+                                    "${{ !cancelled() && needs.plan.result == 'success' && github.ref == 'refs/heads/main' }}")})
+        self.assertNotIn("always()", json.dumps({name: job["if"] for name, job in self.jobs.items()}))
+
+    def test_a_token_is_given_to_the_steps_that_need_it_and_to_no_other(self):
+        given = []
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                if step.get("uses", "").startswith("actions/checkout@"):
+                    if "token" in step["with"]:
+                        given.append((name, step["with"]["repository"], step["with"]["token"]))
+                    else:
+                        self.assertIs(step["with"].get("persist-credentials"), False, f"{name}: a checkout that keeps a token it was not given")
+        self.assertEqual(given, [("record", "Bee-ruche/hive-state", "${{ steps.state.outputs.token }}"),
+                                 ("apply", "Bee-ruche/hive-state", "${{ steps.state.outputs.token }}")])
+        self.assertEqual(self.text.count("steps.project.outputs.token"), 1)
+        last = self.jobs["apply"]["steps"][-1]
+        self.assertEqual(last["env"], {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}", "HIVE_PROJECT_TOKEN": "${{ steps.project.outputs.token }}"},
+                         "the project's token: one step, the last, of one job")
+        self.assertFalse([step for step in self.jobs["judge"]["steps"] if "env" in step], "the job that runs contributors' code is given nothing")
+        self.assertEqual([step["env"] for step in self.jobs["plan"]["steps"] if "env" in step], [{"GH_TOKEN": "${{ github.token }}"}])
+        self.assertEqual(self.jobs["plan"]["outputs"], {"plan_sha256": "${{ steps.plan.outputs.plan_sha256 }}"})
+        self.assertEqual(self.jobs["record"]["steps"][-1]["env"], {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}"})
+
+    def test_the_judging_job_outlasts_the_time_the_hive_allows_itself(self):
+        """The hive starts no judgement that could end after its own limit; one check of the machine may follow the last."""
+        settings = json.loads((ROOT / "hive/projects/miniz.json").read_text(encoding="utf-8"))
+        allowed = settings.get("limits", {}).get("judging_seconds", 14400)
+        one = settings["judge"].get("timeout_seconds", 3600)
+        self.assertGreaterEqual(self.jobs["judge"]["timeout-minutes"] * 60, allowed + one + 1800)
+        self.assertLessEqual(self.jobs["judge"]["timeout-minutes"], 360, "GitHub's own limit for a job")
+
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
