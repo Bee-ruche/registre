@@ -7,10 +7,13 @@ does nothing outside. Decisions that touch security are in the private check rep
 ## D1. Ask the AI providers whether quota donation is allowed
 
 **Why**: the worker uses only first-party tools, signed in by the volunteer, in a "pull" design, which avoids every
-explicit prohibition found. But three clauses could still be read against an organised donation effort: Anthropic's
+explicit prohibition found. But four clauses could still be read against an organised donation effort: Anthropic's
 "ordinary, individual usage", the Consumer Terms' "you also may not make your Account available to anyone else",
-and the Usage Policy's ban on services that "route requests through consumer subscriptions" (a new version took
-effect on 12 November 2026). OpenAI's terms have the same shape (read only through excerpts so far). A hive that
+the same terms' clause against accessing the services "through automated or non-human means, whether through a bot,
+script, or otherwise" unless through an API key "or where we otherwise explicitly permit it" (read on 14 November
+2026; whether a scheduled task, a documented feature of the provider's own tool, is such a permission is the
+question to ask), and the Usage Policy's ban on services that "route requests through consumer subscriptions" (a new
+version took effect on 12 November 2026). OpenAI's terms have the same shape (read only through excerpts so far). A hive that
 grows on a reading the providers reject would lose its volunteers' accounts overnight.
 
 | Option | For | Against |
@@ -75,7 +78,10 @@ To ask before the public opening; the builder is not a lawyer and states its unc
    And in "bring your own project" mode, where the hive only provides the worker and the volunteer chooses the
    project: does the hive's exposure really end where the volunteer's choice begins?
 3. **Contributor licensing**: AI-generated contributions under each project's license; whether the hive needs a
-   contributor agreement; disclosure of AI authorship, which Anthropic's Usage Policy requires.
+   contributor agreement; disclosure of AI authorship. (Corrected on 14 November 2026: Anthropic's Usage Policy does
+   not require it in general. It requires telling people that they deal with an AI for chatbots and agents that talk
+   to external users, and it forbids to "plagiarize or submit AI-assisted work without proper permission or
+   attribution". The hive states AI authorship anyway, in every commit it integrates: its own rule, commandment 4.)
 4. **The pledge**: whether a rank earned partly by a public post is a "material connection" that the post must
    disclose (US FTC Endorsement Guides; French and EU rules on influence), and how.
 5. **Personal data**: storing a member's GitHub login, X handle and post number; a privacy notice; GDPR basis.
