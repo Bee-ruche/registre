@@ -2029,7 +2029,8 @@ class TestSecondReview(Base):
         gives is refused when the project is loaded, not left to refuse every candidate."""
         root = Path(tempfile.mkdtemp(dir=self.tmp.name))
         (root / "tools/judge").mkdir(parents=True)
-        shutil.copy(Path(hive.__file__).resolve().parents[1] / "judge/report.py", root / "tools/judge/report.py")
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])  # set when the tests run on a copy
+        shutil.copy(registry / "tools/judge/report.py", root / "tools/judge/report.py")
         (root / "tools/judge/judge.py").write_text(
             "import json, sys\nargs = sys.argv[1:]\n"
             "report = {'judge': {'code': 0, 'outcome': 'correct', 'suspicious_constructs': [], 'verification': {'outputs_compared': 12},\n"
