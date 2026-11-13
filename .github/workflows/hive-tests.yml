@@ -29,3 +29,5 @@ jobs:
         run: python3 tools/hive/test_hive.py
       - name: What holds over many runs (schedules drawn at random)
         run: python3 tools/hive/test_schedule.py
+      - name: The project page (what the public reads)
+        run: python3 tools/hive/test_page.py
