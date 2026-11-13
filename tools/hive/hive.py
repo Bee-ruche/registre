@@ -1887,7 +1887,7 @@ def tip_of(repo, config):
 def paused(config):
     """The project's stop button: « paused: true » in its configuration. Nothing is read, judged or integrated."""
     if config.get("paused"):
-        print(f"project {config['project']} is paused: nothing is done")
+        print(f"project {config['project']} is paused: nothing is done", file=sys.stderr)  # the standard output is for job outputs
         return True
     return False
 
