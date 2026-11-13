@@ -461,18 +461,46 @@ class TestIntegration(Base):
         self.assertEqual(len(calls), 2 * (hive.UNANSWERED_RUNS + 2), "one candidate and one check of the machine per run")
         self.assertEqual(sorted(o["result"] for o in self.w.run()), ["accepted", "accepted"], "judged once the machine is back")
 
-    def test_three_runs_spent_on_a_deal_without_an_answer_end_it(self):
-        """Whatever kept the answer away (the judging stopped while on the candidate, here): a deal cannot be kept
-        open, at no cost, by a candidate the hive cannot get an answer on."""
+    def test_a_candidate_the_judging_stopped_on_six_times_ends_at_no_cost_to_its_member(self):
+        """The judging job was stopped while on it, run after run: nothing says that is the candidate's doing."""
         candidate = self.alice.submit("toy-0001")
-        for _ in range(hive.JUDGE_ATTEMPTS):
+        for _ in range(hive.UNANSWERED_RUNS):
             _, _, outcomes = self.w.sweep()
             self.assertEqual(self.one(self.w.apply({}, started=[self.one(outcomes)["commit"]])[0])["kind"], "none")
-        self.assertEqual(self.refused("judge_failed")["sha"], candidate)
+        self.assertEqual(self.refused("not_answered")["sha"], candidate)
         self.assertEqual(self.w.run(), [])
         config, _, ledger = self.w.load()
-        self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (2, "2026-11-12T14:00:00Z"))
+        self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (1, None), "the hive's own failure costs its member nothing")
         self.assertEqual(self.w.deals()["toy-0001"], ("alice", "closed"), "and the task can be dealt again")
+
+    def test_a_candidate_the_hive_cannot_derive_is_refused_only_if_the_hive_derives_the_project_itself(self):
+        """The same rule as for the judge: a failure is the candidate's doing only if the machine works."""
+        bob = self.w.fork("bob", 102)
+        odd = self.alice.submit("toy-0001", content=LIB + "/* odd */\n")
+        fine = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        real = hive.merge_tree
+
+        def fails_on(which):
+            def merge(repo, tip, candidate, limits):
+                if which(candidate):
+                    raise hive.HiveError("git merge-tree failed")
+                return real(repo, tip, candidate, limits)
+            return mock.patch.object(hive, "merge_tree", side_effect=merge)
+
+        with fails_on(lambda candidate: True):  # the hive's machine is down: it cannot derive the project's own tip either
+            self.assertEqual([o["result"] for o in self.w.run()], ["skipped", "skipped"])
+            self.assertEqual(self.w.events(), [], "nobody is marked for the breakdown")
+        with fails_on(lambda candidate: candidate == odd):  # it fails on this candidate alone
+            seen = []
+            for _ in range(hive.JUDGE_ATTEMPTS):
+                marked = {o["sha"]: (o["result"], o.get("kind")) for o in self.w.run()}
+                self.assertEqual(marked[odd], ("error", "hive"))
+                seen.append(marked.get(fine))
+            self.assertEqual(seen, [("accepted", None), None, None], "the other candidate is integrated at the first of these runs")
+            self.assertEqual(self.one(self.w.run())["reason"], "judge_failed")
+        config, _, ledger = self.w.load()
+        self.assertEqual((ledger.standing(101, hive.now(), config)[1] is None, ledger.standing(102, hive.now(), config)[:2]),
+                         (False, (0, None)), "its member waits; the other member does not")
 
     def test_a_task_the_judge_keeps_refusing_gets_a_higher_hint(self):
         """The task's tier is the project's own; its hint, for people, rises by one for every three different members refused, among those the judge has accepted something from: one
@@ -2620,8 +2648,8 @@ class TestHostileData(Base):
         self.alice.submit("toy-0001")
         with mock.patch.object(hive, "git", side_effect=broken_merge):
             result = self.one(self.w.run())
-        self.assertEqual((result["result"], result["kind"]), ("error", "hive"), "git failing is never an answer to the member")
-        self.assertEqual([(e["type"], e["kind"]) for e in self.w.events()], [("error", "hive")], "a run spent on it, and recorded")
+        self.assertEqual(result["result"], "skipped", "git failing on everything, the project's own tip included, is no answer to the member")
+        self.assertEqual(self.w.events(), [], "and no mark against its candidate")
         self.assertEqual(self.one(self.w.run())["result"], "accepted", "and the candidate is still there for the next sweep")
 
     def test_paths_and_patterns(self):

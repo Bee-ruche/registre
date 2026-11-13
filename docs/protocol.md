@@ -93,17 +93,17 @@ Each run, after the forks were read, in this order:
 3. **Askers.** Members with an ask at a branch tip, except those who hold a deal without a candidate, are waiting
    after a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was
    accepted, then those who never had one, then the others; within each group, a draw.
-4. **The deal.** Each asker gets one task, drawn among the open tasks that nobody holds, that it takes by its
-   tier, and whose former holder has no candidate in this run. The draws use a key drawn *after* the forks were
+4. **The deal.** Each asker gets one task, drawn among the open tasks that nobody holds and that it takes by its
+   tier. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
 
 **Tasks that may change the same file are never held by two members at once.** What a member pushes for its task
 is public; someone holding another task on the same file could put that work into its own candidate. So such a task
 is dealt only when the others are free. A project whose tasks name separate files loses nothing; one whose tasks share a file does them one at a time.
 
-A member who pushes a candidate *and* an ask is dealt its next task **in the same run, once that candidate is
-answered**: a worker that runs every hour gets a task per run. If the answer costs it a wait, the ask stays for
-later.
+A member who pushes a candidate *and* an ask is dealt its next task **in the same run, when that candidate is
+accepted**: a worker that runs every hour and succeeds gets a task per run. If the candidate is refused, the ask
+stays, and is served once the wait is over.
 
 What ends a deal, and what it costs its member:
 
@@ -111,9 +111,9 @@ What ends a deal, and what it costs its member:
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
 | the judge examined its candidate and refused it (`judge_refused`, `goal_not_met`, `requirement_not_met`) | a wait of two hours, each time, never doubled: a refusal there is ordinary, on tasks that ask for a measured gain |
-| its candidate is refused before the judge could examine it: on a structural rule, because it does not merge or changes nothing, after three runs spent on it without an answer (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait that doubles |
+| its candidate is refused before the judge could examine it: on a structural rule, because it does not merge or changes nothing, after three failures that are its own (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait that doubles |
 | its time is up and the fork holds no candidate | the same wait that doubles |
-| the project's repository declined it six times while accepting nothing else (`not_answered`), the hive could not read the fork for a day, or the project closed the task | none: not the member's doing |
+| the hive could not answer it in six runs for no fault of the candidate's (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
 **A deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is free. When
 the judge examined the candidate, the wait is two hours. When the task was held for nothing (no candidate, or one
@@ -140,9 +140,9 @@ it**: exactly what would land.
 | `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
 | `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe |
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
-| `judge_failed` | the hive spent three runs on this deal's candidates without an answer (the judge ran out of time on it, for instance) |
+| `judge_failed` | three times the judge failed on this deal's candidates (it ran out of time, for instance), or the hive could not derive them, while both worked on the project itself |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |
-| `not_answered` | the project's repository declined the commit six times while nothing else was landing there (see "What holds over time") |
+| `not_answered` | the hive spent six runs on this deal's candidates without an answer, for no fault it can pin on them (see "What holds over time") |
 | `task_closed` | the project closed the task between the plan and the write step |
 
 Agent instruction files are protected because an integrated instruction would be read by every later worker: a
@@ -200,9 +200,8 @@ the hive runs those git commands with an empty attribute source.
   is refused when the project is loaded.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**. They are different tasks' candidates: there is one per task at most.
-- **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come the
-  candidates of deals whose time was up, then those a run already failed on, and last those the project's
-  repository already declined.
+- **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come those a
+  run already failed on, and last those the project's repository already declined.
 - The integrated commit is a squash: its tree is the merged tree, its parent the tip, its author the fork's owner
   (`<id>+<login>@users.noreply.github.com`, so GitHub credits the member), its committer the hive. It is
   deterministic: the same tip, candidate, task and member always give the same commit id. The candidate's own
@@ -227,26 +226,27 @@ What makes them hold:
 
 - **One holder per task.** There is no order to decide among members, no instant to trust, and nothing a member
   can push that changes what another member's candidate is worth.
-- **A task is held for a bounded time.** Three hours and one of grace, by one account, which then waits twice as
-  long each time, however the deal ended short of an acceptance. A candidate that waits to be judged keeps its
-  task: that is the hive's delay, not the member's.
+- **A task is held for a bounded time.** Three hours and one of grace, by one account, which then waits: two
+  hours if the judge examined and refused its candidate, twice as long each time if it held the task for nothing.
+  A candidate that waits to be judged keeps its task: that is the hive's delay, not the member's.
 - **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
   recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive
   could not derive it (`hive`), or the judging stopped while it was on it (`none`: the judging step says which
   commit it starts on before it starts). A candidate the judging never reached is not marked: nobody pays for the
   time the others used up. A marked candidate goes after the unmarked ones; those the project declined go last,
   and nothing more is judged in the run once one of them is accepted.
-- **Marks end in an answer**, and are counted for the deal, not for the commit: three runs spent on a deal's
-  candidates without an answer (the judge failed, the hive could not derive the commit, the judging stopped while
-  on it, or the project's repository declined it right after another push of the same run landed), and the
-  candidate is refused, with its cost. Only pushes declined when nothing else was landing are left out, since they
-  speak of the hive's own right to push: six of those, and the deal is closed at no cost to its member. Taking a
+- **Marks end in an answer**, and are counted for the deal, not for the commit. Three marks that are the
+  candidate's own doing, and it is refused, with its cost: the judge failed on it while its machine works, the
+  hive could not derive it while it derives the project's own tip, or the project's repository declined it right
+  after another push of the same run landed. Six runs without an answer for any other cause (the judging stopped
+  while on it; the project declines every push), and the deal is closed at no cost to its member. Taking a
   candidate away before its third failure and putting another in its place starts nothing afresh. And a candidate
   that git itself cannot read as it is written is refused at once.
 - **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
   the answers are saved as they come, so that a judging job that is stopped leaves what it had.
 - **The hive's own faults cost members nothing.** A fork GitHub would not let the hive read decides nothing. The
-  judge's machine down marks nobody. What the judge ran on and the hive could not use is judged again.
+  judge's machine down, or the hive unable to derive even the project's own tip, marks nobody. What the judge ran
+  on and the hive could not use is judged again.
 - **The state survives a run that stops**: its files are written whole or not at all, one cut short is read as
   empty, a ledger line cut short is removed before anything is added, and a line of one run is recorded once
   however often a job is run again.

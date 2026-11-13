@@ -52,10 +52,10 @@ MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never
 MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model|Hive-Tier|Hive-Deal): (.{1,200})\Z")
 METRIC = re.compile(r"[a-z][a-z0-9_]{0,59}\Z")
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
-JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times is answered: judge_failed
+JUDGE_ATTEMPTS = 3  # a deal whose candidates fail the judge, or the hive's own reading, this many times is answered: judge_failed
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
 PLAN_MAX_AGE_HOURS = 24  # the write step applies no plan older than this
-UNANSWERED_RUNS = 6  # a deal whose candidates the hive spent this many runs on without an answer is closed: not_answered
+UNANSWERED_RUNS = 6  # a deal the hive spent this many runs on without an answer, for no fault it can pin on the candidate: not_answered
 VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still looked for in the project's history
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
@@ -116,9 +116,9 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "file_too_big": "a changed file is too big",
     "line_too_long": "an added line is longer than the project allows",
     "judge_refused": "the judge refused the candidate",
-    "judge_failed": "the hive spent three runs on this deal's candidates without an answer (the judge failed, or it could not be read)",
+    "judge_failed": "three times the judge failed on this deal's candidates, or the hive could not derive them, while both worked on the project itself",
     "push_refused": "the project's repository declined the commit, three times (a rule on its content)",
-    "not_answered": "the project's repository declined the commit, six times, while nothing else was being accepted there",
+    "not_answered": "the hive spent six runs on this deal's candidates without an answer, for no fault it can pin on them",
     "requirement_not_met": "correct, but a figure the project requires of every contribution is not met",
     "goal_not_met": "correct, but the task's goal is not met",
 }
@@ -1390,11 +1390,14 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
     An outcome is accepted, refused (with a reason), error, or skipped (the run's budget: it was not tried, and is
     first at the next run). An error is a run spent on a candidate without an answer: the judge failed on it
     (« judge »), the hive could not derive it (« hive »), or the judge had started on it and gave no answer (« none »:
-    `started` is what the judging step says it started on). Errors are counted for the candidate's deal: three
-    failures of the judge, or of a push right after another one landed, and it is refused; six runs without an
-    answer, whatever the cause, and the deal is closed."""
+    `started` is what the judging step says it started on). Errors are counted for the candidate's deal. Three that
+    are the candidate's own doing, and it is refused, with its cost: the judge failed on it while its machine works,
+    the hive could not derive it while it derives the project's own tip, the project declined it right after
+    another push landed. Six runs without an answer otherwise (the judging stopped while on it, the project declines
+    every push), and the deal is closed at no cost to its member. When the hive cannot even derive the project's own
+    tip, its machine is down: nobody is marked, and nothing more is tried in the run."""
     budget = config["limits"]["judgements_per_sweep"]
-    outcomes, done, judged, halt = [], set(ledger.done()), 0, False
+    outcomes, done, judged, halt, broken = [], set(ledger.done()), 0, False, False
     for entry in queue:
         member_id = entry["member_id"]
         outcome = {"sha": entry["sha"], "login": entry["login"], "member_id": member_id, "repo_id": entry["repo_id"],
@@ -1406,15 +1409,16 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             if task is None or task.get("closed") or entry["task"] in done:
                 raise Refusal("task_closed")
             marks = ledger.marks(entry["task"], member_id, entry["deal"])
-            # Three runs spent on a deal's candidates without an answer, and it is refused: the judge failed on it, the
-            # hive could not derive it, the judging stopped while on it, the project declined it. Only a push
-            # declined when no other push of the run had landed is left out: that speaks of the hive's own rights.
-            strikes = [kind for kind, unproven in marks if not (kind == "push" and unproven)]
+            # The marks that are the candidate's own doing: the judge failed on it while its machine works, the hive
+            # could not derive it while it derives the project's own tip, the project declined it right after another
+            # push landed. The others (the judging stopped while on it; a push declined when nothing else landed)
+            # may be the hive's own trouble: they never lead to a refusal.
+            strikes = [kind for kind, unproven in marks if kind in ("judge", "hive") or (kind == "push" and not unproven)]
             if len(strikes) >= JUDGE_ATTEMPTS:
                 raise Refusal("push_refused" if "push" in strikes else "judge_failed")
             if len(marks) >= UNANSWERED_RUNS:
                 raise Refusal("not_answered")
-            if halt or judged >= budget:
+            if halt or broken or judged >= budget:
                 continue  # not tried in this run; oldest deal first: it is first at the next
             tree, figures, commit = derive(repo, tip, entry, task, config)
             outcome.update(merged_tree=tree, commit=commit, figures=figures)
@@ -1445,8 +1449,22 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             outcome.update(result="refused", reason=refusal.reason, detail=clean_detail(refusal.detail))
         except HiveError as error:
             log(f"{entry['sha'][:12]}: {error}")
-            outcome.update(result="error", kind="hive")
+            # A failure to derive is the candidate's doing only if the hive's machine works: it is asked to derive the
+            # project's own tip. If it cannot, nobody is marked for the breakdown and nothing more is tried.
+            if derives(repo, tip, config):
+                outcome.update(result="error", kind="hive")
+            else:
+                log("the hive cannot derive the project's own tip: its machine is down, nothing more is tried in this run")
+                broken = True
     return outcomes, tip
+
+
+def derives(repo, tip, config):
+    """True if the hive, here and now, can do for the project's own tip what it does for a candidate."""
+    try:
+        return merge_tree(repo, tip, tip, config["limits"]) == tree_of(repo, tip)
+    except (HiveError, Refusal):
+        return False
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2140,8 +2158,8 @@ def cmd_submit(args):
     print(f"Marker commit created (submit {args.task}, member {login}). Push it to your own fork: "
           f"git push --force origin HEAD:refs/heads/{SUBMIT_BRANCH.format(task=args.task)}")
     print("If this worker runs again within the next three hours, ask for its next task now as well (hive.py ready, then the "
-          "push it prints): the hive deals it as soon as this candidate is answered. If it will not run again, do not ask: "
-          "a task dealt and left costs you a wait.")
+          "push it prints): the hive deals it as soon as this candidate is accepted, or once the wait is over if it is "
+          "refused. If it will not run again, do not ask: a task dealt and left costs you a wait.")
 
 
 def main(argv=None):

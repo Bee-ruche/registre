@@ -133,7 +133,7 @@ candidates for different tasks independent of each other.
 - **Those who deliver are served first**: when tasks are short, members whose last deal was accepted come first,
   then newcomers, then the others. **Built.**
 - **A worker that runs every hour gets a task per run, while tasks are free**: it pushes its candidate with an ask,
-  and is dealt the next task as soon as the first is answered. **Built.**
+  and is dealt the next task as soon as the first is accepted. **Built.**
 - **The pool stays larger than the crowd**: what counts is the number of tasks that can be held at once, which is
   the number of groups of tasks that share no file. The splitter must keep that number above the number of active
   workers, by giving tasks separate files; the project page shows the ratio. **Planned** (phase 1). **Miniz's
