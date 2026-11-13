@@ -115,9 +115,9 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "file_too_big": "a changed file is too big",
     "line_too_long": "an added line is longer than the project allows",
     "judge_refused": "the judge refused the candidate",
-    "judge_failed": "the judge could not judge this candidate, three times",
+    "judge_failed": "the hive spent three runs on this deal's candidates without an answer (the judge failed, or it could not be read)",
     "push_refused": "the project's repository declined the commit, three times (a rule on its content)",
-    "not_answered": "the hive spent six runs on this deal's candidates without an answer",
+    "not_answered": "the project's repository declined the commit, six times, while nothing else was being accepted there",
     "requirement_not_met": "correct, but a figure the project requires of every contribution is not met",
     "goal_not_met": "correct, but the task's goal is not met",
 }
@@ -661,29 +661,43 @@ def merge_tree(repo, tip, candidate, limits):
 
 
 def blob_bytes(repo, sha, limit):
-    """A blob's bytes, or None if it is larger than the limit."""
-    if int(git(repo, "cat-file", "-s", need_sha(sha)).stdout.strip()) > limit:
+    """A file's bytes, or None if it is larger than the limit. An entry listed as a file that git cannot read as one
+    (it names an object of another kind: written by hand) is the candidate's doing: special_file."""
+    size = git(repo, "cat-file", "-s", need_sha(sha), check=False)
+    if size.returncode != 0 or not size.stdout.strip().isdigit():
+        raise Refusal("special_file")
+    if int(size.stdout.strip()) > limit:
         return None
-    read = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "cat-file", "blob", sha], capture_output=True, timeout=120,
-                          env={**os.environ, **GIT_ISOLATED})
+    try:
+        read = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "cat-file", "blob", sha], capture_output=True, timeout=120,
+                              env={**os.environ, **GIT_ISOLATED})
+    except subprocess.TimeoutExpired as e:
+        raise HiveError("git cat-file: timeout after 120 s") from e
     if read.returncode != 0:
-        raise HiveError(f"blob {sha[:12]} unreadable")
+        raise Refusal("special_file")
     return read.stdout
 
 
-def folder_entries(repo, tree):
-    """name -> (mode, object id) for the entries of ONE folder (not of its sub-folders)."""
-    listed = git_capped(repo, "ls-tree", "-z", need_sha(tree), limit=FOLDER_LISTING_BYTES)
-    if listed is None:
-        raise Refusal("too_many_files")
-    entries = {}
-    for record in listed.split("\0"):
-        if record:
-            meta, _, name = record.partition("\t")
-            mode, _, sha = meta.split(" ")
-            if name in entries:
-                raise Refusal("special_file")  # one name twice in a folder: git never writes that, it was crafted
-            entries[name] = (mode, sha)
+def folder_entries(repo, tree, theirs=False):
+    """name -> (mode, object id) for the entries of ONE folder (not of its sub-folders), and the listing itself.
+    theirs: the folder comes from a candidate; one that git cannot list, or lists in a way the hive cannot read, is
+    then the candidate's doing (special_file), never a failure of the hive's that would cost its member nothing."""
+    try:
+        listed = git_capped(repo, "ls-tree", "-z", need_sha(tree), limit=FOLDER_LISTING_BYTES)
+        if listed is None:
+            raise Refusal("too_many_files")
+        entries = {}
+        for record in listed.split("\0"):
+            if record:
+                meta, _, name = record.partition("\t")
+                mode, _, sha = meta.split(" ")
+                if name in entries or not name or not is_sha(sha):
+                    raise Refusal("special_file")  # one name twice in a folder: git never writes that, it was crafted
+                entries[name] = (mode, sha)
+    except (HiveError, ValueError) as error:
+        if theirs and "timeout" not in str(error):
+            raise Refusal("special_file") from None
+        raise HiveError(f"a folder the hive cannot list: {safe_text(error, 100)}") from None
     return entries, listed
 
 
@@ -691,7 +705,8 @@ def canonical(repo, tree, listed):
     """True if the folder is, byte for byte, the one git writes for these entries. A folder written by hand (entries
     out of order, modes spelt another way) can list the same entries under another id: tools then disagree about
     what it holds, and it would enter the project's history as it is."""
-    return git(repo, "mktree", "--missing", "-z", stdin=listed).stdout.strip() == tree
+    written = git(repo, "mktree", "--missing", "-z", stdin=listed, check=False)  # git refuses entries that lie about their kind
+    return written.returncode == 0 and written.stdout.strip() == tree
 
 
 def changed_entries(repo, old_tree, new_tree, most):
@@ -705,7 +720,7 @@ def changed_entries(repo, old_tree, new_tree, most):
     while stack:
         prefix, old, new = stack.pop()
         before = folder_entries(repo, old)[0] if old else {}
-        after, listed = folder_entries(repo, new) if new else ({}, "")
+        after, listed = folder_entries(repo, new, theirs=True) if new else ({}, "")
         if new and not canonical(repo, new, listed):
             raise Refusal("special_file")
         inner = []
@@ -1383,7 +1398,10 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             if task is None or task.get("closed") or entry["task"] in done:
                 raise Refusal("task_closed")
             marks = ledger.marks(entry["task"], member_id, entry["deal"])
-            strikes = [kind for kind, unproven in marks if kind == "judge" or (kind == "push" and not unproven)]
+            # Three runs spent on a deal's candidates without an answer, and it is refused: the judge failed on it, the
+            # hive could not derive it, the judging stopped while on it, the project declined it. Only a push
+            # declined when no other push of the run had landed is left out: that speaks of the hive's own rights.
+            strikes = [kind for kind, unproven in marks if not (kind == "push" and unproven)]
             if len(strikes) >= JUDGE_ATTEMPTS:
                 raise Refusal("push_refused" if "push" in strikes else "judge_failed")
             if len(marks) >= UNANSWERED_RUNS:

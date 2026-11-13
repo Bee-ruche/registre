@@ -110,9 +110,9 @@ What ends a deal, and what it costs its member:
 | The deal ends when | Cost to the member |
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
-| its candidate is refused, whatever the reason: by the judge, on a structural rule, because it does not merge or changes nothing, after three failures of the judge on it (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait |
+| its candidate is refused, whatever the reason: by the judge, on a structural rule, because it does not merge or changes nothing, after three runs spent on it without an answer (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait |
 | its time is up and the fork holds no candidate | the same wait |
-| the hive could not answer it in six runs (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
+| the project's repository declined it six times while accepting nothing else (`not_answered`), the hive could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
 **One rule: a deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is
 cheaper than doing the task. The wait is two hours, doubled at each such deal in a row, seven days at most; an
@@ -138,9 +138,9 @@ it**: exactly what would land.
 | `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
 | `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe |
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
-| `judge_failed` | the judge could not judge this deal's candidates (it ran out of time, for instance), three times |
+| `judge_failed` | the hive spent three runs on this deal's candidates without an answer (the judge ran out of time on it, for instance) |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |
-| `not_answered` | the hive spent six runs on this deal's candidates without an answer (see "What holds over time") |
+| `not_answered` | the project's repository declined the commit six times while nothing else was landing there (see "What holds over time") |
 | `task_closed` | the project closed the task between the plan and the write step |
 
 Agent instruction files are protected because an integrated instruction would be read by every later worker: a
@@ -234,10 +234,13 @@ What makes them hold:
   commit it starts on before it starts). A candidate the judging never reached is not marked: nobody pays for the
   time the others used up. A marked candidate goes after the unmarked ones; those the project declined go last,
   and nothing more is judged in the run once one of them is accepted.
-- **Marks end in an answer**, and are counted for the deal, not for the commit: three failures of the judge, or
-  three pushes declined right after another push of the same run landed, and the candidate is refused; six runs
-  spent on the deal without an answer, whatever the cause, and it is closed at no cost to its member. Taking a
-  candidate away before its third failure and putting another in its place starts nothing afresh.
+- **Marks end in an answer**, and are counted for the deal, not for the commit: three runs spent on a deal's
+  candidates without an answer (the judge failed, the hive could not derive the commit, the judging stopped while
+  on it, or the project's repository declined it right after another push of the same run landed), and the
+  candidate is refused, with its cost. Only pushes declined when nothing else was landing are left out, since they
+  speak of the hive's own right to push: six of those, and the deal is closed at no cost to its member. Taking a
+  candidate away before its third failure and putting another in its place starts nothing afresh. And a candidate
+  that git itself cannot read as it is written is refused at once.
 - **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
   the answers are saved as they come, so that a judging job that is stopped leaves what it had.
 - **The hive's own faults cost members nothing.** A fork GitHub would not let the hive read decides nothing. The

@@ -461,15 +461,17 @@ class TestIntegration(Base):
         self.assertEqual(len(calls), 2 * (hive.UNANSWERED_RUNS + 2), "one candidate and one check of the machine per run")
         self.assertEqual(sorted(o["result"] for o in self.w.run()), ["accepted", "accepted"], "judged once the machine is back")
 
-    def test_a_candidate_the_judging_stopped_on_six_times_is_told_to_come_back(self):
+    def test_three_runs_spent_on_a_deal_without_an_answer_end_it(self):
+        """Whatever kept the answer away (the judging stopped while on the candidate, here): a deal cannot be kept
+        open, at no cost, by a candidate the hive cannot get an answer on."""
         candidate = self.alice.submit("toy-0001")
-        for _ in range(hive.UNANSWERED_RUNS):
+        for _ in range(hive.JUDGE_ATTEMPTS):
             _, _, outcomes = self.w.sweep()
             self.assertEqual(self.one(self.w.apply({}, started=[self.one(outcomes)["commit"]])[0])["kind"], "none")
-        self.assertEqual(self.refused("not_answered")["sha"], candidate)
+        self.assertEqual(self.refused("judge_failed")["sha"], candidate)
         self.assertEqual(self.w.run(), [])
         config, _, ledger = self.w.load()
-        self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (1, None), "the hive's own failure costs its member nothing")
+        self.assertEqual(ledger.standing(101, hive.now(), config)[:2], (2, "2026-11-12T14:00:00Z"))
         self.assertEqual(self.w.deals()["toy-0001"], ("alice", "closed"), "and the task can be dealt again")
 
     def test_a_task_the_judge_keeps_refusing_gets_a_higher_hint(self):
@@ -670,6 +672,22 @@ class TestStructure(Base):
         with mock.patch.object(hive, "git", side_effect=spy):
             self.assertEqual(self.refused("too_many_commits")["detail"], {"commits": 6}, "five allowed: counted up to six")
         self.assertTrue(counted and all("--max-count=6" in args for args in counted))
+
+    def test_an_entry_that_lies_about_its_kind_is_refused_at_once(self):
+        """A file entry that names a folder object: git cannot read such a tree as it is written. That is the candidate's doing, refused with its cost, never a failure of the hive's that would
+        leave the deal open at no cost."""
+        blob = sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin="int x;\n").stdout.strip()
+        inner = sh("git", "mktree", cwd=self.alice.work, stdin=f"100644 blob {blob}\tinner\n").stdout.strip()
+        kept = {line.split("\t")[1]: line.split()[2] for line in self.listing("HEAD:src")}
+        raw = b"".join(b"100644 " + name.encode() + b"\0" + bytes.fromhex(value) for name, value in sorted(kept.items()))
+        raw += b"100644 zz\0" + bytes.fromhex(inner)  # (the other way round, a folder entry naming a file, git will not even push)
+        src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
+                             capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+        self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
+        self.refused("special_file")
+        self.assertEqual([e["type"] for e in self.w.events()], ["verdict"], "answered, not marked")
+        config, _, ledger = self.w.load()
+        self.assertIsNotNone(ledger.standing(101, hive.now(), config)[1], "with its cost")
 
     def test_a_folder_that_lists_one_name_twice_is_refused(self):
         """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
