@@ -1,0 +1,101 @@
+{
+ "protocol": 1,
+ "project": "miniz",
+ "repo": "Bee-ruche/minizBee",
+ "branch": "master",
+ "paused": true,
+ "tasks": "hive/tasks/miniz.jsonl",
+ "check": "bee/tests/lancer.sh",
+ "protected": [
+  "bee/**",
+  "manifests/**",
+  "manifestes/**",
+  "tests/**",
+  "examples/**"
+ ],
+ "members": {
+  "only": []
+ },
+ "models": [
+  "claude-fable-5-2",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5"
+ ],
+ "judge": {
+  "repetitions": 10,
+  "timeout_seconds": 3600,
+  "metrics": [
+   "suspects",
+   "outputs_compared",
+   "gain_compression_throughput_n1",
+   "sure_compression_throughput_n1",
+   "worse_compression_throughput_n1",
+   "gain_compression_throughput_n6",
+   "sure_compression_throughput_n6",
+   "worse_compression_throughput_n6",
+   "gain_compression_throughput_n9",
+   "sure_compression_throughput_n9",
+   "worse_compression_throughput_n9",
+   "gain_decompression_throughput",
+   "sure_decompression_throughput",
+   "worse_decompression_throughput",
+   "gain_ratio_n6",
+   "sure_ratio_n6",
+   "worse_ratio_n6",
+   "gain_max_memory_kb",
+   "sure_max_memory_kb",
+   "worse_max_memory_kb",
+   "gain_instructions_n1",
+   "gain_instructions_n6",
+   "gain_instructions_n9",
+   "gain_instructions_decompression"
+  ],
+  "require": [
+   {
+    "name": "suspects",
+    "max": 0
+   },
+   {
+    "name": "worse_compression_throughput_n1",
+    "max": 0
+   },
+   {
+    "name": "worse_compression_throughput_n6",
+    "max": 0
+   },
+   {
+    "name": "worse_compression_throughput_n9",
+    "max": 0
+   },
+   {
+    "name": "worse_decompression_throughput",
+    "max": 0
+   },
+   {
+    "name": "worse_ratio_n6",
+    "max": 0
+   },
+   {
+    "name": "worse_max_memory_kb",
+    "max": 0
+   },
+   {
+    "name": "gain_instructions_n1",
+    "min": -0.01
+   },
+   {
+    "name": "gain_instructions_n6",
+    "min": -0.01
+   },
+   {
+    "name": "gain_instructions_n9",
+    "min": -0.01
+   },
+   {
+    "name": "gain_instructions_decompression",
+    "min": -0.01
+   }
+  ]
+ }
+}

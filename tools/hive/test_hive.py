@@ -1872,26 +1872,36 @@ class TestSecondReview(Base):
             "import json, sys\nargs = sys.argv[1:]\n"
             "report = {'judge': {'code': 0, 'outcome': 'correct', 'suspicious_constructs': [], 'verification': {'outputs_compared': 12},\n"
             "          'plugin': 'a' * 64, 'seed': 'ab', 'base': args[args.index('--base') + 1], 'head': args[args.index('--head') + 1]},\n"
-            "          'metrics': {'CPU time': {'gain': 0.3, 'beyond_noise': True}, 'size': {'gain': None, 'beyond_noise': False}},\n"
+            "          'metrics': {'CPU time': {'gain': 0.3, 'beyond_noise': True, 'degradation_beyond_noise': False},\n"
+            "                      'size': {'gain': None, 'beyond_noise': False}, 'memory': {'gain': -0.2, 'degradation_beyond_noise': True}},\n"
             "          'instructions': {'instructions_tdef': {'gain': -0.01, 'beyond_noise': False}}}\n"
             "open(args[args.index('--json') + 1], 'w').write(json.dumps(report))\n")
         base, candidate = root / "w/base", root / "w/candidate"
         base.mkdir(parents=True), candidate.mkdir()
         answer = hive.common_judge(root)(base, candidate, {"id": "toy-0004"}, "1" * 40, "2" * 40)
-        self.assertEqual(answer, {"code": 0, "report": {"suspects": 0, "outputs_compared": 12, "gain_cpu_time": 0.3, "sure_cpu_time": 1,
-                                                       "gain_instructions_tdef": -0.01, "sure_instructions_tdef": 0}})
+        self.assertEqual(answer, {"code": 0, "report": {
+            "suspects": 0, "outputs_compared": 12, "gain_cpu_time": 0.3, "sure_cpu_time": 1, "worse_cpu_time": 0,
+            "gain_memory": -0.2, "sure_memory": 0, "worse_memory": 1,
+            "gain_instructions_tdef": -0.01, "sure_instructions_tdef": 0, "worse_instructions_tdef": 0}})
         kept = hive.clean_report(answer["report"], ["gain_cpu_time", "sure_cpu_time", "outputs_compared"])
         self.assertTrue(hive.goal_met({"goal": {"kind": "metric", "name": "gain_cpu_time", "min": 0.02}}, kept))
         self.assertFalse(hive.goal_met({"goal": {"kind": "metric", "name": "gain_cpu_time", "min": 0.5}}, kept))
         self.assertTrue(hive.goal_met({"goal": {"kind": "metric", "name": "outputs_compared", "min": 12, "max": 12}}, kept))
         self.assertFalse(hive.goal_met({"goal": {"kind": "metric", "name": "outputs_compared", "max": 11}}, kept))
         self.assertFalse(hive.goal_met({"goal": {"kind": "metric", "name": "suspects", "max": 0}}, kept), "a figure the hive did not keep")
+        both = {"kind": "metric", "name": "gain_cpu_time", "min": 0.02, "and": [{"name": "sure_cpu_time", "min": 1}]}
+        self.assertTrue(hive.goal_met({"goal": both}, kept), "a gain, AND the stopwatch beyond the noise")
+        self.assertFalse(hive.goal_met({"goal": both}, {**kept, "sure_cpu_time": 0}))
+        self.assertFalse(hive.goal_met({"goal": {**both, "and": [{"name": "outputs_compared", "max": 1}]}}, kept))
         self.assertTrue(hive.goal_met({}, {}) and hive.goal_met({"goal": {"kind": "correct"}}, {}))
         self.assertFalse(hive.goal_met({"goal": {"kind": "other"}}, kept))
         config, tasks, _ = self.w.load()
         hive.check_goals(config, tasks)
         for goal in ({"kind": "metric", "name": "speed", "min": 1}, {"kind": "metric", "name": "gain"}, {"kind": "metric", "name": "gain", "min": "2"},
-                     {"kind": "metric", "name": "gain", "min": float("nan")}, {"kind": "sometimes"}, {"kind": "metric", "min": 1}):
+                     {"kind": "metric", "name": "gain", "min": float("nan")}, {"kind": "sometimes"}, {"kind": "metric", "min": 1},
+                     {"kind": "metric", "name": "gain", "min": 1, "and": [{"name": "speed", "min": 1}]},
+                     {"kind": "metric", "name": "gain", "min": 1, "and": "gain"},
+                     {"kind": "metric", "name": "gain", "min": 1, "and": [{"name": "gain", "min": 1, "and": [{"name": "gain", "min": 1}]}]}):
             with self.subTest(goal=goal), self.assertRaisesRegex(hive.HiveError, "goal"):
                 hive.check_goals(config, {"toy-0004": {"id": "toy-0004", "goal": goal}})
 
@@ -1988,6 +1998,28 @@ class TestLedger(unittest.TestCase):
         self.assertTrue(cooling(self.ledger(claim, {**verdict, "member_id": 2}), "13:00:00"), "nor someone else's verdict")
         self.assertTrue(cooling(self.ledger(claim, {**verdict, "task": "toy-0002"}), "13:00:00"), "nor a verdict on another task")
         self.assertFalse(cooling(self.ledger(verdict), "13:00:00"), "no claim, no wait")
+
+
+class TestProjectFiles(unittest.TestCase):
+    """The projects the registry declares (hive/projects, hive/tasks) load, and each goal names figures the judge gives."""
+
+    def test_every_declared_project_loads_and_starts_closed(self):
+        registry = Path(hive.__file__).resolve().parents[2]
+        projects = sorted((registry / "hive/projects").glob("*.json"))
+        self.assertTrue(projects, "no project declared")
+        for path in projects:
+            with self.subTest(project=path.stem):
+                config = hive.load_config(path)
+                tasks = hive.load_tasks(registry / config["tasks"])
+                hive.check_goals(config, tasks)
+                self.assertEqual(config["project"], path.stem)
+                self.assertTrue(tasks)
+                self.assertTrue(all(task["id"].startswith(config["project"] + "-") for task in tasks.values()))
+                self.assertTrue(all(not hive.protected(f.rstrip("/"), config["protected"]) for task in tasks.values() for f in task["files"]),
+                                "a task names a file its own project protects")
+                if not json.loads(path.read_text()).get("in_service"):
+                    self.assertTrue(config.get("paused") or config["members"]["only"] is not None,
+                                    "a project not yet in service is paused, or open by invitation")
 
 
 class TestIgnoreList(Base):

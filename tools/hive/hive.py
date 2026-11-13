@@ -266,11 +266,14 @@ def load_config(path):
     return config
 
 
-def condition_ok(condition, metrics):
-    """A condition on one of the judge's figures: {"name": a listed figure, "min": n} or {..., "max": n}."""
+def condition_ok(condition, metrics, nested=True):
+    """A condition on one of the judge's figures: {"name": a listed figure, "min": n} or {..., "max": n}; a goal may
+    add others that must hold too: "and": [conditions]."""
     bounds = [condition.get(k) for k in ("min", "max") if k in condition] if isinstance(condition, dict) else []
+    more = condition.get("and", []) if isinstance(condition, dict) else None
     return bool(bounds) and condition.get("name") in metrics \
-        and all(isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) for b in bounds)
+        and all(isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) for b in bounds) \
+        and isinstance(more, list) and (not more or nested) and all(condition_ok(c, metrics, nested=False) for c in more)
 
 
 def check_goals(config, tasks):
@@ -1121,7 +1124,8 @@ def condition_met(condition, report):
     """True if a figure of the judge's report is a number within the condition's bounds."""
     value = report.get(condition["name"])
     return number(value) and ("min" not in condition or value >= condition["min"]) \
-        and ("max" not in condition or value <= condition["max"])
+        and ("max" not in condition or value <= condition["max"]) \
+        and all(condition_met(other, report) for other in condition.get("and", ()))
 
 
 def goal_met(task, report):
@@ -1509,7 +1513,8 @@ def pick(feed, login, hour, max_tier=3, sizes=("S", "M", "L")):
 def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
     """The common judge (tools/judge/judge.py) as a judge function: code 0 correct, 1 refused, 2 failure to judge.
     The report it returns holds numbers only: the figures report.py publishes (suspects, outputs_compared) and, for
-    each of the judge's metrics, gain_<metric> and sure_<metric> (1 when the gain is beyond the noise, else 0)."""
+    each of the judge's metrics, gain_<metric>, sure_<metric> (1 when the gain is beyond the noise, else 0) and
+    worse_<metric> (1 when it is degraded beyond the noise, else 0)."""
     judge_py, report_py = Path(registry_root) / "tools/judge/judge.py", Path(registry_root) / "tools/judge/report.py"
 
     def run(base, candidate, task, tip, commit):
@@ -1548,6 +1553,7 @@ def judge_figures(published, report_path):
             if key and isinstance(metric, dict) and number(metric.get("gain")):
                 figures[f"gain_{key}"] = metric["gain"]
                 figures[f"sure_{key}"] = 1 if metric.get("beyond_noise") is True else 0
+                figures[f"worse_{key}"] = 1 if metric.get("degradation_beyond_noise") is True else 0
     except (OSError, ValueError, AttributeError, TypeError):
         pass  # no figure beyond report.py's: a goal on a gain is then not met
     return figures
