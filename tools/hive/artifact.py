@@ -6,6 +6,12 @@ paths, and a file written where code is later run from is run. This tool asks Gi
 it the members it was told to expect, by their exact names and up to a size each, and writes each one, under that
 same name, in a folder of its own. An archive that holds anything else is refused whole, and nothing of it is kept.
 
+It reads the archive itself, and strictly: the members one after the other from the first byte, each with its
+header, its data and nothing more, then the directory that lists exactly them, then the end record, then the end of
+the file. Every byte is accounted for, so no other reader of the same archive can find in it a member this one did
+not see; and what the reading costs is bounded by the sizes asked for, never by what the archive says of itself.
+It is the layout the upload action writes (docs/hive-workflow.md says what could not be tried against GitHub).
+
 What it takes is still only data from a job that held no key: the caller checks it (the plan against the SHA-256
 its job published, the bundle against the plan) or believes it for nothing more than what that job may say (the
 judge's answers).
@@ -22,10 +28,10 @@ import os
 import re
 import resource
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
-import zipfile
 import zlib
 from pathlib import Path
 
@@ -37,7 +43,12 @@ MOST_BYTES = 8 << 30  # no member is ever expected to be larger
 SLACK_BYTES = 1 << 20  # what an archive may weigh beyond its members (stored members do not shrink)
 BLOCK = 1 << 20
 NOT_THERE = 3
-
+# The zip format, as far as this tool reads it (little-endian; sizes of 4 bytes only: no ZIP64, nothing beyond 4 GiB).
+END = struct.Struct("<4s4H2LH")  # signature, 2 disk numbers, 2 counts of entries, the directory's size and offset, comment length
+ENTRY = struct.Struct("<4s6H3L5H2L")  # one member in the directory
+LOCAL = struct.Struct("<4s5H3L2H")  # the header in front of a member's data
+AFTER_DATA, FLAGS = 0x0008, 0x0008 | 0x0800 | 0x0006  # sizes written after the data; a UTF-8 name; a compression hint: no other flag
+STORED, DEFLATED = 0, 8
 
 class Refused(Exception):
     """The archive, or GitHub's answer, is not what this step expects: nothing of it is used."""
@@ -92,10 +103,64 @@ def download(repository, artifact_id, path, most):
         raise Refused("the download failed, or the archive is larger than this step takes")
 
 
+def listed(source, size, members):
+    """What the archive's directory lists, and where that directory starts: ([(name, flags, method, checksum, packed,
+    unpacked, offset)] in the order the members lie in the file, the directory's offset). The archive must end with
+    one end record, without comment, right after a directory of exactly as many entries as there are `members`, each
+    named like one of them, with no comment and no extra field: so the directory is read whole at a known, small cost."""
+    different = Refused("the archive does not hold exactly the members expected")
+    if size < END.size:
+        raise Refused("not an archive this step reads")
+    source.seek(size - END.size)
+    signature, disk, first_disk, here, total, length, offset, comment = END.unpack(source.read(END.size))
+    if signature != b"PK\x05\x06":
+        raise Refused("not an archive this step reads")
+    if disk or first_disk or comment or here != len(members) or total != len(members) \
+            or length != sum(ENTRY.size + len(name) for name in members) or offset + length != size - END.size:
+        raise different
+    source.seek(offset)
+    directory, at, entries = source.read(length), 0, []
+    for _ in members:  # (the directory is exactly as long as these entries: each is read inside it)
+        (signature, _, _, flags, method, _, _, checksum, packed, unpacked, name_length, extra, comment, disk, _, _,
+         start) = ENTRY.unpack_from(directory, at)
+        name = directory[at + ENTRY.size:at + ENTRY.size + name_length].decode("ascii", errors="replace")
+        at += ENTRY.size + name_length
+        if signature != b"PK\x01\x02" or extra or comment or disk or name not in members or name in (entry[0] for entry in entries):
+            raise different
+        entries.append((name, flags, method, checksum, packed, unpacked, start))
+    return sorted(entries, key=lambda entry: entry[6]), offset
+
+
+def unfolded(source, method, packed, unpacked):
+    """A member's bytes, block by block, read from its `packed` bytes of data: never more than one byte beyond the
+    `unpacked` it declares (the caller sees the one byte and stops), and Refused if its data is not exactly one
+    stored or deflated stream, from its first byte to its last."""
+    unfold, left, waiting, given = (zlib.decompressobj(-15) if method == DEFLATED else None), packed, b"", 0
+    while left or (unfold and not unfold.eof):
+        if not waiting:
+            waiting = source.read(min(BLOCK, left))
+            left -= len(waiting)
+            if not waiting:
+                raise Refused("unreadable (its data ends before it does)")
+        if unfold is None:
+            plain, waiting = waiting, b""
+        else:
+            try:
+                plain = unfold.decompress(waiting, unpacked - given + 1)
+            except zlib.error:
+                raise Refused("unreadable (not deflated data)") from None
+            waiting = unfold.unconsumed_tail
+            if unfold.unused_data:  # what its stream, once ended, did not use
+                raise Refused("unreadable (bytes after the end of its data)")
+        given += len(plain)
+        yield plain  # (the caller stops at the first byte beyond `unpacked`: it is never asked for more)
+
+
 def take(archive, members, folder):
-    """Writes into `folder` (which it creates) each of `members` ({name: the most bytes it may hold}) read from the
-    zip file `archive`, and returns the folder. The archive must hold exactly these members, each once, as plain
-    stored or deflated files no larger than allowed: otherwise Refused, and the folder is not left behind.
+    """Writes into `folder` (which it creates, in a folder that exists) each of `members` ({name: the most bytes it
+    may hold}) read from the zip file `archive`, and returns the folder. The archive must be exactly these members,
+    each once, plain stored or deflated files no larger than allowed, and not one byte more: otherwise Refused, and
+    the folder is not left behind.
 
     Nothing is extracted: no path of the archive is ever joined to a folder. The names written are the caller's."""
     if not members or not all(isinstance(name, str) and MEMBER_NAME.match(name) and type(most) is int and 0 < most <= MOST_BYTES
@@ -103,36 +168,53 @@ def take(archive, members, folder):
         raise Refused("the members asked for are not plain file names with a size")
     folder = Path(folder)
     try:
-        folder.mkdir(parents=True)  # a folder of this step's own: an existing one is not written into
+        folder.mkdir()  # a folder of this step's own: an existing one is not written into
     except OSError:
         raise Refused("the folder to write into exists already, or cannot be made") from None
+    different = Refused("the archive does not hold exactly the members expected")
     try:
         try:
-            opened = zipfile.ZipFile(archive)
-        except (zipfile.BadZipFile, OSError, ValueError, EOFError, NotImplementedError) as error:
+            source = open(archive, "rb")
+        except OSError as error:
             raise Refused(f"not an archive this step reads ({type(error).__name__})") from None
-        with opened:
-            entries = opened.infolist()
-            if sorted(entry.orig_filename for entry in entries) != sorted(members):
-                raise Refused("the archive does not hold exactly the members expected")
-            for entry in entries:
-                name, most = entry.orig_filename, members[entry.orig_filename]
-                if entry.flag_bits & 0x1 or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) or entry.file_size > most:
+        with source:
+            size = source.seek(0, os.SEEK_END)
+            entries, directory = listed(source, size, members)
+            position = 0  # where the next member must start: the first byte, then where the one before it ended
+            for index, (name, flags, method, checksum, packed, unpacked, start) in enumerate(entries):
+                if flags & ~FLAGS or method not in (STORED, DEFLATED) or unpacked > members[name] or (method == STORED and packed != unpacked):
                     raise Refused(f"{name}: not a plain member of the size allowed")
+                # The header in front of the data says what the directory says, and nothing lies between two members.
+                source.seek(start)
+                header = source.read(LOCAL.size + len(name))
+                if start != position:
+                    raise different
+                signature, _, local_flags, local_method, _, _, *figures, name_length, extra = LOCAL.unpack_from(header)
+                later = bool(flags & AFTER_DATA)  # the checksum and the sizes are written after the data
+                if signature != b"PK\x03\x04" or local_flags != flags or local_method != method or extra or name_length != len(name) \
+                        or header[LOCAL.size:] != name.encode() or tuple(figures) not in ((checksum, packed, unpacked), (0, 0, 0) if later else None):
+                    raise different
+                position = entries[index + 1][6] if index + 1 < len(entries) else directory  # where this member must end
+                trailer = position - (start + len(header) + packed)
+                if trailer not in ((12, 16) if later else (0,)):
+                    raise different
                 descriptor = os.open(folder / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-                try:
-                    with os.fdopen(descriptor, "wb") as out, opened.open(entry) as source:
-                        left = most
-                        while True:
-                            block = source.read(min(BLOCK, left + 1))
-                            if not block:
-                                break
-                            left -= len(block)
-                            if left < 0:
-                                raise Refused(f"{name}: larger than allowed")  # whatever size the archive's reader went by
-                            out.write(block)
-                except (zipfile.BadZipFile, zlib.error, OSError, ValueError, EOFError, NotImplementedError, RuntimeError) as error:
-                    raise Refused(f"{name}: unreadable ({type(error).__name__})") from None
+                with os.fdopen(descriptor, "wb") as out:
+                    written, crc = 0, 0
+                    try:
+                        for plain in unfolded(source, method, packed, unpacked):
+                            written += len(plain)
+                            if written > unpacked:
+                                raise Refused("larger than it says")  # seen, and never written
+                            crc = zlib.crc32(plain, crc)
+                            out.write(plain)
+                    except Refused as refusal:
+                        raise Refused(f"{name}: {refusal}") from None
+                if written != unpacked or crc != checksum:
+                    raise Refused(f"{name}: unreadable (its size or its checksum is not what the archive says)")
+                words = source.read(trailer)
+                if later and ((trailer == 16 and words[:4] != b"PK\x07\x08") or struct.unpack("<3L", words[-12:]) != (checksum, packed, unpacked)):
+                    raise different
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise

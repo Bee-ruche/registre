@@ -25,9 +25,11 @@ Five things carry it:
    the plan.
 2. **A job that will hold a key takes the earlier jobs' files itself, by name, before it holds the key**
    (`tools/hive/artifact.py take`). It asks GitHub for the archive, reads from it the members it expects (their
-   exact names, up to a size) and writes each under that name in a folder of its own; an archive that holds
-   anything else is refused whole. No general tool unpacks an archive in such a job: an archive names its own
-   paths, and a file written where code is later run from is run.
+   exact names, up to a size) and writes each under that name in a folder of its own. It reads the archive itself,
+   byte by byte accounted for: the members expected, the directory that lists them, the end, and nothing else,
+   so an archive that holds anything more is refused whole, and what reading it costs is set by the sizes asked
+   for. No general tool unpacks an archive in such a job: an archive names its own paths, and a file written
+   where code is later run from is run.
 3. **The project's token is given to one step of one job** (`apply`), through that step's environment. It is
    asked of GitHub for that run, lasts an hour and reaches one repository; the key that obtains it is readable in
    one environment only.
@@ -134,7 +136,9 @@ jobs:
       - name: Take the plan (one named file, before this job holds any key)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 registry/tools/hive/artifact.py take --name plan --member plan.json:67108864 --into taken/plan
+        run: |
+          mkdir taken
+          python3 registry/tools/hive/artifact.py take --name plan --member plan.json:67108864 --into taken/plan
       - name: A token of an hour for the state repository, and nothing else
         id: state
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -200,6 +204,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir taken
           python3 registry/tools/hive/artifact.py take --name plan --member plan.json:67108864 --into taken/plan
           python3 registry/tools/hive/artifact.py take --name candidates --member candidates.bundle:2147483648 \
             --into taken/candidates
@@ -269,9 +274,12 @@ Notes on the draft:
 - That `gh api` lists a public repository's forks with the workflow's read-only token (it should: the data is
   public).
 - **How `artifact.py` meets GitHub**: that a job's own token, with `actions: read`, lists and downloads the
-  artifacts of the run it belongs to while that run is in progress, and that the archive GitHub hands over for a
-  single uploaded file holds exactly one member with that file's name. The tool was tested on archives made by
-  its tests, never on one of GitHub's. If the layout differs, it refuses: the first real run tells.
+  artifacts of the run it belongs to while that run is in progress (GitHub's documentation says so), and that
+  the archive GitHub hands over is, byte for byte, the one the upload action wrote. The tool reads the layout
+  that action's code writes for one file (a header, the deflated data, sixteen bytes of sizes, a directory of one
+  entry, the end record, no comment and no extra field); it was tested on archives its tests make that way,
+  never on one of GitHub's. If the layout differs in anything, it refuses: the first real run tells, and nothing
+  is pushed meanwhile.
 - That an environment restricted to `main` refuses a job started on another ref, and what `!cancelled()` gives
   when the judging job is stopped at its time limit rather than by a person.
 - That the common judge builds its image from a clone of the project (`--tooling project --image-only`) outside
