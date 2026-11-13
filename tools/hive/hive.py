@@ -667,6 +667,8 @@ def folder_entries(repo, tree):
         if record:
             meta, _, name = record.partition("\t")
             mode, _, sha = meta.split(" ")
+            if name in entries:
+                raise Refusal("special_file")  # one name twice in a folder: git never writes that, it was crafted
             entries[name] = (mode, sha)
     return entries
 

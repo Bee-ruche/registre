@@ -608,6 +608,17 @@ class TestStructure(Base):
             hive.changed_entries(self.w.harvest, hive.EMPTY_TREE, hive.tree_of(self.w.harvest, self.start), 100)
         self.assertEqual(refusal.exception.reason, "too_many_files", "a single folder too long to list is not listed either")
 
+    def test_a_folder_that_lists_one_name_twice_is_refused(self):
+        """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
+        tool's affair. The hive refuses the candidate."""
+        blobs = [sh("git", "hash-object", "-w", "--stdin", cwd=self.alice.work, stdin=text).stdout.strip()
+                 for text in ("int harmless;\n", "int other;\n")]
+        raw = b"".join(b"100644 twice.c\0" + bytes.fromhex(blob) for blob in blobs)
+        src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
+                             capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+        self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
+        self.refused("special_file")
+
     def test_a_name_a_contribution_adds_is_an_identifier(self):
         self.alice.write("src/read this first.c", "int x;\n").commit().marker("toy-0002").push()
         self.refused("bad_path")
