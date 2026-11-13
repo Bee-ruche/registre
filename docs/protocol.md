@@ -56,6 +56,12 @@ not banned**. The forks of other accounts (organizations, bots, young or banned 
 nothing is fetched from them and nothing is answered, so they cost the hive nothing. `hive.py next` reminds the
 worker of the rule. A ban names the account's numeric id: it survives a change of login.
 
+A project can be **open by invitation**: its file lists the numeric ids of the accounts whose forks are read
+(`members.only`), and no other fork is. This is how a project starts, among people who are known.
+
+**A fork is read whole or not at all**: one with more new branch tips than the hive reads at once (30) is not read
+until it has fewer. Nothing can be pushed and kept out of the hive's sight, to come out later with an old instant.
+
 ## What the hive checks before judging
 
 All of it is read from git objects, on **the difference between the project's tip and the candidate merged on
@@ -110,7 +116,7 @@ the hive runs those git commands with an empty attribute source.
   change history, or write anything but the project's listed figures, as numbers, into the ledger. The judge's
   container is what stands between a contribution and that job.
 - Both later jobs go through the same candidates, with the same ledger, tasks and instant (the plan's): they
-  derive the same commits. A plan from the future, or more than six hours old, is not applied; nor is anything if
+  derive the same commits. A plan from the future, or more than a day old, is not applied; nor is anything if
   the project's tip moved since the plan.
 
 ## How a candidate is judged and integrated
@@ -167,13 +173,14 @@ What makes them hold:
   whose commit the project declined, in the last seven days, has all its candidates sent the same way.
 - **Nothing pushed later for the same task passes an earlier push**: it goes right behind it, and while the earlier
   one has no answer it is not tried.
-- **One clock per task.** GitHub's, when it has said when every candidate for the task was pushed (the latest push
-  that brought the commit there: a commit kept in reserve, taken away and pushed again has the instant of its
-  return). While it has not, the task waits, a day at most; after that the instant the hive first saw each
-  candidate is used, for all of them. The two are never mixed.
+- **An instant nobody can choose.** GitHub's, for the latest push that brought the commit to the fork (a commit
+  taken away and pushed again has the instant of its return). When GitHub gives none (it is late, or the push is
+  older than what it keeps), the instant of the previous run: the fork was read whole then and the commit was not
+  there, so it was pushed after. An instant once given to a candidate stays. No task ever waits for an instant.
 - **Marks end in an answer**: three failures of the judge, or three pushes declined once the hive has shown it can
   push to the project, and the candidate is refused; six runs stopped while on it, and it is told to come back
-  (`not_answered`).
+  (`not_answered`). The three failures are counted for the member on the task over seven days, not for the commit:
+  taking a candidate away before its third failure and putting another in its place starts nothing afresh.
 - **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
   the answers are saved as they come, so that a judging job that is stopped leaves what it had.
 - **One candidate at a time per member.** A candidate that waits is public. `hive.py next` gives no new task to a
@@ -220,7 +227,7 @@ On the registry's `hive-state` branch, one folder per project:
   they are not read again.
 
 **A claim is a hint, never a lock and never a rank**: it appears in the feed at the next run and expires after
-three hours. So that claims cannot be used to keep workers away from tasks, the hive records one live claim per
+three hours. A claim the hive does not record is not read again. So that claims cannot be used to keep workers away from tasks, the hive records one live claim per
 member, and none on a task whose claim the member let expire without submitting in the last day.
 
 To keep double work low without any coordination, each worker draws its task from the open ones in an order

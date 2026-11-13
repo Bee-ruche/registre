@@ -683,6 +683,21 @@ class TestBanned(Base):
             TestMembers.not_read(self)
 
 
+class TestByInvitation(Base):
+    config = {"members": {"only": [102, "alice"]}}
+
+    def test_a_project_open_by_invitation_reads_the_accounts_it_names_by_number(self):
+        self.alice.submit("toy-0001")  # named by login only: a login can change hands, it is not enough
+        invited = self.w.fork("bob", 102).write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        with mock.patch.object(self.w.api, "user", side_effect=lambda login: self.assertEqual(login, "bob") or
+                               {"id": 102, "created_at": "2020-01-01T00:00:00Z", "type": "User"}):
+            outcome = self.one(self.w.run())
+        self.assertEqual((outcome["sha"], outcome["result"]), (invited, "accepted"))
+        self.w.set_config({"members": {"only": []}})
+        self.alice.fresh("again").submit("toy-0004", content=LIB + "/* FAST */\n")
+        self.assertEqual(self.w.run(), [], "an empty list invites nobody")
+
+
 class TestBannedById(Base):
     config = {"members": {"banned": [101]}}
 
@@ -1093,6 +1108,9 @@ class TestFirstReview(Base):
             self.assertEqual([c["task"] for c in self.claims()], ["toy-0001", "toy-0002"], "another task can be claimed")
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T15:02:00Z"}):
             self.w.run()
+            self.assertEqual(len(self.claims()), 2, "a claim the hive did not record is not read again")
+            self.alice.fresh("next-day").marker("toy-0001", "claim", model="a-third-commit").push()
+            self.w.run()
             self.assertEqual([c["task"] for c in self.claims()], ["toy-0001", "toy-0002", "toy-0001"], "a day later it can")
 
     def test_a_claim_used_by_a_submission_is_no_cooldown(self):
@@ -1472,36 +1490,73 @@ class TestSecondReview(Base):
         self.assertEqual(sorted(o.get("reason") for o in outcomes[1:]), ["superseded"] * 3)
         self.assertEqual(sh("git", "show", "-s", "--format=%an", "main", cwd=self.w.upstream).stdout.strip(), "alice")
 
-    def test_while_github_has_not_said_when_a_candidate_was_pushed_its_task_waits(self):
-        """A candidate whose instant is unknown could be the original of the others: one clock per task, never a mix."""
+    def test_a_candidate_github_is_silent_about_takes_the_instant_of_the_previous_run(self):
+        """GitHub is late, or the push is older than what it keeps. The hive read the fork whole at the previous run
+        and the commit was not there: it was pushed after. Nothing waits, and a copy does not pass its original."""
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T11:00:00Z"}):
+            self.assertEqual(self.w.run(), [])
         self.w.api.silent.add("alice")
         original = self.alice.submit("toy-0001")
         mallory = self.w.fork("mallory", 666)
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:00:05Z"}):
             mallory.submit("toy-0001")
-            other = mallory.fresh("other").write("src/m.c", "int m;\n").commit().marker("toy-0002").push()
-            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [other], "the task waits; the other tasks do not")
-            self.assertEqual(self.one(self.w.run())["sha"], other)
-            self.assertEqual(hive.read_pending(self.w.state)[original], {"seen": "2026-11-12T12:00:05Z", "pushed": None})
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T15:00:00Z"}):
-            self.assertEqual(self.w.run(), [], "still no word from GitHub three hours later: the task still waits")
-            self.w.api.silent.clear()
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:30:00Z"}):
+            made = self.w.plan()
+            self.assertEqual([(c["login"], c["seen"]) for c in made["queue"]],
+                             [("alice", "2026-11-12T11:00:00Z"), ("mallory", "2026-11-12T12:00:05Z")])
             outcomes = self.w.run()
         self.assertEqual([(o["login"], o.get("reason") or o["result"]) for o in outcomes], [("alice", "accepted"), ("mallory", "superseded")])
-        self.assertEqual(hive.read_pending(self.w.state), {}, "answered: no longer waiting")
+        self.assertEqual((outcomes[0]["sha"], hive.read_pending(self.w.state)), (original, {}))
+        self.assertEqual(json.loads((self.w.state / "run.json").read_text()), {"at": "2026-11-12T12:30:00Z"})
 
-    def test_after_a_day_without_a_word_from_github_the_hives_own_first_sight_is_the_clock_for_all(self):
+    def test_an_instant_once_given_to_a_candidate_stays(self):
+        self.w.set_config({"members": {"judged_per_day": 0}})  # nobody is judged today: the candidate waits
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T11:00:00Z"}):
+            self.w.run()
         self.w.api.silent.add("alice")
-        self.alice.submit("toy-0001")
-        self.assertEqual(self.w.run(), [], "the hive sees alice's candidate, and waits for GitHub")
-        mallory = self.w.fork("mallory", 666)
+        waiting = self.alice.submit("toy-0001")
+        self.w.run()
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
-            mallory.submit("toy-0001")  # pushed, and seen by the hive, an hour after alice's
+            self.w.run()
+            self.assertEqual(hive.read_pending(self.w.state), {waiting: {"seen": "2026-11-12T11:00:00Z", "pushed": None}})
+            self.w.api.silent.clear()
+            self.assertEqual(self.w.plan()["queue"][0]["seen"], NOW, "and GitHub's own, when it comes, is the one used")
+
+    def test_a_fork_is_read_whole_or_not_at_all(self):
+        """Nothing can be pushed and kept out of the hive's sight behind other branches, to come out later with an
+        old instant: a fork with more new branch tips than the hive reads at once is not read until it has fewer."""
+        self.w.set_config({"limits": {"heads_per_fork": 4}})
+        mallory = self.w.fork("mallory", 666)
+        for i in range(4):
+            mallory.fresh(f"a{i}").marker(f"zzzz-000{i}", "claim", model=f"m{i}").push()
+        hidden = mallory.fresh("z0").write("lib.c", LIB + "/* REFUSE */\n").commit().marker("toy-0001").push()
+        with mock.patch.object(hive, "fetch_heads", side_effect=AssertionError("a fork with too many new branches is fetched")):
+            self.assertEqual((self.w.run(), self.w.events()), ([], []))
+        sh("git", "push", "--quiet", "origin", ":refs/heads/a3", cwd=mallory.work)
+        self.assertEqual(self.one(self.w.run())["sha"], hidden, "under the limit, all of it is read at once")
+        self.assertEqual(len(hive.read_ignored(self.w.state)), 3, "claims the hive does not record are not read again")
+        with mock.patch.object(hive, "commit_message", side_effect=AssertionError("read again")):
             self.assertEqual(self.w.run(), [])
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T13:00:01Z"}):
-            self.assertEqual({tuple(self.w.order(f"{i:032x}")) for i in range(20)}, {("alice", "mallory")},
-                             "the hive saw alice's first; GitHub's instant for mallory's is not mixed in")
-            self.assertEqual([(o["login"], o["result"]) for o in self.w.run()], [("alice", "accepted"), ("mallory", "refused")])
+
+    def test_failures_follow_the_member_and_the_task_not_the_commit(self):
+        """Taking a candidate away before its third failure and putting another in its place starts nothing afresh."""
+        mallory = self.w.fork("mallory", 666)
+        mallory.submit("toy-0001", content=LIB + "/* ENVERR */\n")
+        for _ in range(2):
+            self.assertEqual(self.one(self.w.run())["result"], "error")
+        sh("git", "push", "--quiet", "origin", ":refs/heads/claude/work", cwd=mallory.work)
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            mallory.fresh("second").submit("toy-0001", content=LIB + "/* ENVERR 2 */\n")
+            self.assertEqual(self.one(self.w.run())["result"], "error", "the third failure of this member on this task")
+            self.assertEqual(self.one(self.w.run())["reason"], "judge_failed")
+            seen = len(judge_by_content.seen)
+            mallory.fresh("third").submit("toy-0001", content=LIB + "/* ENVERR 3 */\n")
+            self.assertEqual((self.one(self.w.run())["reason"], len(judge_by_content.seen)), ("judge_failed", seen), "not judged at all")
+            other = mallory.fresh("other").write("src/m.c", "int m;\n").commit().marker("toy-0002").push()
+            self.assertEqual((self.one(self.w.run())["sha"], self.w.events()[-1]["result"]), (other, "accepted"), "another task is another matter")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-20T12:00:01Z"}):
+            mallory.fresh("week").submit("toy-0001", content=LIB + "int later;\n")
+            self.assertEqual(self.one(self.w.run())["result"], "accepted", "and a week later the member starts afresh")
 
     def test_a_commit_taken_away_and_pushed_again_has_the_instant_of_its_return(self):
         """Commits pushed early and kept in reserve do not go before what was pushed in the meantime."""

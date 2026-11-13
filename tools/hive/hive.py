@@ -53,7 +53,6 @@ JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times i
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
 PLAN_MAX_AGE_HOURS = 24  # the write step applies no plan older than this
 MEMORY_DAYS = 7  # how long a member's failures send its candidates after those of members without any
-FIRST_SIGHT_AFTER_HOURS = 24  # how long a task waits for GitHub to say when a candidate was pushed
 UNANSWERED_RUNS = 6  # a candidate the hive spent this many runs on without an answer is answered: not_answered
 ACTIONS = ("claim", "submit")
 FILE_MODES = ("100644", "100755")
@@ -82,7 +81,7 @@ DEFAULTS = {
     "protected": [],
     "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "heads_per_fork": 30,
                "judgements_per_sweep": 20, "discovery_seconds": 900, "judging_seconds": 14400, "queue": 500},
-    "members": {"min_account_age_days": 90, "judged_per_day": 5, "answers_per_day": 20, "banned": []},
+    "members": {"min_account_age_days": 90, "judged_per_day": 5, "answers_per_day": 20, "banned": [], "only": None},
     "models": [],  # the model identifiers the project keeps statistics for; any other is recorded as undeclared
     "judge": {},
     "claim_ttl_minutes": 180,
@@ -396,10 +395,18 @@ class Ledger:
         likely the cause): what counts towards the answer « not_answered »."""
         return sum(1 for e in self.events if e.get("type") == "error" and e.get("sha") == sha and not e.get("unproven"))
 
-    def strikes(self, sha):
+    def strikes(self, sha, member_id=None, task=None, instant=None):
         """The failures that count towards a refusal: the judge failing on the candidate while its machine works, and
-        the project's repository declining it once the hive has shown it can push there. An outage refuses nobody."""
-        return [e.get("kind", "judge") for e in self.events if e.get("type") == "error" and e.get("sha") == sha
+        the project's repository declining it once the hive has shown it can push there. An outage refuses nobody.
+        They are counted for the candidate and, over the last days, for its member on that task: taking a candidate
+        away before its third failure and putting another in its place for the same task starts nothing afresh."""
+        since = iso(instant - dt.timedelta(days=MEMORY_DAYS)) if instant else None
+
+        def same(e):
+            return e.get("sha") == sha or (since is not None and task is not None and e.get("member_id") == member_id
+                                           and e.get("task") == task and e.get("at", "") >= since)
+
+        return [e.get("kind", "judge") for e in self.events if e.get("type") == "error" and same(e)
                 and (e.get("kind", "judge") == "judge" or (e.get("kind") == "push" and not e.get("unproven")))]
 
     def open_intents(self):
@@ -750,8 +757,11 @@ def fork_shape(fork):
 def eligible(fork, api, config, instant, cache):
     """True if the hive reads this fork: its owner is a person's account, as GitHub describes it now, old enough for
     the project and not banned. A ban names the account's GitHub id (a number: it survives a change of login); a
-    login is accepted too. The forks of other accounts are not read at all: they cost the hive nothing."""
+    login is accepted too. A project may be open by invitation (members.only: the numeric ids it reads): the way
+    to start one among people who are known. The forks of other accounts are not read at all: they cost nothing."""
     rules = config["members"]
+    if rules["only"] is not None and fork["id"] not in [m for m in rules["only"] if type(m) is int]:
+        return False  # a project open by invitation: only the accounts it names (by their numeric id) are read
     if fork["id"] in [b for b in rules["banned"] if type(b) is int] \
             or fork["login"].lower() in {b.lower() for b in rules["banned"] if isinstance(b, str)}:
         return False
@@ -830,7 +840,7 @@ def discover(repo, config, api, skip, instant, allow_local=False):
 
     A commit counts only in the fork of the member its marker names: the same commit pushed to someone else's fork
     is nothing there. One fork that fails or stalls never stops the others: each is read with one listing and one
-    fetch, both limited in time. When the time allowed for all runs out, what is left waits for the next run, and
+    fetch, both limited in time. A fork is read whole or not at all (heads_per_fork new branch tips at most). When the time allowed for all runs out, what is left waits for the next run, and
     the forks are read in an order drawn anew each hour, which no fork can shift."""
     started, limits, entries, ignored, slot, members = time.monotonic(), config["limits"], [], [], 0, {}
     skip = set(skip)
@@ -851,8 +861,12 @@ def discover(repo, config, api, skip, instant, allow_local=False):
                 sha, _, ref = line.partition("\t")
                 if is_sha(sha) and HEAD_REF.match(ref):
                     heads.setdefault(sha, ref)  # one commit on several branches is one commit
-            fresh = [(sha, ref) for sha, ref in heads.items()
-                     if sha not in skip and f"{fork['repo_id']}:{sha}" not in skip][:limits["heads_per_fork"]]
+            fresh = [(sha, ref) for sha, ref in heads.items() if sha not in skip and f"{fork['repo_id']}:{sha}" not in skip]
+            if len(fresh) > limits["heads_per_fork"]:
+                # All of a fork's new branch tips are read, or none: nothing can be pushed and kept out of the hive's
+                # sight behind the others, to come out later with an old instant.
+                log("discovery: a fork has more new branches than the hive reads at once; it is not read until it has fewer")
+                continue
             if not fresh or not eligible(fork, api, config, instant, members):
                 continue  # nothing new, or an account whose forks the hive does not read: nothing is fetched
             slot += 1
@@ -917,8 +931,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     - for one task, never a candidate before one pushed earlier: a candidate behind a marked one, for the same task,
       goes after it, and is tried right after it in the same run;
     - first pushed, first served: a candidate's instant is the one GitHub recorded for its push (so a copy, which
-      can only be pushed after its original, comes after it). While GitHub has not said it for every candidate of
-      a task, the task waits, a day at most; then the instant the hive first saw each of them is used, for all;
+      can only be pushed after its original, comes after it). When GitHub gives none, it is the instant of the
+      previous run, which the push cannot precede: a fork is read whole or not at all, so the commit was not there;
     - one candidate per member and task: the member's others for that task are answered « duplicate »;
     - equal instants are separated by a draw from the member, the task and a key drawn AFTER the forks were read."""
     instant, ttl = now(), config["claim_ttl_minutes"]
@@ -928,6 +942,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     key = secrets.token_hex(16)
     first_sight, models = read_pending(state_folder), set(config["models"])
     held, done, claims, tickets, ranked, seen, known = ledger.live_claims(instant, ttl), ledger.done(), [], {}, [], {}, set()
+    last = read_state(state_folder, "run.json", {})
+    previous = last["at"] if isinstance(last, dict) and stamp(last.get("at")) and last["at"] <= iso(instant) else iso(instant)
     submitted = []
     for entry in sorted(entries, key=lambda e: e["sha"]):
         if entry["sha"] in known:
@@ -937,32 +953,25 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             task = tasks.get(entry["task"])
             if task is None or task.get("closed") or entry["task"] in done or entry["member_id"] in held \
                     or ledger.cooling(entry["member_id"], entry["task"], instant, ttl, config["claim_cooldown_hours"]):
+                ignored.append(f"{entry['repo_id']}:{entry['sha']}")  # a claim the hive does not record is not read again
                 continue
             held[entry["member_id"]] = (entry["task"], iso(instant))
             claims.append({"task": entry["task"], "member": entry["login"], "member_id": entry["member_id"],
                            "repo_id": entry["repo_id"], "sha": entry["sha"]})
             continue
+        # GitHub's instant when it gives one. When it does not (it is late, or the push is older than what it keeps),
+        # the instant of the previous run: the hive read this fork whole then and the commit was not there, so it was
+        # pushed after. An instant once given to a candidate stays.
         was = first_sight.get(entry["sha"]) or {}
-        seen[entry["sha"]] = {"seen": was.get("seen") or iso(instant), "pushed": entry["pushed"] or was.get("pushed")}
+        seen[entry["sha"]] = {"seen": was.get("seen") or previous, "pushed": entry["pushed"] or was.get("pushed")}
+        since = seen[entry["sha"]]["pushed"] or seen[entry["sha"]]["seen"]
         submitted.append(entry)
-    # One clock per task. GitHub's, when it has said when every candidate for the task was pushed. While it has not,
-    # the task waits (a day at most): a candidate whose instant is unknown could be the original of the others. After
-    # that, the hive's own first sight of each, for all of them: never a mix, in which a late answer would pass.
-    by_task = {}
-    for entry in submitted:
-        by_task.setdefault(entry["task"], []).append(entry)
-    for task_id, group in by_task.items():
-        silent = [e for e in group if not seen[e["sha"]]["pushed"]]
-        if silent and min(seen[e["sha"]]["seen"] for e in silent) > iso(instant - dt.timedelta(hours=FIRST_SIGHT_AFTER_HOURS)):
-            continue
-        for entry in group:
-            since = seen[entry["sha"]]["seen" if silent else "pushed"]
-            candidate = {"sha": entry["sha"], "repo_id": entry["repo_id"], "login": entry["login"], "member_id": entry["member_id"],
-                         "task": entry["task"], "model": entry["model"] if entry["model"] in models else None, "seen": since,
-                         "refusal": None}
-            when = (since, hashlib.sha256(f"{key}:{entry['member_id']}:{entry['task']}".encode()).hexdigest(),
-                    hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
-            ranked.append((when, candidate))
+        candidate = {"sha": entry["sha"], "repo_id": entry["repo_id"], "login": entry["login"], "member_id": entry["member_id"],
+                     "task": entry["task"], "model": entry["model"] if entry["model"] in models else None, "seen": since,
+                     "refusal": None}
+        when = (since, hashlib.sha256(f"{key}:{entry['member_id']}:{entry['task']}".encode()).hexdigest(),
+                hashlib.sha256(f"{key}:{entry['sha']}".encode()).hexdigest())
+        ranked.append((when, candidate))
     ranked.sort(key=lambda r: r[0])
     behind, order, classes = {}, [], {}
     for when, candidate in ranked:  # in the order of the pushes
@@ -1155,7 +1164,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
                 raise Refusal("superseded")
             if entry.get("refusal"):
                 raise Refusal(entry["refusal"])
-            strikes = ledger.strikes(entry["sha"])
+            strikes = ledger.strikes(entry["sha"], member_id, entry["task"], instant)
             if len(strikes) >= JUDGE_ATTEMPTS:
                 raise Refusal("push_refused" if "push" in strikes else "judge_failed")
             if ledger.unanswered(entry["sha"]) >= UNANSWERED_RUNS:
@@ -1400,6 +1409,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     write_ignored(state_folder, read_ignored(state_folder) + plan_["ignored"])
     answered = ledger.seen()
     write_state(state_folder, "waiting.json", sorted({mark for sha, mark in plan_["owners"].items() if sha not in answered}))
+    write_state(state_folder, "run.json", {"at": plan_["at"]})
     pending = {**read_pending(state_folder), **plan_["seen"]}  # the plan knows best when each candidate was pushed or seen
     write_pending(state_folder, {sha: at for sha, at in sorted(pending.items(), key=lambda item: item[1]["seen"])[-50_000:]
                                  if sha not in answered})
