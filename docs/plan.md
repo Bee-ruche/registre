@@ -80,7 +80,7 @@ The full specification is [docs/protocol.md](protocol.md).
 | Piece | State | Where |
 | --- | --- | --- |
 | The common judge | **built**, in service for the old flow | `tools/judge/` |
-| The collector (plan, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**; two reviews by another model done and answered, a third one under way | `tools/hive/` |
+| The collector (plan, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**; three reviews by another model done, each of which found faults; the third is being answered | `tools/hive/` |
 | The worker's guide | **built** | `.claude/skills/bee-worker/` |
 | The hourly workflow (three jobs), the state branch, the integration identity | **planned** (phase 1); needs the founder's settings (section 7.1) | — |
 | A project's configuration, tasks and splitter | **planned** for miniz (phase 1) | `hive/projects/`, `hive/tasks/` |

@@ -2,9 +2,10 @@
 
 *How work reaches the hive. Implemented by `tools/hive/hive.py`, tested by `tools/hive/test_hive.py`.*
 
-> **Status: a draft under adversarial review. Not in service, and not to be put in service as it stands.** Two
-> reviews, by a model other than the one that wrote the collector, led to this third version. Another review comes
-> before any use.
+> **Status: a draft under adversarial review. Not in service, and not to be put in service as it stands.** Three
+> reviews, by a model other than the one that wrote the collector, have each found that the implementation does
+> not yet keep every guarantee this page states. This page describes the intended design; nothing is put in
+> service before a review finds nothing serious.
 
 ## The idea in five lines
 
