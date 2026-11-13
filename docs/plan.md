@@ -36,7 +36,8 @@ I wrote the first plan before building anything. Building, and having the result
 | Work handed to the hive through a pull request from the fork | Pull requests bring the first-contribution approval click, one merge a minute, and a flood for maintainers | **No pull request.** The hive integrates what its judge passed |
 | Redundancy (each result re-done by another worker) and reputation with decay | Designed for volunteers' machines that judge; the hive's judge runs on its own CI and decides alone. Machinery for a problem the hive does not have | **Dropped** until volunteers' machines judge |
 | "One invited project as pilot, still to study" | The opening depended on a stranger's yes | **A flagship the hive can start alone** (section 4.3), invitations second |
-| "The collector works: its tests pass" | A first adversarial review, by another model, returned twenty findings on my first collector, among them ways to take credit for someone else's work and to stall the hive; and my own tests had been written so that one check hid the absence of the others | **A fixed procedure for the hive's own tooling** (section 6.2): tests that fail when a check is removed, then a review by another model, before any claim |
+| "The collector works: its tests pass" | A first adversarial review, by another model, returned twenty findings on my first collector, among them ways to take credit for someone else's work and to stall the hive; my own tests had been written so that one check hid the absence of the others. A second review returned twelve on my second one | **A fixed procedure for the hive's own tooling** (section 6.2): tests that fail when a check is removed, then a review by another model, before any claim |
+| Two jobs, one that judges and one that writes, each reading the forks | Two readings of the forks can be made to disagree, by anyone who pushes or deletes a branch between them, and the write job then drops what was judged | **Three jobs, each with one risk**: the forks are read once, by a job that holds nothing and runs nobody's code (section 2) |
 
 ### 1.3 The existing rules, questioned
 
@@ -57,9 +58,10 @@ I wrote the first plan before building anything. Building, and having the result
 ```
 volunteer ── forks a project ── points their AI worker at the fork, once
 worker    ── one task per run: read the feed, do the task, push to the volunteer's OWN fork, stop
-hive      ── every hour, two jobs:
-             sweep   (no write token)  reads the forks, checks the structure, judges in a container
-             apply   (write token)     reads the forks again, believes only the judge's answers,
+hive      ── every hour, three jobs, each with one risk:
+             plan    (holds nothing)   reads the forks, once; runs nobody's code
+             judge   (holds nothing)   runs contributors' code, in the judge's container
+             apply   (write token)     runs nobody's code, talks to no fork, believes only the judge's answers;
                                        integrates one commit per accepted task, records, publishes the feed
 everyone  ── reads the ledger, the feed and the project's page
 ```
@@ -68,18 +70,19 @@ Three rules carry the safety:
 
 1. **A worker can write in one place only**: a branch of its owner's fork. It holds nothing of the hive's and
    nothing of the volunteer's.
-2. **The job that runs contributors' code holds no write token**; the code runs in a container without network.
-3. **The job that writes runs no contributor's code**, derives everything from git by itself, and takes from the
-   other job one thing: the judge's answer for a commit it built itself.
+2. **The job that runs contributors' code holds nothing**; the code runs in a container without network.
+3. **The job that writes runs nobody's code and talks to no fork.** It takes the candidates from the first job's
+   plan, which the judging job cannot change, derives every commit by itself, and takes from the judging job one
+   thing: the judge's answer for a commit it built itself.
 
 The full specification is [docs/protocol.md](protocol.md).
 
 | Piece | State | Where |
 | --- | --- | --- |
 | The common judge | **built**, in service for the old flow | `tools/judge/` |
-| The collector (sweep, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**; a first review by another model done and answered, a second one under way | `tools/hive/` |
+| The collector (plan, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**; two reviews by another model done and answered, a third one under way | `tools/hive/` |
 | The worker's guide | **built** | `.claude/skills/bee-worker/` |
-| The hourly workflow, the state branch, the integration identity | **planned** (phase 1); needs the founder's settings (section 7.1) | — |
+| The hourly workflow (three jobs), the state branch, the integration identity | **planned** (phase 1); needs the founder's settings (section 7.1) | — |
 | A project's configuration, tasks and splitter | **planned** for miniz (phase 1) | `hive/projects/`, `hive/tasks/` |
 | The project page (progress, members, models) | **planned** (phase 1), from `feed.json` and `stats.json` | — |
 
@@ -126,6 +129,8 @@ Everything is arranged so that it only sees candidates that deserve it:
   for free. **Built.**
 - **Caps per member per day** (five judgements, twenty answers by default), and a candidate that makes the judge
   fail counts in them. **Built.**
+- **One chance per member and task in a run**, whatever the number of copies pushed, and forks of accounts that
+  could not contribute are not read at all. **Built.**
 - **A breakdown costs nobody**: when the judge fails, the hive tells a broken machine from a candidate that broke
   it. **Built.**
 - **Capacity earned by verified work**: a member's daily cap rises with what the judge accepted from them in the
@@ -138,8 +143,9 @@ Everything is arranged so that it only sees candidates that deserve it:
 ### 3.4 The wrong model on the task: tiers
 
 - **A task carries a tier** (1 to 3), and a worker says the highest tier it takes. **Built.**
-- **A task the judge keeps refusing rises**: one tier for every three different members refused. Light models leave
-  it to stronger ones, and one account sending junk cannot push a task out of reach. **Built.**
+- **A task the judge keeps refusing rises**: one tier for every three different members refused, among those the
+  judge has accepted something from. Light models leave it to stronger ones, and accounts that only send junk
+  cannot push a task out of reach. **Built.**
 - **The feed remembers why**: each task shows how many candidates were refused and for which reasons, as counts.
   **Built.**
 - **Each answer records the model the worker declared.** The project page shows, per model, candidates judged and
@@ -323,7 +329,10 @@ A change to `tools/hive/` or to the workflow that runs it is accepted only with,
 - **Taking a commit back**: a maintainer reverts or resets the project's branch. The hive never undoes it: it only
   ever adds to the tip it judged, and leaves a branch that moved.
 - **A ban** names the account's numeric id; it holds through a change of login.
-- **A lost record**: the project's history is the record; the next run completes the ledger from it.
+- **A lost record**: the hive promises in its ledger before it pushes; the next run completes the ledger from the
+  promise.
+- **A commit the project's repository declines** (a rule on what may be pushed there): counted against its
+  candidate, three times at most, and the run ends in error so that a maintainer sees it.
 - **An incident** (the judge accepted what it should not have): stop button, revert, a task for the judge's gap, a
   line in the decision log. The member is banned only for cheating, never for a judge's mistake.
 
@@ -379,8 +388,8 @@ volunteer-computing projects have done for decades).
 
 | Phase | Work | Ends when |
 | --- | --- | --- |
-| **0. Trust the collector** (now) | Second adversarial review answered; mutation run with no unexplained survivor; the registry's full suite green; the private report's open items closed | A review by another model finds nothing high or critical |
-| **1. In service on miniz** | The hourly workflow (two jobs, the write token in `apply` only) and the state branch; miniz's file, its splitter and its goal; the setup page and the prompt; the project page; the old flow closed to outside contributions | **Three volunteers who are not the founder** set up in fifteen minutes, do nothing else for a week, and each has an integrated contribution; the four measures of 3.5 have their first values |
+| **0. Trust the collector** (now) | Each adversarial review answered; mutation run with no unexplained survivor; the registry's full suite green; the private report's open items closed | A review by another model finds nothing high or critical |
+| **1. In service on miniz** | The hourly workflow (three jobs, the write token in `apply` only, the plan's SHA-256 as a job output) and the state branch; miniz's file, its splitter and its goal; the setup page and the prompt; the project page; the old flow closed to outside contributions | **Three volunteers who are not the founder** set up in fifteen minutes, do nothing else for a week, and each has an integrated contribution; the four measures of 3.5 have their first values |
 | **2. The flagship, yes or no** | The spike of 4.3: a Rust plugin for the judge, a skeleton, a splitter, twenty leaf tasks done by workers | At least 200 leaves generated by the splitter, a judgement under ten minutes, half of the twenty accepted at the first try. Otherwise: choose again |
 | **3. Hold the crowd** | Judging in parallel; forks read only when they changed; capacity earned by verified work; the Codex path; a rehearsal with 200 simulated workers, some hostile | A week of rehearsal with no human action, a duplicate rate under one in five, and no integration the judge should have refused |
 | **4. Open** | The flagship's first milestone public; "invited" mode for the first project that asks; the pledge | The gate below |

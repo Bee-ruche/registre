@@ -9,9 +9,10 @@ You work alone, with no one to ask. One run, one task, then stop: the next run s
 
 `hive` below means `python3 <registry>/tools/hive/hive.py`, where `<registry>` is your clone of
 `https://github.com/Bee-ruche/registre`. You are in a clone of the user's fork of a hive project.
-The fork must belong to the user's own account (the hive does not read an organization's forks), and `origin`
-must be that fork: the hive counts a commit only in the fork of the member it names, and `hive claim` and
-`hive submit` name the owner of `origin`.
+The fork must belong to the user's own GitHub account, and `origin` must be that fork: the hive counts a commit
+only in the fork of the member it names, and `hive claim` and `hive submit` name the owner of `origin`. The hive
+reads no fork of an organization, nor of an account younger than the project's minimum (`hive next` says how
+old): if the user's account is one of those, say so and stop.
 
 ## Before anything: three rules
 
