@@ -6272,8 +6272,22 @@ if args[:2] == ["run", "download"]:
         sys.exit(1)
     folder = args[args.index("-D") + 1]
     os.makedirs(folder, exist_ok=True)
-    with open(os.path.join(folder, "verdict.json"), "w", encoding="utf-8") as f:
-        json.dump({"details": {"base": "ba5e" * 10}, "judge_base": {"base": "ba5e" * 10, "commit": "ba5e" * 10}, **pr["verdict"]}, f)
+    # What else the fork's archive holds ("archive": {name: None for a folder, {"link": target} for a link, or a text}); an entry
+    # named verdict.json replaces the verdict itself.
+    extras = pr.get("archive") or {}
+    if "verdict.json" not in extras:
+        with open(os.path.join(folder, "verdict.json"), "w", encoding="utf-8") as f:
+            json.dump({"details": {"base": "ba5e" * 10}, "judge_base": {"base": "ba5e" * 10, "commit": "ba5e" * 10}, **pr["verdict"]}, f)
+    for name, what in extras.items():
+        target = os.path.join(folder, name)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        if what is None:
+            os.makedirs(target, exist_ok=True)
+        elif isinstance(what, dict):
+            os.symlink(what["link"], target)
+        else:
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(what)
     sys.exit(0)
 if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
     owner, repo, _, number_of = args[1].split("/")[1:5]
@@ -7450,6 +7464,24 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         """Refusal for a security reason: stated in the log and written into the contribution (fixed sentence, head)."""
         self.refusal(output_text, bee.VERDICT_WAIT[code], prs)
         self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": code, "sha": sha})
+
+    def test_one_file_is_taken_from_a_forks_archive_and_the_rest_stays_where_it_was_unpacked(self):
+        """The archive is the fork's: besides verdict.json it can hold anything, under any name, the names of the files this step
+        writes included. The verdict is recorded as usual and the pass goes on (the step ends well: `step` checks it)."""
+        output_text, verdict, calls = self.collect({}, archive={"bases.txt": None, "files.txt": None, "manifest.yaml": None,
+                                                                "bases.txt/more": "x", "tree": {"link": "/"}, "verdict.json.d/x": "y"})
+        self.assertEqual((verdict["gain"], verdict["run"]), (0.05, self.RUNS + "99007"), output_text)
+        self.assertNotIn("Is a directory", output_text)
+        download = self.calls_of(calls, "run", "download")[0]["args"]
+        self.assertNotIn(download[download.index("-D") + 1], ("verdict", str(self.dir.parent / "runner" / "verdict")),
+                         "unpacked apart from the folder this step writes in")
+
+    def test_a_verdict_that_is_not_a_plain_file_is_no_verdict(self):
+        for label, what in (("a folder", None), ("a link", {"link": "/etc/hostname"})):
+            with self.subTest(label):
+                output_text, verdict, _ = self.collect({}, archive={"verdict.json": what})
+                self.assertIsNone(verdict, output_text)
+                self.assertNotIn("Is a directory", output_text)
 
     def test_criterion_1_only_the_run_of_the_recorded_pr_to_the_default_branch_is_kept(self):
         """For the same commit, a run of another event, of another PR, of another base, of another branch, of another
