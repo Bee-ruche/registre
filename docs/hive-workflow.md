@@ -31,20 +31,20 @@ Three things carry it:
 ## The settings only the founder can make
 
 1. **The state repository**: `Bee-ruche/hive-state`, public (the founder's choice: a repository of its own, so
-   that the jobs that write the state hold no right on the registry at all). It needs one first commit (a README),
-   so that it has a branch to check out.
+   that the jobs that write the state hold no right on the registry at all). It exists, with a README that says
+   what it is.
 2. **Two integration identities, kept apart**: two GitHub Apps of the organization, each with the repository
    permission "Contents: read and write" and nothing else, no webhook:
    - a *state* App, installed on `hive-state` only;
    - a *project* App, installed on the hosted projects only (`minizBee`).
 
    The workflow asks GitHub, at each run, for a token of an hour for one repository
-   (`actions/create-github-app-token`, pinned to a commit). It needs, in the registry's settings:
+   (`actions/create-github-app-token`, pinned to a commit). The Apps exist since 13 November 2026: the state App
+   (client id `Iv23liBJswEbZCt56yvz`) and the project App (client id `Iv23liKHEG0w2XgtSc9m`); a client id is not a
+   secret, so the draft names them directly. It needs, in the registry's settings, their private keys:
 
    | Name | Kind | Where | Holds |
    | --- | --- | --- | --- |
-   | `HIVE_STATE_APP_CLIENT_ID` | variable | repository | the state App's client id (not a secret) |
-   | `HIVE_PROJECT_APP_CLIENT_ID` | variable | repository | the project App's client id (not a secret) |
    | `HIVE_STATE_APP_PRIVATE_KEY` | secret | environments `hive-state` and `hive-apply` | the state App's private key |
    | `HIVE_PROJECT_APP_PRIVATE_KEY` | secret | environment `hive-apply` only | the project App's private key |
 
@@ -112,7 +112,7 @@ jobs:
         id: state
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.HIVE_STATE_APP_CLIENT_ID }}
+          client-id: Iv23liBJswEbZCt56yvz   # the state App
           private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
           owner: Bee-ruche
           repositories: hive-state
@@ -170,7 +170,7 @@ jobs:
         id: state
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.HIVE_STATE_APP_CLIENT_ID }}
+          client-id: Iv23liBJswEbZCt56yvz   # the state App
           private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
           owner: Bee-ruche
           repositories: hive-state
@@ -179,7 +179,7 @@ jobs:
         id: project
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.HIVE_PROJECT_APP_CLIENT_ID }}
+          client-id: Iv23liKHEG0w2XgtSc9m   # the project App
           private-key: ${{ secrets.HIVE_PROJECT_APP_PRIVATE_KEY }}
           owner: Bee-ruche
           repositories: minizBee

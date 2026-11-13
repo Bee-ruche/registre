@@ -227,6 +227,16 @@ def git_capped(repo, *args, limit, timeout=300):
     return data
 
 
+def git_raw(repo, *args, stdin=b"", timeout=120):
+    """A git command whose input and output are bytes, as git has them (names are bytes for git). Returns the
+    finished process; raises HiveError only if it does not end in time."""
+    try:
+        return subprocess.run(["git", *GIT_BASE, "-C", str(repo), *args], input=stdin, capture_output=True, timeout=timeout,
+                              env={**os.environ, **GIT_ISOLATED})
+    except subprocess.TimeoutExpired as e:
+        raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
+
+
 def is_sha(value):
     return isinstance(value, str) and bool(SHA.match(value))
 
@@ -714,11 +724,8 @@ def canonical(repo, tree, listed):
     """True if the folder is, byte for byte, the one git writes for these entries. A folder written by hand (entries
     out of order, modes spelt another way) can list the same entries under another id: tools then disagree about
     what it holds, and it would enter the project's history as it is."""
-    try:  # the listing goes back to git as the bytes git gave; git refuses entries that lie about their kind
-        written = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "mktree", "--missing", "-z"], input=listed, capture_output=True,
-                                 timeout=120, env={**os.environ, **GIT_ISOLATED})
-    except subprocess.TimeoutExpired as e:
-        raise HiveError("git mktree: timeout after 120 s") from e
+    # The listing goes back to git as the bytes git gave; git refuses entries that lie about their kind.
+    written = git_raw(repo, "mktree", "--missing", "-z", stdin=listed)
     return written.returncode == 0 and written.stdout.decode("ascii", errors="replace").strip() == tree
 
 
@@ -843,7 +850,12 @@ def materialize(repo, tree, target):
     target = Path(target)
     target.mkdir(parents=True, exist_ok=False)
     entries = []
-    for entry in git(repo, "ls-tree", "-r", "-z", "--full-tree", need_sha(tree)).stdout.split("\0"):
+    listed = git_raw(repo, "ls-tree", "-r", "-z", "--full-tree", need_sha(tree), timeout=300)
+    if listed.returncode != 0:
+        raise HiveError(f"tree {tree[:12]}: git cannot list it")
+    # Names are bytes for git: one that is not UTF-8 is kept as it is (an escape that the file system undoes), so
+    # that two names of the project never become one.
+    for entry in listed.stdout.decode("utf-8", errors="surrogateescape").split("\0"):
         if not entry:
             continue
         meta, path = entry.split("\t", 1)
@@ -1474,17 +1486,35 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
     return outcomes, tip
 
 
+PROBE_BYTES = 1 << 20  # what the probe writes: as much as the largest object a candidate's merge can make the hive write
+
+
 def derives(repo, tip, config):
-    """True if the hive, here and now, can do for the project's own tip what it does for a candidate: write objects,
-    list a change, merge it and build the commit. Asked when deriving a candidate failed: if this fails too, the
-    hive's machine is the cause (a disk that is full, a store it cannot write)."""
+    """True if the hive, here and now, can do for the project's own tip what it does for a candidate: write objects
+    (a megabyte that does not compress, so that a store with a little room left does not pass), list a change, merge
+    it and build the commit. Asked when deriving a candidate failed: if this fails too, the hive's machine is the
+    cause (a disk that is full, a store it cannot write). Everything is read and written as bytes: the project's own
+    names are whatever git allows."""
     try:
-        blob = git(repo, "hash-object", "-w", "--stdin", stdin=f"probe {tip}\n").stdout.strip()
-        listing = git(repo, "ls-tree", "-z", need_sha(tip)).stdout
-        tree = git(repo, "mktree", "-z", stdin=listing + f"100644 blob {blob}\thive-probe\0").stdout.strip()
+        seed, noise = (need_sha(tip) + secrets.token_hex(16)).encode(), bytearray()  # new at each call: it must really be written
+        while len(noise) < PROBE_BYTES:
+            seed = hashlib.sha256(seed).digest()
+            noise += seed
+
+        def done(process):
+            if process.returncode != 0:
+                raise HiveError("the probe of the hive's own machine failed")
+            return process.stdout
+
+        blob = done(git_raw(repo, "hash-object", "-w", "--stdin", stdin=bytes(noise))).strip()
+        listing = done(git_raw(repo, "ls-tree", "-z", tip))
+        names, name = {record.partition(b"\t")[2] for record in listing.split(b"\0") if record}, b"hive-probe"
+        while name in names:
+            name += b"-"  # a name the project's root does not hold
+        tree = done(git_raw(repo, "mktree", "-z", stdin=listing + b"100644 blob " + blob + b"\t" + name + b"\0")).decode().strip()
         identity = {"GIT_AUTHOR_NAME": ROBOT[0], "GIT_AUTHOR_EMAIL": ROBOT[1], "GIT_COMMITTER_NAME": ROBOT[0],
                     "GIT_COMMITTER_EMAIL": ROBOT[1]}
-        probe = git(repo, "commit-tree", tree, "-p", need_sha(tip), stdin="probe\n", env=identity).stdout.strip()
+        probe = git(repo, "commit-tree", tree, "-p", tip, stdin="probe\n", env=identity).stdout.strip()
         merged = merge_tree(repo, tip, probe, config["limits"])
         squash_commit(repo, merged, tip, {"id": "probe-0000", "title": "probe"}, {"login": "hive", "id": 0}, probe)
         return merged == tree
@@ -1648,7 +1678,7 @@ def expired_lines(plan_):
              "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]]
 
 
-def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
+def record(plan_, config, tasks, ledger, state_folder):
     """The step right after the plan: writes what the plan decided before anything is judged (the deals whose time is
     up, the new deals) and what it learnt (which promised pushes landed, what need not be read again, the accounts),
     and publishes the feed. It
@@ -1668,8 +1698,6 @@ def record(plan_, config, tasks, ledger, state_folder, checkpoint=None):
     write_state(state_folder, "accounts.json", plan_["accounts"])
     write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, plan_["tip"], plan_))
     write_state(state_folder, "stats.json", build_stats(ledger))
-    if checkpoint:
-        checkpoint()
 
 
 def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, allow_local=False, checkpoint=None, started=()):

@@ -724,6 +724,14 @@ class TestStructure(Base):
         verdicts, _ = self.w.judge()
         self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {long: "too_many_commits", fine: "accepted"})
 
+    def test_a_history_exactly_as_long_as_the_limit_is_fine(self):
+        for i in range(4):
+            self.alice.write("src/n.c", f"int n{i};\n").commit(f"step {i}")
+        self.alice.marker("toy-0002").push()  # five commits with the marker's: the limit
+        made = self.w.plan()
+        self.assertEqual([c["long"] for c in made["queue"]], [False])
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+
     def test_a_long_history_is_counted_no_further_than_the_limit(self):
         for i in range(8):
             self.alice.write("src/n.c", f"int n{i};\n").commit(f"step {i}")
@@ -766,6 +774,33 @@ class TestStructure(Base):
         sh("git", "pull", "--quiet", str(self.w.upstream), "main", cwd=self.alice.work)
         self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
+
+    def test_the_check_of_the_hives_own_machine_reads_names_as_git_has_them_and_writes_enough(self):
+        """The probe that tells a candidate's failure from the hive's own: it must pass on any project (a file already
+        named like the probe's own, names that are not UTF-8), and fail when the store takes a little and not a lot."""
+        import resource
+        for name in (b"hive-probe", b"caf\xe9.txt", b"caf\xe8.txt"):
+            with open(os.path.join(os.fsencode(str(self.w.seed)), name), "wb") as f:
+                f.write(name + b"\n")
+        sh("git", "add", "-A", cwd=self.w.seed)
+        sh("git", "commit", "--quiet", "-m", "names", cwd=self.w.seed)
+        sh("git", "push", "--quiet", "origin", "main", cwd=self.w.seed)
+        sh("git", "fetch", "--quiet", "origin", cwd=self.w.harvest)
+        config, tip = self.w.load()[0], self.w.tip()
+        self.assertTrue(hive.derives(self.w.harvest, tip, config))
+        out = self.w.root / "written"
+        hive.materialize(self.w.harvest, hive.tree_of(self.w.harvest, tip), out)
+        self.assertEqual(sorted(n for n in os.listdir(os.fsencode(str(out))) if n.startswith((b"caf", b"hive-"))),
+                         [b"caf\xe8.txt", b"caf\xe9.txt", b"hive-probe"], "two names of the project never become one")
+        soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+        dates = {k: os.environ.pop(k) for k in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE")}  # so that the probe's commit is a new object
+        resource.setrlimit(resource.RLIMIT_FSIZE, (32 * 1024, hard))  # git may write files of 32 KB and no more
+        try:
+            self.assertFalse(hive.derives(self.w.harvest, tip, config), "a store with a little room left is not a machine that works")
+        finally:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (soft, hard))
+            os.environ.update(dates)
+        self.assertTrue(hive.derives(self.w.harvest, tip, config))
 
     def test_a_folder_that_lists_one_name_twice_is_refused(self):
         """A tree object written by hand can name a file twice, with two contents: which one a tool then shows is that
@@ -1790,7 +1825,8 @@ class TestSecondReview(Base):
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
             honest = self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002").push()
             self.assertIn("no push of this run landed", self.attempt()[1])
-            self.assertEqual([c["login"] for c in self.w.plan()["queue"]], ["alice", "mallory"], "what was declined goes last")
+            self.assertEqual([(c["login"], c["declined"]) for c in self.w.plan()["queue"]], [("alice", False), ("mallory", True)],
+                             "what was declined goes last")
             self.assertIn("declined a commit", self.attempt()[1])
         answers = [(e["sha"], e["type"], e.get("unproven")) for e in self.w.events()]
         self.assertEqual(answers, [(declined, "error", True), (honest, "unused", None), (honest, "verdict", None),
@@ -1882,8 +1918,8 @@ class TestSecondReview(Base):
                          "the one it was on is marked; the one it never reached is not")
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
             carol = self.w.fork("carol", 103).write("run.sh", "#!/bin/sh\necho\n").commit().marker("toy-0005").push()
-            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [other, carol, waiting],
-                             "the marked one after the others, those dealt later included")
+            self.assertEqual([(c["sha"], c["declined"]) for c in self.w.plan()["queue"]], [(other, False), (carol, False), (waiting, False)],
+                             "the marked one after the others, those dealt later included (and it is not one the project declined)")
             answers = {o["sha"]: o.get("reason") or o["result"] for o in self.w.run()}
         self.assertEqual(answers, {waiting: "accepted", other: "accepted", carol: "accepted"})
         self.w.plan()
@@ -2280,14 +2316,43 @@ class TestDealing(Base):
                          [("toy-0001", False), ("toy-0002", False), ("toy-0005", False)])
 
     def test_a_task_the_project_closes_under_its_holder_costs_it_nothing(self):
-        self.hold(self.alice, "toy-0003")  # dealt when it was open; closed since
-        late = self.alice.submit("toy-0003")
+        dealt = self.w.deal(self.alice, "toy-0003", at="2026-11-12T07:00:00Z")  # dealt when it was open, long ago; closed since
+        late = self.alice.submit("toy-0003", deal=dealt)
         self.alice.ready()
+        self.assertEqual(self.w.plan()["expiries"], [{"task": "toy-0003", "member_id": 101, "deal": dealt, "fault": True}],
+                         "one end for the deal, and it is not its member's doing")
         self.w.run()
         self.assertEqual([(e["task"], e["fault"]) for e in self.lines("expired")], [("toy-0003", True)], "at once, whatever its time")
         self.assertEqual((self.standing(self.alice)[:2], self.w.events(), judge_by_content.seen), ((1, None), [], []))
         self.assertIn(late, hive.read_ignored(self.w.state)["1101"])
         self.assertEqual(len(self.lines("deal")), 1, "and its member is dealt another task in the same run")
+
+    def test_a_candidate_pushed_in_time_keeps_its_deal_however_late_the_hive_looks(self):
+        """The hive did not run for hours: the deal's time is long up when it reads the fork, and the candidate is
+        there. The deal does not expire; the candidate is judged."""
+        dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T02:00:00Z")
+        candidate = self.alice.submit("toy-0001", deal=dealt)
+        outcome = self.one(self.w.run())
+        self.assertEqual((outcome["sha"], outcome["result"], self.lines("expired")), (candidate, "accepted", []))
+        self.assertEqual(self.standing(self.alice)[:2], (0, None))
+
+    def test_a_submit_that_names_another_deal_than_the_one_its_member_holds_is_not_a_candidate(self):
+        self.hold(self.alice, "toy-0001")
+        stray = self.alice.submit("toy-0001", deal="2026-11-12T10:59:59Z")  # its own task, and an instant that is no deal's
+        self.assertEqual((self.w.run(), self.w.events(), judge_by_content.seen), ([], [], []))
+        self.assertEqual(hive.read_ignored(self.w.state)["1101"], [stray])
+
+    def test_a_ledger_rewritten_since_the_plan_stops_the_steps_that_write(self):
+        """The same number of lines, and another content: the plan's fingerprint of the ledger says so."""
+        self.hold(self.bob, "toy-0002")
+        self.alice.ready()
+        self.w.plan()
+        ledger = self.w.state / "ledger.jsonl"
+        ledger.write_text(ledger.read_text().replace('"bob"', '"eve"'))
+        for step in (self.w.record, lambda: self.w.apply({})):
+            with self.assertRaisesRegex(hive.HiveError, "not the one the plan read"):
+                step()
+        self.assertEqual(self.lines("deal"), [])
 
     def test_what_a_member_pushes_after_its_deal_expired_is_not_a_candidate(self):
         dealt = self.w.deal(self.alice, "toy-0001", at="2026-11-12T07:00:00Z")
