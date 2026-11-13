@@ -5,8 +5,9 @@
                                [--title "..."] [--repo-url https://github.com/owner/name]
                                [--join | --join-url https://github.com/...] [--now 2026-11-13T00:00:00Z]
 
-It reads ledger.jsonl, feed.json and stats.json (and pending.json when it is there) and writes static files that a
-GitHub Pages site or a README can show:
+It reads ledger.jsonl, feed.json and stats.json and writes static files that a GitHub Pages site or a README can
+show. The hive deals each open task to one member at a time; the page shows how the tasks stand, what the judge
+accepted, and how many dealt candidates wait for the judge (from the feed's deals):
 
   index.html              one page: progress, this week, members, models, integrations, refusals, measures
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
@@ -40,6 +41,7 @@ import hive  # noqa: E402  (REASONS, now, safe_text: the hive's own words and cl
 LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 TASK_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")
+MARK = re.compile(r"[0-9a-f]{16}\Z")  # a hash of a login, in the feed's deals; never shown
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -50,8 +52,8 @@ FIXED_NAMES = ("index.html", "badge.svg", "summary.json")
 DEFAULT_JOIN_URL = "https://github.com/Bee-ruche/registre/blob/main/docs/join.md"
 ID_MAX = 2 ** 63 - 1  # an account's numeric id: a whole number in this range, never a string
 TASK_ID_MAX, PROJECT_MAX, LINE_MAX = 64, 40, 1_000_000
-STATUSES = ("done", "claimed", "open", "closed")  # the bar's order
-STATUS_WORDS = {"done": "done", "claimed": "being worked on", "open": "open", "closed": "closed"}
+STATUSES = ("done", "dealt", "open", "closed")  # the bar's order
+STATUS_WORDS = {"done": "done", "dealt": "being worked on", "open": "open", "closed": "closed"}
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 WEEK = dt.timedelta(days=7)
 YEARS = (2000, 2999)  # an instant outside these years is not one
@@ -184,16 +186,18 @@ def read_feed(folder):
 
 
 def read_waiting(folder, now):
-    """{count, oldest_seconds} for the candidates the hive has not answered yet (pending.json), or None."""
-    pending = read_json(folder, "pending.json")
-    if not isinstance(pending, dict):
+    """{count, oldest_seconds} for the dealt candidates the judge has not answered yet (the feed's deals whose
+    candidate is true; the age is measured from the deal's `at`), or None when there is none."""
+    feed = read_json(folder, "feed.json")
+    deals = feed.get("deals") if isinstance(feed, dict) else None
+    if not isinstance(deals, dict):
         return None
     ages = []
-    for sha, entry in pending.items():
-        if not matching(sha, SHA) or not isinstance(entry, dict):
+    for mark, deal in deals.items():
+        if not matching(mark, MARK) or not isinstance(deal, dict) or deal.get("candidate") is not True:
             continue
-        since = instant_of(entry.get("pushed")) or instant_of(entry.get("seen"))
-        if since is not None:
+        since = instant_of(deal.get("at"))
+        if since is not None and matching(deal.get("task"), TASK_ID, TASK_ID_MAX) and instant_of(deal.get("until")) is not None:
             ages.append(max(0, int((now - since).total_seconds())))
     return {"count": len(ages), "oldest_seconds": max(ages)} if ages else None
 
@@ -229,7 +233,7 @@ def collect(state, now):
 
     since = now - WEEK
     members, models, refusals, recent = {}, {}, {}, []
-    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "superseded", "judge_failures"), 0)
+    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "judge_failures"), 0)
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
         accepted, judged, member_id = event["accepted"], event["judged"], event["member_id"]
@@ -240,7 +244,6 @@ def collect(state, now):
         totals["integrations"] += accepted
         totals["refused"] += not accepted
         if not accepted:
-            totals["superseded"] += event["reason"] == "superseded"
             refusals[event["reason"]] = refusals.get(event["reason"], 0) + 1
         if judged:
             row = models.setdefault(event["model"], {"judged": 0, "accepted": 0})
@@ -289,7 +292,6 @@ def collect(state, now):
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
         "measures": {
             "yield": rate(totals["accepted"], totals["judged"]),
-            "duplicate_rate": rate(totals["superseded"], totals["verdicts"]),
             "time_to_answer_seconds": None,  # the ledger says when a candidate was answered, not when it was pushed
             "judge_runs_per_integration": round((totals["judged"] + totals["judge_failures"]) / integrations, 2) if integrations else None,
             "waiting": read_waiting(state, now),
@@ -554,9 +556,8 @@ def render_html(data, title, repo_url, join):
 
     waiting = measures["waiting"]
     runs = measures["judge_runs_per_integration"]
-    sections.append(el("section", el("h2", "Four measures"), el("div", [
+    sections.append(el("section", el("h2", "Three measures"), el("div", [
         tile("Yield", percent(measures["yield"]), f"{totals['accepted']} accepted of {totals['judged']} judged"),
-        tile("Duplicate rate", percent(measures["duplicate_rate"]), f"{totals['superseded']} superseded of {totals['verdicts']} answered"),
         tile("Time to an answer", "n/a", "the ledger records when a candidate was answered, not when it was pushed"
              + (f"; {waiting['count']} waiting now, the oldest for {duration(waiting['oldest_seconds'])}" if waiting else "")),
         tile("Judge runs per integration", "n/a" if runs is None else f"{runs:.1f}",
@@ -564,8 +565,8 @@ def render_html(data, title, repo_url, join):
     ], class_="tiles")))
 
     sections.append(el("section", el("h2", "Give your AI's spare hours"),
-                       el("p", "Point your own AI coding assistant at your own fork of this project. It takes one task per run and "
-                               "pushes to your fork; the judge decides. What it accepts is integrated as a commit authored by you."),
+                       el("p", "Point your own AI coding assistant at your own fork of this project. The hive deals it one task at a time; "
+                               "it pushes the result to your fork and the judge decides. What it accepts is integrated as a commit authored by you."),
                        el("a", "How to join", href=join, class_="go"), class_="join"))
 
     left_out = data["ledger"]["unreadable_lines"] + data["ledger"]["events_left_out"]

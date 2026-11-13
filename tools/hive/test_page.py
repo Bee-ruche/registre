@@ -52,10 +52,19 @@ def failure(number, at, login, member_id, kind="judge"):
     return {**event, **({"kind": kind} if kind else {})}
 
 
-def feed(statuses, project="toy", titles=None):
+def mark(number):
+    """A member's mark as the feed's deals carry it: 16 lowercase hex characters."""
+    return f"{number:016x}"
+
+
+def deal(task="toy-0005", at="2026-11-12T07:00:00Z", until="2026-11-13T07:00:00Z", candidate=True):
+    return {"task": task, "at": at, "until": until, "candidate": candidate}
+
+
+def feed(statuses, project="toy", titles=None, deals=None):
     return {"protocol": 1, "project": project, "tasks": [
-        {"id": task, "title": (titles or {}).get(task, f"Title of {task}"), "files": ["lib.c"], "status": status}
-        for task, status in statuses.items()]}
+        {"id": task, "title": (titles or {}).get(task, f"Title of {task}"), "files": ["lib.c"], "status": status, "tier": 1, "hint": 1}
+        for task, status in statuses.items()], "deals": deals if deals is not None else {}, "wait": {}, "deals_per_day": 3}
 
 
 def tree(root):
@@ -167,7 +176,10 @@ class TestFigures(Case):
     def setUp(self):
         super().setUp()
         self.ledger([
-            {"type": "claim", "at": "2026-11-01T08:00:00Z", "task": "toy-0001", "member": "alice", "member_id": 101, "repo_id": 1, "sha": sha(900)},
+            {"type": "deal", "at": "2026-11-01T08:00:00Z", "until": "2026-11-02T08:00:00Z", "run": "4" * 32, "task": "toy-0001",
+             "member": "alice", "member_id": 101, "repo_id": 1},
+            {"type": "expired", "at": "2026-11-02T08:00:00Z", "run": "4" * 32, "task": "toy-0001", "member_id": 103,
+             "deal": "2026-11-01T08:00:00Z", "fault": "no_candidate"},
             {**verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", model="claude-fable-5-2"), "type": "intent", "run": "1" * 32},
             verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", model="claude-fable-5-2"),
             verdict(2, "2026-11-03T09:00:00Z", "carol", 103, "toy-0002", "refused", judged=False, reason="path_outside_task"),
@@ -178,25 +190,25 @@ class TestFigures(Case):
             verdict(7, "2026-11-10T09:00:00Z", "alice-new", 101, "toy-0002"),  # the same account, renamed
             {"type": "void", "at": "2026-11-10T09:00:00Z", "run": "2" * 32, "sha": sha(8), "commit": sha(5008)},
             verdict(9, "2026-11-11T09:00:00Z", "bob", 102, "toy-0004", "refused", model="gpt-x", reason="judge_refused"),
-            verdict(10, "2026-11-11T10:00:00Z", "bob", 102, "toy-0002", "refused", judged=False, reason="superseded"),
+            verdict(10, "2026-11-11T10:00:00Z", "bob", 102, "toy-0002", "refused", judged=False, reason="conflict"),
             {"type": "unused", "at": "2026-11-11T10:00:00Z", "run": "3" * 32, "task": "toy-0004", "member": "bob", "member_id": 102,
              "repo_id": 1, "sha": sha(11)},
             verdict(12, "2026-11-12T11:00:00Z", "carol", 103, "toy-0004"),
         ])
         self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "done", "toy-0003": "closed", "toy-0004": "done",
-                                    "toy-0005": "claimed", "toy-0006": "open", "toy-0007": "open"}))
+                                    "toy-0005": "dealt", "toy-0006": "open", "toy-0007": "open"}))
 
     def test_the_figures_of_a_hand_written_ledger(self):
         files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
         data, seen = self.summary(files), self.harmless(files)
         self.assertEqual(data["totals"], {"verdicts": 6, "judged": 4, "accepted": 3, "integrations": 3, "refused": 3,
-                                          "superseded": 1, "judge_failures": 2})
-        self.assertEqual(data["tasks"], {"done": 3, "claimed": 1, "open": 2, "closed": 1, "total": 7})
+                                          "judge_failures": 2})
+        self.assertEqual(data["tasks"], {"done": 3, "dealt": 1, "open": 2, "closed": 1, "total": 7})
         self.assertEqual(data["week"], {"since": "2026-11-05T12:00:00Z", "integrations": 2, "members": 2, "judged": 3, "accepted": 2,
                                         "acceptance_rate": 0.6667})
-        self.assertEqual(data["measures"], {"yield": 0.75, "duplicate_rate": 0.1667, "time_to_answer_seconds": None,
+        self.assertEqual(data["measures"], {"yield": 0.75, "time_to_answer_seconds": None,
                                             "judge_runs_per_integration": 2.0, "waiting": None})
-        self.assertEqual(data["refusals"], [{"reason": reason, "count": 1} for reason in ("judge_refused", "path_outside_task", "superseded")])
+        self.assertEqual(data["refusals"], [{"reason": reason, "count": 1} for reason in ("conflict", "judge_refused", "path_outside_task")])
         self.assertEqual(data["models"], [
             {"model": None, "judged": 2, "accepted": 2, "acceptance_rate": 1.0},
             {"model": "claude-fable-5-2", "judged": 1, "accepted": 1, "acceptance_rate": 1.0},
@@ -210,7 +222,7 @@ class TestFigures(Case):
         self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
         self.assertEqual(seen.row("gpt-x"), ["gpt-x", "1", "0", "0 %"])
         self.assertEqual(seen.row("undeclared"), ["undeclared", "2", "2", "100 %"])
-        for reason in ("judge_refused", "path_outside_task", "superseded"):
+        for reason in ("conflict", "judge_refused", "path_outside_task"):
             self.assertEqual(seen.row(reason), [reason, "1", hive.REASONS[reason]])
         self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0004 Title of toy-0004", "carol", sha(5012)[:10]])
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{sha(5012)}", seen.hrefs)
@@ -270,9 +282,9 @@ class TestFigures(Case):
         self.assertEqual(len([name for name in files if name.startswith("members/")]), 60)
 
     def test_candidates_that_wait_are_counted_and_the_time_to_an_answer_is_not_invented(self):
-        self.put("pending.json", {sha(70): {"seen": "2026-11-12T09:00:00Z", "pushed": "2026-11-12T07:00:00Z"},
-                                  sha(71): {"seen": "2026-11-12T11:00:00Z", "pushed": None}, "zz": {"seen": "2026-11-01T00:00:00Z"},
-                                  sha(72): {"seen": "never"}})
+        deals = {mark(1): deal(at="2026-11-12T07:00:00Z"), mark(2): deal("toy-0006", at="2026-11-12T11:00:00Z"),
+                 mark(3): deal("toy-0007", candidate=False), mark(4): deal(at="never"), "zz": deal(), mark(5): deal(task="../x")}
+        self.put("feed.json", feed({"toy-0005": "dealt", "toy-0006": "dealt", "toy-0007": "dealt"}, deals=deals))
         files = self.make()
         self.assertEqual(self.summary(files)["measures"]["waiting"], {"count": 2, "oldest_seconds": 5 * 3600})
         self.assertIsNone(self.summary(files)["measures"]["time_to_answer_seconds"])
@@ -326,7 +338,10 @@ class TestHostile(Case):
             lines.append(verdict(60 + i, "2026-11-10T02:00:00Z", "eve", member_id, "toy-0001"))
         lines += ['{"type":"verdict","at":"2026-11-10T03:00:00Z","member":"eve","member_id":NaN,"result":"accepted","judged":true}',
                   '{"type":"verdict","at":"2026-11-10T03:00:00Z","member":"eve","member_id":1e400,"result":"accepted","judged":true}',
-                  '{"type":"claim","at":"2026-11-10T03:00:00Z","member":"eve","member_id":' + "9" * 5000 + ',"task":"toy-0001"}',
+                  '{"type":"deal","at":"2026-11-10T03:00:00Z","member":"eve","member_id":' + "9" * 5000 + ',"task":"toy-0001"}',
+                  '{"type":"deal","at":"2026-11-10T03:00:00Z","until":["<script>"],"run":7,"task":{"a":1},"member":"<script>","member_id":"x","repo_id":[]}',
+                  '{"type":"expired","at":"<script>","task":null,"member_id":{},"deal":5,"fault":["<script>"]}',
+                  '{"type":"expired","at":"2026-11-10T03:00:00Z","task":"<script>","member_id":"x","deal":"<script>","fault":7}',
                   json.dumps({**verdict(98, "2026-11-10T03:00:00Z", "honest", 500, "toy-0002"), "padding": "x" * page.LINE_MAX}),
                   verdict(97, "2026-11-10T03:00:00Z", "honest", 500, "toy-" + "a-" * 40 + "0001"),
                   "[]", '"<script>alert(1)</script>"', "123", "null", "{broken <script>alert(1)</script>", deep,
@@ -339,8 +354,9 @@ class TestHostile(Case):
             {"id": "toy-0001", "title": "the same task, a second time", "status": "open"},
             {"id": "toy-0002", "title": ["<script>"], "status": "done"},
             {"id": "../../etc", "title": "x", "status": "open"}, {"id": "toy-0003", "title": "x", "status": "<script>"},
-            {"id": "toy-0004", "status": ["open"]}, "<script>", None, 7]})
-        self.put("pending.json", {"<script>alert(1)</script>": {"seen": "<script>"}, sha(1): "<script>", sha(2): {"seen": 7}})
+            {"id": "toy-0004", "status": ["open"]}, "<script>", None, 7],
+            "deals": {"<script>alert(1)</script>": deal(), mark(1): "<script>", mark(2): {"candidate": "<script>", "at": "<script>"},
+                      mark(3): deal(at="<script>"), mark(4): deal(candidate="true"), mark(5): [deal()], mark(6): None}})
         self.put("stats.json", '{"models": {"<script>alert(1)</script>": ')
 
     def test_nothing_hostile_reaches_any_file_and_nothing_is_written_elsewhere(self):
@@ -353,7 +369,7 @@ class TestHostile(Case):
                          "nothing is written, changed or removed outside --out")
         valid = [201 + i for i, login in enumerate(LOGINS)] + [300, 398, 399, 500]
         self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid)]))
-        self.assertEqual(sorted(after), sorted(["bystander.txt", "state", "state/toy", *(f"state/toy/{n}" for n in ("ledger.jsonl", "feed.json", "pending.json", "stats.json")),
+        self.assertEqual(sorted(after), sorted(["bystander.txt", "state", "state/toy", *(f"state/toy/{n}" for n in ("ledger.jsonl", "feed.json", "stats.json")),
                                                 "site", "site/members", *(f"site/{name}" for name in files)]), "no temporary file is left")
         for name, text in files.items():
             for needle in NEEDLES:
@@ -366,8 +382,8 @@ class TestHostile(Case):
         self.assertEqual(seen.hrefs.count("https://github.com/honest"), 3)
         self.assertEqual([m["model"] for m in data["models"]], [None, "claude-fable-5-2"], "a model that is not an identifier is undeclared")
         self.assertEqual({r["task"] for r in data["recent"]}, {"toy-0001", "toy-0002", None}, "a task id that is not one is unknown")
-        self.assertEqual(data["tasks"], {"done": 2, "claimed": 0, "open": 0, "closed": 0, "total": 2}, "a task counts once, under a real id and status")
-        self.assertEqual(data["totals"], {"verdicts": 38, "judged": 35, "accepted": 32, "integrations": 35, "refused": 3, "superseded": 0,
+        self.assertEqual(data["tasks"], {"done": 2, "dealt": 0, "open": 0, "closed": 0, "total": 2}, "a task counts once, under a real id and status")
+        self.assertEqual(data["totals"], {"verdicts": 38, "judged": 35, "accepted": 32, "integrations": 35, "refused": 3,
                                           "judge_failures": 0}, "« judged » is true or it is not; a line too long to be honest is not read")
         self.assertEqual({r["commit"] for r in data["recent"] if r["member_id"] == 300 and r["at"] == "2026-11-10T01:00:00Z"},
                          {None, sha(5040), sha(5041), sha(5042), sha(5055)})
@@ -485,15 +501,15 @@ class TestEmpty(Case):
         self.assertEqual(seen.rows, [], "no table without a line to show")
         self.assertEqual((data["totals"]["integrations"], data["members"], data["models"], data["recent"], data["refusals"], data["tasks"]),
                          (0, [], [], [], [], None))
-        self.assertEqual(data["measures"], {"yield": None, "duplicate_rate": None, "time_to_answer_seconds": None,
+        self.assertEqual(data["measures"], {"yield": None, "time_to_answer_seconds": None,
                                             "judge_runs_per_integration": None, "waiting": None})
         self.assertFalse((self.out / "members").exists())
 
     def test_tasks_and_no_ledger_yet(self):
-        self.put("feed.json", feed({"toy-0001": "open", "toy-0002": "claimed"}))
+        self.put("feed.json", feed({"toy-0001": "open", "toy-0002": "dealt"}))
         files = self.make()
         self.assertIn("Nothing has been integrated yet.", files["index.html"])
-        self.assertEqual(self.summary(files)["tasks"], {"done": 0, "claimed": 1, "open": 1, "closed": 0, "total": 2})
+        self.assertEqual(self.summary(files)["tasks"], {"done": 0, "dealt": 1, "open": 1, "closed": 0, "total": 2})
         self.harmless(files)
 
     def test_a_project_is_named_by_an_identifier_or_not_at_all(self):
@@ -566,7 +582,8 @@ class TestEndToEnd(test_hive.Base):
         self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
         self.assertEqual(seen.row("undeclared"), ["undeclared", "1", "0", "0 %"])
         self.assertEqual((data["project"], data["totals"]["integrations"], data["totals"]["judged"], data["stats_json"]), ("toy", 1, 2, "agrees"))
-        self.assertEqual(data["tasks"], {"done": 1, "claimed": 0, "open": 3, "closed": 1, "total": 5})
+        self.assertEqual({k: v for k, v in data["tasks"].items() if k not in ("dealt", "open")}, {"done": 1, "closed": 1, "total": 5})
+        self.assertEqual(data["tasks"]["dealt"] + data["tasks"]["open"], 3, "the others are open or dealt, as the hive wrote them")
         self.assertEqual([(m["id"], m["login"], m["integrations"]) for m in data["members"]], [(101, "alice", 1)])
         self.assertEqual(data["measures"]["yield"], 0.5)
         self.assertEqual(sorted(path.name for path in (out / "members").iterdir()), ["101.svg"])
