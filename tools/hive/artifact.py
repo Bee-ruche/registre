@@ -6,11 +6,13 @@ paths, and a file written where code is later run from is run. This tool asks Gi
 it the members it was told to expect, by their exact names and up to a size each, and writes each one, under that
 same name, in a folder of its own. An archive that holds anything else is refused whole, and nothing of it is kept.
 
-It reads the archive itself, and strictly: the members one after the other from the first byte, each with its
-header, its data and nothing more, then the directory that lists exactly them, then the end record, then the end of
-the file. Every byte is accounted for, so no other reader of the same archive can find in it a member this one did
-not see; and what the reading costs is bounded by the sizes asked for, never by what the archive says of itself.
-It is the layout the upload action writes (docs/hive-workflow.md says what could not be tried against GitHub).
+It reads the archive itself, and accepts one layout only, the one the upload action writes: the members one after
+the other from the first byte, each a header that leaves its sizes for later, its deflated data, then sixteen
+bytes that give its checksum and sizes; then the directory that lists exactly them; then the end record; then the
+end of the file. No comment, no extra field, no other flag or method, nothing between two parts. Every byte is
+accounted for, so no other reader of the same archive can find in it a member this one did not see; and what the
+reading costs is bounded by the sizes asked for and a block at a time, never by what the archive says of itself
+(docs/hive-workflow.md says what could not be tried against GitHub).
 
 What it takes is still only data from a job that held no key: the caller checks it (the plan against the SHA-256
 its job published, the bundle against the plan) or believes it for nothing more than what that job may say (the
@@ -47,8 +49,8 @@ NOT_THERE = 3
 END = struct.Struct("<4s4H2LH")  # signature, 2 disk numbers, 2 counts of entries, the directory's size and offset, comment length
 ENTRY = struct.Struct("<4s6H3L5H2L")  # one member in the directory
 LOCAL = struct.Struct("<4s5H3L2H")  # the header in front of a member's data
-AFTER_DATA, FLAGS = 0x0008, 0x0008 | 0x0800 | 0x0006  # sizes written after the data; a UTF-8 name; a compression hint: no other flag
-STORED, DEFLATED = 0, 8
+AFTER = struct.Struct("<4s3L")  # after a member's data: a signature, its checksum, its packed and unpacked sizes
+SIZES_AFTER_DATA, DEFLATED = 0x0008, 8  # the one flag and the one method the upload action writes
 
 class Refused(Exception):
     """The archive, or GitHub's answer, is not what this step expects: nothing of it is used."""
@@ -104,10 +106,11 @@ def download(repository, artifact_id, path, most):
 
 
 def listed(source, size, members):
-    """What the archive's directory lists, and where that directory starts: ([(name, flags, method, checksum, packed,
-    unpacked, offset)] in the order the members lie in the file, the directory's offset). The archive must end with
-    one end record, without comment, right after a directory of exactly as many entries as there are `members`, each
-    named like one of them, with no comment and no extra field: so the directory is read whole at a known, small cost."""
+    """What the archive's directory lists, and where that directory starts: ([(name, checksum, packed, unpacked,
+    offset)] in the order the members lie in the file, the directory's offset). The archive must end with one end
+    record, without comment, right after a directory of exactly as many entries as there are `members`, each named
+    like one of them, deflated, with no comment and no extra field: so the directory is read whole at a known, small
+    cost."""
     different = Refused("the archive does not hold exactly the members expected")
     if size < END.size:
         raise Refused("not an archive this step reads")
@@ -120,47 +123,45 @@ def listed(source, size, members):
         raise different
     source.seek(offset)
     directory, at, entries = source.read(length), 0, []
-    for _ in members:  # (the directory is exactly as long as these entries: each is read inside it)
+    for _ in members:  # (the directory is exactly as long as these entries, each with its whole name: each is read inside it)
         (signature, _, _, flags, method, _, _, checksum, packed, unpacked, name_length, extra, comment, disk, _, _,
          start) = ENTRY.unpack_from(directory, at)
         name = directory[at + ENTRY.size:at + ENTRY.size + name_length].decode("ascii", errors="replace")
         at += ENTRY.size + name_length
-        if signature != b"PK\x01\x02" or extra or comment or disk or name not in members or name in (entry[0] for entry in entries):
+        if signature != b"PK\x01\x02" or (flags, method) != (SIZES_AFTER_DATA, DEFLATED) or extra or comment or disk \
+                or name_length != len(name) or name not in members or name in (entry[0] for entry in entries):
             raise different
-        entries.append((name, flags, method, checksum, packed, unpacked, start))
-    return sorted(entries, key=lambda entry: entry[6]), offset
+        entries.append((name, checksum, packed, unpacked, start))
+    return sorted(entries, key=lambda entry: entry[4]), offset
 
 
-def unfolded(source, method, packed, unpacked):
-    """A member's bytes, block by block, read from its `packed` bytes of data: never more than one byte beyond the
-    `unpacked` it declares (the caller sees the one byte and stops), and Refused if its data is not exactly one
-    stored or deflated stream, from its first byte to its last."""
-    unfold, left, waiting, given = (zlib.decompressobj(-15) if method == DEFLATED else None), packed, b"", 0
-    while left or (unfold and not unfold.eof):
+def unfolded(source, packed, unpacked):
+    """A member's bytes, a block at a time, unfolded from its `packed` bytes of deflated data: never more than a
+    block at once, never more than one byte beyond the `unpacked` it declares (the caller sees that byte and stops),
+    and Refused if its data is not exactly one deflated stream, from its first byte to its last."""
+    unfold, left, waiting, given = zlib.decompressobj(-15), packed, b"", 0
+    while not unfold.eof:
         if not waiting:
             waiting = source.read(min(BLOCK, left))
-            left -= len(waiting)
-            if not waiting:
-                raise Refused("unreadable (its data ends before it does)")
-        if unfold is None:
-            plain, waiting = waiting, b""
-        else:
-            try:
-                plain = unfold.decompress(waiting, unpacked - given + 1)
-            except zlib.error:
-                raise Refused("unreadable (not deflated data)") from None
-            waiting = unfold.unconsumed_tail
-            if unfold.unused_data:  # what its stream, once ended, did not use
-                raise Refused("unreadable (bytes after the end of its data)")
+            left = left - len(waiting) if waiting else 0  # (a file that ended early: nothing is left to read)
+        try:
+            plain = unfold.decompress(waiting, min(BLOCK, unpacked - given + 1))
+        except zlib.error:
+            raise Refused("unreadable (not deflated data)") from None
+        waiting = unfold.unconsumed_tail  # what this call did not use, because it had given as much as it may at once
+        if not plain and not left and not unfold.eof:
+            raise Refused("unreadable (its data ends before it does)")  # nothing came of what was left, and nothing is left to read
         given += len(plain)
         yield plain  # (the caller stops at the first byte beyond `unpacked`: it is never asked for more)
+    if left or unfold.unused_data:
+        raise Refused("unreadable (bytes after the end of its data)")
 
 
 def take(archive, members, folder):
     """Writes into `folder` (which it creates, in a folder that exists) each of `members` ({name: the most bytes it
     may hold}) read from the zip file `archive`, and returns the folder. The archive must be exactly these members,
-    each once, plain stored or deflated files no larger than allowed, and not one byte more: otherwise Refused, and
-    the folder is not left behind.
+    each once, no larger than allowed, in the one layout this tool reads, and not one byte more: otherwise Refused,
+    and the folder is not left behind.
 
     Nothing is extracted: no path of the archive is ever joined to a folder. The names written are the caller's."""
     if not members or not all(isinstance(name, str) and MEMBER_NAME.match(name) and type(most) is int and 0 < most <= MOST_BYTES
@@ -181,28 +182,24 @@ def take(archive, members, folder):
             size = source.seek(0, os.SEEK_END)
             entries, directory = listed(source, size, members)
             position = 0  # where the next member must start: the first byte, then where the one before it ended
-            for index, (name, flags, method, checksum, packed, unpacked, start) in enumerate(entries):
-                if flags & ~FLAGS or method not in (STORED, DEFLATED) or unpacked > members[name] or (method == STORED and packed != unpacked):
-                    raise Refused(f"{name}: not a plain member of the size allowed")
-                # The header in front of the data says what the directory says, and nothing lies between two members.
+            for index, (name, checksum, packed, unpacked, start) in enumerate(entries):
+                if unpacked > members[name]:
+                    raise Refused(f"{name}: larger than allowed")
+                # The header in front of the data: where the member before it ended, and as the upload action writes it.
                 source.seek(start)
                 header = source.read(LOCAL.size + len(name))
-                if start != position:
+                signature, _, flags, method, _, _, *figures, name_length, extra = LOCAL.unpack_from(header)
+                if start != position or signature != b"PK\x03\x04" or (flags, method) != (SIZES_AFTER_DATA, DEFLATED) or figures != [0, 0, 0] \
+                        or name_length != len(name) or extra or header[LOCAL.size:] != name.encode():
                     raise different
-                signature, _, local_flags, local_method, _, _, *figures, name_length, extra = LOCAL.unpack_from(header)
-                later = bool(flags & AFTER_DATA)  # the checksum and the sizes are written after the data
-                if signature != b"PK\x03\x04" or local_flags != flags or local_method != method or extra or name_length != len(name) \
-                        or header[LOCAL.size:] != name.encode() or tuple(figures) not in ((checksum, packed, unpacked), (0, 0, 0) if later else None):
-                    raise different
-                position = entries[index + 1][6] if index + 1 < len(entries) else directory  # where this member must end
-                trailer = position - (start + len(header) + packed)
-                if trailer not in ((12, 16) if later else (0,)):
+                position = entries[index + 1][4] if index + 1 < len(entries) else directory  # where this member must end
+                if position - (start + len(header) + packed) != AFTER.size:
                     raise different
                 descriptor = os.open(folder / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
                 with os.fdopen(descriptor, "wb") as out:
                     written, crc = 0, 0
                     try:
-                        for plain in unfolded(source, method, packed, unpacked):
+                        for plain in unfolded(source, packed, unpacked):
                             written += len(plain)
                             if written > unpacked:
                                 raise Refused("larger than it says")  # seen, and never written
@@ -212,8 +209,7 @@ def take(archive, members, folder):
                         raise Refused(f"{name}: {refusal}") from None
                 if written != unpacked or crc != checksum:
                     raise Refused(f"{name}: unreadable (its size or its checksum is not what the archive says)")
-                words = source.read(trailer)
-                if later and ((trailer == 16 and words[:4] != b"PK\x07\x08") or struct.unpack("<3L", words[-12:]) != (checksum, packed, unpacked)):
+                if source.read(AFTER.size) != AFTER.pack(b"PK\x07\x08", checksum, packed, unpacked):
                     raise different
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
