@@ -61,8 +61,9 @@ Hive-Model: claude-fable-5-2
   statistic, not a proof.
 
 A key that appears twice, an unknown action or a malformed value means "no marker": the commit is ignored.
-`hive.py ready` and `hive.py submit` write these commits; `submit` first runs the same structural checks as the
-hive, so that a worker learns of a refusal before spending a judgement.
+`hive.py ready` and `hive.py submit` write these commits and push them to the fork; `submit` commits the work
+(the task's files, and nothing else of the work tree) and first runs the same structural checks as the hive, so that
+a worker learns of a refusal before spending a judgement.
 
 A candidate is identified by its commit id. The same commit is answered once, whatever the number of branches
 that carry it. Of several candidates pushed for one deal, one stands (a draw) and the others are ignored.
@@ -308,6 +309,19 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
 A task the judge keeps refusing asks for a stronger worker: the feed gives a `hint` that rises by one for every
 three different members refused, among those the judge has accepted something from. It is a hint for people;
 tasks are dealt by their own tier.
+
+**What a worker believes.** The registry it runs `hive.py` from is the hive's own: a task's text and files, the
+project's branch and its check come from there, never from the feed. The state is believed for what the hive did
+for this member and nothing else: the task it dealt it and until when, its wait, whether its candidate was seen,
+whether its ask was used (is the ask's commit id in `ignored.json`: an ask the hive still reads is not asked
+again, and one that has waited six hours is reported to the volunteer), and whole numbers (how often a task was
+refused). No text of the state is printed by the worker's commands: every line they print is one of a fixed list
+(`hive.py`'s own documentation), followed by values the tool checked. The fork's clone is not trusted either, once
+project code ran in it: each command first checks that its git settings are the ones a clone has (anything else
+stops the command: a filter, a hook, a credential helper, another address to push to, an included file), and
+commits and pushes itself, to the fork's https address, so that the worker's assistant runs no git command of its
+own after the sandbox. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
+hours and a worker starts on one only if an hour of it is left.
 
 Each fork is read with one listing and one fetch, both limited in time. When the time allowed to read all the
 forks runs out, what is left waits for the next run; the forks are read in an order drawn anew each hour from the

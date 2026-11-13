@@ -198,7 +198,7 @@ protocol is kept only if it moves them the right way.
 | Who judges | the hive's judge | the hive's judge or the project's CI | nobody at the hive |
 | What happens to accepted work | integrated by the hive | **offered**: kept on a branch the maintainers pull from, at the rate they set. The hive never opens a pull request on its own | whatever the volunteer does with it |
 | The hive answers for | the judge, the credit, the legality | the judge and the credit | the worker's loop and its limits, nothing else |
-| State | **built** (protocol) | **planned** (phase 4), only with the maintainers' written agreement | **built** (the worker is a tool; the volunteer chooses the repository) |
+| State | **built** (protocol) | **planned** (phase 4), only with the maintainers' written agreement | **not built**: the worker's commands take only a fork of a project the registry declares |
 
 The worker never opens a pull request, an issue or a comment anywhere, in any mode. Every policy on AI
 contributions read during the research asks for a human who reviewed the change and answers for it **(unverified:
@@ -262,19 +262,26 @@ helps break a protection.
 
 ### 5.1 Setting up, once
 
-1. Fork the project under your own account (one click).
-2. Create a scheduled task in your own AI tool, attach your fork and the registry, remove every connector, and
-   paste the one prompt the setup page gives (it tells the assistant to follow the registry's `bee-worker` skill).
-3. Choose a schedule: every hour (all your quota), or only the hours before your weekly reset (only the leftovers).
+1. Fork the project under your own personal account (one click).
+2. Create a scheduled task in your own AI tool, attach your fork and, to read only, the registry, the hive's state
+   (`Bee-ruche/hive-state`) and the project itself, remove every connector, and paste the one prompt the setup page
+   gives (it tells the assistant to follow the registry's `bee-worker` skill, and states the schedule, which the
+   assistant cannot see by itself).
+3. Choose a schedule: every hour is best (all your quota). Only the hours before your weekly reset (only the
+   leftovers) works if those firings are at most two hours apart, several in a row: a task is dealt at one firing
+   and done at a later one, and the worker starts on a deal only if an hour of its three is left.
 
 Nothing else, ever: no token given to the hive, no pull request, no review to answer, no approval to click. The
 volunteer is expected to know what a fork and a scheduled task are; nothing more.
 
 ### 5.2 What each run does
 
-One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready`, one push to the fork),
-or do the task the hive dealt (the work, the project's own tests, `hive submit` for the hive's structural check and
-the marker, one push to the fork), or nothing. When the quota is
+One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready` makes the ask and pushes
+it to the fork), or do the task the hive dealt (the work, the project's own tests in the sandbox, then `hive submit`,
+which commits the task's files, runs the hive's structural check, adds the marker and pushes to the fork), or
+nothing. Once project code has run, the assistant runs no git command of its own: each of the tool's commands first
+checks that the clone's git settings are the ones a clone has, and makes the commits and the pushes itself. The run
+ends with three lines for the volunteer: what was done, what happens next, where to look. When the quota is
 spent, runs are refused by the provider and resume by themselves after the reset: the worker never needs to read
 the remaining quota.
 
@@ -320,17 +327,26 @@ assistant that can read a repository and run commands can use it.
 
 ### 5.6 The worker's safety, and its scope
 
-- **The worker reaches nothing of the volunteer's**: no connector (it stops if it holds one), no secret, no
-  repository other than the fork and the public registry.
-- **Everything it reads is data**: the task, the code, the comments, the file names. Its instructions are its skill
+- **The worker reaches nothing of the volunteer's**: no connector (it stops if it holds one), no secret, and no
+  repository of theirs other than the fork, the only place it writes. It reads three public ones: the registry, the
+  hive's state (`Bee-ruche/hive-state`) and the project itself (fetched, never written).
+- **Everything it reads is data**: the task, the code, the comments, the file names, and the fork's own agent files
+  (`CLAUDE.md`, `AGENTS.md`), which the volunteer's tool loads before the skill. Its instructions are its skill
   and its owner's prompt. The hive narrows what a contribution can plant for later workers (agent instruction
   files are protected at any depth, new file names must be identifiers, the feed carries nothing a contributor
-  wrote), and the limit above is what holds when that fails.
+  wrote), and the limit above is what holds when that fails. The worker's tool takes a task's text, its files and
+  the project's check from the registry, believes the hive's state only for what the hive did for this member (its
+  task and until when, its wait, whether its candidate was seen and its ask used, and whole numbers), and prints a
+  fixed list of lines: no text of the feed or of the fork reaches the assistant as if the tool had said it.
 - **Untrusted code runs only in a sandbox**: the fork's own `bee/sandbox/` (its script without Docker on Linux, or
   its Docker image), which the hive's projects protect from contributions. A cloud session is not a sandbox by
-  itself: it holds the credentials that push to the volunteer's fork.
-- **"Your own project" gets the loop's limits, not the hive's guarantees**: no hive judge checks the result, and
-  the setup page says so.
+  itself: it holds the credentials that push to the volunteer's fork. What ran in the sandbox may have written into
+  the clone's `.git` (a filter, a hook, another address to push to): so every command of the worker's tool first
+  checks that the clone's git settings are the ones a clone has, without running anything of the clone, runs git
+  without reading the machine's settings where files are read, and makes the commits and the pushes itself, to
+  the fork's own https address.
+- **"Your own project" is not built.** If it is one day, it gets the loop's limits, not the hive's guarantees: no
+  hive judge checks the result.
 
 ## 6. Procedures
 
