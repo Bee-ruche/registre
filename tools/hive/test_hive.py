@@ -1597,8 +1597,8 @@ class TestPromise(Base):
         event = self.one(self.w.events())
         self.assertEqual((event["result"], event["member"], event["commit"], event["settled"]), ("accepted", "alice", self.commit, True))
         self.assertEqual((self.w.feed()["toy-0001"]["status"], self.w.deals()["toy-0001"]), ("done", ("alice", "closed")))
-        old = hive.Ledger(self.w.state)
-        self.assertEqual(hive.landings(self.w.writer, self.w.tip(), old, hive.parse_iso("2026-11-30T00:00:00Z")), {},
+        answered = hive.Ledger(self.w.state)
+        self.assertEqual((answered.promises(), hive.landings(self.w.writer, self.w.tip(), answered, hive.now())), (([], []), {}),
                          "an answered promise is looked for no more")
 
     def test_a_promise_given_up_on_is_looked_for_during_a_week(self):
@@ -2524,6 +2524,26 @@ class TestLedger(unittest.TestCase):
         self.assertEqual([self.standing(days, "12:00:00", day=day)[2] for day in ("11", "12", "13", "14")], [1, 2, 1, 0], "the day's deals")
         days.events += [self.end(1, "toy-0002", "09:00:00", "10:00:00"), self.end(1, t, "00:00:00", "10:00:00", "judge_refused")]
         self.assertEqual(self.standing(days, "12:00:00")[2], 1, "the accepted one no longer counts; the refused one does")
+
+    def test_the_promises_the_hive_still_has_to_look_for(self):
+        intent = lambda sha, commit: {"type": "intent", "sha": sha * 40, "commit": commit * 40, "run": "r1"}  # noqa: E731
+        void = lambda sha, commit, clock: {"type": "void", "sha": sha * 40, "commit": commit * 40, "at": self.at(clock)}  # noqa: E731
+        verdict = lambda sha: {"type": "verdict", "sha": sha * 40}  # noqa: E731
+
+        def promises(*events):
+            ledger = hive.Ledger(self.tmp.name)
+            ledger.events = list(events)
+            pending, voided = ledger.promises()
+            return [e["sha"][0] for e in pending], [(e["sha"][0], at) for e, at in voided]
+
+        a, b = intent("a", "1"), intent("b", "2")
+        self.assertEqual(promises(a, b), (["a", "b"], []))
+        self.assertEqual(promises(a, b, verdict("a")), (["b"], []), "an answer closes its own promise, and no other")
+        self.assertEqual(promises(a, b, void("b", "2", "10:00:00")), (["a"], [("b", self.at("10:00:00"))]), "given up on, and still remembered")
+        self.assertEqual(promises(a, b, void("b", "2", "10:00:00"), verdict("b")), (["a"], []), "until its candidate is answered")
+        self.assertEqual(promises(a, void("a", "9", "10:00:00")), (["a"], []), "a void for another commit closes nothing")
+        self.assertEqual(promises(a, void("a", "1", "10:00:00"), intent("a", "1")), (["a"], []), "promised again: open again")
+        self.assertEqual(promises(verdict("a"), a), (["a"], []), "an answer before the promise does not close it")
 
     def test_the_marks_of_a_deal_and_what_is_answered(self):
         t, dealt = "toy-0001", self.at("09:00:00")
