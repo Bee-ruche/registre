@@ -93,7 +93,7 @@ class Seen(HTMLParser):
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
         self.tags, self.attributes, self.hrefs, self.rows, self.cell = [], [], [], [], None
-        self.styles, self.ids, self.metas, self.open, self.words = [], [], {}, [], []
+        self.styles, self.ids, self.metas, self.open, self.words, self.heads = [], [], {}, [], [], []
         self.feed(text)
         self.close()
 
@@ -106,6 +106,8 @@ class Seen(HTMLParser):
             self.metas[dict(attrs).get("property") or dict(attrs).get("name") or dict(attrs).get("http-equiv")] = dict(attrs).get("content")
             return
         self.open.append(tag)
+        if tag in ("h1", "h2"):
+            self.heads.append("")
         if tag == "style":
             self.styles.append("")
         elif tag == "tr":
@@ -126,6 +128,8 @@ class Seen(HTMLParser):
             self.styles[-1] += data
         elif "body" in self.open and "svg" not in self.open:
             self.words.append(data)
+            if "h1" in self.open or "h2" in self.open:
+                self.heads[-1] += data
         if self.cell:
             self.rows[-1][-1] += data
 
@@ -291,14 +295,14 @@ class TestFigures(Case):
                          [("2026-11-12", "toy-0004", "carol", sha(5012)), ("2026-11-10", "toy-0002", "alice-new", sha(5007)),
                           ("2026-11-01", "toy-0001", "alice-new", sha(5001))])
         # The page says the same.
-        self.assertEqual(seen.row("alice-new"), ["alice-new", "2", "2", "100 % (2 of 2)", "2026-11-10"])
-        self.assertEqual(seen.row("carol"), ["carol", "1", "1", "100 % (1 of 1)", "2026-11-12"])
+        self.assertEqual(seen.row("alice-new"), ["alice-new", "2", "2", "100 % (2 of 2)", "2026-11-10", "card · badge"])
+        self.assertEqual(seen.row("carol"), ["carol", "1", "1", "100 % (1 of 1)", "2026-11-12", "card · badge"])
         self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
         self.assertEqual(seen.row("gpt-x"), ["gpt-x", "1", "0", "0 %"])
         self.assertEqual(seen.row("undeclared"), ["undeclared", "2", "2", "100 %"])
         for reason in ("conflict", "judge_refused", "path_outside_task"):
             self.assertEqual(seen.row(reason), [reason, "1", hive.REASONS[reason]])
-        self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0004 Title of toy-0004", "carol", sha(5012)[:10]])
+        self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0004 Title of toy-0004", "no figure", "carol", sha(5012)[:10]])
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{sha(5012)}", seen.hrefs)
         self.assertIn("Declared by each worker: a statistic, not a proof.", files["index.html"])
         self.assertIn("3 verified contributions", files["badge.svg"])
@@ -332,7 +336,7 @@ class TestFigures(Case):
         files = self.make()
         self.assertEqual([(m["id"], m["login"]) for m in self.summary(files)["members"]], [(101, None), (105, "Alice")])
         seen = self.harmless(files)
-        self.assertEqual(seen.hrefs.count("https://github.com/Alice"), 2, "the members' table and the integrations, for account 105 only")
+        self.assertEqual(seen.hrefs.count("https://github.com/Alice"), 3, "the first screen, the integrations and the members' table, for account 105 only")
         self.assertIsNotNone(seen.row("account 101"))
 
     def test_this_week_moves_with_the_instant(self):
@@ -353,8 +357,14 @@ class TestFigures(Case):
         files = self.make()
         data, seen = self.summary(files), self.harmless(files)
         self.assertEqual([m["login"] for m in data["members"]], [f"m{member:02d}" for member in range(60)], "all of them in summary.json")
-        shown = [row[0] for row in seen.rows if len(row) == 5 and row[0].startswith("m")]
+        shown = [row[0] for row in seen.rows if len(row) == 6 and row[0].startswith("m")]
         self.assertEqual(shown, [f"m{member:02d}" for member in range(50)])
+        self.assertEqual([i for i in seen.ids if i.startswith("member-")], [f"member-{1000 + member}" for member in range(50)],
+                         "each row has its anchor, made from the account's number")
+        self.assertEqual([h for h in seen.hrefs if h.startswith("members/")],
+                         [f"members/{1000 + member}{end}.svg" for member in range(50) for end in ("", "-badge")], "and says where its card and badge are")
+        self.assertEqual([(m["card"], m["badge"]) for m in data["members"]],
+                         [(f"members/{1000 + member}.svg", f"members/{1000 + member}-badge.svg") for member in range(60)])
         self.assertEqual(len(data["recent"]), 30)
         self.assertEqual([r["at"] for r in data["recent"]], sorted((r["at"] for r in data["recent"]), reverse=True))
         self.assertEqual({r["login"] for r in data["recent"]}, {"m00"})
@@ -465,7 +475,7 @@ class TestHostile(Case):
         data = self.summary(files)
         self.assertEqual({m["id"]: m["login"] for m in data["members"]},
                          {**{201 + i: None for i in range(len(LOGINS))}, 300: "mallory", 398: None, 399: None, 500: "honest"})
-        self.assertEqual(seen.hrefs.count("https://github.com/honest"), 3)
+        self.assertEqual(seen.hrefs.count("https://github.com/honest"), 4, "the first screen, two integrations, the members' table")
         self.assertEqual([m["model"] for m in data["models"]], [None, "claude-fable-5-2"], "a model that is not an identifier is undeclared")
         self.assertEqual({r["task"] for r in data["recent"]}, {"toy-0001", "toy-0002", None}, "a task id that is not one is unknown")
         self.assertEqual(data["tasks"], {"done": 2, "dealt": 0, "open": 0, "closed": 0, "total": 2}, "a task counts once, under a real id and status")
@@ -1018,6 +1028,53 @@ class TestGoal(Case):
                          "one per account: the earliest instant, then the ledger's order; never for an account without a number")
 
 
+class TestFirstScreen(Case):
+    """index.html opens on what this is, in one sentence, the latest contribution the judge accepted, with the figure
+    it measured and who it is credited to, and how to take part. The counters and the tables come after."""
+
+    def opening(self, *options):
+        files = self.make(*options)
+        seen = self.harmless(files)
+        return seen, seen.said[:seen.said.index("Progress")]
+
+    def test_the_page_opens_on_what_was_gained_by_whom_and_how_to_take_part(self):
+        self.ledger([report_verdict(1, {"gain_a": 0.5, "sure_a": 1}), verdict(2, "2026-11-10T09:00:00Z", "bob", 102, "toy-0002", report=MINIZ),
+                     verdict(3, "2026-11-11T09:00:00Z", "carol", 103, "toy-0003", "refused", reason="judge_refused")])
+        self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "done", "toy-0003": "open"}))
+        goals = self.tasks([task("toy-0002", gain_goal("gain_instructions_n6"))])
+        seen, opening = self.opening("--title", "A toy, made faster.", "--tasks", goals)
+        self.assertEqual(opening, "La Ruchetoy" "A toy, made faster." + page.WHAT + "Latest accepted contribution" "4.3 %better · instructions n6"
+                         "toy-0002 Title of toy-0002" "by bob · 10 Nov 2026 · what the judge measured" "How to take part")
+        self.assertEqual(seen.hrefs[:3], ["https://github.com/bob", f"wins/{sha(5002)}.html", "#join"])
+        self.assertNotIn("carol", opening, "a refusal is not what the page opens on")
+        # After it, the counters and the tables, in this order; the block on how to take part closes the page.
+        self.assertEqual(seen.heads, ["toy", "Progress", "This week", "Recent integrations", "Members", "Models", "What was refused, and why",
+                                      "Three measures", "How to take part"])
+        self.assertTrue(seen.said.endswith("How to take part" + page.JOIN_WORDS + "How to joinMade from the project's public ledger, as of "
+                                           f"{NOW}. No script, no tracker, nothing loaded from elsewhere."), seen.said)
+        self.assertEqual(seen.ids.count("join"), 1)
+        self.assertEqual(seen.row("2026-11-10"), ["2026-11-10", "toy-0002 Title of toy-0002", "4.3 % better · instructions n6", "bob", sha(5002)[:10]],
+                         "the measured gain is on the page, in the table too")
+        self.assertEqual(seen.row("2026-11-01"), ["2026-11-01", "toy-0001 Title of toy-0001", "50.0 % better · a", "alice", sha(5001)[:10]])
+        # Without a title and without the task file: the sentence that says what this is, and the largest sure gain.
+        _, opening = self.opening()
+        self.assertEqual(opening, "La Ruchetoy" + page.WHAT + "Latest accepted contribution" "5.2 %better · compression throughput n9"
+                         "toy-0002 Title of toy-0002" "by bob · 10 Nov 2026 · what the judge measured" "How to take part")
+        self.assertNotRegex(page.WHAT, r"[0-9<>&]")
+
+    def test_the_opening_says_only_what_the_ledger_holds(self):
+        self.ledger([verdict(1, "2026-11-03T09:00:00Z", "alice", 101, "nothing", commit="not one"), verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0002")])
+        seen, opening = self.opening()
+        self.assertEqual(opening, "La Ruchetoy" + page.WHAT + "Latest accepted contributionAccepted by the judgeby account 101 · 3 Nov 2026How to take part",
+                         "no figure, no task that is one, a login that is another account's, no commit to link: none is invented")
+        self.assertEqual(seen.hrefs[0], "#join")
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "bob", 102, "toy-0001", "refused", reason="judge_refused")])
+        seen, opening = self.opening()
+        self.assertEqual(opening, "La Ruchetoy" + page.WHAT + "Nothing has been integrated yet. The first contribution the judge accepts will appear here."
+                         "How to take part")
+        self.assertNotIn("bob", seen.said)
+
+
 class TestWinPage(Case):
     """The permanent page of one integration (wins/<commit>.html): what its card links to."""
 
@@ -1271,9 +1328,12 @@ class TestEndToEnd(test_hive.Base):
                        "--tasks", str(self.w.registry / "hive/tasks/toy.jsonl")])  # the registry's own task file, as a run has it
         text, data = (out / "index.html").read_text(encoding="utf-8"), json.loads((out / "summary.json").read_text())
         seen = Seen(text)
-        self.assertEqual(seen.row("alice"), ["alice", "1", "1", "100 % (1 of 1)", "2026-11-12"])
+        self.assertEqual(seen.row("alice"), ["alice", "1", "1", "100 % (1 of 1)", "2026-11-12", "card · badge"])
         self.assertIsNone(seen.row("bob"))
-        self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0001 Make f0 faster", "alice", self.w.tip()[:10]])
+        self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0001 Make f0 faster", "no figure", "alice", self.w.tip()[:10]])
+        self.assertTrue(seen.said.startswith(
+            "La Ruchetoy" + "A toy project" + page.WHAT + "Latest accepted contributionAccepted by the judgetoy-0001 Make f0 faster"
+            "by alice · 12 Nov 2026 · what the judge measuredHow to take partProgress"), seen.said)
         self.assertIn("https://github.com/alice", seen.hrefs)
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{self.w.tip()}", seen.hrefs)
         self.assertEqual(seen.row("judge_refused"), ["judge_refused", "1", hive.REASONS["judge_refused"]])

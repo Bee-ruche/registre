@@ -438,7 +438,8 @@ def collect(state, now, tasks=None):
                  "judged": week["judged"], "accepted": week["accepted"], "acceptance_rate": rate(week["accepted"], week["judged"])},
         "members": [{"id": member_id, "login": login_of(member_id), "integrations": row["integrations"], "judged": row["judged"],
                      "accepted": row["accepted"], "acceptance_rate": rate(row["accepted"], row["judged"]),
-                     "first_integration": iso(row["first"]), "last_integration": iso(row["last"])} for member_id, row in named],
+                     "first_integration": iso(row["first"]), "last_integration": iso(row["last"]),
+                     "card": card_name(member_id), "badge": badge_name(member_id)} for member_id, row in named],
         "members_without_integration": len(members) - len(named),
         "models": [{"model": model, "judged": row["judged"], "accepted": row["accepted"],
                     "acceptance_rate": rate(row["accepted"], row["judged"])} for model, row in model_rows],
@@ -609,15 +610,17 @@ overflow-wrap:anywhere;user-select:all}
 .join{border-left:4px solid var(--honey)}
 .go{display:inline-block;margin:.5rem .8rem 0 0;padding:.45rem .9rem;border:2px solid var(--honey);border-radius:6px;font-weight:600;text-decoration:none}
 .go:hover{border-color:var(--ink)}
-@media (min-width:40.01rem){.stack th,.stack td a,.stack td code{white-space:nowrap}.stack table{min-width:27rem}}
+@media (min-width:40.01rem){.stack th,.stack td a,.stack td code{white-space:nowrap}.stack td{overflow-wrap:anywhere}.stack table{min-width:27rem}}
 @media (max-width:40rem){
 .stack table,.stack tbody,.stack tr,.stack th,.stack td{display:block}
 .stack thead{display:none}
 .stack tr{padding:.55rem 0;border-bottom:1px solid var(--line)}
 .stack tbody tr:last-child{border-bottom:0}
 .stack th,.stack td{padding:.1rem 0;border:0;text-align:left;white-space:normal;overflow-wrap:anywhere}
-.stack td{position:relative;min-height:1.5rem;padding-left:7.5rem}
-.stack td::before{content:attr(data-label);position:absolute;left:0;top:.2rem;width:7rem;color:var(--ink2);font-size:.8rem}
+.stack td{position:relative;min-height:1.5rem;padding-left:6.5rem}
+.stack td::before{content:attr(data-label);position:absolute;left:0;top:.2rem;width:6.2rem;color:var(--ink2);font-size:.8rem}
+.stack td.n{display:inline-block;min-height:0;padding:.1rem 1.1rem .1rem 0}
+.stack td.n::before{position:static;margin-right:.4rem}
 }
 """)
 CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
@@ -683,7 +686,12 @@ def progress_bar(tasks):
     return el("svg", parts, class_="bar", role="img", aria_label=f"Tasks: {label}")
 
 
+WHAT = ("A project of La Ruche: volunteers' AI coding assistants do its tasks one at a time, "
+        "and a judge in a sandbox decides what is integrated.")  # what a stranger is told first, in one sentence
+
+
 def render_html(data, title, repo_url, join):
+    """index.html: what this is, the latest accepted contribution, how to take part; then the counters and the tables."""
     project = data["project"] or "A hive project"
     totals, week, measures, tasks = data["totals"], data["week"], data["measures"], data["tasks"]
     integrations = totals["integrations"]
@@ -705,16 +713,35 @@ def render_html(data, title, repo_url, join):
         tile("Acceptance rate", percent(week["acceptance_rate"]), f"{week['accepted']} accepted of {week['judged']} judged"),
     ], class_="tiles")))
 
+    if data["recent"]:
+        rows = []
+        for item in data["recent"]:
+            task = [el("code", item["task"]), " ", el("span", item["title"], class_="soft")] if item["task"] else el("span", "unknown", class_="soft")
+            link = commit_link(repo_url, item["commit"])
+            short = el("code", item["commit"][:10]) if item["commit"] else el("span", "n/a", class_="soft")
+            own = win_page_link(item["commit"])
+            when = el("a", day(item["at"]), href=own) if own is not None else day(item["at"])
+            rows.append([when, task, figure_words(item["figure"]) if item["figure"] else el("span", "no figure", class_="soft"),
+                         member_cell(item["login"], item["member_id"]), el("a", short, href=link, rel="nofollow noopener") if link is not None else short])
+        recent = [table([("Date", False), ("Task", False), ("Measured", False), ("Member", False), ("Commit", False)], rows),
+                  el("p", "A date links to the contribution's own page, wins/<commit>.html: everything the judge measured, how to check it, and its "
+                          "card, wins/<commit>.svg. « Measured » is the figure the task asked for when this page was told which, else the largest "
+                          "gain beyond the noise.", class_="note")]
+    else:
+        recent = el("p", "Nothing has been integrated yet.", class_="soft")
+    sections.append(el("section", el("h2", "Recent integrations"), recent))
+
     if data["members"]:
         shown = data["members"][:MEMBERS_SHOWN]
-        rows = [[member_cell(m["login"], m["id"]), m["integrations"], m["judged"], out_of(m["accepted"], m["judged"]),
-                 day(m["last_integration"])] for m in shown]
+        rows = [[member_cell(m["login"], m["id"]), m["integrations"], m["judged"], out_of(m["accepted"], m["judged"]), day(m["last_integration"]),
+                 [el("a", "card", href=Link(card_name(m["id"]))), " · ", el("a", "badge", href=Link(badge_name(m["id"])))]] for m in shown]
         note = f"{len(data['members'])} members have an integration" + (f"; the first {len(shown)} are shown" if len(shown) < len(data["members"]) else "")
-        members = [table([("Member", False), ("Integrations", True), ("Judged", True), ("Accepted", True), ("Last integration", True)], rows),
+        members = [table([("Member", False), ("Integrations", True), ("Judged", True), ("Accepted", True), ("Last integration", True), ("To show", False)],
+                         rows, ids=[f"member-{m['id']}" for m in shown]),
                    el("p", f"{note}. A member is a GitHub account, counted by its numeric id and shown under its latest login; "
                            "a name appears here only with work the judge accepted.", class_="note"),
-                   el("p", "Every integration has its own card at wins/<commit>.svg, and every member here a card at members/<account id>.svg "
-                           "and a badge at members/<account id>-badge.svg. A card that exists stays.", class_="note")]
+                   el("p", "Every member with an integration has a card at members/<account id>.svg and a badge at members/<account id>-badge.svg, "
+                           "also when the table does not show them. They name no login, so they stay right when an account is renamed.", class_="note")]
     else:
         members = el("p", "No member has an integration yet.", class_="soft")
     sections.append(el("section", el("h2", "Members"), members))
@@ -730,22 +757,6 @@ def render_html(data, title, repo_url, join):
     else:
         models = el("p", "No candidate has been judged yet.", class_="soft")
     sections.append(el("section", el("h2", "Models"), models, el("p", "Declared by each worker: a statistic, not a proof.", class_="note")))
-
-    if data["recent"]:
-        rows = []
-        for item in data["recent"]:
-            task = [el("code", item["task"]), " ", el("span", item["title"], class_="soft")] if item["task"] else el("span", "unknown", class_="soft")
-            link = commit_link(repo_url, item["commit"])
-            short = el("code", item["commit"][:10]) if item["commit"] else el("span", "n/a", class_="soft")
-            own = win_page_link(item["commit"])
-            when = el("a", day(item["at"]), href=own) if own is not None else day(item["at"])
-            rows.append([when, task, member_cell(item["login"], item["member_id"]),
-                         el("a", short, href=link, rel="nofollow noopener") if link is not None else short])
-        recent = [table([("Date", False), ("Task", False), ("Member", False), ("Commit", False)], rows),
-                  el("p", "A date links to the contribution's own page: what the judge measured, how to check it, and its card.", class_="note")]
-    else:
-        recent = el("p", "Nothing has been integrated yet.", class_="soft")
-    sections.append(el("section", el("h2", "Recent integrations"), recent))
 
     if data["refusals"]:
         rows = [[el("code", r["reason"]) if r["reason"] else el("span", "unknown", class_="soft"), r["count"],
@@ -773,10 +784,23 @@ def render_html(data, title, repo_url, join):
     head = el("head", el("meta", charset="utf-8"), el("meta", name="viewport", content="width=device-width, initial-scale=1"),
               el("meta", http_equiv="Content-Security-Policy", content=CSP), el("meta", name="referrer", content="no-referrer"),
               el("title", f"{project} · La Ruche"), el("style", CSS))
+    # The first screen, on a phone too: what this is, in one sentence; the latest contribution the judge accepted, with
+    # the figure it measured and who it is credited to; how to take part (the block is at the end of the page). The
+    # counters and the tables come after.
+    if data["recent"]:
+        item = data["recent"][0]
+        own = win_page_link(item["commit"])
+        opening = el("div", el("p", "Latest accepted contribution", class_="label"),
+                     el("p", gain_text(item["figure"]["gain"]), el("span", better(item["figure"]["metric"])), class_="figure") if item["figure"]
+                     else el("p", "Accepted by the judge", class_="figure"),
+                     el("p", el("code", item["task"]), " ", el("span", item["title"], class_="soft")) if item["task"] else None,
+                     el("p", "by ", member_cell(item["login"], item["member_id"]), f" · {date(item['at'])}",
+                        [" · ", el("a", "what the judge measured", href=own)] if own is not None else None), class_="latest")
+    else:
+        opening = el("p", "Nothing has been integrated yet. The first contribution the judge accepts will appear here.", class_="none")
     body = el("body",
-              el("header", el("p", "La Ruche", class_="hive"), el("h1", project),
-                 el("p", title or "A project of La Ruche: volunteers' AI assistants do the tasks, a judge decides what is integrated.", class_="lead"),
-                 None if integrations else el("p", "Nothing has been integrated yet. The first contribution the judge accepts will appear here.", class_="none")),
+              el("header", el("p", "La Ruche", class_="hive"), el("h1", project), el("p", title, class_="lead") if title else None,
+                 el("p", WHAT, class_="what"), opening, el("p", el("a", "How to take part", href=Link("#join"), class_="go"), class_="steps")),
               el("main", sections),
               el("footer", el("p", f"Made from the project's public ledger, as of {data['generated_at']}. No script, no tracker, nothing loaded from elsewhere."
                               + (f" Ledger lines that could not be read and are left out: {left_out}." if left_out else ""))))
