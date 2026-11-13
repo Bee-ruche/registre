@@ -507,6 +507,16 @@ def write_ignored(folder, mapping):
     write_state(folder, "ignored.json", {k: sorted(set(v)) for k, v in mapping.items() if v})
 
 
+def accounts_ok(data):
+    return isinstance(data, dict) and all(isinstance(k, str) and FORK_ID.match(k) and (v == "" or stamp(v)) for k, v in data.items())
+
+
+def read_accounts(folder):
+    """account id -> the instant GitHub says it was created ("" if it is not a person's account): asked once."""
+    data = read_state(folder, "accounts.json", {})
+    return data if accounts_ok(data) else {}
+
+
 def stamp(value):
     return isinstance(value, str) and bool(ISO.match(value))
 
@@ -777,26 +787,34 @@ def fork_shape(fork):
             and bool(LOGIN.match(fork["login"])) and type(fork.get("id")) is int and type(fork.get("repo_id")) is int)
 
 
-def eligible(fork, api, config, instant, cache):
-    """True if the hive reads this fork: its owner is a person's account, as GitHub describes it now, old enough for
-    the project and not banned. A ban names the account's GitHub id (a number: it survives a change of login); a
-    login is accepted too. A project may be open by invitation (members.only: the numeric ids it reads): the way
-    to start one among people who are known. The forks of other accounts are not read at all: they cost nothing."""
+def barred(fork, config):
+    """True if the project's own file says this fork is not read: it is open by invitation and the account is not
+    named (by its numeric id), or the account is banned (by id, which survives a change of login; a login is
+    accepted too). Known without asking GitHub anything, and before the fork is even listed."""
     rules = config["members"]
     if rules["only"] is not None and fork["id"] not in [m for m in rules["only"] if type(m) is int]:
-        return False  # a project open by invitation: only the accounts it names (by their numeric id) are read
-    if fork["id"] in [b for b in rules["banned"] if type(b) is int] \
-            or fork["login"].lower() in {b.lower() for b in rules["banned"] if isinstance(b, str)}:
+        return True
+    return fork["id"] in [b for b in rules["banned"] if type(b) is int] \
+        or fork["login"].lower() in {b.lower() for b in rules["banned"] if isinstance(b, str)}
+
+
+def eligible(fork, api, config, instant, accounts):
+    """True if the hive reads this fork: not barred, and its owner is a person's account old enough for the project.
+    GitHub is asked about an account once: `accounts` (account id -> the instant it was created, or "" if it is not
+    a person's) is kept from run to run, so that forks of accounts too young to be read cost nothing more. The
+    forks of other accounts are not read at all, and not listed."""
+    if barred(fork, config):
         return False
-    if fork["login"] not in cache:
-        cache[fork["login"]] = api.user(fork["login"])
-    user = cache[fork["login"]]
-    if not isinstance(user, dict) or user.get("id") != fork["id"] or user.get("type") != "User":
+    key = str(fork["id"])
+    if key not in accounts:
+        user = api.user(fork["login"])
+        if not isinstance(user, dict) or user.get("id") != fork["id"]:
+            return False  # an answer the hive cannot read is not kept: GitHub is asked again at the next run
+        created = user.get("created_at")
+        accounts[key] = created if user.get("type") == "User" and stamp(created) else ""
+    if not accounts[key]:
         return False
-    try:
-        return (instant - parse_iso(user.get("created_at"))).days >= rules["min_account_age_days"]
-    except (TypeError, ValueError):
-        return False
+    return (instant - parse_iso(accounts[key])).days >= config["members"]["min_account_age_days"]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -857,7 +875,7 @@ def in_upstream(repo, sha):
     return bool(git(repo, "for-each-ref", "--count=1", "--contains", sha, "refs/remotes/origin", "refs/heads").stdout.strip())
 
 
-def discover(repo, config, api, skip, instant, allow_local=False, known=None):
+def discover(repo, config, api, skip, instant, allow_local=False, known=None, accounts=None):
     """Lists the project's forks and returns (entries, ignored): one entry per marked commit at the tip of a branch
     of an eligible member's fork, for commits the hive has not answered yet, and what need not be read again
     (`known`, the list so far, brought up to date for each fork that was listed: see read_ignored).
@@ -866,10 +884,10 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None):
     is nothing there. One fork that fails or stalls never stops the others: each is read with one listing and one
     fetch, both limited in time. A fork is read whole or not at all (heads_per_fork new branch tips at most). When the time allowed for all runs out, what is left waits for the next run, and
     the forks are read in an order drawn anew each hour, which no fork can shift."""
-    started, limits, entries, slot, members = time.monotonic(), config["limits"], [], 0, {}
-    skip, known = set(skip), known or {}
+    started, limits, entries, slot = time.monotonic(), config["limits"], [], 0
+    skip, known, accounts = set(skip), known or {}, {} if accounts is None else accounts
     hour = int(instant.timestamp() // 3600)
-    forks = sorted((fork for fork in api.forks(config["repo"]) if fork_shape(fork)),
+    forks = sorted((fork for fork in api.forks(config["repo"]) if fork_shape(fork) and not barred(fork, config)),
                    key=lambda fork: hashlib.sha256(f"{hour}:{fork['repo_id']}".encode()).hexdigest())
     ignored = {str(fork["repo_id"]): list(known.get(str(fork["repo_id"]), ())) for fork in forks}  # forks that are gone drop out
     for fork in forks:
@@ -877,6 +895,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None):
             log("discovery: time allowed used up; the forks left wait for the next run")
             break
         try:
+            if not eligible(fork, api, config, instant, accounts):
+                continue  # an account whose forks the hive does not read: not even listed
             url = fork_url(api, fork["full_name"], allow_local)
             listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=30, env=transport(allow_local))
             if listed.returncode != 0:
@@ -896,8 +916,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None):
                 # sight behind the others, to come out later with an old instant.
                 log("discovery: a fork has more new branches than the hive reads at once; it is not read until it has fewer")
                 continue
-            if not fresh or not eligible(fork, api, config, instant, members):
-                continue  # nothing new, or an account whose forks the hive does not read: nothing is fetched
+            if not fresh:
+                continue
             slot += 1
             missing = [(sha, ref) for sha, ref in fresh
                        if git(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode != 0]
@@ -925,12 +945,15 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None):
     return entries, ignored
 
 
-def settle(repo, tip, ledger, instant):
+def settle(repo, tip, ledger, instant, own=None):
     """The ledger lines that close the pushes the hive promised (an « intent ») and did not record: a verdict if the
     promised commit is in the project's history, a « void » if it is not. So a run that pushed and could not record
-    loses nothing, and nothing but the hive's own promise is believed: no field of a commit is."""
+    loses nothing, and nothing but the hive's own promise is believed: no field of a commit is. `own` is the key of
+    the run that is settling: its own promises are not closed by it, whatever number of times its write step runs."""
     events = []
     for intent in ledger.open_intents():
+        if own is not None and intent.get("run") == own:
+            continue  # a promise of THIS run (the write step was stopped and is run again): it is still being kept
         landed = is_sha(intent.get("commit")) and git(repo, "merge-base", "--is-ancestor", intent["commit"], need_sha(tip),
                                                       check=False).returncode == 0
         if landed:
@@ -964,8 +987,9 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     - equal instants are separated by a draw from the member, the task and a key drawn AFTER the forks were read."""
     instant, ttl = now(), config["claim_ttl_minutes"]
     ledger.append(settle(repo, need_sha(tip), ledger, instant), write=False)
+    accounts = read_accounts(state_folder)
     entries, ignored = discover(repo, config, api, ledger.seen() | upstream_tips(repo), instant, allow_local,
-                                read_ignored(state_folder))
+                                read_ignored(state_folder), accounts)
     key = secrets.token_hex(16)
     first_sight, models = read_pending(state_folder), set(config["models"])
     held, done, claims, tickets, ranked, seen, known = ledger.live_claims(instant, ttl), ledger.done(), [], {}, [], {}, set()
@@ -1019,7 +1043,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     queue = [candidate for _, candidate in sorted(order, key=lambda r: r[0])][:config["limits"]["queue"]]
     owners = {entry["sha"]: member_mark(entry["login"]) for entry in entries if entry["action"] == "submit"}
     return {"protocol": PROTOCOL, "project": config["project"], "tip": tip, "at": iso(instant), "key": key, "claims": claims,
-            "queue": queue, "seen": seen, "owners": owners, "ignored": ignored, "bundle_sha256": ""}
+            "queue": queue, "seen": seen, "owners": owners, "ignored": ignored, "accounts": accounts, "bundle_sha256": ""}
 
 
 def member_mark(login):
@@ -1091,7 +1115,7 @@ def read_plan(plan_, config):
                   for k, v in plan_["seen"].items())
           and isinstance(plan_.get("owners"), dict) and all(is_sha(k) and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{16}", v)
                                                             for k, v in plan_["owners"].items())
-          and ignored_ok(plan_.get("ignored"))
+          and ignored_ok(plan_.get("ignored")) and accounts_ok(plan_.get("accounts"))
           and isinstance(plan_.get("bundle_sha256"), str))
     if not ok:
         raise HiveError("the plan is unreadable, or is not this project's")
@@ -1392,7 +1416,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
                   env=transport(allow_local)).stdout.split("\t")[0].strip()
     if current != tip:
         raise HiveError("the project's tip moved since the plan: nothing is applied, the next run starts again")
-    ledger.append(settle(repo, tip, ledger, instant))
+    ledger.append(settle(repo, tip, ledger, instant, own=plan_["key"]))
     answers = read_verdicts(verdicts, config["judge"]["metrics"])
     began = {commit for commit in (started if isinstance(started, (list, tuple, set)) else ()) if is_sha(commit)}
     outcomes, _ = process(repo, tip, plan_["queue"], config, tasks, ledger,
@@ -1430,6 +1454,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(claims + events_of(kept, instant, run) + voids + unused)
     write_ignored(state_folder, plan_["ignored"])
+    write_state(state_folder, "accounts.json", plan_["accounts"])
     answered = ledger.seen()
     write_state(state_folder, "waiting.json", sorted({mark for sha, mark in plan_["owners"].items() if sha not in answered}))
     # What the hive remembers of the candidates that wait is what this run's plan saw: a commit that was taken away

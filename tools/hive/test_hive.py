@@ -642,7 +642,7 @@ class TestMembers(Base):
         calls = []
         with mock.patch.object(self.w.api, "user", side_effect=lambda login: calls.append(login)):
             self.not_read()
-        self.assertEqual(calls, [], "not even asked about")
+        self.assertNotIn("corp", calls, "not even asked about")
 
     def test_an_account_that_is_not_a_person(self):
         self.alice.submit("toy-0001")
@@ -659,6 +659,35 @@ class TestMembers(Base):
         self.w.run()
         with mock.patch.object(self.w.api, "user", side_effect=AssertionError("asked about an account with nothing to read")):
             self.assertEqual(self.w.run(), [])
+
+    def test_forks_the_hive_does_not_read_are_not_even_listed_and_github_is_asked_once_about_an_account(self):
+        """A banned or uninvited account's fork costs nothing at all; a young account's costs one question, once."""
+        self.w.set_config({"members": {"banned": [777]}})
+        self.w.fork("banned", 777).submit("toy-0001")
+        young = self.w.fork("young", 778, created="2026-10-01T00:00:00Z")
+        young.submit("toy-0002", path="src/y.c", content="int y;\n")
+        self.alice.submit("toy-0004", content=LIB + "/* FAST */\n")
+        listed, asked, real_git, real_user = [], [], hive.git, self.w.api.user
+
+        def spy(repo, *args, **options):
+            if args[0] == "ls-remote" and "--heads" in args:
+                listed.append(Path(args[-1]).name)
+            return real_git(repo, *args, **options)
+
+        def asking(login):
+            asked.append(login)
+            return real_user(login)
+
+        with mock.patch.object(hive, "git", side_effect=spy), mock.patch.object(self.w.api, "user", side_effect=asking):
+            self.assertEqual(self.one(self.w.run())["login"], "alice")
+            first = (sorted(set(listed)), sorted(set(asked)))
+            listed.clear(), asked.clear()
+            self.assertEqual(self.w.run(), [])
+        self.assertEqual(first, (["alice.git"], ["alice", "young"]), "the banned one: neither asked about nor listed")
+        self.assertEqual((sorted(set(listed)), asked), (["alice.git"], []), "afterwards GitHub is asked nothing, and young is not listed")
+        self.assertEqual(hive.read_accounts(self.w.state), {"101": "2020-01-01T00:00:00Z", "778": "2026-10-01T00:00:00Z"})
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-12-30T12:00:00Z"}):
+            self.assertEqual(self.one(self.w.run())["login"], "young", "old enough now: read, without a new question")
 
     def test_forks_the_api_describes_badly_are_left_out(self):
         self.alice.submit("toy-0001")
@@ -1238,8 +1267,8 @@ class TestFirstReview(Base):
             digest = "".join(c.args[0] for c in out.write.call_args_list).strip().split("plan_sha256=")[1]
             self.assertEqual(digest, hashlib.sha256(made.read_bytes()).hexdigest())
             written = json.loads(made.read_text())
-            self.assertEqual(sorted(written), ["at", "bundle_sha256", "claims", "ignored", "key", "owners", "project", "protocol", "queue",
-                                               "seen", "tip"])
+            self.assertEqual(sorted(written), ["accounts", "at", "bundle_sha256", "claims", "ignored", "key", "owners", "project",
+                                               "protocol", "queue", "seen", "tip"])
             self.assertEqual([c["sha"] for c in written["queue"]], [candidate])
             hive.main(["judge", *common, "--repo", str(self.w.bench), *files, "--workdir", str(self.w.work), "--out", str(verdicts)])
             handed = json.loads(verdicts.read_text())
@@ -1337,6 +1366,34 @@ class TestPromise(Base):
         self.assertEqual((outcome["sha"], outcome["result"], self.w.tip()), (self.candidate, "accepted", self.commit))
         self.assertEqual([e["type"] for e in self.w.promises()], ["intent", "void", "intent"])
         self.assertEqual(len(self.w.events()), 1)
+
+    def test_a_write_step_stopped_after_its_promise_and_run_again_keeps_the_promise(self):
+        """The write step is stopped right after its promise; it is run again on the same plan, its push lands and the
+        confirmation is lost. The promise of that run was never closed by that run: the next one finds the commit."""
+        bob = self.w.fork("bob", 102)
+
+        def stopped():
+            raise hive.HiveError("the write step was stopped")
+
+        with self.assertRaisesRegex(hive.HiveError, "stopped"):
+            self.w.apply(self.verdicts, checkpoint=stopped)
+        real = hive.guarded_push
+
+        def lands_then_fails(*a, **k):
+            real(*a, **k)
+            raise hive.HiveError("git push: timeout after 180 s")
+
+        with mock.patch.object(hive, "guarded_push", side_effect=lands_then_fails), self.assertRaises(hive.HiveError):
+            self.w.apply(self.verdicts)
+        self.assertEqual((self.w.tip(), [e["type"] for e in self.w.promises()]), (self.commit, ["intent"]),
+                         "one promise, still open: the second attempt neither closed it nor needed another")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            bob.submit("toy-0001", content=LIB.replace("return 1;", "return 1; /* other */"))
+            outcomes = self.w.run()
+        self.assertEqual([(o["login"], o["reason"]) for o in outcomes], [("bob", "superseded")])
+        self.assertEqual([(e["member"], e["result"]) for e in self.w.events()], [("alice", "accepted"), ("bob", "refused")])
+        log = sh("git", "log", "--format=%an", f"{self.start}..main", cwd=self.w.upstream).stdout.split()
+        self.assertEqual(log, ["alice"], "the task was integrated once")
 
     def test_a_commit_shaped_like_the_hives_is_not_believed(self):
         """A commit on the project's branch that names the hive as committer, a member as author and someone's
