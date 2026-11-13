@@ -11,6 +11,8 @@ accepted, and how many dealt candidates wait for the judge (from the feed's deal
 
   index.html              one page: progress, this week, members, models, integrations, refusals, measures
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
+  wins/<commit>.svg       a card for each of the latest integrations, named by the integrated commit's 40-hex id: the
+                          task, the member, the date and the judge's headline figure, if its report has a sure one
   badge.svg               the project's badge
   summary.json            the same figures, for other tools
 
@@ -27,6 +29,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -48,6 +51,8 @@ PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 REPO_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 JOIN_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:/[A-Za-z0-9._-]{1,100}){1,12}\Z")
 CARD_NAME = re.compile(r"members/[1-9][0-9]{0,18}\.svg\Z")
+WIN_NAME = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
+METRIC = re.compile(r"[A-Za-z0-9_]{1,60}\Z")  # the <name> of a report's gain_<name> and sure_<name>
 FIXED_NAMES = ("index.html", "badge.svg", "summary.json")
 DEFAULT_JOIN_URL = "https://github.com/Bee-ruche/registre/blob/main/docs/join.md"
 ID_MAX = 2 ** 63 - 1  # an account's numeric id: a whole number in this range, never a string
@@ -58,6 +63,8 @@ MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 WEEK = dt.timedelta(days=7)
 YEARS = (2000, 2999)  # an instant outside these years is not one
 MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30
+WINS_MAX = 200  # win cards written: the most recent integrations
+GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 
 
 class PageError(Exception):
@@ -105,6 +112,32 @@ def plain(value, limit):
     kept = "".join(" " if c.isspace() else c for c in value if c.isspace() or unicodedata.category(c)[0] != "C")
     text = " ".join(kept.split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def headline(report):
+    """{"metric": name, "gain": fraction} from a verdict's report, or None. Among the keys gain_<name> whose value is
+    a number (not a boolean, not a string) above zero and at most GAIN_MAX, and whose sibling sure_<name> is the number
+    1, the largest gain wins (a tie goes to the first name in alphabetical order). A gain that would show as 0.0 %
+    is no figure. Nothing is computed from a string; <name> must be an identifier."""
+    if not isinstance(report, dict):
+        return None
+    best = None
+    for key, value in report.items():
+        if not isinstance(key, str) or not key.startswith("gain_") or not matching(key[5:], METRIC):
+            continue
+        sure = report.get("sure_" + key[5:])
+        if type(value) not in (int, float) or type(sure) not in (int, float) or sure != 1:
+            continue
+        if type(value) is float and not math.isfinite(value):
+            continue
+        if not 0 < value <= GAIN_MAX:
+            continue
+        gain = round(float(value), 6)
+        if round(100 * gain, 1) <= 0:
+            continue
+        if best is None or gain > best[1] or (gain == best[1] and key[5:] < best[0]):
+            best = (key[5:], gain)
+    return None if best is None else {"metric": best[0], "gain": best[1]}
 
 
 def read_json(folder, name):
@@ -160,6 +193,7 @@ def clean_event(raw):
         event.update(accepted=result == "accepted", judged=raw.get("judged") is True,
                      task=matching(raw.get("task"), TASK_ID, TASK_ID_MAX), model=matching(raw.get("model"), MODEL),
                      commit=matching(raw.get("commit"), SHA),
+                     headline=headline(raw.get("report")) if result == "accepted" else None,
                      reason=reason if isinstance(reason, str) and reason in hive.REASONS else None)
     return event
 
@@ -272,6 +306,14 @@ def collect(state, now):
     recent.sort(key=lambda item: (item[0], item[1]), reverse=True)
     model_rows = sorted(models.items(), key=lambda item: (-item[1]["judged"], -item[1]["accepted"], item[0] or ""))
     integrations = totals["integrations"]
+    wins, written = [], set()
+    for at, _, event in recent:  # the latest integrations first; a commit has one card
+        name = win_name(event["commit"])
+        if name is None or name in written or len(wins) >= WINS_MAX:
+            continue
+        written.add(name)
+        wins.append({"commit": event["commit"], "at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""),
+                     "login": login_of(event["member_id"]), "model": event["model"], "headline": event["headline"]})
     data = {
         "protocol": hive.PROTOCOL,
         "project": project,
@@ -287,7 +329,8 @@ def collect(state, now):
         "models": [{"model": model, "judged": row["judged"], "accepted": row["accepted"],
                     "acceptance_rate": rate(row["accepted"], row["judged"])} for model, row in model_rows],
         "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), "member_id": event["member_id"],
-                    "login": login_of(event["member_id"]), "commit": event["commit"]} for at, _, event in recent[:RECENT_SHOWN]],
+                    "login": login_of(event["member_id"]), "commit": event["commit"], "headline": event["headline"],
+                    "card": win_name(event["commit"])} for at, _, event in recent[:RECENT_SHOWN]],
         "refusals": [{"reason": reason, "count": count}
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
         "measures": {
@@ -299,7 +342,14 @@ def collect(state, now):
         "ledger": {"lines": len(objects) + skipped, "unreadable_lines": skipped, "events_left_out": len(objects) - len(events)},
     }
     data["stats_json"] = compare_stats(read_json(state, "stats.json"), models)
+    data["_wins"] = wins  # for the cards; not part of summary.json
     return data
+
+
+def win_name(commit):
+    """wins/<commit>.svg for a 40-hex commit id, else None: a card exists only under a name made of nothing else."""
+    name = f"wins/{commit}.svg" if isinstance(commit, str) else None
+    return name if name is not None and WIN_NAME.match(name) else None
 
 
 def compare_stats(stats, models):
@@ -514,7 +564,8 @@ def render_html(data, title, repo_url, join):
         note = f"{len(data['members'])} members have an integration" + (f"; the first {len(shown)} are shown" if len(shown) < len(data["members"]) else "")
         members = [table([("Member", False), ("Integrations", True), ("Judged", True), ("Accepted", True), ("Last integration", True)], rows),
                    el("p", f"{note}. A member is a GitHub account, counted by its numeric id and shown under its latest login; "
-                           "a name appears here only with work the judge accepted.", class_="note")]
+                           "a name appears here only with work the judge accepted.", class_="note"),
+                   el("p", f"Every integration has its own card at wins/<commit>.svg (the latest {WINS_MAX} are kept).", class_="note")]
     else:
         members = el("p", "No member has an integration yet.", class_="soft")
     sections.append(el("section", el("h2", "Members"), members))
@@ -537,9 +588,12 @@ def render_html(data, title, repo_url, join):
             task = [el("code", item["task"]), " ", el("span", item["title"], class_="soft")] if item["task"] else el("span", "unknown", class_="soft")
             link = commit_link(repo_url, item["commit"])
             short = el("code", item["commit"][:10]) if item["commit"] else el("span", "n/a", class_="soft")
-            rows.append([day(item["at"]), task, member_cell(item["login"], item["member_id"]),
+            card = Link(item["card"]) if item["card"] is not None else None
+            when = el("a", day(item["at"]), href=card) if card is not None else day(item["at"])
+            rows.append([when, task, member_cell(item["login"], item["member_id"]),
                          el("a", short, href=link, rel="nofollow noopener") if link is not None else short])
-        recent = table([("Date", False), ("Task", False), ("Member", False), ("Commit", False)], rows)
+        recent = [table([("Date", False), ("Task", False), ("Member", False), ("Commit", False)], rows),
+                  el("p", "A date links to the integration's card: the task, the member and the figure the judge verified, if any.", class_="note")]
     else:
         recent = el("p", "Nothing has been integrated yet.", class_="soft")
     sections.append(el("section", el("h2", "Recent integrations"), recent))
@@ -616,6 +670,31 @@ def render_card(project, member):
               xmlns=SVG_NS, width="400", height="72", viewBox="0 0 400 72", role="img", aria_label=f"{top} · {bottom}") + "\n"
 
 
+def render_win(project, win):
+    """The card of one integration: what the judge verified, in the member card's frame. Every line is also in the
+    aria-label and the title, in the same words. The figure is a fraction already checked (headline())."""
+    figure = win["headline"]
+    lines = [("La Ruche" + (f" · {plain(project, 24)}" if project else ""), 15, True, "#0b0b0b"),
+             (f"{100 * figure['gain']:.1f} % better · {figure['metric'].replace('_', ' ')} · verified by the judge" if figure
+              else "verified by the judge", 14, True, "#0b0b0b")]
+    if win["task"]:
+        title = plain(win["title"], 60)
+        lines.append((f"{win['task']} · {title}" if title else win["task"], 12.5, False, "#0b0b0b"))
+    lines.append((f"by {win['login']} · {win['at'][:10]}" if win["login"] else win["at"][:10], 12.5, False, "#52514e"))
+    if win["model"]:
+        lines.append((f"declared model: {win['model']}", 12.5, False, "#52514e"))
+    ys = [31] + [54 + 21 * i for i in range(len(lines) - 1)]
+    label = " · ".join(text for text, _, _, _ in lines)
+    height = ys[-1] + 17
+    return el("svg", el("title", label),
+              el("rect", x="0.5", y="0.5", width="399", height=f"{height - 1}", rx="8", fill="#fffaf0", stroke="#d9b56a"),
+              el("path", d="M34 16L51.3 26V46L34 56L16.7 46V26Z", fill="#eda100"),
+              el("path", d="M34 25L43.5 30.5V41.5L34 47L24.5 41.5V30.5Z", fill="#fffaf0"),
+              [el("text", text, x="66", y=f"{y}", fill=fill, font_family=SANS, font_size=f"{size:g}",
+                  font_weight="bold" if bold else None, **fitted(text, size, 318, bold)) for (text, size, bold, fill), y in zip(lines, ys)],
+              xmlns=SVG_NS, width="400", height=f"{height}", viewBox=f"0 0 400 {height}", role="img", aria_label=label) + "\n"
+
+
 def render_badge(count):
     left, right = "La Ruche", contributions(count)
     left_width, right_width = round(len(left) * 6.6) + 12, round(len(right) * 6.6) + 12
@@ -645,6 +724,7 @@ def card_name(member_id):
 def summary_json(data):
     """summary.json: plain ASCII, and no « < », « > » or « & » even inside a string, so that it stays harmless if a
     tool pastes it into a page."""
+    data = {key: value for key, value in data.items() if key != "_wins"}
     text = json.dumps(data, indent=1, sort_keys=True, ensure_ascii=True, allow_nan=False)
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026") + "\n"
 
@@ -655,14 +735,18 @@ def render(data, title="", repo_url=None, join=None):
              "badge.svg": render_badge(data["totals"]["integrations"]), "summary.json": summary_json(data)}
     for member in data["members"]:
         files[card_name(member["id"])] = render_card(data["project"], member)
+    for win in data["_wins"][:WINS_MAX]:
+        name = win_name(win["commit"])
+        if name is not None:
+            files[name] = render_win(data["project"], win)
     return files
 
 
 def write(out, files):
-    """Writes each file whole or not at all, under `out` and nowhere else: a name is one of the three constants or
-    members/<digits>.svg, whatever asked for it."""
+    """Writes each file whole or not at all, under `out` and nowhere else: a name is one of the three constants,
+    members/<digits>.svg or wins/<40 hex>.svg, whatever asked for it."""
     out = Path(out)
-    if any(name not in FIXED_NAMES and not CARD_NAME.match(name) for name in files):
+    if any(name not in FIXED_NAMES and not CARD_NAME.match(name) and not WIN_NAME.match(name) for name in files):
         raise PageError("a file name this tool does not write")
     for name in sorted(files):
         target = out / name
@@ -676,7 +760,7 @@ def write(out, files):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="The public page of one hive project, from its state folder.")
     parser.add_argument("--state", required=True, help="the project's folder of the state branch (ledger.jsonl, feed.json, stats.json)")
-    parser.add_argument("--out", required=True, help="where index.html, badge.svg, summary.json and members/ are written")
+    parser.add_argument("--out", required=True, help="where index.html, badge.svg, summary.json, members/ and wins/ are written")
     parser.add_argument("--title", default="", help="one line saying what the project is, shown under its name")
     parser.add_argument("--repo-url", help="https://github.com/owner/name: integrations then link to their commit")
     where = parser.add_mutually_exclusive_group()

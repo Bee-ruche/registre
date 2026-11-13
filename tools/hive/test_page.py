@@ -27,6 +27,7 @@ NOW = "2026-11-12T12:00:00Z"
 JOIN = page.DEFAULT_JOIN_URL
 MEMBER_HREF = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 COMMIT_HREF = re.compile(r"https://github\.com/Bee-ruche/toy/commit/[0-9a-f]{40}\Z")
+WIN_HREF = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
 NEEDLES = ("<script", "onerror=", "onload=", "onmouseover", "javascript:", "<img", "../../etc", "alert(1)")
 LOGINS = ('"><script>alert(1)</script>', 'a"onmouseover="x', "-dash", "a" * 40, "é", "a b", "a/b", "", "x\n")
 
@@ -144,7 +145,8 @@ class Case(unittest.TestCase):
         handler, nothing loaded; no link but a member's profile, an integrated commit or the join page; SVGs that
         parse."""
         for name, text in files.items():
-            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name), name)
+            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name)
+                            or re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name), name)
             if name.endswith(".svg"):
                 root = minidom.parseString(text.encode("utf-8")).documentElement
                 self.assertEqual(root.tagName, "svg")
@@ -163,7 +165,8 @@ class Case(unittest.TestCase):
         for name in seen.attributes:
             self.assertFalse(name.startswith("on") or name in ("style", "src", "srcset", "srcdoc", "action", "formaction"), name)
         for href in seen.hrefs:
-            self.assertTrue(href in (join, "join.html") or MEMBER_HREF.match(href) or COMMIT_HREF.match(href), href)
+            self.assertTrue(href in (join, "join.html") or MEMBER_HREF.match(href) or COMMIT_HREF.match(href)
+                            or (WIN_HREF.match(href) and href in files), href)
         for address in re.findall(r"https?://[^\"<> ]*", files["index.html"]):
             self.assertTrue(address.startswith("https://github.com/"), address)
         return seen
@@ -368,9 +371,11 @@ class TestHostile(Case):
         self.assertEqual({name: content for name, content in after.items() if name != "site" and not name.startswith("site/")}, before,
                          "nothing is written, changed or removed outside --out")
         valid = [201 + i for i, login in enumerate(LOGINS)] + [300, 398, 399, 500]
-        self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid)]))
+        wins = sorted(f"wins/{win['commit']}.svg" for win in page.collect(self.state, page.instant_of(NOW))["_wins"])
+        self.assertTrue(0 < len(wins) <= 35 and all(re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name) for name in wins))
+        self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid), *wins]))
         self.assertEqual(sorted(after), sorted(["bystander.txt", "state", "state/toy", *(f"state/toy/{n}" for n in ("ledger.jsonl", "feed.json", "stats.json")),
-                                                "site", "site/members", *(f"site/{name}" for name in files)]), "no temporary file is left")
+                                                "site", "site/members", "site/wins", *(f"site/{name}" for name in files)]), "no temporary file is left")
         for name, text in files.items():
             for needle in NEEDLES:
                 self.assertNotIn(needle, text.lower(), (name, needle))
@@ -414,9 +419,10 @@ class TestHostile(Case):
         self.assertNotIn("img", seen.tags)
         self.assertEqual([name for name in seen.attributes if name.startswith("on") or name in ("src", "style")], [])
         for href in seen.hrefs:
-            self.assertTrue(href == JOIN or re.match(r"https://github\.com/[A-Za-z0-9%._~-]*\Z", href), href)
+            self.assertTrue(href == JOIN or re.match(r"https://github\.com/[A-Za-z0-9%._~-]*\Z", href) or (WIN_HREF.match(href) and href in files), href)
         for name, content in files.items():
-            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name), name)
+            self.assertTrue(name in page.FIXED_NAMES or re.fullmatch(r"members/[1-9][0-9]{0,18}\.svg", name)
+                            or re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name), name)
             if name.endswith(".svg"):
                 root = minidom.parseString(content.encode("utf-8")).documentElement
                 self.assertEqual({node.tagName for node in root.getElementsByTagName("*")} - {"title", "rect", "path", "text"}, set())
@@ -462,6 +468,10 @@ class TestHostile(Case):
                      "members/1.svg\n", "index.html/../x", "members/-1.svg", "x.html", ""):
             with self.assertRaises(page.PageError):
                 page.write(self.out, {name: "x"})
+        for name in ("wins/x.svg", "wins/" + sha(10).upper() + ".svg", "wins/" + sha(1) + ".svg/../../x", "wins/../x.svg", "wins/" + sha(1)[:-1] + ".svg",
+                     "wins/" + sha(1) + ".svg\n", "wins/a/" + sha(1) + ".svg"):
+            with self.assertRaises(page.PageError):
+                page.write(self.out, {name: "x"})
         self.assertEqual(tree(self.root), {"state": None, "state/toy": None}, "a refused name writes nothing, anywhere")
 
     def test_an_address_given_on_the_command_line_must_be_on_github(self):
@@ -489,6 +499,147 @@ class TestHostile(Case):
         self.assertEqual(page.plain("x" * 300, 20), "x" * 19 + "…")
         self.assertEqual(page.plain(["x"], 20), "")
         self.assertEqual(page.plain("Bibliothèque zlib · 圧縮", 50), "Bibliothèque zlib · 圧縮")
+
+
+def report_verdict(number, report, **more):
+    return verdict(number, f"2026-11-{number:02d}T09:00:00Z", "alice", 101, "toy-0001", report=report, **more)
+
+
+class TestWins(Case):
+    def wins(self, files):
+        return {name: text for name, text in files.items() if name.startswith("wins/")}
+
+    def headline_of(self, report):
+        self.ledger([report_verdict(1, report)])
+        files = self.make()
+        self.harmless(files)
+        figure = self.summary(files)["recent"][0]["headline"]
+        card = files[f"wins/{sha(5001)}.svg"]
+        return figure, card
+
+    def test_the_largest_sure_gain_is_the_headline(self):
+        figure, card = self.headline_of({"gain_instructions_n6": 0.032, "sure_instructions_n6": 1, "gain_time": 0.5, "sure_time": 0,
+                                         "gain_size": 0.01, "sure_size": 1, "outputs_compared": 96})
+        self.assertEqual(figure, {"metric": "instructions_n6", "gain": 0.032})
+        self.assertIn("3.2 % better · instructions n6 · verified by the judge", card)
+        self.assertNotIn("50.0", card)
+
+    def test_a_gain_that_is_not_sure_negative_zero_or_alone_is_no_headline(self):
+        for report in ({"gain_a": 0.3, "sure_a": 0}, {"gain_a": 0.3}, {"gain_a": 0.3, "sure_a": 2}, {"gain_a": -0.1, "sure_a": 1},
+                       {"gain_a": 0, "sure_a": 1}, {"gain_a": 0.0, "sure_a": 1}, {"gain_a": 0.3, "sure_a": 0.5}, {"sure_a": 1}, {}, {"gain_": 0.3, "sure_": 1},
+                       {"gain_a": 0.00001, "sure_a": 1}):
+            figure, card = self.headline_of(report)
+            self.assertIsNone(figure, report)
+            self.assertIn(">verified by the judge<", card)
+            self.assertNotIn("%", card, report)
+
+    def test_the_figure_is_chosen_among_the_sure_ones_only(self):
+        figure, _ = self.headline_of({"gain_big": 0.9, "sure_big": 0, "gain_neg": -0.5, "sure_neg": 1, "gain_mid": 0.2, "sure_mid": 1.0,
+                                      "gain_small": 0.05, "sure_small": 1, "gain_tie": 0.2, "sure_tie": 1})
+        self.assertEqual(figure, {"metric": "mid", "gain": 0.2}, "a tie goes to the first name")
+
+    def test_a_hostile_report_shows_nothing_of_itself(self):
+        reports = [
+            {"gain_a": "0.5", "sure_a": 1}, {"gain_a": 0.5, "sure_a": "1"}, {"gain_a": True, "sure_a": 1}, {"gain_a": 0.5, "sure_a": True},
+            {"gain_a": None, "sure_a": 1}, {"gain_a": [0.5], "sure_a": 1}, {"gain_a": {"x": 1}, "sure_a": 1},
+            {"gain_a": 10.01, "sure_a": 1}, {"gain_a": 1e300, "sure_a": 1}, {"gain_a": 10 ** 500, "sure_a": 1},
+            {"gain_<script>alert(1)</script>": 0.5, "sure_<script>alert(1)</script>": 1},
+            {"gain_a b": 0.5, "sure_a b": 1}, {"gain_a\n": 0.5, "sure_a\n": 1}, {"gain_é": 0.5, "sure_é": 1}, {"gain_" + "a" * 61: 0.5, "sure_" + "a" * 61: 1},
+            {"gain_a": 0.5, "sure_a": float("nan")}, {"gain_a": float("inf"), "sure_a": 1}, {"gain_a": float("-inf"), "sure_a": 1},
+            "<script>alert(1)</script>", ["gain_a", 0.5], 5, None, True, "gain_a",
+        ]
+        lines = [report_verdict(number, report) for number, report in enumerate(reports, 1)]
+        # NaN and Infinity spelled in JSON, as a worker's report may hold them, and a huge number
+        lines.append('{"type":"verdict","at":"2026-11-27T09:00:00Z","task":"toy-0001","member":"alice","member_id":101,"result":"accepted",'
+                     '"judged":true,"commit":"' + sha(5027) + '","report":{"gain_a":NaN,"sure_a":1,"gain_b":Infinity,"sure_b":1,"gain_c":-Infinity,'
+                     '"sure_c":1,"gain_d":1e999,"sure_d":1,"gain_e":0.5,"sure_e":NaN}}')
+        self.ledger(lines)
+        files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
+        self.harmless(files)
+        data = self.summary(files)
+        self.assertEqual(len(data["recent"]), len(reports) + 1)
+        self.assertEqual([r["headline"] for r in data["recent"]], [None] * (len(reports) + 1))
+        self.assertEqual(len(self.wins(files)), len(reports) + 1)
+        for name, text in files.items():
+            for needle in NEEDLES:
+                self.assertNotIn(needle, text.lower(), (name, needle))
+        for name, text in self.wins(files).items():
+            self.assertNotIn("%", text)
+            self.assertNotIn("gain", text)
+
+    def test_a_gain_of_a_thousand_percent_is_the_last_one_shown(self):
+        figure, card = self.headline_of({"gain_a": 10, "sure_a": 1})
+        self.assertEqual(figure, {"metric": "a", "gain": 10.0})
+        self.assertIn("1000.0 % better · a · verified", card)
+
+    def card_text(self, text):
+        root = minidom.parseString(text.encode("utf-8")).documentElement
+        return root, [node.firstChild.data for node in root.getElementsByTagName("text")]
+
+    def test_every_win_card_parses_has_no_script_and_says_what_it_shows(self):
+        self.ledger([
+            report_verdict(1, {"gain_instructions_n6": 0.032, "sure_instructions_n6": 1}, model="claude-fable-5-2"),
+            report_verdict(2, {}),
+            verdict(3, "2026-11-03T09:00:00Z", "bob", 102, "toy-9999", model="gpt-x<b>", report={"gain_t": 0.1, "sure_t": 1}),
+            verdict(4, "2026-11-04T09:00:00Z", "dave", 104, "toy-0001", "refused", reason="conflict"),
+            report_verdict(5, {}, commit="not a commit"),
+        ])
+        self.put("feed.json", feed({"toy-0001": "done"}, titles={"toy-0001": '<script>x</script> & "q"'}))
+        files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
+        self.harmless(files)
+        wins = self.wins(files)
+        self.assertEqual(sorted(wins), [f"wins/{sha(5000 + n)}.svg" for n in (1, 2, 3)], "no card for a refusal or for a commit that is not one")
+        for name, text in wins.items():
+            self.assertNotIn("<script", text.lower())
+            root, visible = self.card_text(text)
+            self.assertEqual(root.getAttribute("aria-label"), " · ".join(visible), name)
+            self.assertEqual(root.getElementsByTagName("title")[0].firstChild.data, root.getAttribute("aria-label"))
+        _, first = self.card_text(wins[f"wins/{sha(5001)}.svg"])
+        self.assertEqual(first, ["La Ruche · toy", "3.2 % better · instructions n6 · verified by the judge", "toy-0001 · <script>x</script> & \"q\"",
+                                 "by alice · 2026-11-01", "declared model: claude-fable-5-2"])
+        _, second = self.card_text(wins[f"wins/{sha(5002)}.svg"])
+        self.assertEqual(second, ["La Ruche · toy", "verified by the judge", "toy-0001 · <script>x</script> & \"q\"", "by alice · 2026-11-02"])
+        _, third = self.card_text(wins[f"wins/{sha(5003)}.svg"])
+        self.assertEqual(third, ["La Ruche · toy", "10.0 % better · t · verified by the judge", "toy-9999", "by bob · 2026-11-03"],
+                         "a task not in the feed shows its id alone; a model that is not an identifier is not shown")
+
+    def test_the_login_is_not_shown_when_it_is_no_longer_the_account_s(self):
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0002")])
+        files = self.make()
+        _, first = self.card_text(files[f"wins/{sha(5001)}.svg"])
+        _, second = self.card_text(files[f"wins/{sha(5002)}.svg"])
+        self.assertEqual((first[-1], second[-1]), ("2026-11-01", "by Alice · 2026-11-02"))
+
+    def test_the_index_and_the_summary_link_the_cards(self):
+        self.ledger([report_verdict(1, {"gain_a": 0.25, "sure_a": 1}), report_verdict(2, {}), report_verdict(3, {}, commit="x")])
+        files = self.make()
+        seen = self.harmless(files)
+        data = self.summary(files)
+        self.assertEqual([(r["card"], r["headline"]) for r in data["recent"]],
+                         [(None, None), (f"wins/{sha(5002)}.svg", None), (f"wins/{sha(5001)}.svg", {"metric": "a", "gain": 0.25})])
+        self.assertIn(f"wins/{sha(5001)}.svg", seen.hrefs)
+        self.assertIn(f"wins/{sha(5002)}.svg", seen.hrefs)
+        self.assertEqual(len([h for h in seen.hrefs if h.startswith("wins/")]), 2, "no link where there is no card")
+        self.assertIn("wins/&lt;commit&gt;.svg", files["index.html"])
+        self.assertNotIn("_wins", files["summary.json"])
+
+    def test_at_most_the_latest_two_hundred_cards_are_written(self):
+        self.assertEqual(page.WINS_MAX, 200)
+        lines = [verdict(n, f"2026-{1 + n // 28:02d}-{1 + n % 28:02d}T09:00:00Z", "alice", 101, "toy-0001") for n in range(1, 251)]
+        self.ledger(lines)
+        files = self.make()
+        self.harmless(files)
+        wins = self.wins(files)
+        self.assertEqual(len(wins), 200)
+        newest = sorted(lines, key=lambda line: line["at"], reverse=True)[:200]
+        self.assertEqual(sorted(wins), sorted(f"wins/{line['commit']}.svg" for line in newest))
+        self.assertEqual(len(self.summary(files)["recent"]), page.RECENT_SHOWN)
+
+    def test_a_commit_integrated_twice_has_one_card_and_the_same_one_is_rewritten(self):
+        self.ledger([report_verdict(1, {}), {**report_verdict(2, {"gain_a": 0.1, "sure_a": 1}), "commit": sha(5001)}])
+        files = self.make()
+        self.assertEqual(sorted(self.wins(files)), [f"wins/{sha(5001)}.svg"])
+        self.assertIn("10.0 % better", files[f"wins/{sha(5001)}.svg"], "the latest integration speaks")
 
 
 class TestEmpty(Case):
@@ -592,6 +743,10 @@ class TestEndToEnd(test_hive.Base):
         card = minidom.parse(str(out / "members" / "101.svg")).documentElement
         self.assertEqual(card.getAttribute("aria-label"), "La Ruche · toy · 1 verified contribution · since Nov 2026")
         self.assertIn("1 verified contribution<", (out / "badge.svg").read_text(encoding="utf-8"))
+        win = minidom.parse(str(out / "wins" / f"{self.w.tip()}.svg")).documentElement
+        self.assertIn("by alice", win.getAttribute("aria-label"))
+        self.assertIn("toy-0001 · Make f0 faster", win.getAttribute("aria-label"))
+        self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.svg"])
         self.assertNotIn("<script", text)
 
 
