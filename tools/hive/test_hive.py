@@ -193,7 +193,8 @@ class World:
 
     def upstream_commit(self, path, content):
         sh("git", "pull", "--quiet", "origin", "main", cwd=self.seed)
-        (self.seed / path).write_text(content)
+        (self.seed / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.seed / path).write_bytes(content if isinstance(content, bytes) else content.encode())
         sh("git", "add", "-A", cwd=self.seed)
         sh("git", "commit", "--quiet", "-m", "upstream moves", cwd=self.seed)
         sh("git", "push", "--quiet", "origin", "main", cwd=self.seed)
@@ -487,9 +488,11 @@ class TestIntegration(Base):
                 return real(repo, tip, candidate, limits)
             return mock.patch.object(hive, "merge_tree", side_effect=merge)
 
-        with fails_on(lambda candidate: True):  # the hive's machine is down: it cannot derive the project's own tip either
+        with fails_on(lambda candidate: True) as merges:  # the hive's machine is down: it cannot derive the project's own tip either
             self.assertEqual([o["result"] for o in self.w.run()], ["skipped", "skipped"])
             self.assertEqual(self.w.events(), [], "nobody is marked for the breakdown")
+            self.assertEqual(merges.call_count, 4, "in each of the two steps that derive: one candidate, one check of the machine, "
+                                                   "and nothing more is tried")
         real_git = hive.git
 
         def cannot_write(repo, *args, **options):  # a full disk: the merge is computed, and no commit can be written
@@ -896,6 +899,131 @@ class TestStructure(Base):
         self.alice.marker("toy-0001").push()
         self.refused("empty")
 
+    def test_a_candidate_may_remove_a_file_and_the_folder_that_held_nothing_else(self):
+        sh("git", "rm", "--quiet", "src/a.c", cwd=self.alice.work)  # the only file of src/: the folder goes with it
+        self.alice.commit().marker("toy-0002").push()
+        result = self.one(self.w.run())
+        self.assertEqual((result["result"], result["figures"]), ("accepted", {"files": 1, "lines": 1}))
+        self.assertNotIn("src", sh("git", "ls-tree", "--name-only", self.w.tip(), cwd=self.w.upstream).stdout.split())
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("src/b.c", "int b;\n")
+        alice = world.fork("alice", 101)
+        sh("git", "rm", "--quiet", "src/b.c", cwd=alice.work)  # one file of two: the folder stays
+        alice.commit().marker("toy-0002").push()
+        self.assertEqual(self.one(world.run())["result"], "accepted")
+        self.assertEqual(sh("git", "ls-tree", "-r", "--name-only", f"{world.tip()}:src", cwd=world.upstream).stdout.split(), ["a.c"])
+
+    def test_a_file_replaced_by_a_folder_or_a_folder_by_a_file(self):
+        """One name, a file on one side and a folder on the other: the hive does not look inside such a folder, so
+        the candidate is refused, even next to a change that is fine."""
+        sh("git", "rm", "--quiet", "src/a.c", cwd=self.alice.work)
+        self.alice.write("src/a.c/inner.c", "int inner;\n").write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        self.refused("special_file")
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        alice = world.fork("alice", 101)
+        sh("git", "rm", "--quiet", "-r", "src", cwd=alice.work)
+        alice.write("src", "int a_file_now;\n").write("lib.c", LIB + "int fine;\n").commit().marker("toy-0005").push()
+        result = self.one(world.run())
+        self.assertEqual((result["result"], result.get("reason")), ("refused", "special_file"))
+
+    def test_what_the_project_holds_that_is_not_a_plain_file_is_not_a_candidates_to_change(self):
+        def removed(fork):
+            sh("git", "rm", "--quiet", "link", cwd=fork.work)
+
+        def made_a_file(fork):
+            os.unlink(fork.work / "link")
+            fork.write("link", "int a_file_now;\n")
+
+        for change in (removed, made_a_file):
+            with self.subTest(change.__name__):
+                world = World(tempfile.mkdtemp(dir=self.tmp.name))
+                os.symlink("lib.c", world.seed / "link")
+                sh("git", "add", "-A", cwd=world.seed)
+                sh("git", "commit", "--quiet", "-m", "a link of the project's own", cwd=world.seed)
+                sh("git", "push", "--quiet", "origin", "main", cwd=world.seed)
+                alice = world.fork("alice", 101)
+                change(alice)
+                alice.commit().marker("toy-0005").push()
+                result = self.one(world.run())
+                self.assertEqual((result["result"], result.get("reason")), ("refused", "special_file"))
+
+    def test_what_is_exactly_at_a_limit_is_accepted(self):
+        full = ("x" * 400 + "\n") * 4 + "y" * 395 + "\n"  # as many bytes as a file may hold, in lines as long as a line may be
+        self.assertEqual((len(full), CONFIG["limits"]["file_bytes"], hive.DEFAULTS["limits"]["line_bytes"]), (2000, 2000, 400))
+        self.alice.write("src/full.c", full).write("src/many.c", "".join(f"int v{i};\n" for i in range(44))).write("src/one.c", "int one;\n")
+        self.alice.commit().marker("toy-0002").push()
+        result = self.one(self.w.run())
+        self.assertEqual((result["result"], result["figures"]), ("accepted", {"files": 3, "lines": 50}),
+                         "three files, fifty lines: the most this project takes")
+
+    def test_a_file_of_the_project_that_git_calls_binary_is_not_rewritten(self):
+        """The lines a candidate changes are counted by git, which counts none in a file it calls binary, whichever
+        side makes it so."""
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("src/table.bin", b"\x00\x01\x02 a table\n")
+        world.fork("alice", 101).write("src/table.bin", "now a text\n").commit().marker("toy-0002").push()
+        result = self.one(world.run())
+        self.assertEqual((result["result"], result.get("reason")), ("refused", "binary"))
+
+    def test_a_file_of_the_project_too_large_for_the_hive_to_compare_can_still_be_made_small(self):
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("src/big.c", ("/*" + "x" * 896 + "*/\n") * 9)  # more than four times what a candidate's file may hold
+        world.fork("alice", 101).write("src/big.c", "int small;\n").commit().marker("toy-0002").push()
+        result = self.one(world.run())
+        self.assertEqual((result["result"], result["figures"]), ("accepted", {"files": 1, "lines": 10}))
+
+    def test_a_file_whose_name_is_not_plain_is_not_changed_either(self):
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        world.upstream_commit("src/é.c", "int e;\n")
+        world.fork("alice", 101).write("src/é.c", "int changed;\n").commit().marker("toy-0002").push()
+        result = self.one(world.run())
+        self.assertEqual((result["result"], result.get("reason")), ("refused", "bad_path"))
+
+    def test_what_git_cannot_read_as_a_candidate_lists_it(self):
+        """The hive's own readers, asked one by one: what a candidate lists and git cannot read as listed is the
+        candidate's doing (special_file); what the hive cannot read of the project's own is the hive's failure."""
+        repo, tip = self.w.harvest, self.w.tip()
+        root, blob = hive.tree_of(repo, tip), sh("git", "rev-parse", f"{tip}:lib.c", cwd=repo).stdout.strip()
+        self.assertEqual(hive.blob_bytes(repo, blob, len(LIB)), LIB.encode(), "a file of exactly the limit is read")
+        self.assertIsNone(hive.blob_bytes(repo, blob, len(LIB) - 1))
+        for not_a_file in (root, "1" * 40):  # a folder listed as a file; an object that is not there
+            with self.assertRaises(hive.Refusal) as refusal:
+                hive.blob_bytes(repo, not_a_file, 10 ** 6)
+            self.assertEqual(refusal.exception.reason, "special_file")
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.folder_entries(repo, blob, theirs=True)  # a file listed as a folder
+        self.assertEqual(refusal.exception.reason, "special_file")
+        with self.assertRaisesRegex(hive.HiveError, "cannot list"):
+            hive.folder_entries(repo, blob)
+        everything = hive.changed_entries(repo, None, root, 1000)  # the whole project, as if added: folders included
+        self.assertEqual(len(hive.changed_entries(repo, None, root, len(everything))), len(everything), "exactly as many as allowed")
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.changed_entries(repo, None, root, len(everything) - 1)
+        self.assertEqual(refusal.exception.reason, "too_many_files")
+        with self.assertRaisesRegex(hive.HiveError, "cannot list"):
+            hive.materialize(repo, "1" * 40, self.w.root / "out-nothing")
+
+    def test_the_merge_itself_counts_the_commits_and_says_when_git_fails(self):
+        """The plan counts a candidate's commits first; the step that merges counts them again, on its own."""
+        for i in range(6):
+            self.alice.write("lib.c", LIB + f"int c{i};\n").commit(f"step {i}")
+        long = self.alice.push()
+        repo, tip = self.w.harvest, self.w.tip()
+        sh("git", "fetch", "--quiet", str(self.alice.bare), long, cwd=repo)
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.merge_tree(repo, tip, long, {"commits": 5, "files": 3})
+        self.assertEqual((refusal.exception.reason, refusal.exception.detail), ("too_many_commits", {"commits": 6}))
+        self.assertTrue(hive.is_sha(hive.merge_tree(repo, tip, long, {"commits": 6, "files": 3})), "six of six allowed")
+        real = hive.git
+
+        def failing(repo, *args, **options):
+            if args[0] == "merge-tree":
+                return subprocess.CompletedProcess(args, 128, stdout="", stderr="fatal: unable to write")
+            return real(repo, *args, **options)
+
+        with mock.patch.object(hive, "git", side_effect=failing), self.assertRaisesRegex(hive.HiveError, "merge-tree failed"):
+            hive.merge_tree(repo, tip, long, {"commits": 6, "files": 3})
+
     def test_a_submit_for_an_unknown_or_a_closed_task_is_not_a_candidate(self):
         self.alice.submit("toy-9999")
         self.alice.fresh("claude/closed").write("lib.c", LIB + "int again;\n").commit().marker("toy-0003").push()
@@ -1200,6 +1328,10 @@ class TestApply(Base):
                         {"queue": [{**queue[0], "member_id": "101"}]}, {"queue": [{**queue[0], "task": "../x"}]},
                         {"queue": [{**queue[0], "model": "not-listed"}]}, {"queue": [{**queue[0], "deal": "now"}]}, {"queue": [7]},
                         {"queue": [{**queue[0], "declined": "no"}]}, {"queue": [{k: v for k, v in queue[0].items() if k != "deal"}]},
+                        {"queue": [{**queue[0], "task": 5}]}, {"queue": [{**queue[0], "repo_id": "1101"}]}, {"queue": [{**queue[0], "login": 5}]},
+                        {"queue": [{**queue[0], "long": "no"}]}, {"deals": [{**deal, "member": 5}]}, {"deals": [{**deal, "after": {}}]},
+                        {"expiries": [{"task": "toy-0002", "member_id": "102", "deal": NOW, "fault": False}]},
+                        {"ledger": {"lines": 0, "sha256": 5}},
                         {"deals": None}, {"deals": [{"task": "toy-0002"}]}, {"deals": [{**deal, "member": "a b"}]},
                         {"deals": [{**deal, "member_id": "102"}]}, {"deals": [{**deal, "task": "x"}]}, {"conditional": None},
                         {"conditional": [deal]}, {"conditional": [{**deal, "after": [], "asks": [self.start]}]},
@@ -1213,8 +1345,29 @@ class TestApply(Base):
                         {"bundle_sha256": None}):
             with self.subTest(changes=changes), self.assertRaisesRegex(hive.HiveError, "unreadable"):
                 self.w.apply(self.verdicts, **changes)
+        for not_a_plan in ([], "plan", None, 5):
+            with self.subTest(plan=not_a_plan), self.assertRaisesRegex(hive.HiveError, "unreadable"):
+                hive.read_plan(not_a_plan, self.w.load()[0])
         self.nothing_integrated()
         self.assertEqual(self.w.events(), [])
+
+    def test_a_bundle_that_lacks_one_of_the_plans_candidates_is_not_used(self):
+        self.w.fork("bob", 102).write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        made = self.w.plan()
+        self.assertEqual(len(made["queue"]), 2)
+        one = {**made, "queue": made["queue"][:1]}
+        self.w.bundle.unlink()
+        hive.write_bundle(self.w.harvest, one, self.w.bundle)  # a file that carries the first candidate only
+        with self.assertRaisesRegex(hive.HiveError, "lacks one"):
+            hive.read_bundle(self.w.bench, {**made, "bundle_sha256": one["bundle_sha256"]}, self.w.bundle)
+
+    def test_a_task_the_registry_lists_no_more_when_its_candidate_is_applied_costs_its_member_nothing(self):
+        (self.w.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(t) + "\n" for t in TASKS if t["id"] != "toy-0001"))
+        result = self.one(self.w.apply(self.verdicts)[0])
+        self.assertEqual((result["result"], result["reason"]), ("refused", "task_closed"))
+        self.nothing_integrated()
+        config, _, ledger = self.w.load()
+        self.assertIsNone(ledger.standing(101, hive.now(), config)[1], "the hive's own doing: no wait")
 
     def test_what_the_write_step_records_is_dated_when_it_records_it(self):
         """A wait counts from the moment its member can see the answer, however long the judging took."""
@@ -1832,6 +1985,48 @@ class TestSecondReview(Base):
         self.assertEqual(answers, [(declined, "error", True), (honest, "unused", None), (honest, "verdict", None),
                                    (declined, "error", None)],
                          "the second run integrates the honest candidate; from then on a declined push is its candidate's")
+
+    def test_three_pushes_declined_right_after_another_landed_and_the_candidate_is_refused_with_its_cost(self):
+        hook = self.w.upstream / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read old new ref; do\n  if git log -p \"$old..$new\" | grep -q 'AKIA[0-9A-Z]\\{16\\}'; then\n"
+                        "    exit 1\n  fi\ndone\nexit 0\n")
+        os.chmod(hook, 0o755)
+        others = [("carol", 103, "toy-0005", "run.sh", "#!/bin/sh\necho\n"), ("dave", 104, "toy-0002", "src/d.c", "int d;\n"),
+                  ("erin", 105, "toy-0004", "lib.c", LIB.replace("return 0;", "return 0; /* FAST */"))]
+        login, id, task, path, content = others[0]
+        self.w.fork(login, id).submit(task, path=path, content=content)  # the older deal: pushed first
+        declined = self.w.fork("bob", 102).submit("toy-0001", content=LIB + '/* sample: "AKIAABCDEFGHIJKLMNOP" */\n')
+        self.assertIn("declined a commit", self.attempt()[1])
+        for login, id, task, path, content in others[1:]:
+            self.w.fork(login, id).submit(task, path=path, content=content)
+            self.assertIn("declined a commit", self.attempt()[1])
+        lines = [(e["type"], e.get("kind"), e.get("unproven")) for e in self.w.events() if e["sha"] == declined]
+        self.assertEqual(lines, [("error", "push", None)] * hive.JUDGE_ATTEMPTS, "each time, another push of the same run had landed")
+        self.assertEqual(sorted(e["member"] for e in self.w.events() if e.get("result") == "accepted"), ["carol", "dave", "erin"])
+        seen = len(judge_by_content.seen)
+        result = self.one(self.w.run())
+        self.assertEqual((result["sha"], result["result"], result["reason"]), (declined, "refused", "push_refused"))
+        self.assertEqual(len(judge_by_content.seen), seen, "it costs the judge nothing more")
+        config, _, ledger = self.w.load()
+        self.assertIsNotNone(ledger.standing(102, hive.now(), config)[1], "with its cost: it is the candidate's own doing")
+        self.assertNotIn("AKIA", sh("git", "log", "-p", "main", cwd=self.w.upstream).stdout)
+
+    def test_nothing_is_judged_after_a_candidate_the_project_declined_before_is_accepted_again(self):
+        """Its push will likely be declined again, and what would be judged after it could then not be used."""
+        hook = self.w.upstream / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read old new ref; do\n  if git log -p \"$old..$new\" | grep -q 'AKIA[0-9A-Z]\\{16\\}'; then\n"
+                        "    exit 1\n  fi\ndone\nexit 0\n")
+        os.chmod(hook, 0o755)
+        self.w.fork("bob", 102).submit("toy-0001", content=LIB + '/* "AKIAABCDEFGHIJKLMNOP" */\n')
+        self.w.fork("carol", 103).submit("toy-0005", path="run.sh", content='#!/bin/sh\n# "AKIAABCDEFGHIJKLMNOP"\n')
+        for _ in range(2):  # each of the two is pushed once, and declined
+            self.assertIn("declined a commit", self.attempt()[1])
+        self.assertEqual([(c["login"], c["declined"]) for c in self.w.plan()["queue"]], [("bob", True), ("carol", True)])
+        seen = len(judge_by_content.seen)
+        outcomes, error = self.attempt()
+        self.assertEqual([(o["login"], o["result"], o["judged"]) for o in outcomes], [("bob", "accepted", True), ("carol", "skipped", False)])
+        self.assertEqual(len(judge_by_content.seen), seen + 1, "the judge ran once")
+        self.assertIn("declined a commit", error)
 
     def test_github_not_answering_stops_one_fork_not_the_run(self):
         api = hive.GhApi()
