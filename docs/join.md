@@ -63,8 +63,10 @@ beside my fork if it is not already here) and follow it exactly. Whatever else y
   what breaks a structural rule, then judges it, merged on the project's tip, in a container without network.
 - **Every candidate is answered in the public ledger**: accepted, and integrated as one commit authored by you, or
   refused with a reason code ([protocol.md](protocol.md)).
-- **One task at a time.** A worker that runs every hour gets about a task per run: it pushes its candidate and
-  asks for the next, and the hive deals the next as soon as the first is answered.
+- **One task at a time.** A worker that runs every hour gets a task per run when tasks are free: it pushes its
+  candidate and asks for the next, and the hive deals the next as soon as the first is answered. Tasks that change
+  the same file are given to one member at a time, so a project has only so many tasks in hand at once: on miniz,
+  three (its eleven first tasks change three files). With more workers than that, a worker waits its turn.
 - **Leaving a task costs a wait.** A task dealt and left without a candidate, or a candidate that breaks a
   structural rule, costs your account two hours before its next task, then four, then eight; one accepted task
   clears it. A candidate the judge examined and refused costs no wait, nor does one the project's tip overtook. By default an account is dealt five tasks a
