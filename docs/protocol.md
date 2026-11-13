@@ -130,7 +130,7 @@ the hive runs those git commands with an empty attribute source.
   to judge.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
   the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
-  stops judging and no candidate pays for the breakdown. If it passes, the failure is counted against the
+  stops judging and no candidate pays for the breakdown, neither a mark nor a judgement of its member's day. If it passes, the failure is counted against the
   candidate, which is judged again at the next run, three times at most.
 - A task may add a goal on a figure of the judge's report (for instance a minimum gain), and a project may require
   a figure of every contribution. A goal must name a figure the project lists: a task whose goal could never be met
@@ -174,18 +174,20 @@ What makes them hold:
 - **Nothing pushed later for the same task passes an earlier push**: it goes right behind it, and while the earlier
   one has no answer it is not tried.
 - **An instant nobody can choose.** GitHub's, for the latest push that brought the commit to the fork (a commit
-  taken away and pushed again has the instant of its return). When GitHub gives none (it is late, or the push is
-  older than what it keeps), the instant of the previous run: the fork was read whole then and the commit was not
-  there, so it was pushed after. An instant once given to a candidate stays. No task ever waits for an instant.
-- **Marks end in an answer**: three failures of the judge, or three pushes declined once the hive has shown it can
-  push to the project, and the candidate is refused; six runs stopped while on it, and it is told to come back
-  (`not_answered`). The three failures are counted for the member on the task over seven days, not for the commit:
+  taken away and pushed again has the instant of its return, and leaves nothing behind in the hive's memory). While
+  GitHub gives none (it is late, or the push is older than what it keeps), the candidate waits, by itself: the
+  others go on. After six hours the instant the hive first saw it is used. Silence never gives an earlier place,
+  and no task ever waits for an instant.
+- **Marks end in an answer**: three failures of the judge, or three pushes declined right after another push of the
+  same run landed, and the candidate is refused; six runs spent on it without an answer, whatever the cause, and
+  it is told to come back (`not_answered`: the candidate is refused, not its member). The three failures are counted for the member on the task over seven days, not for the commit:
   taking a candidate away before its third failure and putting another in its place starts nothing afresh.
 - **The judging has a time allowed** (four hours by default): no judgement is started that could end after it, and
   the answers are saved as they come, so that a judging job that is stopped leaves what it had.
 - **One candidate at a time per member.** A candidate that waits is public. `hive.py next` gives no new task to a
-  member who has a candidate waiting, or whose judgements for the day are used; a member with a single candidate
-  waiting keeps its task even on such a day.
+  member who has a candidate waiting, or whose judgements for the day are used. A member's day is used by what its
+  candidates did (an answer from the judge, a failure of the judge on them, a commit the project declined), never
+  by what happened to them (the judging stopped, the hive could not derive them).
 - **The state survives a run that stops**: its files are written whole or not at all, one cut short is read as
   empty, and a line of one run is recorded once however often the write job is run again.
 
@@ -201,8 +203,9 @@ What makes them hold:
 - **Accepted commits are pushed one by one**, and what happened is recorded up to the first push that did not
   land; what the judge ran on after it is recorded as `unused` and judged again, at no cost to its member. A
   commit that the project's repository itself declines is a failure of its candidate's, and the run ends in error
-  so that maintainers see it. Until the hive has pushed to the project once, such a failure costs the candidate its
-  place and nothing more: the hive's own right to push is as likely the cause.
+  so that maintainers see it. It counts towards a refusal only when another push of the same run had just landed:
+  otherwise the hive's own right to push is as likely the cause (a rule added, a token that lost its rights), and
+  the candidate only loses its place.
 - The write job run twice records nothing twice.
 
 Strings that come from a fork (ref names, commit messages, paths) never reach a shell, a workflow expression or

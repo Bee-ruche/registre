@@ -382,9 +382,9 @@ class TestIntegration(Base):
         self.assertEqual(len(judge_by_content.seen), seen, "it costs the judge nothing more")
         self.assertEqual(self.w.run(), [], "and it is answered: never read again")
 
-    def test_a_judge_whose_machine_is_down_refuses_nobody(self):
+    def test_a_judge_whose_machine_is_down_costs_no_candidate_anything(self):
         """The judge fails on everything, the project's own tip included: that is the machine, not the candidates.
-        The candidate at the head when no answer comes loses its place for the next run, and that is all."""
+        No mark, no place lost, nothing of anybody's day used."""
         bob = self.w.fork("bob", 102)
         self.alice.submit("toy-0001")
         bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
@@ -394,21 +394,19 @@ class TestIntegration(Base):
             calls.append(task["id"])
             raise OSError("no container runtime")
 
-        heads = []
-        for _ in range(4):
-            outcomes = self.w.run(down)
-            self.assertEqual([o["result"] for o in outcomes], ["error", "skipped"])
-            heads.append(outcomes[0]["login"])
-        self.assertEqual(sorted(heads[:2]), ["alice", "bob"], "the one that was at the head goes behind the other")
-        self.assertEqual({(e["type"], e["kind"]) for e in self.w.events()}, {("error", "none")}, "no refusal, no failure of the judge's")
-        self.assertEqual(len(calls), 2 * 4, "one candidate and one check of the machine per run, then the run stops judging")
+        for _ in range(hive.UNANSWERED_RUNS + 2):
+            self.assertEqual([o["result"] for o in self.w.run(down)], ["skipped", "skipped"])
+            self.assertEqual(self.w.started, [], "the judging step does not say it stopped on a candidate")
+        self.assertEqual(self.w.events(), [])
+        self.assertEqual(len(calls), 2 * (hive.UNANSWERED_RUNS + 2), "one candidate and one check of the machine per run")
         self.assertEqual(sorted(o["result"] for o in self.w.run()), ["accepted", "accepted"], "judged once the machine is back")
 
-    def test_a_candidate_six_runs_at_the_head_without_an_answer_is_told_to_come_back(self):
-        self.w.set_config({"members": {"judged_per_day": 10}})
+    def test_a_candidate_the_judging_stopped_on_six_times_is_told_to_come_back(self):
         candidate = self.alice.submit("toy-0001")
         for _ in range(hive.UNANSWERED_RUNS):
-            self.assertEqual(self.one(self.w.run(lambda *a: 1 / 0))["result"], "error")
+            _, _, outcomes = self.w.sweep()
+            self.assertEqual(self.one(self.w.apply({}, started=[self.one(outcomes)["commit"]])[0])["kind"], "none")
+        self.assertEqual(self.w.load()[2].judged_today(101, NOW[:10]), 0, "what happened to its candidate uses nothing of a member's day")
         self.assertEqual(self.refused("not_answered")["sha"], candidate)
         self.assertEqual(self.w.run(), [])
 
@@ -927,7 +925,7 @@ class TestApply(Base):
                         {"queue": [{**queue[0], "sha": "HEAD"}]}, {"queue": [{**queue[0], "login": "a b"}]},
                         {"queue": [{**queue[0], "member_id": "101"}]}, {"queue": [{**queue[0], "task": "../x"}]},
                         {"queue": [{**queue[0], "model": "not-listed"}]}, {"queue": [{**queue[0], "seen": "now"}]}, {"queue": [7]},
-                        {"queue": [{**queue[0], "refusal": "banned"}]}, {"queue": [{**queue[0], "alone": 1}]}, {"owners": {self.start: "alice"}}, {"owners": None},
+                        {"queue": [{**queue[0], "refusal": "banned"}]}, {"owners": {self.start: "alice"}}, {"owners": None},
                         {"claims": [{"sha": self.start}]}, {"seen": {"x": NOW}}, {"ignored": ["x"]}, {"bundle_sha256": None}):
             with self.subTest(changes=changes), self.assertRaisesRegex(hive.HiveError, "unreadable"):
                 self.w.apply(self.verdicts, **changes)
@@ -1416,29 +1414,46 @@ class TestSecondReview(Base):
         bob, carol = self.w.fork("bob", 102), self.w.fork("carol", 103)
         declined = bob.submit("toy-0001", content=LIB + '/* sample: "AKIAABCDEFGHIJKLMNOP" */\n')
         honest = carol.write("run.sh", "#!/bin/sh\necho\n").commit().marker("toy-0005").push()
-        errors = [self.attempt()[1] for _ in range(hive.JUDGE_ATTEMPTS + 1)]
-        self.assertEqual([bool(e) for e in errors], [True] * hive.JUDGE_ATTEMPTS + [False], "the runs that met it end in error, loudly")
-        self.assertTrue(all("declined a commit" in e for e in errors[:-1]), errors)
+        errors = []
+
+        def answered():
+            return declined in {e["sha"] for e in self.w.events() if e["type"] == "verdict"}
+
+        while not answered() and len(errors) < 6:
+            errors.append(self.attempt()[1])
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-13T12:00:00Z"}):  # its member's day is used: the rest tomorrow
+            while not answered() and len(errors) < 10:
+                errors.append(self.attempt()[1])
+        self.assertTrue(all(e is None or "declined a commit" in e for e in errors), errors)
         events = self.w.events()
-        self.assertEqual([(e["type"], e.get("kind"), e.get("reason")) for e in events if e["sha"] == declined],
-                         [("error", "push", None)] * hive.JUDGE_ATTEMPTS + [("verdict", None, "push_refused")])
-        self.assertEqual([e["result"] for e in events if e["sha"] == honest], ["accepted"], "the others are served")
+        lines = [(e["type"], e.get("kind"), e.get("reason")) for e in events if e["sha"] == declined]
+        self.assertEqual(set(lines[:-1]), {("error", "push", None)}, "each run that met it has its line")
+        self.assertIn(lines[-1], (("verdict", None, "push_refused"), ("verdict", None, "not_answered")),
+                      "three times declined right after another push of the run landed, or six runs in all: it ends in an answer")
+        self.assertLessEqual(len(lines), hive.UNANSWERED_RUNS + 1)
+        self.assertEqual([e["result"] for e in events if e["sha"] == honest and e["type"] == "verdict"], ["accepted"], "the others are served")
         self.assertNotIn("AKIA", sh("git", "log", "-p", "main", cwd=self.w.upstream).stdout)
         self.assertEqual(self.w.run(), [], "and it is answered: never read again")
 
-    def test_a_project_that_declines_the_hives_first_push_refuses_no_candidate(self):
-        """The hive has never pushed to this project: its own right to push is as likely the cause as the candidate."""
+    def test_a_project_that_declines_every_push_refuses_no_candidate(self):
+        """Before the first integration or long after it (a rule added, a token that lost its rights): when no push of
+        the run landed before it, a declined push says as much about the hive's own rights as about the candidate."""
         hook = self.w.upstream / "hooks/pre-receive"
         hook.write_text("#!/bin/sh\necho 'the integration identity may not push here' >&2\nexit 1\n")
         os.chmod(hook, 0o755)
         self.w.set_config({"members": {"judged_per_day": 20}})
-        self.alice.submit("toy-0001")
-        for _ in range(hive.UNANSWERED_RUNS + 2):
-            self.assertIn("never pushed to this project", self.attempt()[1])
+        first = self.alice.submit("toy-0001")
+        for _ in range(hive.UNANSWERED_RUNS):
+            self.assertIn("no push of this run landed before it", self.attempt()[1])
         self.assertEqual({(e["type"], e["kind"], e["unproven"]) for e in self.w.events()}, {("error", "push", True)})
-        self.assertEqual(self.w.tip(), self.start)
+        self.assertEqual(self.refused("not_answered")["sha"], first, "six runs: the candidate is told to come back")
+        ledger = self.w.load()[2]
+        self.assertEqual((ledger.member_class(101, hive.now(), proven=True), ledger.strikes("0" * 40, 101, "toy-0001", hive.now())),
+                         (0, []), "nothing is proven against its member, who is not on the way to a refusal on the task")
+        self.assertEqual(ledger.member_class(101, hive.now()), 2, "its candidates only go after the others' for a few days")
         hook.unlink()
-        self.assertEqual(self.one(self.w.run())["result"], "accepted", "however long it lasted, the candidate is not refused")
+        self.alice.fresh("again").submit("toy-0001", content=LIB + "int again;\n")
+        self.assertEqual(self.one(self.w.run())["result"], "accepted", "pushed again once the project takes pushes, it is integrated")
 
     def test_a_first_candidate_the_project_declines_does_not_stop_a_new_project(self):
         hook = self.w.upstream / "hooks/pre-receive"
@@ -1449,7 +1464,7 @@ class TestSecondReview(Base):
         declined = mallory.submit("toy-0001", content=LIB + '/* "AKIAABCDEFGHIJKLMNOP" */\n')
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
             honest = self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002").push()
-            self.assertIn("never pushed", self.attempt()[1])
+            self.assertIn("no push of this run landed", self.attempt()[1])
             self.assertEqual([c["login"] for c in self.w.plan()["queue"]], ["alice", "mallory"], "what was declined goes last")
             self.assertIn("declined a commit", self.attempt()[1])
         answers = [(e["sha"], e["type"], e.get("unproven")) for e in self.w.events()]
@@ -1490,37 +1505,104 @@ class TestSecondReview(Base):
         self.assertEqual(sorted(o.get("reason") for o in outcomes[1:]), ["superseded"] * 3)
         self.assertEqual(sh("git", "show", "-s", "--format=%an", "main", cwd=self.w.upstream).stdout.strip(), "alice")
 
-    def test_a_candidate_github_is_silent_about_takes_the_instant_of_the_previous_run(self):
-        """GitHub is late, or the push is older than what it keeps. The hive read the fork whole at the previous run
-        and the commit was not there: it was pushed after. Nothing waits, and a copy does not pass its original."""
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T11:00:00Z"}):
-            self.assertEqual(self.w.run(), [])
+    def test_a_candidate_github_is_silent_about_waits_by_itself_and_gets_no_earlier_place(self):
+        """GitHub is late, or the push is older than what it keeps. The candidate waits, the others go on; after six
+        hours the instant the hive first saw it is used. Silence never gives a place before a known push."""
+        mallory, bob = self.w.fork("mallory", 666), self.w.fork("bob", 102)
+        original = self.alice.submit("toy-0001")
+        self.w.api.silent.add("mallory")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:00:05Z"}):
+            copy = mallory.submit("toy-0001")
+            other = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:30:00Z"}):
+            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [original, other], "the silent one is not in the plan")
+            self.assertEqual(sorted(o["result"] for o in self.w.run()), ["accepted", "accepted"])
+            self.assertEqual(hive.read_pending(self.w.state), {copy: {"seen": "2026-11-12T12:30:00Z", "pushed": None}})
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T18:29:00Z"}):
+            self.assertEqual(self.w.run(), [], "it still waits")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T18:30:00Z"}):
+            made = self.w.plan()
+            self.assertEqual([(c["sha"], c["seen"]) for c in made["queue"]], [(copy, "2026-11-12T12:30:00Z")])
+            self.assertEqual(self.one(self.w.run())["reason"], "superseded")
+
+    def test_when_the_original_is_the_one_github_is_silent_about_and_then_speaks(self):
         self.w.api.silent.add("alice")
         original = self.alice.submit("toy-0001")
+        self.assertEqual(self.w.run(), [])
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            self.w.api.silent.clear()
+            self.assertEqual([(c["sha"], c["seen"]) for c in self.w.plan()["queue"]], [(original, NOW)], "GitHub's own instant")
+            self.assertEqual(self.one(self.w.run())["result"], "accepted")
+
+    def test_a_push_made_while_the_forks_are_being_read_keeps_its_own_instant(self):
+        """The plan's instant is taken when it starts; a copy pushed minutes later, while it still reads the forks,
+        is ordered at the instant GitHub gives for it, not at an earlier one."""
+        original = self.alice.submit("toy-0001")
         mallory = self.w.fork("mallory", 666)
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:00:05Z"}):
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:36:00Z"}):
             mallory.submit("toy-0001")
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:30:00Z"}):
-            made = self.w.plan()
-            self.assertEqual([(c["login"], c["seen"]) for c in made["queue"]],
-                             [("alice", "2026-11-12T11:00:00Z"), ("mallory", "2026-11-12T12:00:05Z")])
+            self.assertEqual([(c["login"], c["seen"]) for c in self.w.plan()["queue"]],
+                             [("alice", NOW), ("mallory", "2026-11-12T12:36:00Z")])
             outcomes = self.w.run()
-        self.assertEqual([(o["login"], o.get("reason") or o["result"]) for o in outcomes], [("alice", "accepted"), ("mallory", "superseded")])
-        self.assertEqual((outcomes[0]["sha"], hive.read_pending(self.w.state)), (original, {}))
-        self.assertEqual(json.loads((self.w.state / "run.json").read_text()), {"at": "2026-11-12T12:30:00Z"})
+        self.assertEqual([(o["sha"], o["result"]) for o in outcomes][0], (original, "accepted"))
 
-    def test_an_instant_once_given_to_a_candidate_stays(self):
-        self.w.set_config({"members": {"judged_per_day": 0}})  # nobody is judged today: the candidate waits
-        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T11:00:00Z"}):
-            self.w.run()
-        self.w.api.silent.add("alice")
-        waiting = self.alice.submit("toy-0001")
+    def test_a_commit_taken_away_leaves_nothing_behind_for_its_return(self):
+        self.w.set_config({"members": {"judged_per_day": 0}})  # nobody is judged: candidates wait
+        mallory = self.w.fork("mallory", 666)
+        reserve = mallory.submit("toy-0001")
         self.w.run()
+        self.assertEqual(hive.read_pending(self.w.state), {reserve: {"seen": NOW, "pushed": NOW}})
+        sh("git", "push", "--quiet", "origin", ":refs/heads/claude/work", cwd=mallory.work)
+        self.w.run()
+        self.assertEqual(hive.read_pending(self.w.state), {}, "what the hive remembers is what the last plan saw")
         with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
-            self.w.run()
-            self.assertEqual(hive.read_pending(self.w.state), {waiting: {"seen": "2026-11-12T11:00:00Z", "pushed": None}})
-            self.w.api.silent.clear()
-            self.assertEqual(self.w.plan()["queue"][0]["seen"], NOW, "and GitHub's own, when it comes, is the one used")
+            honest = self.alice.submit("toy-0001")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:01:00Z"}):
+            self.w.api.silent.add("mallory")  # and GitHub says nothing of the return
+            sh("git", "push", "--quiet", "origin", f"{reserve}:refs/heads/back", cwd=mallory.work)
+            self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [honest])
+
+    def test_an_account_whose_day_is_used_holds_no_task(self):
+        """Junk used up mallory's judgements for the day; one more piece of junk, pushed on the task alice claimed,
+        before she submits, keeps nobody waiting."""
+        mallory = self.w.fork("mallory", 666)
+        self.w.set_config({"members": {"judged_per_day": 1}})
+        mallory.fresh("j0").write("src/j.c", "int j;\n").commit().marker("toy-0002").push()
+        self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:10:00Z"}):
+            mallory.fresh("j1").submit("toy-0001", content=LIB + "/* REFUSE */\n")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": LATER}):
+            honest = self.alice.submit("toy-0001")
+            answers = {o["sha"]: o["result"] for o in self.w.run()}
+        self.assertEqual(answers[honest], "accepted", "in the same run")
+
+    def test_github_not_answering_stops_one_fork_not_the_run(self):
+        api = hive.GhApi()
+        for failure in (subprocess.TimeoutExpired("gh", 120), OSError("no gh")):
+            with mock.patch.object(hive.subprocess, "run", side_effect=failure), self.assertRaises(hive.HiveError):
+                api.activity("alice/toy")
+        answer = subprocess.CompletedProcess([], 0, stdout="not json\n", stderr="")
+        with mock.patch.object(hive.subprocess, "run", return_value=answer), self.assertRaises(hive.HiveError):
+            api.forks("Bee-ruche/toy")
+        with mock.patch.object(hive.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="", stderr="")) as ran:
+            self.assertIsNone(api.user("alice"))
+            self.assertEqual(api.activity("alice/toy"), [])
+            self.assertNotIn("--paginate", ran.call_args.args[0], "one page: the cost does not grow with what a fork pushed")
+        bob = self.w.fork("bob", 102)
+        self.alice.submit("toy-0001")
+        bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        real = self.w.api.activity
+
+        def late(full_name):
+            if full_name == "alice/toy":
+                raise hive.HiveError("gh api: TimeoutExpired")
+            return real(full_name)
+
+        with mock.patch.object(self.w.api, "activity", side_effect=late):
+            self.assertEqual([o["login"] for o in self.w.run()], ["bob"], "the fork GitHub did not answer about waits; the others are served")
+        with mock.patch.object(self.w.api, "forks", side_effect=hive.HiveError("gh api failed")), self.assertRaises(hive.HiveError):
+            self.w.plan()
 
     def test_a_fork_is_read_whole_or_not_at_all(self):
         """Nothing can be pushed and kept out of the hive's sight behind other branches, to come out later with an

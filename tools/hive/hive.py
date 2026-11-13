@@ -53,6 +53,7 @@ JUDGE_ATTEMPTS = 3  # a candidate the judge's machine fails on this many times i
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
 PLAN_MAX_AGE_HOURS = 24  # the write step applies no plan older than this
 MEMORY_DAYS = 7  # how long a member's failures send its candidates after those of members without any
+SILENT_HOURS = 6  # how long a candidate waits for GitHub to say when it was pushed, before the hive's first sight is used
 UNANSWERED_RUNS = 6  # a candidate the hive spent this many runs on without an answer is answered: not_answered
 ACTIONS = ("claim", "submit")
 FILE_MODES = ("100644", "100755")
@@ -351,13 +352,15 @@ class Ledger:
             return (event.get("type"), event.get("sha"))
         return (event.get("type"), event.get("sha"), event.get("commit"), event.get("run"), event.get("kind"))
 
-    def member_class(self, member_id, instant):
+    def member_class(self, member_id, instant, proven=False):
         """Where a member's candidates go in a run: 0 with the others; 1, after them, if the judge failed on one of
         its candidates in the last days; 2, last, if the project's repository declined one. An account that sends
-        what never ends, or what the project declines, hurts the others once, not once per commit."""
+        what never ends, or what the project declines, hurts the others once, not once per commit. `proven` leaves
+        out the pushes declined when no push of the run had landed before (the hive's own rights were in doubt)."""
         since, worst = iso(instant - dt.timedelta(days=MEMORY_DAYS)), 0
         for e in self.events:
-            if e.get("type") == "error" and e.get("member_id") == member_id and e.get("at", "") >= since and not e.get("unproven"):
+            if e.get("type") == "error" and e.get("member_id") == member_id and e.get("at", "") >= since \
+                    and not (proven and e.get("unproven")):
                 worst = max(worst, 2 if e.get("kind") == "push" else 1 if e.get("kind", "judge") == "judge" else 0)
         return worst
 
@@ -376,10 +379,13 @@ class Ledger:
                    and e.get("at", "")[:10] == day)
 
     def judged_today(self, member_id, day):
-        """The judge's runs this member's candidates used today: those that gave an answer, and those that failed on
-        the candidate (they cost the most)."""
+        """The judge's runs this member's candidates used today: those that gave an answer, those where the judge
+        failed on the candidate (they cost the most), and those whose commit the project declined. Not the runs lost
+        to the hive's own side (the judging stopped while on it, the hive could not derive it): nobody's day is
+        used by what happened to its candidate."""
         return sum(1 for e in self.events if e.get("member_id") == member_id and e.get("at", "")[:10] == day
-                   and (e.get("type") == "error" or e.get("type") == "verdict" and e.get("judged")))
+                   and ((e.get("type") == "error" and e.get("kind", "judge") in ("judge", "push"))
+                        or (e.get("type") == "verdict" and e.get("judged"))))
 
     def marks(self, sha):
         """How many runs the hive spent on this candidate without answering it: the judge failed on it, the project
@@ -391,9 +397,9 @@ class Ledger:
         return any(e.get("type") == "error" and e.get("sha") == sha and e.get("kind") == "push" for e in self.events)
 
     def unanswered(self, sha):
-        """The same, less the pushes declined before the hive had ever pushed to the project (its own rights were as
-        likely the cause): what counts towards the answer « not_answered »."""
-        return sum(1 for e in self.events if e.get("type") == "error" and e.get("sha") == sha and not e.get("unproven"))
+        """The same count, as what ends in the answer « not_answered »: six runs spent on a candidate without one,
+        whatever the cause. It refuses the candidate, not its member: the work can be pushed again."""
+        return self.marks(sha)
 
     def strikes(self, sha, member_id=None, task=None, instant=None):
         """The failures that count towards a refusal: the judge failing on the candidate while its machine works, and
@@ -515,10 +521,16 @@ class GhApi:
     """What the hive reads from GitHub, through the gh CLI (REST only)."""
 
     def _json_lines(self, *args):
-        result = subprocess.run(["gh", "api", *args], capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+        try:
+            result = subprocess.run(["gh", "api", *args], capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+        except (subprocess.TimeoutExpired, OSError) as error:
+            raise HiveError(f"gh api: {type(error).__name__}") from None
         if result.returncode != 0:
             raise HiveError(f"gh api failed: {safe_text(result.stderr.strip(), 200)}")
-        return [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        try:
+            return [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        except ValueError:
+            raise HiveError("gh api: an answer that is not JSON") from None
 
     def forks(self, repo):
         return self._json_lines("--paginate", f"repos/{repo}/forks?per_page=100&sort=newest", "--jq",
@@ -527,14 +539,15 @@ class GhApi:
     def user(self, login):
         if not LOGIN.match(login):
             raise HiveError("login unreadable")
-        return self._json_lines(f"users/{login}", "--jq", "{id, created_at, type}")[0]
+        answer = self._json_lines(f"users/{login}", "--jq", "{id, created_at, type}")
+        return answer[0] if answer else None
 
     def activity(self, full_name):
-        """The pushes GitHub recorded on a repository in the last week: [{after: commit id, timestamp}]."""
+        """The latest pushes GitHub recorded on a repository in the last week: [{after: commit id, timestamp}]. One
+        page: what reading a fork costs does not grow with what its owner pushed."""
         if not REPO_NAME.match(full_name):
             raise HiveError("repository name unreadable")
-        return self._json_lines("--paginate", f"repos/{full_name}/activity?per_page=100&time_period=week", "--jq",
-                                ".[] | {after, timestamp}")
+        return self._json_lines(f"repos/{full_name}/activity?per_page=100&time_period=week", "--jq", ".[] | {after, timestamp}")
 
     def url(self, full_name):
         return f"https://github.com/{full_name}.git"
@@ -818,7 +831,7 @@ def push_times(api, full_name, instant):
         sha, at = activity.get("after"), activity.get("timestamp")
         if is_sha(sha) and isinstance(at, str) and ISO.match(at[:19] + "Z"):
             at = at[:19] + "Z"
-            if parse_iso(at) <= instant + dt.timedelta(minutes=5) and at > times.get(sha, ""):
+            if at > times.get(sha, ""):
                 times[sha] = at
     return times
 
@@ -931,8 +944,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     - for one task, never a candidate before one pushed earlier: a candidate behind a marked one, for the same task,
       goes after it, and is tried right after it in the same run;
     - first pushed, first served: a candidate's instant is the one GitHub recorded for its push (so a copy, which
-      can only be pushed after its original, comes after it). When GitHub gives none, it is the instant of the
-      previous run, which the push cannot precede: a fork is read whole or not at all, so the commit was not there;
+      can only be pushed after its original, comes after it). While GitHub gives none, the candidate waits, by
+      itself; after some hours the instant the hive first saw it is used. Silence never gives an earlier place;
     - one candidate per member and task: the member's others for that task are answered « duplicate »;
     - equal instants are separated by a draw from the member, the task and a key drawn AFTER the forks were read."""
     instant, ttl = now(), config["claim_ttl_minutes"]
@@ -942,8 +955,6 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     key = secrets.token_hex(16)
     first_sight, models = read_pending(state_folder), set(config["models"])
     held, done, claims, tickets, ranked, seen, known = ledger.live_claims(instant, ttl), ledger.done(), [], {}, [], {}, set()
-    last = read_state(state_folder, "run.json", {})
-    previous = last["at"] if isinstance(last, dict) and stamp(last.get("at")) and last["at"] <= iso(instant) else iso(instant)
     submitted = []
     for entry in sorted(entries, key=lambda e: e["sha"]):
         if entry["sha"] in known:
@@ -959,13 +970,17 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             claims.append({"task": entry["task"], "member": entry["login"], "member_id": entry["member_id"],
                            "repo_id": entry["repo_id"], "sha": entry["sha"]})
             continue
-        # GitHub's instant when it gives one. When it does not (it is late, or the push is older than what it keeps),
-        # the instant of the previous run: the hive read this fork whole then and the commit was not there, so it was
-        # pushed after. An instant once given to a candidate stays.
+        # GitHub's instant when it gives one. While it gives none (it is late, or the push is older than what it keeps),
+        # the candidate waits, alone: the others go on. After some hours the instant the hive first saw it is used,
+        # which no push precedes. Never an earlier instant than GitHub's own: silence gives no place.
         was = first_sight.get(entry["sha"]) or {}
-        seen[entry["sha"]] = {"seen": was.get("seen") or previous, "pushed": entry["pushed"] or was.get("pushed")}
-        since = seen[entry["sha"]]["pushed"] or seen[entry["sha"]]["seen"]
+        seen[entry["sha"]] = {"seen": was.get("seen") or iso(instant), "pushed": entry["pushed"]}
+        since = entry["pushed"]
+        if since is None and seen[entry["sha"]]["seen"] <= iso(instant - dt.timedelta(hours=SILENT_HOURS)):
+            since = seen[entry["sha"]]["seen"]
         submitted.append(entry)
+        if since is None:
+            continue
         candidate = {"sha": entry["sha"], "repo_id": entry["repo_id"], "login": entry["login"], "member_id": entry["member_id"],
                      "task": entry["task"], "model": entry["model"] if entry["model"] in models else None, "seen": since,
                      "refusal": None}
@@ -987,13 +1002,6 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         # A task's rank is carried by what was pushed after for the same task: nothing passes an earlier push.
         behind[candidate["task"]] = max(behind.get(candidate["task"], (0, 0)), rank)
         order.append(((behind[candidate["task"]], when), candidate))
-    # A member with one candidate waiting, and no more, keeps its place on the task even on a day when its
-    # judgements are used (process): it followed the rule « one at a time », and nobody takes the task meanwhile.
-    waiting_of = {}
-    for entry in submitted:
-        waiting_of[entry["member_id"]] = waiting_of.get(entry["member_id"], 0) + 1
-    for _, candidate in order:
-        candidate["alone"] = waiting_of[candidate["member_id"]] == 1
     queue = [candidate for _, candidate in sorted(order, key=lambda r: r[0])][:config["limits"]["queue"]]
     owners = {entry["sha"]: member_mark(entry["login"]) for entry in entries if entry["action"] == "submit"}
     return {"protocol": PROTOCOL, "project": config["project"], "tip": tip, "at": iso(instant), "key": key, "claims": claims,
@@ -1052,8 +1060,7 @@ def read_plan(plan_, config):
         return (isinstance(c, dict) and is_sha(c.get("sha")) and isinstance(c.get("login"), str) and LOGIN.match(c["login"])
                 and type(c.get("member_id")) is int and type(c.get("repo_id")) is int and isinstance(c.get("task"), str)
                 and TASK_ID.match(c["task"]) and (c.get("model") is None or c["model"] in config["models"])
-                and isinstance(c.get("seen"), str) and ISO.match(c["seen"]) and c.get("refusal") in (None, "duplicate")
-                and type(c.get("alone")) is bool)
+                and isinstance(c.get("seen"), str) and ISO.match(c["seen"]) and c.get("refusal") in (None, "duplicate"))
 
     def claim_ok(c):
         return (isinstance(c, dict) and is_sha(c.get("sha")) and isinstance(c.get("member"), str) and LOGIN.match(c["member"])
@@ -1172,11 +1179,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             if entry["task"] in waiting or halt:
                 continue
             if ledger.judged_today(member_id, day) + tried.get(member_id, 0) >= rules["judged_per_day"]:
-                # The member's own cap: tried another day. It holds nobody back, with one exception: a member whose
-                # only waiting candidate this is keeps the task until then (one task per account, one day at most).
-                if entry["alone"]:
-                    waiting.add(entry["task"])
-                continue
+                continue  # the member's own cap: tried another day, and it holds nobody else back
             if judged >= budget:
                 waiting.add(entry["task"])
                 continue
@@ -1207,7 +1210,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             # A commit the project's repository already declined, or from a member whose commits it declined, will
             # likely be declined again, and what would be judged after it could then not be used: such candidates are
             # tried last (plan), and nothing is judged after one of them is accepted.
-            halt = ledger.declined(entry["sha"]) or ledger.member_class(member_id, instant) == 2
+            halt = ledger.declined(entry["sha"]) or ledger.member_class(member_id, instant, proven=True) == 2
         except Refusal as refusal:
             outcome.update(result="refused", reason=refusal.reason, detail=clean_detail(refusal.detail))
         except HiveError as error:
@@ -1269,6 +1272,10 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         answer = ask(tip, tree, task, commit, entry["sha"][:12])
         if answer["code"] == 2 and not machine_works(tip, task):
             state["down"] = True
+            if started is not None and commit in started:
+                started.remove(commit)  # the machine, not this candidate: it is not the one the judging stopped on
+                if save:
+                    save(verdicts, started)
             log("the judge fails on the project's own tip: its machine is down, nothing more is judged in this run")
             return None
         verdicts[commit] = answer
@@ -1388,11 +1395,12 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
             failure, kept, unsure = error, outcomes[:outcomes.index(outcome)], outcome
             break
         if not landed:
-            # Declined by the project's repository. Until the hive has pushed there once, its own right to push is
-            # as likely the cause as the candidate: the candidate loses its place, and is not on its way to a refusal.
-            outcome.update(result="error", kind="push", unproven=not ledger.done() and reached == tip)
+            # Declined by the project's repository. It is the candidate's doing only if the hive has just pushed
+            # there, in this same run: otherwise the hive's own right to push is as likely the cause (a rule added, a
+            # token that lost its rights), and the candidate loses its place without being on its way to a refusal.
+            outcome.update(result="error", kind="push", unproven=reached == tip)
             failure = HiveError("the project's repository declined a commit: its candidate loses its place; what followed "
-                                "it waits for the next run" + (" (the hive has never pushed to this project: check the "
+                                "it waits for the next run" + (" (no push of this run landed before it: check the "
                                                                "integration identity's rights)" if outcome["unproven"] else ""))
             kept = outcomes[:outcomes.index(outcome) + 1]
             break
@@ -1409,10 +1417,9 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     write_ignored(state_folder, read_ignored(state_folder) + plan_["ignored"])
     answered = ledger.seen()
     write_state(state_folder, "waiting.json", sorted({mark for sha, mark in plan_["owners"].items() if sha not in answered}))
-    write_state(state_folder, "run.json", {"at": plan_["at"]})
-    pending = {**read_pending(state_folder), **plan_["seen"]}  # the plan knows best when each candidate was pushed or seen
-    write_pending(state_folder, {sha: at for sha, at in sorted(pending.items(), key=lambda item: item[1]["seen"])[-50_000:]
-                                 if sha not in answered})
+    # What the hive remembers of the candidates that wait is what this run's plan saw: a commit that was taken away
+    # leaves nothing behind for its return.
+    write_pending(state_folder, {sha: at for sha, at in plan_["seen"].items() if sha not in answered})
     if checkpoint:
         checkpoint()
     if failure:
