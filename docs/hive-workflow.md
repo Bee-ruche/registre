@@ -22,20 +22,34 @@ Three things carry it:
 
 1. **The plan's SHA-256 is a job output**, not a file: `record` and `apply` receive it from GitHub, not from an
    artifact a later job could have replaced, and refuse a plan that does not match.
-2. **The project's token is given to one step of one job** (`apply`), through that step's environment. No other
-   job names the secret.
+2. **The project's token is given to one step of one job** (`apply`), through that step's environment. It is
+   asked of GitHub for that run, lasts an hour and reaches one repository; the key that obtains it is readable in
+   one environment only.
 3. **One run at a time per project** (`concurrency`, never cancelled in progress): two runs overlapping are safe
    by the protocol (the jobs that write check the ledger the plan read), and wasteful.
 
 ## The settings only the founder can make
 
-1. **The state repository**: `Bee-ruche/hive-state`, empty and public (the founder's choice: a repository of its
-   own, so that the jobs that write the state hold no right on the registry at all). A token that can write to it
-   and to nothing else goes in an environment secret (`HIVE_STATE_TOKEN`) of an environment (`hive-state`) that
-   only the `record` and `apply` jobs use.
-2. **The integration identity**: a GitHub App installed on the hosted projects only, with "Contents: read and
-   write" and nothing else; or a fine-grained token with the same reach. Its token goes in an environment secret
-   (`HIVE_PROJECT_TOKEN`) of an environment (`hive-apply`) that only this workflow's `apply` job uses.
+1. **The state repository**: `Bee-ruche/hive-state`, public (the founder's choice: a repository of its own, so
+   that the jobs that write the state hold no right on the registry at all). It needs one first commit (a README),
+   so that it has a branch to check out.
+2. **Two integration identities, kept apart**: two GitHub Apps of the organization, each with the repository
+   permission "Contents: read and write" and nothing else, no webhook:
+   - a *state* App, installed on `hive-state` only;
+   - a *project* App, installed on the hosted projects only (`minizBee`).
+
+   The workflow asks GitHub, at each run, for a token of an hour for one repository
+   (`actions/create-github-app-token`, pinned to a commit). It needs, in the registry's settings:
+
+   | Name | Kind | Where | Holds |
+   | --- | --- | --- | --- |
+   | `HIVE_STATE_APP_CLIENT_ID` | variable | repository | the state App's client id (not a secret) |
+   | `HIVE_PROJECT_APP_CLIENT_ID` | variable | repository | the project App's client id (not a secret) |
+   | `HIVE_STATE_APP_PRIVATE_KEY` | secret | environments `hive-state` and `hive-apply` | the state App's private key |
+   | `HIVE_PROJECT_APP_PRIVATE_KEY` | secret | environment `hive-apply` only | the project App's private key |
+
+   `record` runs in the environment `hive-state`, `apply` in `hive-apply` (a job has one environment, and `apply`
+   writes both the project and the state). No other job names an environment, so no other job can read a key.
 3. **Each hosted project's branch**: pushes allowed to the integration identity and the maintainers, force pushes
    blocked, no required pull request for the identity.
 4. **The repository variable `HIVE_PROJECTS`** (for instance `miniz`): the run does nothing while it is empty, in
@@ -88,14 +102,23 @@ jobs:
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment: hive-state          # the only place the state's token can be read, with `apply`'s
+    environment: hive-state          # the state App's key, and no other
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
+      - name: A token of an hour for the state repository, and nothing else
+        id: state
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.HIVE_STATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
+          owner: Bee-ruche
+          repositories: hive-state
+          permission-contents: write
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ secrets.HIVE_STATE_TOKEN }}" }
+        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ steps.state.outputs.token }}" }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: plan }
       - name: Record the deals and publish the feed
@@ -137,14 +160,32 @@ jobs:
     if: always() && needs.plan.result == 'success'   # even when the judging failed: what it left is used
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: hive-apply          # the only place the project's token can be read (it also holds the state's)
+    environment: hive-apply          # the only place the project App's key can be read (it also holds the state's)
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { path: registry, persist-credentials: false }
+      - name: A token of an hour for the state repository
+        id: state
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.HIVE_STATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
+          owner: Bee-ruche
+          repositories: hive-state
+          permission-contents: write
+      - name: A token of an hour for the project, and nothing else
+        id: project
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.HIVE_PROJECT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HIVE_PROJECT_APP_PRIVATE_KEY }}
+          owner: Bee-ruche
+          repositories: minizBee
+          permission-contents: write
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ secrets.HIVE_STATE_TOKEN }}" }
+        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ steps.state.outputs.token }}" }
       - name: The project
         run: git clone --quiet https://github.com/Bee-ruche/minizBee project
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -155,7 +196,7 @@ jobs:
       - name: Push what the judge accepted, and record (the only step that holds the project's token)
         env:
           PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
-          HIVE_PROJECT_TOKEN: ${{ secrets.HIVE_PROJECT_TOKEN }}
+          HIVE_PROJECT_TOKEN: ${{ steps.project.outputs.token }}
         run: |
           auth=$(printf 'x-access-token:%s' "$HIVE_PROJECT_TOKEN" | base64 -w0)
           git -C project config http.https://github.com/Bee-ruche/minizBee.extraheader "Authorization: Basic $auth"
@@ -171,8 +212,8 @@ Notes on the draft:
   passed through `env:`.
 - `plan` prints `plan_sha256=…` on its standard output and its figures on its error output: the first goes to
   `$GITHUB_OUTPUT`.
-- `record` and `apply` check out the state repository with the state's token, which `hive.py --commit-state`
-  uses to push the state. `plan` and `judge` check it out without credentials. No job has a right to write to
+- `record` and `apply` check out the state repository with a token of the state App, which `hive.py
+  --commit-state` uses to push the state. `plan` and `judge` check it out without credentials. No job has a right to write to
   the registry.
 - The page (`tools/hive/page.py`) is one more job after `apply`, without any right but to publish: it is not in
   this draft.

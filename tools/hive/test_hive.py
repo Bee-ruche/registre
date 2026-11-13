@@ -2537,6 +2537,11 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(ledger.marks(t, 1, self.at("07:00:00")), [])
         self.assertEqual(ledger.seen(), {ledger.events[9]["sha"], ledger.events[10]["sha"]}, "a failure answers nothing")
         self.assertEqual((ledger.done(), ledger.accepted_members()), ({"toy-0004"}, {2}))
+        promised = self.ledger({**self.end(3, "toy-0005", "09:00:00", "10:00:00"), "type": "intent"})
+        self.assertEqual((promised.done(), promised.accepted_members(), promised.seen()), (set(), set(), set()),
+                         "a promise is not an integration: its task is not done and its member has nothing accepted yet")
+        day = self.ledger(self.deal(3, "toy-0005", "09:00:00"), {**self.end(3, "toy-0005", "09:00:00", "10:00:00"), "type": "intent"})
+        self.assertEqual(self.standing(day, "12:00:00", member=3)[2], 1, "nor does a promise take a deal out of its member's day")
 
 
 class TestProjectFiles(unittest.TestCase):
