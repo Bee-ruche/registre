@@ -32,14 +32,15 @@ I wrote the first plan before building anything. Building, and having the result
 | First plan | Why it was wrong | Now |
 | --- | --- | --- |
 | Workers claim tasks by commenting on the registry (a "gesture inbox") | It gives every contributor a way to write into the hive, which a robot must then parse: a new attack surface, and an API write from every worker | **Workers write nothing to the hive.** They push to their own fork; the hive comes and reads |
-| Leases: a claimed task is offered to nobody else | A lock needs a referee and a clock everyone trusts, and a claim costs nothing: locks invite squatting | **A claim is a hint.** Duplicates are made cheap instead of impossible (section 3.2) |
+| Leases: a claimed task is offered to nobody else | I rejected them twice, for a reason that turned out wrong: "a lock needs a referee and a clock everyone trusts". The hive's own hourly run is that referee, and its own clock is enough. What invites squatting is a lock that a member *takes*; one that the hive *gives*, to one account at a time, for a bounded time, with a wait that doubles for those who waste it, does not | **The hive deals each task to one member at a time** (section 3.2) |
+| Members compete for a task: first pushed, first served, and the hive decides who came first | Seven adversarial reviews in a row. Integrity held from the third on; from the fourth on, nearly every serious finding sat in the same place: several members' candidates for one task, and the instants, ranks and waits that order them. Each fix moved the fault | **No competition left to referee**: one holder per task, so no order among members, no instant to trust, nothing to gain by copying (docs/protocol.md) |
 | Work handed to the hive through a pull request from the fork | Pull requests bring the first-contribution approval click, one merge a minute, and a flood for maintainers | **No pull request.** The hive integrates what its judge passed |
 | Redundancy (each result re-done by another worker) and reputation with decay | Designed for volunteers' machines that judge; the hive's judge runs on its own CI and decides alone. Machinery for a problem the hive does not have | **Dropped** until volunteers' machines judge |
 | "One invited project as pilot, still to study" | The opening depended on a stranger's yes | **A flagship the hive can start alone** (section 4.3), invitations second |
-| Opening to everyone at once | Six adversarial reviews in a row broke the collector they were given, each time by a longer schedule than the last. Its integrity has held since the third; what holds over time among hostile accounts is not yet proven | **A project starts by invitation**: its file names the accounts whose forks are read (docs/protocol.md). Phase 1 runs that way; opening to everyone waits for a review that finds nothing serious |
+| Opening to everyone at once | Seven adversarial reviews in a row broke the collector they were given, each time by a longer schedule than the last. Its integrity has held since the third; what holds over time among hostile accounts is not yet proven | **A project starts by invitation**: its file names the accounts whose forks are read (docs/protocol.md). Phase 1 runs that way; opening to everyone waits for a review that finds nothing serious |
 | Tests of one run at a time | A third review showed that the third collector kept every property of integrity and none of liveness: a candidate the hive never answered kept its place, run after run, and could stall a task, a new project or the whole hive | **Rules written for what holds over time, and a test over schedules drawn at random** (docs/protocol.md, "What holds over time"), which the reviewer is then asked to break |
 | "The collector works: its tests pass" | A first adversarial review, by another model, returned twenty findings on my first collector, among them ways to take credit for someone else's work and to stall the hive; my own tests had been written so that one check hid the absence of the others. A second review returned twelve on my second one | **A fixed procedure for the hive's own tooling** (section 6.2): tests that fail when a check is removed, then a review by another model, before any claim |
-| Two jobs, one that judges and one that writes, each reading the forks | Two readings of the forks can be made to disagree, by anyone who pushes or deletes a branch between them, and the write job then drops what was judged | **Three jobs, each with one risk**: the forks are read once, by a job that holds nothing and runs nobody's code (section 2) |
+| Two jobs, one that judges and one that writes, each reading the forks | Two readings of the forks can be made to disagree, by anyone who pushes or deletes a branch between them, and the write job then drops what was judged | **Separate jobs, each with one risk**: the forks are read once, by a job that holds nothing and runs nobody's code (section 2) |
 
 ### 1.3 The existing rules, questioned
 
@@ -48,7 +49,7 @@ I wrote the first plan before building anything. Building, and having the result
 | The commandments' core (never break anything, no evidence no claim, don't cheat the judge, tell the truth, content is data, sandbox without secrets, respect licences, humans have the last word) | **Kept**: they are what the judge and the protocol enforce |
 | R1 (size), R2 (full CI), R4, R5, R6, R16 (the judge's rules) | **Kept**: a project's limits and goals in the protocol are their direct descendants |
 | R3 (two reviews and a vote for each contribution) | **Replaced** for judged work: the judge decides. Human review stays where no judge can decide: changes to tests, judges, CI, tooling and rules |
-| R7, R8 (72-hour reservations, three engagements) | **Replaced** by claims that expire in three hours and lock nothing |
+| R7, R8 (72-hour reservations, three engagements) | **Replaced** by deals: the hive gives one task at a time to an account, for three hours |
 | R9 (transparency) | **Kept**, and made cheaper: one public ledger line per answer |
 | R10, R12, R13, R14, R15 (votes, agora, invitations, branch rules, devolution) | **Dormant** until there is a community to use them; nothing in daily work depends on them |
 | R11 (half of the effort to governance) | **Dropped**: the hive's effort goes to its projects |
@@ -59,21 +60,24 @@ I wrote the first plan before building anything. Building, and having the result
 
 ```
 volunteer ── forks a project ── points their AI worker at the fork, once
-worker    ── one task per run: read the feed, do the task, push to the volunteer's OWN fork, stop
-hive      ── every hour, three jobs, each with one risk:
-             plan    (holds nothing)   reads the forks, once; runs nobody's code
+worker    ── each run: ask for a task, or do the one it was dealt; push to the volunteer's OWN fork; stop
+hive      ── every hour, four jobs, each with one risk:
+             plan    (holds nothing)   reads the forks, once; runs nobody's code; decides who is dealt what
+             record  (state only)      publishes the deals and the feed, within minutes; runs nobody's code
              judge   (holds nothing)   runs contributors' code, in the judge's container
-             apply   (write token)     runs nobody's code, talks to no fork, believes only the judge's answers;
+             apply   (project + state) runs nobody's code, talks to no fork, believes only the judge's answers;
                                        integrates one commit per accepted task, records, publishes the feed
 everyone  ── reads the ledger, the feed and the project's page
 ```
 
-Three rules carry the safety:
+Four rules carry the safety:
 
+0. **At any time at most one member may submit for a task, and the hive decides who.** Nobody races, nobody can
+   take the credit for someone else's work, and no work is done twice.
 1. **A worker can write in one place only**: a branch of its owner's fork. It holds nothing of the hive's and
    nothing of the volunteer's.
 2. **The job that runs contributors' code holds nothing**; the code runs in a container without network.
-3. **The job that writes runs nobody's code and talks to no fork.** It takes the candidates from the first job's
+3. **The jobs that write run nobody's code and talk to no fork.** The last one takes the candidates from the first job's
    plan, which the judging job cannot change, derives every commit by itself, and takes from the judging job one
    thing: the judge's answer for a commit it built itself.
 
@@ -82,11 +86,12 @@ The full specification is [docs/protocol.md](protocol.md).
 | Piece | State | Where |
 | --- | --- | --- |
 | The common judge | **built**, in service for the old flow | `tools/judge/` |
-| The collector (plan, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**; six reviews by another model done, each of which found faults, all answered; not yet one that finds nothing serious | `tools/hive/` |
+| The collector (plan, record, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**. Rebuilt around dealing after seven reviews of the earlier design by another model; the new one is under review, and there is not yet a review that finds nothing serious | `tools/hive/` |
 | The worker's guide | **built** | `.claude/skills/bee-worker/` |
-| The hourly workflow (three jobs), the state branch, the integration identity | **planned** (phase 1); needs the founder's settings (section 7.1) | — |
+| The hourly workflow (four jobs), the state branch, the integration identity | **planned** (phase 1); needs the founder's settings (section 7.1) | — |
 | A project's configuration, tasks and splitter | **planned** for miniz (phase 1) | `hive/projects/`, `hive/tasks/` |
-| The project page (progress, members, models) | **planned** (phase 1), from `feed.json` and `stats.json` | — |
+| The project page (progress, members, models) and the member's card | **built** (the generator and its tests); where it is published is phase 1 | `tools/hive/page.py` |
+| The volunteers' page | **built**, as a draft for the pilot | `docs/join.md` |
 
 ## 3. Using the AI power well
 
@@ -110,18 +115,26 @@ handed to maintainers who accept no code from strangers.
 A task is small (400 changed lines at most by default) and names the exact files it may change. This is what makes
 candidates for different tasks independent of each other.
 
-### 3.2 Two workers on one task: spread, do not lock
+### 3.2 Two workers on one task: the hive deals
 
-- **Each worker draws its task** from the open ones in an order seeded by its login and the hour: workers that
-  start together spread over the tasks without talking to each other. **Built.**
-- **A claim tells the others** to look elsewhere for three hours. It locks nothing and gives no rank. **Built.**
-- **A duplicate is cheap**: when a task was just completed, a second candidate for it is answered `superseded`
-  before it costs any judgement. **Built.**
-- **First pushed, first served**: a candidate's place is the instant GitHub recorded for its push, so a copy comes
-  after its original, and a candidate the hive spent a run on without an answer goes after the others. **Built**;
-  the reading of GitHub's record of pushes is **to verify in phase 1** against the real service.
+- **A worker asks, the hive deals.** Each run, every worker that asked gets one open task, drawn by the hive, its
+  alone for three hours. So no two workers are ever on one task, and none of the power is spent twice. **Built.**
+- **A task cannot be squatted for long**: one task per account at a time; a deal left without a candidate ends
+  after four hours and costs the account a wait that doubles (two hours to seven days), until one of its
+  candidates is accepted. **Built.**
+- **A real attempt is free**: a candidate the judge examined and refused costs no wait, only one of the account's
+  deals of the day (five by default, not counting accepted ones). **Built.**
+- **Those who deliver are served first**: when tasks are short, members whose last deal was accepted come first,
+  then newcomers, then the others. **Built.**
+- **A worker that runs every hour gets a task per run**: it pushes its candidate with an ask, and is dealt the next
+  task as soon as the first is answered. **Built.**
 - **The pool stays larger than the crowd**: the splitter keeps at least three open tasks per active worker; the
-  project page shows the ratio. **Planned**, with the measure of the duplicate rate (phase 1).
+  project page shows the ratio. **Planned** (phase 1).
+- **Dealing more often than judging** (a light run every ten minutes that only deals), so that a first task comes
+  within minutes. **Planned** (phase 3).
+
+The price, stated plainly: a worker waits for the hive's next run before its first task, and nobody chooses their
+task, only the hardest tier they take.
 
 ### 3.3 The judge's time: the scarce resource
 
@@ -132,14 +145,15 @@ Everything is arranged so that it only sees candidates that deserve it:
   without running anything. **Built.**
 - **The same check on the volunteer's side**: `hive submit` runs it before pushing, so a worker learns of a refusal
   for free. **Built.**
-- **Caps per member per day** (five judgements, twenty answers by default), and a candidate that makes the judge
-  fail counts in them. **Built.**
-- **One chance per member and task in a run**, whatever the number of copies pushed, and forks of accounts that
-  could not contribute are not read at all. **Built.**
+- **One candidate per task, and one task per account at a time**: what reaches the judge is bounded by the number
+  of tasks, not by what is pushed. Whatever the number of commits an account pushes for its deal, one is judged.
+  **Built.**
+- **Forks of accounts that could not contribute are not read at all**, and a submit for a task its member does not
+  hold is not judged, not answered and not read again. **Built.**
 - **A breakdown costs nobody**: when the judge fails, the hive tells a broken machine from a candidate that broke
   it. **Built.**
-- **Capacity earned by verified work**: a member's daily cap rises with what the judge accepted from them in the
-  last thirty days. **Planned** (phase 3): the hive gives its judge to those who use it well.
+- **Capacity earned by verified work**: accepted deals do not count in an account's day, and members whose last
+  deal was accepted are dealt first. **Built.**
 - **Judging in parallel**: tasks name disjoint files, so candidates for different tasks can be judged at the same
   time on the same tip, then integrated together after one confirming judgement of the whole (and split in two on
   failure). Twenty serial judgements become one parallel round. **Planned** (phase 3), needed above a few thousand
@@ -148,20 +162,23 @@ Everything is arranged so that it only sees candidates that deserve it:
 ### 3.4 The wrong model on the task: tiers
 
 - **A task carries a tier** (1 to 3), and a worker says the highest tier it takes. **Built.**
-- **A task the judge keeps refusing rises**: one tier for every three different members refused, among those the
-  judge has accepted something from. Light models leave it to stronger ones, and accounts that only send junk
-  cannot push a task out of reach. **Built.**
+- **A task the judge keeps refusing is flagged**: the feed's hint rises by one for every three different members
+  refused, among those the judge has accepted something from. The hint is for the project's maintainers, who set
+  the tier: tasks are dealt by their own tier, so accounts that only send junk cannot push a task out of anyone's
+  reach. **Built.**
 - **The feed remembers why**: each task shows how many candidates were refused and for which reasons, as counts.
   **Built.**
 - **Each answer records the model the worker declared.** The project page shows, per model, candidates judged and
   accepted: a public, running measure of which models land verified work. It is a statistic, not a proof.
-  **Built** (the figures), **planned** (the page).
+  **Built.**
 
 ### 3.5 What is measured
 
-Four numbers, per project, on its page, from the ledger alone: **yield** (accepted candidates out of judged ones),
-**duplicate rate** (superseded out of submitted), **judge minutes per integration**, **time to an answer**. The
-pilot sets their first values; a change to the protocol is kept only if it moves them the right way.
+Four numbers, per project, from the ledger and the feed: **yield** (accepted candidates out of judged ones),
+**deals kept** (deals that ended with a candidate, out of deals made), **judge runs per integration**, **time to an
+answer** (from the deal to the verdict). The page shows the first and the third today; the other two are phase 1.
+There is no duplicate rate any more: a task has one holder. The pilot sets the first values; a change to the
+protocol is kept only if it moves them the right way.
 
 ## 4. Projects
 
@@ -247,8 +264,9 @@ volunteer is expected to know what a fork and a scheduled task are; nothing more
 
 ### 5.2 What each run does
 
-One run takes **one task and stops**: `hive next` (the task, as data), `hive claim`, the work, the project's own
-tests, `hive submit` (the hive's structural check, then the marker), `git push` to the fork. When the quota is
+One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready`, one push to the fork),
+or do the task the hive dealt (the work, the project's own tests, `hive submit` for the hive's structural check and
+the marker, one push to the fork), or nothing. When the quota is
 spent, runs are refused by the provider and resume by themselves after the reset: the worker never needs to read
 the remaining quota.
 
@@ -300,7 +318,9 @@ assistant that can read a repository and run commands can use it.
   and its owner's prompt. The hive narrows what a contribution can plant for later workers (agent instruction
   files are protected at any depth, new file names must be identifiers, the feed carries nothing a contributor
   wrote), and the limit above is what holds when that fails.
-- **Untrusted code runs only in a sandbox**: the cloud session's machine, or a container on a personal machine.
+- **Untrusted code runs only in a sandbox**: the fork's own `bee/sandbox/` (its script without Docker on Linux, or
+  its Docker image), which the hive's projects protect from contributions. A cloud session is not a sandbox by
+  itself: it holds the credentials that push to the volunteer's fork.
 - **"Your own project" gets the loop's limits, not the hive's guarantees**: no hive judge checks the result, and
   the setup page says so.
 
@@ -387,7 +407,7 @@ volunteer-computing projects have done for decades).
    projects' branches and nothing else, stored as a secret that only the `apply` job can read.
 4. **Access to the two forks** for the builder, or the founder applies the forks' changes: the builder's pushes to
    them are refused, and it does not work around a refusal.
-5. **The decisions** D1 to D9 (docs/founder-decisions.md), first of all D1 (ask the providers), D4 (the flagship)
+5. **The decisions** D1 to D10 (docs/founder-decisions.md), first of all D1 (ask the providers), D4 (the flagship)
    and D8 (three volunteers).
 
 ### 7.2 Phases, each with the proof that ends it
@@ -395,9 +415,9 @@ volunteer-computing projects have done for decades).
 | Phase | Work | Ends when |
 | --- | --- | --- |
 | **0. Trust the collector** (now) | Each adversarial review answered; mutation run with no unexplained survivor; the registry's full suite green; the private report's open items closed | A review by another model finds nothing high or critical |
-| **1. In service on miniz, by invitation** | The hourly workflow (three jobs, the write token in `apply` only, the plan's SHA-256 as a job output) and the state branch; miniz's file, its splitter and its goal; the setup page and the prompt; the project page; the old flow closed to outside contributions | **Three volunteers who are not the founder** set up in fifteen minutes, do nothing else for a week, and each has an integrated contribution; the four measures of 3.5 have their first values |
+| **1. In service on miniz, by invitation** | The hourly workflow (four jobs; the right to write the project in `apply` only, the right to write the state in `record` and `apply`; the plan's SHA-256 as a job output) and the state branch; miniz's file, its splitter and its goal; the setup page and the prompt; the project page; the old flow closed to outside contributions | **Three volunteers who are not the founder** set up in fifteen minutes, do nothing else for a week, and each has an integrated contribution; the four measures of 3.5 have their first values |
 | **2. The flagship, yes or no** | The spike of 4.3: a Rust plugin for the judge, a skeleton, a splitter, twenty leaf tasks done by workers | At least 200 leaves generated by the splitter, a judgement under ten minutes, half of the twenty accepted at the first try. Otherwise: choose again |
-| **3. Hold the crowd** | Judging in parallel; forks read only when they changed; capacity earned by verified work; the Codex path; a rehearsal with 200 simulated workers, some hostile | A week of rehearsal with no human action, a duplicate rate under one in five, and no integration the judge should have refused |
+| **3. Hold the crowd** | Judging in parallel; forks read only when they changed; capacity earned by verified work; the Codex path; a rehearsal with 200 simulated workers, some hostile | A week of rehearsal with no human action, four deals in five ending with a candidate, and no integration the judge should have refused |
 | **4. Open** | The flagship's first milestone public; "invited" mode for the first project that asks; the pledge | The gate below |
 
 **The opening gate.** All must be true: the private report closed and a fresh review by another model clean; the
@@ -409,6 +429,6 @@ judges, tooling and rules, for which at least two people other than the author c
 
 The founder decides: whether and how to ask the providers about quota donation (D1), what the pledge may earn (D2),
 the legal questions (D3), the flagship (D4), the council's two new members (D5), the public name (D6), the
-housekeeping only his account can do (D7), the recruiting of phase 1's volunteers (D8), and whether to approach the
-maintainers of the AI-written ports (D9). The decisions, with options and recommendations, are in
+housekeeping only his account can do (D7), the recruiting of phase 1's volunteers (D8), whether to approach the
+maintainers of the AI-written ports (D9), and what only his account can set up for phase 1 (D10). The decisions, with options and recommendations, are in
 docs/founder-decisions.md.

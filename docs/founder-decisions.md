@@ -46,13 +46,13 @@ documentation sources and archived snapshots of its rules.
 
 **Recommendation**: A. The pledge's purpose is that followers discover the hive; that works as well when it is
 free, and it keeps the hive's promise to inform, never to manipulate (commandment 12). The design is in
-docs/plan.md (P4): own words, posted once by hand, never pre-filled, never by an agent, no required hashtag,
+docs/plan.md (section 6.5): own words, posted once by hand, never pre-filled, never by an agent, no required hashtag,
 verified once by a personal code for the wall, deleted when the post is.
 
 **Outside actions**: none until the opening; then the founder decides whether the hive has its own account on X, and
 who speaks for it.
 
-### Drafts (the member may rewrite them)
+### Examples of tone (never posted as they are: each member writes their own)
 
 1. *I'm giving my AI's leftover quota to La Ruche 🐝 Every night my bee works for free software, and a judge checks
    every drop of honey. I promise to use it well: no cheating, no copying, nothing broken. [link]*
@@ -166,5 +166,9 @@ hive's workers help you, and how should a security-relevant one reach you?", rec
 ## D10. What only the founder's account can set up
 
 The engineering plan lists it once (docs/plan.md, 7.1): the pull request to `main`, the repository settings, the
-integration identity for the `apply` job, access to the two forks, and phase 1's three volunteers (D8). Nothing
-goes into service before these, and the builder does none of them.
+integration identity, access to the two forks, and phase 1's three volunteers (D8). Nothing goes into service
+before these, and the builder does none of them.
+
+The integration identity is two rights, kept apart: the right to write a project's branch, given to the `apply` job
+alone; and the right to write the registry's `hive-state` branch, given to the `record` and `apply` jobs. The `plan`
+and `judge` jobs hold nothing.
