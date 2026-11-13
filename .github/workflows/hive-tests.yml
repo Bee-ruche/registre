@@ -1,4 +1,4 @@
-# Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py, on local git repositories, without network.
+# Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py and test_schedule.py, on local git repositories, without network.
 # Read-only: no secret, no write, nothing of a pull request runs with more than a read token.
 name: Hive protocol tests
 
@@ -27,3 +27,5 @@ jobs:
           persist-credentials: false
       - name: Tests (standard library only)
         run: python3 tools/hive/test_hive.py
+      - name: What holds over many runs (schedules drawn at random)
+        run: python3 tools/hive/test_schedule.py
