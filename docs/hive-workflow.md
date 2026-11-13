@@ -57,8 +57,10 @@ Five things carry it:
 
    | Name | Kind | Where | Holds |
    | --- | --- | --- | --- |
-   | `HIVE_STATE_APP_PRIVATE_KEY` | secret | environments `hive-state` and `hive-apply` | the state App's private key |
-   | `HIVE_PROJECT_APP_PRIVATE_KEY` | secret | environment `hive-apply` only | the project App's private key |
+   | `HIVESTATESECRET` | secret | environments `hive-state` and `hive-apply` | the state App's private key (the whole `.pem` file GitHub gives under "Private keys"; not the "Client secret") |
+   | `HIVEAPPLYSECRET` | secret | environment `hive-apply` only | the project App's private key (the same kind of file) |
+
+   (The names are the founder's, as entered in the registry's settings.)
 
    `record` runs in the environment `hive-state`, `apply` in `hive-apply` (a job has one environment, and `apply`
    writes both the project and the state).
@@ -144,7 +146,7 @@ jobs:
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: Iv23liBJswEbZCt56yvz   # the state App
-          private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.HIVESTATESECRET }}
           owner: Bee-ruche
           repositories: hive-state
           permission-contents: write
@@ -216,7 +218,7 @@ jobs:
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: Iv23liBJswEbZCt56yvz   # the state App
-          private-key: ${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.HIVESTATESECRET }}
           owner: Bee-ruche
           repositories: hive-state
           permission-contents: write
@@ -225,7 +227,7 @@ jobs:
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: Iv23liKHEG0w2XgtSc9m   # the project App
-          private-key: ${{ secrets.HIVE_PROJECT_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.HIVEAPPLYSECRET }}
           owner: Bee-ruche
           repositories: minizBee
           permission-contents: write

@@ -23446,7 +23446,7 @@ class TestHiveWorkflowDraft(unittest.TestCase):
                 {"name": "Take the plan (one named file, before this job holds any key)", "env": {"GH_TOKEN": "${{ github.token }}"},
                  "run": f"mkdir taken\n{self.TAKE} --name plan --member plan.json:67108864 --into taken/plan\n"},
                 self.app_token("A token of an hour for the state repository, and nothing else", "state", self.STATE,
-                               "HIVE_STATE_APP_PRIVATE_KEY", "hive-state"),
+                               "HIVESTATESECRET", "hive-state"),
                 self.STATE_CHECKOUT,
                 {"name": "Record the deals and publish the feed", "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}"},
                  "run": "python3 registry/tools/hive/hive.py record --registry registry --project miniz --state state \\\n"
@@ -23467,9 +23467,9 @@ class TestHiveWorkflowDraft(unittest.TestCase):
                         "# No answers at all is a case the write step knows: an archive that is missing, or refused, is that case.\n"
                         f"{self.TAKE} --name verdicts --member verdicts.json:16777216 \\\n"
                         "  --into taken/verdicts || { mkdir -p taken/verdicts && echo '{}' > taken/verdicts/verdicts.json; }\n"},
-                self.app_token("A token of an hour for the state repository", "state", self.STATE, "HIVE_STATE_APP_PRIVATE_KEY", "hive-state"),
+                self.app_token("A token of an hour for the state repository", "state", self.STATE, "HIVESTATESECRET", "hive-state"),
                 self.app_token("A token of an hour for the project, and nothing else", "project", self.PROJECT,
-                               "HIVE_PROJECT_APP_PRIVATE_KEY", "minizBee"),
+                               "HIVEAPPLYSECRET", "minizBee"),
                 self.STATE_CHECKOUT,
                 {"name": "The project", "run": "git clone --quiet https://github.com/Bee-ruche/minizBee project"},
                 {"name": "Push what the judge accepted, and record (the only step that holds the project's token)",
@@ -23524,9 +23524,9 @@ class TestHiveWorkflowDraft(unittest.TestCase):
                     self.assertEqual(sorted(step["with"]), ["client-id", "owner", "permission-contents", "private-key", "repositories"])
                     self.assertEqual((step["with"]["owner"], step["with"]["permission-contents"]), ("Bee-ruche", "write"))
                     asked.append((name, step["id"], step["with"]["private-key"], step["with"]["repositories"], step["with"]["client-id"]))
-        self.assertEqual(asked, [("record", "state", "${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}", "hive-state", self.STATE),
-                                 ("apply", "state", "${{ secrets.HIVE_STATE_APP_PRIVATE_KEY }}", "hive-state", self.STATE),
-                                 ("apply", "project", "${{ secrets.HIVE_PROJECT_APP_PRIVATE_KEY }}", "minizBee", self.PROJECT)])
+        self.assertEqual(asked, [("record", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
+                                 ("apply", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
+                                 ("apply", "project", "${{ secrets.HIVEAPPLYSECRET }}", "minizBee", self.PROJECT)])
         # However an expression spells it (secrets.X, secrets['X'], toJSON(secrets)): the word appears three times, in those inputs.
         self.assertEqual(len(re.findall(r"(?i)secrets", re.sub(r"(?m)#.*$", "", self.text))), 3, "a key appears nowhere else")
         self.assertEqual(sum(self.APP_TOKEN in u for job in self.jobs for u in self.uses(job)), 3)
