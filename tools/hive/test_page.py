@@ -25,15 +25,22 @@ import test_hive  # noqa: E402  (World, Base, judge_by_content: a real ledger fo
 
 NOW = "2026-11-12T12:00:00Z"
 JOIN = page.DEFAULT_JOIN_URL
+REPO = "https://github.com/Bee-ruche/toy"
+SITE = "https://bee-ruche.github.io/hive/toy"
 MEMBER_HREF = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 COMMIT_HREF = re.compile(r"https://github\.com/Bee-ruche/toy/commit/[0-9a-f]{40}\Z")
-WIN_HREF = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
 # Every name the tool may write a file under, spelled here again: the tests do not rely on page.py's own patterns.
-NAMED = re.compile(r"index\.html|badge\.svg|summary\.json|members/[1-9][0-9]{0,18}(?:-badge)?\.svg|wins/[0-9a-f]{40}\.svg")
+NAMED = re.compile(r"index\.html|badge\.svg|summary\.json|members/[1-9][0-9]{0,18}(?:-badge)?\.svg|wins/[0-9a-f]{40}\.(?:svg|html)")
+# The files of the site that index.html may link to (a link must also name a file that was written), and the one a
+# page under wins/ may: its own card, beside it.
+LOCAL_HREF = re.compile(r"(?:wins/[0-9a-f]{40}\.html|members/[1-9][0-9]{0,18}(?:-badge)?\.svg)\Z")
+BESIDE_HREF = re.compile(r"[0-9a-f]{40}\.svg\Z")
 # The elements an SVG of the tool may hold. « svg » is also a card's inner frame; « style » is there for one reason: a
 # card must read on a light and on a dark page in ONE file, which takes a prefers-color-scheme rule. A style can also
 # load and hide, so harmless() accepts one only when it is page.CARD_CSS, byte for byte, directly under the root.
 SVG_TAGS = ("svg", "title", "style", "rect", "path", "text")
+NO_TAGS = ("script", "iframe", "object", "embed", "img", "image", "link", "form", "base", "input", "button", "video", "audio", "frame", "applet",
+           "use", "foreignobject", "animate", "set", "textarea", "select")
 NEEDLES = ("<script", "onerror=", "onload=", "onmouseover", "javascript:", "<img", "../../etc", "alert(1)")
 LOGINS = ('"><script>alert(1)</script>', 'a"onmouseover="x', "-dash", "a" * 40, "é", "a b", "a/b", "", "x\n")
 
@@ -80,11 +87,13 @@ def tree(root):
 
 
 class Seen(HTMLParser):
-    """What a browser would see in the page: the elements, their attributes, and the rows of its tables."""
+    """What a browser would see in a page: the elements, their attributes, the rows of its tables, its styles, the
+    anchors it defines, and the text of its body."""
 
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
         self.tags, self.attributes, self.hrefs, self.rows, self.cell = [], [], [], [], None
+        self.styles, self.ids, self.metas, self.open, self.words = [], [], {}, [], []
         self.feed(text)
         self.close()
 
@@ -92,22 +101,41 @@ class Seen(HTMLParser):
         self.tags.append(tag)
         self.attributes.extend(name for name, _ in attrs)
         self.hrefs.extend(value for name, value in attrs if name in ("href", "src", "xlink:href", "action"))
-        if tag == "tr":
+        self.ids.extend(value for name, value in attrs if name == "id")
+        if tag == "meta":
+            self.metas[dict(attrs).get("property") or dict(attrs).get("name") or dict(attrs).get("http-equiv")] = dict(attrs).get("content")
+            return
+        self.open.append(tag)
+        if tag == "style":
+            self.styles.append("")
+        elif tag == "tr":
             self.rows.append([])
         elif tag in ("td", "th") and self.rows:
             self.rows[-1].append("")
             self.cell = True
 
     def handle_endtag(self, tag):
+        if tag in self.open:
+            while self.open.pop() != tag:
+                pass
         if tag in ("td", "th"):
             self.cell = None
 
     def handle_data(self, data):
+        if self.open and self.open[-1] == "style":
+            self.styles[-1] += data
+        elif "body" in self.open and "svg" not in self.open:
+            self.words.append(data)
         if self.cell:
             self.rows[-1][-1] += data
 
     def row(self, first):
         return next((row for row in self.rows if row and row[0] == first), None)
+
+    @property
+    def said(self):
+        """The body's text, as one string (a card inlined in the page says its own in its label: it is left out)."""
+        return "".join(self.words)
 
 
 class Case(unittest.TestCase):
@@ -155,10 +183,11 @@ class Case(unittest.TestCase):
     def summary(self, files):
         return json.loads(files["summary.json"])
 
-    def harmless(self, files, join=JOIN):
+    def harmless(self, files, join=JOIN, site=None):
         """What must hold for any output, whatever the ledger said: only the files this tool writes; no script, no
-        handler, nothing loaded; no link but a member's profile, an integrated commit or the join page; SVGs that
-        parse."""
+        handler, nothing loaded; no style but the two constants; no link but a member's profile, the project's
+        repository, an integrated commit, the join page, a file of the site that was written, or an anchor of the
+        same page; SVGs that parse. Returns what a browser would see in index.html."""
         for name, text in files.items():
             self.assertTrue(NAMED.fullmatch(name), name)
             if name.endswith(".svg"):
@@ -181,16 +210,36 @@ class Case(unittest.TestCase):
             if name.endswith(".json"):
                 json.loads(text)
                 self.assertNotRegex(text, r"[<>&]")
-        seen = Seen(files["index.html"])
-        for tag in ("script", "iframe", "object", "embed", "img", "link", "form", "base", "input", "video", "audio", "frame", "applet"):
-            self.assertNotIn(tag, seen.tags)
-        for name in seen.attributes:
-            self.assertFalse(name.startswith("on") or name in ("style", "src", "srcset", "srcdoc", "action", "formaction"), name)
+            if name.endswith(".html"):
+                self.harmless_page(name, text, files, join, site)
+        return Seen(files["index.html"])
+
+    def harmless_page(self, name, text, files, join, site):
+        seen, under_wins = Seen(text), name.startswith("wins/")
+        for tag in NO_TAGS:
+            self.assertNotIn(tag, seen.tags, name)
+        for attribute in seen.attributes:
+            self.assertFalse(attribute.startswith("on") or attribute in ("style", "src", "srcset", "srcdoc", "action", "formaction"), (name, attribute))
+        # The styles: the pages' own constant, once, in the head; then the cards' constant, once for each inlined card.
+        cards = text.count("<svg xmlns=")
+        self.assertEqual(seen.styles, [str(page.CSS)] + [str(page.CARD_CSS)] * cards, name)
+        self.assertEqual((text.count("<style"), text.count(f"<style>{page.CSS}</style>"), text.count(f"<style>{page.CARD_CSS}</style>")),
+                         (1 + cards, 1, cards), "byte for byte")
+        self.assertEqual(cards, 1 if under_wins else 0, "a card is inlined in its own page and nowhere else")
         for href in seen.hrefs:
-            self.assertTrue(href in (join, "join.html") or MEMBER_HREF.match(href) or COMMIT_HREF.match(href)
-                            or (WIN_HREF.match(href) and href in files), href)
-        for address in re.findall(r"https?://[^\"<> ]*", files["index.html"]):
-            self.assertTrue(address.startswith("https://github.com/"), address)
+            if href.startswith("#"):
+                self.assertIn(href[1:], seen.ids, (name, href))
+            elif under_wins:
+                self.assertTrue(href in (join, "../join.html", REPO) or MEMBER_HREF.match(href) or COMMIT_HREF.match(href)
+                                or (href == "../index.html" and "index.html" in files)
+                                or (BESIDE_HREF.match(href) and name == f"wins/{href[:40]}.html" and f"wins/{href}" in files), (name, href))
+            else:
+                self.assertTrue(href in (join, "join.html", REPO) or MEMBER_HREF.match(href) or COMMIT_HREF.match(href)
+                                or (LOCAL_HREF.match(href) and href in files), (name, href))
+        self.assertEqual(len(seen.ids), len(set(seen.ids)), "an anchor names one place")
+        for address in re.findall(r"https?://[^\"<> ]*", text):
+            self.assertTrue(address.startswith("https://github.com/") or address == "http://www.w3.org/2000/svg"
+                            or (site is not None and under_wins and address.startswith(f"{site}/wins/{name[5:45]}.")), (name, address))
         return seen
 
 
@@ -403,13 +452,15 @@ class TestHostile(Case):
         wins = sorted(f"wins/{win['commit']}.svg" for win in page.collect(self.state, page.instant_of(NOW))["_wins"])
         self.assertTrue(0 < len(wins) <= 35 and all(re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name) for name in wins))
         self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", *(f"members/{i}.svg" for i in valid),
-                                                *(f"members/{i}-badge.svg" for i in valid), *wins]))
+                                                *(f"members/{i}-badge.svg" for i in valid), *wins, *(name[:-4] + ".html" for name in wins)]))
         self.assertEqual(sorted(after), sorted(["bystander.txt", "state", "state/toy", *(f"state/toy/{n}" for n in ("ledger.jsonl", "feed.json", "stats.json")),
                                                 "site", "site/members", "site/wins", *(f"site/{name}" for name in files)]), "no temporary file is left")
         for name, text in files.items():
             for needle in NEEDLES:
                 self.assertNotIn(needle, text.lower(), (name, needle))
         seen = self.harmless(files)
+        self.assertIn("Written by the AI coding assistant of GitHub account 201, measured", Seen(files[f"wins/{sha(5020)}.html"]).said,
+                      "a login that spells markup is no login: its integration's page names the account by its number")
         # What was dropped, and what was kept.
         data = self.summary(files)
         self.assertEqual({m["id"]: m["login"] for m in data["members"]},
@@ -442,14 +493,23 @@ class TestHostile(Case):
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", text, "the hostile login did reach the builder")
         self.assertIn("&lt;img src=x&gt;", text)
         self.assertIn("a&quot;onmouseover=&quot;x", text)
-        self.assertNotIn("<script", text.lower())
-        self.assertNotIn("<img", text.lower())
-        seen = Seen(text)
-        self.assertNotIn("script", seen.tags)
-        self.assertNotIn("img", seen.tags)
-        self.assertEqual([name for name in seen.attributes if name.startswith("on") or name in ("src", "style")], [])
-        for href in seen.hrefs:
-            self.assertTrue(href == JOIN or re.match(r"https://github\.com/[A-Za-z0-9%._~-]*\Z", href) or (WIN_HREF.match(href) and href in files), href)
+        own = files[f"wins/{sha(5020)}.html"]  # the page of the first hostile login's integration
+        self.assertIn("<strong><a href=\"https://github.com/%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E\" rel=\"nofollow noopener\">"
+                      "@&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;</a></strong>", own, "and the builder of its page: quoted in the link, escaped in the text")
+        self.assertIn("&lt;img src=x&gt;", files[f"wins/{sha(5040)}.html"], "a hostile model, in the story of its page")
+        for name, content in files.items():
+            if not name.endswith(".html"):
+                continue
+            self.assertNotIn("<script", content.lower(), name)
+            self.assertNotIn("<img", content.lower(), name)
+            seen = Seen(content)
+            for tag in NO_TAGS:
+                self.assertNotIn(tag, seen.tags, name)
+            self.assertEqual([attribute for attribute in seen.attributes if attribute.startswith("on") or attribute in ("src", "style")], [], name)
+            self.assertEqual(seen.styles, [str(page.CSS)] + [str(page.CARD_CSS)] * name.startswith("wins/"), name)
+            for href in seen.hrefs:
+                self.assertTrue(href in (JOIN, "#join", "../index.html") or re.match(r"https://github\.com/[A-Za-z0-9%._~-]*\Z", href)
+                                or (LOCAL_HREF.match(href) and href in files) or (BESIDE_HREF.match(href) and f"wins/{href}" in files), (name, href))
         for name, content in files.items():
             self.assertTrue(NAMED.fullmatch(name), name)
             if name.endswith(".svg"):
@@ -488,6 +548,8 @@ class TestHostile(Case):
                         "https://github.com/a", "https://github.com/a/b/c", "https://github.com/a/b?x=1", "https://github.com/a/b#x",
                         "https://github.com/a/b\n", "https://user@github.com/a/b", " https://github.com/a/b"):
             self.assertIsNone(page.commit_link(address, sha(1)), address)
+            self.assertEqual((page.repo_link(address), page.repo_name(address)), (None, None), address)
+        self.assertEqual((page.repo_link(repo), page.repo_name(repo), type(page.repo_link(repo))), (repo, "Bee-ruche/toy", page.Link))
 
     def test_an_account_id_is_a_whole_number_in_range_and_a_file_name_is_made_of_nothing_else(self):
         self.assertEqual([page.account_id(v) for v in (1, 101, 2 ** 63 - 1)], [1, 101, 2 ** 63 - 1])
@@ -504,10 +566,16 @@ class TestHostile(Case):
                      "wins/1-badge.svg", "members/" + sha(1) + ".svg", "wins/101.svg"):
             with self.assertRaises(page.PageError):
                 page.write(self.out, {name: "x"})
-        for name in ("wins/x.svg", "wins/" + sha(10).upper() + ".svg", "wins/" + sha(1) + ".svg/../../x", "wins/../x.svg", "wins/" + sha(1)[:-1] + ".svg",
-                     "wins/" + sha(1) + ".svg\n", "wins/a/" + sha(1) + ".svg"):
-            with self.assertRaises(page.PageError):
-                page.write(self.out, {name: "x"})
+        for end in ("svg", "html"):
+            for name in (f"wins/x.{end}", f"wins/{sha(10).upper()}.{end}", f"wins/{sha(1)}.{end}/../../x", f"wins/../x.{end}", f"wins/{sha(1)[:-1]}.{end}",
+                         f"wins/{sha(1)}.{end}\n", f"wins/a/{sha(1)}.{end}", f"wins/{sha(1)}.{end.upper()}", f"wins/{sha(1)}.svg.{end}", f"{sha(1)}.{end}",
+                         f"wins/{sha(1)}", f"wins/{sha(1)}.htm", f"wins/{sha(1)}.{end}.tmp", f"wins/.{sha(1)}.{end}", f"index.{end}\n", "members/101.html"):
+                with self.assertRaises(page.PageError):
+                    page.write(self.out, {name: "x"})
+        self.assertEqual((page.win_name(sha(1)), page.win_page_name(sha(1)), page.win_page_link(sha(1)), page.beside(sha(1))),
+                         (f"wins/{sha(1)}.svg", f"wins/{sha(1)}.html", f"wins/{sha(1)}.html", f"{sha(1)}.svg"))
+        for commit in ("", "abc", sha(1) + "0", sha(1)[:-1] + "G", sha(1) + "\n", "../" + sha(1)[3:], sha(10).upper(), None, 5, ["a"], sha(1) + "/../x"):
+            self.assertEqual((page.win_name(commit), page.win_page_name(commit), page.win_page_link(commit), page.beside(commit)), (None,) * 4, commit)
         self.assertEqual(tree(self.root), {"state": None, "state/toy": None}, "a refused name writes nothing, anywhere")
 
     def test_an_address_given_on_the_command_line_must_be_on_github(self):
@@ -518,6 +586,20 @@ class TestHostile(Case):
         for address in ("javascript:alert(1)", "https://evil.example/join", "https://github.com", "https://github.com/a/b/../../c",
                         "https://github.com/a/b?x=<script>", "data:text/html,x", "join.html"):
             self.assertEqual(self.make("--join-url", address, code=2), {}, address)
+        # The site's own address is shown whole in the Markdown that embeds a card: https, a plain host, plain segments.
+        refused = ("javascript:alert(1)", "http://example.org", "https://example.org/", "https://example.org/a/../b", "https://example.org/./a",
+                   "https://example.org/a/..", "https://user@example.org", "https://user:pw@example.org/x", "https://example.org:8080/x",
+                   "https://example.org/x?y=1", "https://example.org/x#y", "https://EXAMPLE.org", "https://example.org/a b", 'https://example.org/"onload="x',
+                   "https://example.org/x)](javascript:alert(1)", "https://example.org/x](y", "https://example.org/<script>", "//example.org",
+                   "https://localhost", "https://example.org/" + "a" * 101, "data:text/html,x", "https://example.org\n", " https://example.org",
+                   "https://-example.org", "https://example-.org", "https://example..org", "https://example.org/a//b", "https://exa_mple.org",
+                   "https://example.org/%2e%2e/x", "https://example.org/a\\b", "ftp://example.org", "https://example.org/" + "/".join(["abcdefghij" * 5] * 8),
+                   "https://example.org/'x", "https://example.org/a&b", "https://éxample.org", "")
+        for address in refused:
+            self.assertEqual(self.make("--site-url", address, code=2), {}, address)
+        self.assertEqual([page.site_address(address) for address in (*refused, None, 5, ["https://example.org"])], [None] * (len(refused) + 3))
+        accepted = (SITE, "https://ruche.example.org", "https://example.org/a.b/c_d/e~f-g", "https://a.b.c.example.org/x")
+        self.assertEqual([page.site_address(address) for address in accepted], list(accepted))
         for instant in ("yesterday", "2026-13-45T00:00:00Z", "2026-11-12", "<script>", "0001-01-02T00:00:00Z", "9999-12-31T23:59:59Z"):
             self.assertEqual(self.make("--now", instant, code=2), {}, instant)
             with mock.patch.dict(os.environ, {"HIVE_NOW": instant}):
@@ -543,7 +625,12 @@ def report_verdict(number, report, **more):
 
 class TestWins(Case):
     def wins(self, files):
-        return {name: text for name, text in files.items() if name.startswith("wins/")}
+        """The cards of the integrations."""
+        return {name: text for name, text in files.items() if name.startswith("wins/") and name.endswith(".svg")}
+
+    def pages(self, files):
+        """The pages of the integrations."""
+        return {name: text for name, text in files.items() if name.startswith("wins/") and name.endswith(".html")}
 
     def headline_of(self, report):
         self.ledger([report_verdict(1, report)])
@@ -602,6 +689,21 @@ class TestWins(Case):
         for name, text in self.wins(files).items():
             self.assertNotIn("%", text)
             self.assertNotIn("gain", text)
+        self.assertEqual(len(self.pages(files)), len(reports) + 1)
+        rows = {}
+        for name, text in self.pages(files).items():
+            seen = Seen(text)
+            self.assertRegex(seen.said, r"^La Ruche · toy · accepted by the judgeAcceptedby the judgeTask toy-0001\. Written by ", "no figure leads")
+            self.assertNotRegex(seen.said, r"outputs compared|Suspect constructs|gain_|sure_|(?i:nan|inf)", name)
+            if seen.rows:
+                rows[name] = seen.rows[1:]
+            else:
+                self.assertIn("The ledger keeps no measured gain for this contribution.", seen.said)
+                self.assertNotRegex(seen.said, r"[0-9] %|A gain is", name)
+        # A row of « what the judge measured » is made of a number under an identifier, and of nothing else: the four
+        # reports whose gain is a real number and whose flag is not one have that gain, read as having no flag.
+        self.assertEqual(rows, {**{f"wins/{sha(5000 + n)}.html": [["a", "50.0 %", "no noise flag in the ledger"]] for n in (2, 4, 16)},
+                                f"wins/{sha(5027)}.html": [["e", "50.0 %", "no noise flag in the ledger"]]})
 
     def test_a_gain_of_a_thousand_percent_is_the_last_one_shown(self):
         figure, card = self.headline_of({"gain_a": 10, "sure_a": 1})
@@ -730,11 +832,13 @@ class TestWins(Case):
         files = self.make()
         seen = self.harmless(files)
         data = self.summary(files)
-        self.assertEqual([(r["card"], r["headline"]) for r in data["recent"]],
-                         [(None, None), (f"wins/{sha(5002)}.svg", None), (f"wins/{sha(5001)}.svg", {"metric": "a", "gain": 0.25})])
-        self.assertIn(f"wins/{sha(5001)}.svg", seen.hrefs)
-        self.assertIn(f"wins/{sha(5002)}.svg", seen.hrefs)
-        self.assertEqual(len([h for h in seen.hrefs if h.startswith("wins/")]), 2, "no link where there is no card")
+        self.assertEqual([(r["card"], r["page"], r["headline"]) for r in data["recent"]],
+                         [(None, None, None), (f"wins/{sha(5002)}.svg", f"wins/{sha(5002)}.html", None),
+                          (f"wins/{sha(5001)}.svg", f"wins/{sha(5001)}.html", {"metric": "a", "gain": 0.25})])
+        self.assertEqual(sorted({h for h in seen.hrefs if h.startswith("wins/")}), [f"wins/{sha(5001)}.html", f"wins/{sha(5002)}.html"],
+                         "a date links to the integration's own page, and to nothing where there is none")
+        self.assertEqual(sorted(name for name in files if name.startswith("wins/")),
+                         sorted(f"wins/{sha(n)}.{end}" for n in (5001, 5002) for end in ("svg", "html")), "a card and a page, or neither")
         self.assertIn("wins/&lt;commit&gt;.svg", files["index.html"])
         self.assertNotIn("_wins", files["summary.json"])
 
@@ -747,6 +851,7 @@ class TestWins(Case):
         self.harmless(files)
         wins = self.wins(files)
         self.assertEqual(sorted(wins), sorted(f"wins/{line['commit']}.svg" for line in lines), "250 integrations, 250 cards")
+        self.assertEqual(sorted(self.pages(files)), sorted(f"wins/{line['commit']}.html" for line in lines), "and 250 pages")
         self.assertEqual(len(self.summary(files)["recent"]), page.RECENT_SHOWN, "the page's table shows the latest thirty")
         left = f"wins/{sha(9999)}.svg"
         (self.out / left).write_text("a card of an earlier run that this ledger no longer explains")
@@ -754,9 +859,10 @@ class TestWins(Case):
         self.ledger(lines + more)
         later = self.make("--now", "2027-02-01T00:00:00Z")
         self.assertEqual(set(files) - set(later), set(), "every file of the first run is written by the second")
-        self.assertEqual(len(self.wins(later)), 260 + 1)
+        self.assertEqual((len(self.wins(later)), len(self.pages(later))), (260 + 1, 260))
         self.assertEqual(later[left], "a card of an earlier run that this ledger no longer explains", "nothing is deleted")
-        self.assertEqual([name for name in wins if later[name] != wins[name]], [], "a card whose integration did not change keeps its bytes")
+        self.assertEqual([name for name in {**wins, **self.pages(files)} if later[name] != files[name]], [],
+                         "a card or a page whose integration did not change keeps its bytes: neither carries the date it was made")
         self.assertEqual(sorted(name for name in later if name.startswith("members/")),
                          ["members/101-badge.svg", "members/101.svg", "members/102-badge.svg", "members/102.svg"])
 
@@ -912,6 +1018,173 @@ class TestGoal(Case):
                          "one per account: the earliest instant, then the ledger's order; never for an account without a number")
 
 
+class TestWinPage(Case):
+    """The permanent page of one integration (wins/<commit>.html): what its card links to."""
+
+    def setUp(self):
+        super().setUp()
+        self.ledger([
+            verdict(1, "2026-10-21T19:12:00Z", "ada", 101, "toy-0001", model="claude-fable-5-2", figures={"files": 1, "lines": 17}, report=MINIZ),
+            verdict(2, "2026-11-09T20:30:00Z", "ada", 101, "toy-0002", figures={"files": 2, "lines": 1}, report={
+                "gain_instructions_n9": 0.032, "gain_time": -0.03, "sure_time": 0, "worse_time": 1, "gain_memory": -0.002, "sure_memory": 0,
+                "worse_memory": 0, "gain_instructions_n1": -0.004, "gain_size": 0.029, "sure_size": 1, "worse_size": 0, "gain_tiny": -0.0004, "sure_tiny": 0}),
+        ])
+        self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "done"},
+                                   titles={"toy-0001": "Compare matches 16 bits at a time", "toy-0002": "Fewer instructions per probe."}))
+        self.goals = self.tasks([task("toy-0001", gain_goal("gain_instructions_n6")), task("toy-0002", gain_goal("gain_instructions_n9"))])
+        self.first, self.second = f"wins/{sha(5001)}.html", f"wins/{sha(5002)}.html"
+
+    def test_the_page_tells_one_integration_from_checked_fields(self):
+        files = self.make("--tasks", self.goals, "--repo-url", REPO, "--site-url", SITE)
+        self.harmless(files, site=SITE)
+        text, seen = files[self.first], Seen(files[self.first])
+        self.assertTrue(seen.said.startswith(
+            "La Ruche · toy · accepted by the judge4.3 %better · instructions n6Task toy-0001: Compare matches 16 bits at a time. Written by the AI "
+            "coding assistant of @ada (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox, and integrated "
+            "on 21 Oct 2026 as commit 0000000000, credited to that account.This is the first integration of this account in toy."
+            "What the judge measured"), seen.said)
+        self.assertEqual(seen.rows, [["Measure", "Gain", "Reading"],
+                                     ["instructions n6", "4.3 %", "the figure the task asked for"],
+                                     ["compression throughput n9", "5.2 %", "beyond the noise"],
+                                     ["compression throughput n6", "3.7 %", "beyond the noise"],
+                                     ["instructions n9", "6.1 %", "no noise flag in the ledger"],
+                                     ["ratio n6", "0.1 %", "within the noise"]], "everything the judge measured, each row read from its flags")
+        self.assertEqual(re.findall(r"<tr(?: class=\"([a-z]+)\")?><th scope=\"row\">", text), ["asked", "", "", "soft", "soft"])
+        self.assertIn("9,289 outputs compared with the base: identical. Suspect constructs: 0. Changed: 1 file, 17 lines. A gain is measured on the "
+                      "judge's own inputs and machine; it is not a promise for another workload.", seen.said)
+        # Check it yourself: the commit's id, whole; the repository and the commit, linked; the task.
+        self.assertIn(f"The integrated commit, in Bee-ruche/toy:{sha(5001)}This commit on GitHubThe task: toy-0001 (Compare matches 16 bits at a time).",
+                      seen.said)
+        for href in (REPO, f"{REPO}/commit/{sha(5001)}", "https://github.com/ada", f"{sha(5001)}.svg", "../index.html", JOIN):
+            self.assertIn(href, seen.hrefs)
+        # Show it: the card as its file holds it, and the Markdown that embeds it, which takes the site's address.
+        self.assertIn(files[f"wins/{sha(5001)}.svg"].rstrip("\n"), text, "the card inlined in the page is the card's file, byte for byte")
+        markdown = f"[![La Ruche · toy · toy-0001 · accepted by the judge]({SITE}/wins/{sha(5001)}.svg)]({SITE}/wins/{sha(5001)}.html)"
+        self.assertIn(f'<code class="copy">{markdown}</code>', text)
+        self.assertEqual((seen.metas["og:url"], seen.metas["og:title"], seen.metas["og:description"]),
+                         (f"{SITE}/wins/{sha(5001)}.html", "4.3 % better · instructions n6 · toy · La Ruche",
+                          "4.3 % better · instructions n6 in toy. Task toy-0001, accepted by the judge, integrated on 21 Oct 2026."))
+        self.assertIn("<title>4.3 % better · instructions n6 · toy-0001 · La Ruche</title>", text)
+        self.assertEqual(seen.metas["Content-Security-Policy"], page.CSP)
+        # How to take part: the same words as on index.html, one link, the way back. No counter, no deadline.
+        self.assertTrue(seen.said.endswith("How to take part" + page.JOIN_WORDS + "How to joinAll of toy's integrations"
+                                           "Made from the project's public ledger. No script, no tracker, nothing loaded from elsewhere."), seen.said)
+        self.assertIn(page.JOIN_WORDS, Seen(files["index.html"]).said)
+        self.assertNotRegex(page.JOIN_WORDS.lower(), r"[0-9]|now|today|hurry|left|only|last|soon|rank", "what happens, and nothing that presses")
+        self.assertNotIn(NOW[:10], text, "the page carries no date of making: it changes only when what it says does")
+        # The second integration of the same account: losses read as losses, and no « first ».
+        other = Seen(files[self.second])
+        self.assertTrue(other.said.startswith(
+            "La Ruche · toy · accepted by the judge3.2 %better · instructions n9Task toy-0002: Fewer instructions per probe. Written by the AI coding "
+            "assistant of @ada, measured and accepted by the project's judge in a sandbox, and integrated on 9 Nov 2026 as commit 0000000000, credited "
+            "to that account.What the judge measured"), other.said)
+        self.assertEqual(other.rows[1:], [["instructions n9", "3.2 %", "the figure the task asked for"],
+                                          ["size", "2.9 %", "beyond the noise"],
+                                          ["time", "−3.0 %", "worse, beyond the noise"],
+                                          ["tiny", "0.0 %", "within the noise"],
+                                          ["memory", "−0.2 %", "worse, within the noise"],
+                                          ["instructions n1", "−0.4 %", "worse, no noise flag in the ledger"]])
+        self.assertIn("for that figure.Changed: 2 files, 1 line. A gain is measured", other.said)
+        self.assertNotRegex(other.said, r"outputs compared|Suspect constructs|first integration|declared")
+
+    def test_without_the_site_s_address_the_repository_s_or_the_task_file_the_page_says_less(self):
+        files = self.make()
+        self.harmless(files)
+        seen = Seen(files[self.first])
+        self.assertIn("5.2 %better · compression throughput n9", seen.said, "no task file: the largest gain beyond the noise leads")
+        self.assertEqual(seen.rows[1], ["compression throughput n9", "5.2 %", "beyond the noise"])
+        self.assertNotIn("the figure the task asked for", seen.said)
+        self.assertIn(f"The integrated commit:{sha(5001)}The task: toy-0001", seen.said, "no repository: the commit's id, and no link")
+        self.assertNotRegex(seen.said, r"Markdown|on GitHub|README")
+        self.assertNotIn("og:url", seen.metas)
+        self.assertEqual([href for href in seen.hrefs if href.startswith("http")], ["https://github.com/ada", JOIN])
+        self.assertIn(f"The card is the file {sha(5001)[:10]}….svg beside this page.", seen.said)
+
+    def test_the_join_link_of_a_page_under_wins(self):
+        self.assertIn("../join.html", Seen(self.make("--join")[self.first]).hrefs, "join.html is beside index.html: one folder up")
+        self.assertIn("join.html", self.harmless(self.make("--join")).hrefs)
+        other = "https://github.com/Bee-ruche/registre/blob/hive/docs/join.md"
+        files = self.make("--join-url", other)
+        self.harmless(files, join=other)
+        self.assertIn(other, Seen(files[self.first]).hrefs)
+
+    def test_the_page_says_only_what_the_ledger_is_sure_of(self):
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", model="gpt-x<b>"),
+                     verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0009"),
+                     verdict(3, "2026-11-03T09:00:00Z", "eve", None, "not a task", judged=False, figures="<script>alert(1)</script>"),
+                     verdict(4, "2026-11-04T09:00:00Z", "Alice", 105, "toy-0002", judged="yes")])
+        self.put("feed.json", {"project": "Not an <id>", "tasks": [{"id": "toy-0001", "title": "A title!", "status": "done"}]})
+        self.state.rename(self.root / "state" / "Not an id")
+        self.state = self.root / "state" / "Not an id"
+        files = self.make("--repo-url", REPO, "--site-url", SITE)
+        self.harmless(files, site=SITE)
+        said = {n: Seen(files[f"wins/{sha(5000 + n)}.html"]).said for n in (1, 2, 3, 4)}
+        self.assertTrue(said[1].startswith(
+            "La Ruche · a hive project · accepted by the judgeAcceptedby the judgeTask toy-0001: A title! Written by the AI coding assistant of GitHub "
+            "account 101, measured and accepted by the project's judge in a sandbox, and integrated on 1 Nov 2026 as commit 0000000000, credited to that "
+            "account.This is the first integration of this account in this project.What the judge measuredThe ledger keeps no measured gain for this "
+            "contribution.Changed: 1 file, 3 lines.Check it yourself"), said[1])
+        self.assertNotRegex(said[1], r"(?i)alice|gpt-x|declared", "a login that passed to another account, a model that is not an identifier: not shown")
+        self.assertIn("Task toy-0009. Written by the AI coding assistant of @Alice, measured", said[2], "a task the feed does not know: its id alone")
+        self.assertIn("accepted by the judgeAcceptedby the judgeWritten by a member's AI coding assistant, accepted, and integrated on 3 Nov 2026 as commit "
+                      "0000000000.What the judge measuredThe ledger keeps no measured gain for this contribution.Check it yourself", said[3],
+                      "no task, no account, not judged, no size of the change: none is invented")
+        self.assertNotRegex(said[3], r"credited to that|first integration|The task|Changed|measured and accepted")
+        self.assertIn("of @Alice, accepted, and integrated on 4 Nov 2026", said[4], "« judged » is true or it is not")
+        self.assertIn("All the integrations", said[4])
+        self.assertIn(f"[![La Ruche · accepted by the judge]({SITE}/wins/{sha(5003)}.svg)]({SITE}/wins/{sha(5003)}.html)", files[f"wins/{sha(5003)}.html"])
+
+    def test_each_measure_is_read_from_its_flags(self):
+        def read(gain, sure=None, worse=None, goal=False):
+            return page.reading({"metric": "m", "gain": gain, "sure": sure, "worse": worse, "goal": goal})
+        self.assertEqual([read(0.05, 1, 0), read(0.05, 0, 0), read(0.05), read(-0.05, 0, 1), read(-0.05, 0, 0), read(-0.05), read(-0.05, 1),
+                          read(0.05, 0, 1), read(-0.0004, 0), read(0.0)],
+                         ["beyond the noise", "within the noise", "no noise flag in the ledger", "worse, beyond the noise", "worse, within the noise",
+                          "worse, no noise flag in the ledger", "worse, beyond the noise", "worse, beyond the noise", "within the noise",
+                          "no noise flag in the ledger"])
+        asked = "the figure the task asked for"
+        self.assertEqual([read(0.05, goal=True), read(0.05, 1, 0, True), read(0.05, 0, 0, True), read(-0.05, goal=True), read(0.05, None, 1, True)],
+                         [asked, f"{asked} · beyond the noise", f"{asked} · within the noise", f"{asked} · worse, no noise flag in the ledger",
+                          f"{asked} · worse, beyond the noise"])
+        self.assertEqual([page.gain_text(value) for value in (0.043, 10, 0, -0.0004, 0.0004, -0.03, -1.5, 0.0005)],
+                         ["4.3 %", "1000.0 %", "0.0 %", "0.0 %", "0.0 %", "−3.0 %", "−150.0 %", "0.1 %"], "a loss wears a real minus sign")
+
+    def test_a_verdict_of_an_unexpected_shape_gives_a_page_that_shows_none_of_it(self):
+        odd = {"gain_a": {"<script>alert(1)</script>": 1}, "gain_b": "<img src=x onerror=alert(1)>", "gain_<script>": 0.5, "sure_c": "<script>",
+               "gain_c": 0.25, "worse_c": ["<script>"], "outputs_compared": "<script>alert(1)</script>", "suspects": {"a": "<script>"},
+               "<script>alert(1)</script>": 1, "gain_d": 0.5, "sure_d": 1, "worse_d": "javascript:alert(1)"}
+        self.ledger([
+            verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", report=odd, figures={"files": "<script>", "lines": [3]},
+                    extra={"<script>alert(1)</script>": ["<img src=x>"]}, deal="<script>alert(1)</script>", repo_id="javascript:alert(1)"),
+            verdict(2, "2026-11-02T09:00:00Z", "alice", 101, "toy-0001", report=["<script>alert(1)</script>"], figures=["<img src=x>"]),
+            verdict(3, "2026-11-03T09:00:00Z", "alice", 101, "toy-0001", report="<script>alert(1)</script>", figures=None, commit=sha(5003) + "\n"),
+            {"type": "mystery", "at": "2026-11-04T09:00:00Z", "member": "alice", "member_id": 101, "payload": "<script>alert(1)</script>"},
+            {"type": "verdict", "at": "2026-11-05T09:00:00Z", "result": "accepted", "commit": sha(5005)},
+            {"type": "verdict", "at": "2026-11-06T09:00:00Z", "result": "accepted", "commit": sha(5006), "report": {"gain_a": 0.1, "sure_a": 1},
+             "member": {"login": "<script>"}, "member_id": [101], "task": {"id": "<script>"}, "model": 5, "judged": 1, "figures": 7},
+            '{"type":"verdict","at":"2026-11-07T09:00:00Z","result":"accepted","commit":"' + sha(5007) + '","report":{"gain_a":1e999,"gain_b":NaN,'
+            '"outputs_compared":1e999,"suspects":-Infinity},"figures":{"files":NaN,"lines":1e999}}',
+        ])
+        files = self.make("--repo-url", REPO, "--site-url", SITE)
+        self.harmless(files, site=SITE)
+        for name, text in files.items():
+            for needle in NEEDLES:
+                self.assertNotIn(needle, text.lower(), (name, needle))
+        self.assertEqual(sorted(name for name in files if name.endswith(".html")),
+                         ["index.html", *(f"wins/{sha(5000 + n)}.html" for n in (1, 2, 5, 6, 7))], "a commit id with a line feed is not one: no page")
+        first = Seen(files[f"wins/{sha(5001)}.html"])
+        self.assertEqual(first.rows[1:], [["d", "50.0 %", "beyond the noise"], ["c", "25.0 %", "no noise flag in the ledger"]],
+                         "the two gains that are numbers under identifiers, each read from the flags that are numbers")
+        self.assertNotRegex(first.said, r"outputs compared|Suspect constructs|Changed")
+        for n in (2, 5, 7):
+            seen = Seen(files[f"wins/{sha(5000 + n)}.html"])
+            self.assertEqual(seen.rows, [], n)
+            self.assertNotRegex(seen.said, r"[0-9] %|outputs compared|Suspect constructs|Changed|inf|nan", n)
+        bare = Seen(files[f"wins/{sha(5006)}.html"])
+        self.assertIn("10.0 %better · aWritten by a member's AI coding assistant, accepted, and integrated on 6 Nov 2026 as commit 0000000000.", bare.said)
+        self.assertEqual(self.summary(files)["totals"]["integrations"], 6, "the line of a kind this page does not know counts for nothing")
+
+
 class TestEmpty(Case):
     def test_an_empty_state_folder_gives_a_page_that_says_so(self):
         files = self.make()
@@ -1021,7 +1294,13 @@ class TestEndToEnd(test_hive.Base):
         self.assertIn(f"@alice · first integration · 12 Nov 2026 · declared model: claude-fable-5-2 · commit {self.w.tip()[:10]} · Bee-ruche/toy",
                       win.getAttribute("aria-label"))
         self.assertIn("toy-0001 · Make f0 faster", win.getAttribute("aria-label"))
-        self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.svg"])
+        self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.html", f"{self.w.tip()}.svg"])
+        own = Seen((out / "wins" / f"{self.w.tip()}.html").read_text(encoding="utf-8"))
+        self.assertIn("Task toy-0001: Make f0 faster. Written by the AI coding assistant of @alice (declared model: claude-fable-5-2), measured and "
+                      f"accepted by the project's judge in a sandbox, and integrated on 12 Nov 2026 as commit {self.w.tip()[:10]}, credited to that "
+                      "account.This is the first integration of this account in toy.", own.said)
+        self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{self.w.tip()}", own.hrefs)
+        self.assertIn(f"wins/{self.w.tip()}.html", seen.hrefs, "the date of the integration links to its page")
         self.assertNotIn("<script", text)
 
 

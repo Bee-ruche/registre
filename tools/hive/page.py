@@ -52,12 +52,18 @@ ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 REPO_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 JOIN_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:/[A-Za-z0-9._-]{1,100}){1,12}\Z")
+# The site's own address, for the one text that needs it whole (the Markdown that embeds a card elsewhere): https, a
+# plain lower-case host, plain path segments; no user, port, query or fragment, and nothing Markdown or HTML reads as
+# its own. It is shown as text and never made a link: the pages link to their own files by relative addresses.
+SITE_URL = re.compile(r"https://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){1,8}(?:/[A-Za-z0-9._~-]{1,100}){0,8}\Z")
+SITE_URL_MAX = 300
 CARD_NAME = re.compile(r"members/[1-9][0-9]{0,18}\.svg\Z")
 BADGE_NAME = re.compile(r"members/[1-9][0-9]{0,18}-badge\.svg\Z")
 WIN_NAME = re.compile(r"wins/[0-9a-f]{40}\.svg\Z")
+WIN_PAGE_NAME = re.compile(r"wins/[0-9a-f]{40}\.html\Z")
 METRIC = re.compile(r"[A-Za-z0-9_]{1,60}\Z")  # the <name> of a report's gain_<name> and sure_<name>
 FIXED_NAMES = ("index.html", "badge.svg", "summary.json")
-NAMES = (CARD_NAME, BADGE_NAME, WIN_NAME)  # with FIXED_NAMES, every name this tool writes a file under
+NAMES = (CARD_NAME, BADGE_NAME, WIN_NAME, WIN_PAGE_NAME)  # with FIXED_NAMES, every name this tool writes a file under
 DEFAULT_JOIN_URL = "https://github.com/Bee-ruche/registre/blob/main/docs/join.md"
 ID_MAX = 2 ** 63 - 1  # an account's numeric id: a whole number in this range, never a string
 TASK_ID_MAX, PROJECT_MAX, LINE_MAX = 64, 40, 1_000_000
@@ -439,7 +445,7 @@ def collect(state, now, tasks=None):
         "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), "member_id": event["member_id"],
                     "login": login_of(event["member_id"]), "commit": event["commit"], "headline": event["headline"],
                     "figure": event["figure"], "first": first(event),
-                    "card": win_name(event["commit"])} for at, _, event in recent[:RECENT_SHOWN]],
+                    "card": win_name(event["commit"]), "page": win_page_name(event["commit"])} for at, _, event in recent[:RECENT_SHOWN]],
         "refusals": [{"reason": reason, "count": count}
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
         "measures": {
@@ -542,9 +548,12 @@ def commit_link(repo_url, commit):
 # ---------------------------------------------------------------------------------------------------------------
 # The page
 
+# One style for index.html and for the page of each integration (body class « one »: a narrower column).
 # Colours: the four parts of the bar are four hues in a fixed order, checked for both surfaces (light #fcfcfb, dark
 # #1a1a19) for colour-blind and normal vision; two of them are faint on the light surface, which is why each part's
-# number is written beside its swatch. Text never wears a data colour.
+# number is written beside its swatch. Text never wears a data colour: it is --ink or --ink2, which stand at 19:1 and
+# 7.4:1 on the light page and surface, 16:1 and 9.6:1 on the dark ones (the tests compute them).
+# Narrow screens (40rem and less): a « stack » table shows each row as a block, see table().
 CSS = Markup("""
 :root{color-scheme:light dark;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--line:#e1e0d9;--honey:#a86d00;
 --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100}
@@ -552,41 +561,64 @@ CSS = Markup("""
 --honey:#e9ab22;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--page);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;background:var(--page);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-wrap:break-word}
 main,header,footer{max-width:60rem;margin:0 auto;padding:0 1rem}
-header{padding-top:2rem}
+.one main,.one header,.one footer{max-width:40rem}
+header{padding-top:1.5rem}
 footer{padding:1.5rem 1rem 3rem;color:var(--ink2);font-size:.85rem}
 .hive{margin:0;color:var(--ink2);font-size:.85rem;letter-spacing:.08em;text-transform:uppercase}
 h1{margin:.1rem 0 .3rem;font-size:2rem;line-height:1.2;overflow-wrap:anywhere}
 h2{margin:0 0 .8rem;font-size:1.15rem}
 p{margin:.4rem 0}
-.lead{margin:0;color:var(--ink2);font-size:1.05rem;overflow-wrap:anywhere}
-.none{margin:1rem 0 0;padding:.7rem 1rem;border:1px solid var(--line);border-left:4px solid var(--honey);border-radius:6px;background:var(--surface)}
+.lead{margin:0;font-size:1.05rem;overflow-wrap:anywhere}
+.what{margin:.3rem 0 0;color:var(--ink2);overflow-wrap:anywhere}
+.none,.latest{margin:1rem 0 0;padding:.7rem 1rem;border:1px solid var(--line);border-left:4px solid var(--honey);border-radius:6px;background:var(--surface)}
+.latest p{margin:.2rem 0;overflow-wrap:anywhere}
+.figure{margin:.1rem 0 .2rem;font-size:2.3rem;font-weight:700;line-height:1.1;overflow-wrap:anywhere}
+.figure span{display:block;margin-top:.2rem;font-size:1.1rem;line-height:1.3}
+h1.figure{margin:.3rem 0 .6rem;font-size:3.4rem;line-height:1.05}
+h1.figure span{margin-top:.3rem;font-size:1.25rem}
+.story{overflow-wrap:anywhere}
+.steps{margin:.9rem 0 0}
 section{margin:1.5rem 0;padding:1.1rem 1.1rem 1.2rem;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 a{color:inherit;text-decoration:underline;text-decoration-color:var(--honey);text-decoration-thickness:2px;text-underline-offset:3px}
 a:hover{text-decoration-color:var(--ink)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:.9rem 1.2rem}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.9rem 1.2rem}
 .label{color:var(--ink2);font-size:.85rem}
 .value{font-size:1.7rem;font-weight:600;line-height:1.25}
-.note{color:var(--ink2);font-size:.8rem}
+.note{color:var(--ink2);font-size:.8rem;overflow-wrap:anywhere}
 .sw{display:inline-block;width:.65rem;height:.65rem;margin-right:.4rem;border-radius:2px}
 .s1{fill:var(--s1);background:var(--s1)}.s2{fill:var(--s2);background:var(--s2)}
 .s3{fill:var(--s3);background:var(--s3)}.s4{fill:var(--s4);background:var(--s4)}
 .bar{display:block;width:100%;height:8px;margin:1rem 0 .2rem;border-radius:4px;overflow:hidden;background:var(--line)}
 .gap{fill:var(--surface)}
 .scroll{overflow-x:auto}
-table{width:100%;min-width:27rem;border-collapse:collapse;font-size:.92rem}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
 th,td{padding:.4rem .7rem .4rem 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
 thead th{color:var(--ink2);font-size:.8rem;font-weight:600;white-space:nowrap}
 tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}
-tbody th{font-weight:600;white-space:nowrap}
-td a,td code{white-space:nowrap}
+tbody th{font-weight:600}
 .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .soft{color:var(--ink2);font-weight:400}
+.plain tbody th{font-weight:400;overflow-wrap:anywhere}
+.plain tr.asked th,.plain tr.asked td{font-weight:600}
 code{font:.88em ui-monospace,SFMono-Regular,Consolas,monospace}
+.copy{display:block;margin:.5rem 0;padding:.6rem .7rem;border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;
+overflow-wrap:anywhere;user-select:all}
+.card>svg{display:block;max-width:100%;height:auto;margin:.2rem 0 1rem}
 .join{border-left:4px solid var(--honey)}
-.go{display:inline-block;margin-top:.5rem;padding:.45rem .9rem;border:2px solid var(--honey);border-radius:6px;font-weight:600;text-decoration:none}
+.go{display:inline-block;margin:.5rem .8rem 0 0;padding:.45rem .9rem;border:2px solid var(--honey);border-radius:6px;font-weight:600;text-decoration:none}
 .go:hover{border-color:var(--ink)}
+@media (min-width:40.01rem){.stack th,.stack td a,.stack td code{white-space:nowrap}.stack table{min-width:27rem}}
+@media (max-width:40rem){
+.stack table,.stack tbody,.stack tr,.stack th,.stack td{display:block}
+.stack thead{display:none}
+.stack tr{padding:.55rem 0;border-bottom:1px solid var(--line)}
+.stack tbody tr:last-child{border-bottom:0}
+.stack th,.stack td{padding:.1rem 0;border:0;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.stack td{position:relative;min-height:1.5rem;padding-left:7.5rem}
+.stack td::before{content:attr(data-label);position:absolute;left:0;top:.2rem;width:7rem;color:var(--ink2);font-size:.8rem}
+}
 """)
 CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
 
@@ -613,13 +645,17 @@ def tile(label, value, note=None, swatch=None):
               el("div", value, class_="value"), note and el("div", note, class_="note"), class_="tile")
 
 
-def table(head, rows):
-    """A table; `head` is [(title, is a number)], and a row's first cell is its header."""
+def table(head, rows, stack=True, ids=None, looks=None):
+    """A table; `head` is [(title, is a number)], and a row's first cell is its header. With `stack`, a narrow screen
+    shows each row as a block of « title  value » lines (each cell carries its column's title in data-label, which the
+    style prints before it): no table is wider than a phone. `ids` and `looks` give each row an anchor and a class."""
     def cell(position, content):
         css = "n" if head[position][1] else None
-        return el("th", content, scope="row", class_=css) if position == 0 else el("td", content, class_=css)
+        return el("th", content, scope="row", class_=css) if position == 0 else el("td", content, class_=css, data_label=head[position][0])
+    body = [el("tr", [cell(i, c) for i, c in enumerate(row)], id=ids[n] if ids else None, class_=looks[n] if looks else None)
+            for n, row in enumerate(rows)]
     return el("div", el("table", el("thead", el("tr", [el("th", title, scope="col", class_="n" if number else None) for title, number in head])),
-                        el("tbody", [el("tr", [cell(i, c) for i, c in enumerate(row)]) for row in rows])), class_="scroll")
+                        el("tbody", body)), class_="scroll stack" if stack else "scroll plain")
 
 
 def member_cell(login, member_id):
@@ -701,12 +737,12 @@ def render_html(data, title, repo_url, join):
             task = [el("code", item["task"]), " ", el("span", item["title"], class_="soft")] if item["task"] else el("span", "unknown", class_="soft")
             link = commit_link(repo_url, item["commit"])
             short = el("code", item["commit"][:10]) if item["commit"] else el("span", "n/a", class_="soft")
-            card = Link(item["card"]) if item["card"] is not None else None
-            when = el("a", day(item["at"]), href=card) if card is not None else day(item["at"])
+            own = win_page_link(item["commit"])
+            when = el("a", day(item["at"]), href=own) if own is not None else day(item["at"])
             rows.append([when, task, member_cell(item["login"], item["member_id"]),
                          el("a", short, href=link, rel="nofollow noopener") if link is not None else short])
         recent = [table([("Date", False), ("Task", False), ("Member", False), ("Commit", False)], rows),
-                  el("p", "A date links to the integration's card: the task, the member and the largest gain the judge measured beyond the noise, if any.", class_="note")]
+                  el("p", "A date links to the contribution's own page: what the judge measured, how to check it, and its card.", class_="note")]
     else:
         recent = el("p", "Nothing has been integrated yet.", class_="soft")
     sections.append(el("section", el("h2", "Recent integrations"), recent))
@@ -731,10 +767,7 @@ def render_html(data, title, repo_url, join):
              f"candidates judged: {totals['judged']}; runs the judge failed on: {totals['judge_failures']}; integrations: {integrations}"),
     ], class_="tiles")))
 
-    sections.append(el("section", el("h2", "Give your AI's spare hours"),
-                       el("p", "Point your own AI coding assistant at your own fork of this project. The hive deals it one task at a time; "
-                               "it pushes the result to your fork and the judge decides. What it accepts is integrated as a commit authored by you."),
-                       el("a", "How to join", href=join, class_="go"), class_="join"))
+    sections.append(join_block(join))
 
     left_out = data["ledger"]["unreadable_lines"] + data["ledger"]["events_left_out"]
     head = el("head", el("meta", charset="utf-8"), el("meta", name="viewport", content="width=device-width, initial-scale=1"),
@@ -977,6 +1010,159 @@ def render_member_badge(project, member):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# The page of one integration (wins/<commit>.html): where its card leads, and what a stranger needs to check it
+
+JOIN_WORDS = ("Point your own AI coding assistant at your own fork of this project. The hive deals it one task at a time; "
+              "it pushes the result to your fork and the judge decides. What it accepts is integrated as a commit credited to your account.")
+LOCAL_JOIN = Link("join.html")  # --join: the join page is beside index.html, so one folder up from a page under wins/
+UP = Link("../index.html")  # the project's page, from a page under wins/
+
+
+def join_block(join, more=None):
+    """How to take part, in the same words on every page: what happens, and one link. No counter, no deadline."""
+    return el("section", el("h2", "How to take part"), el("p", JOIN_WORDS), el("p", el("a", "How to join", href=join, class_="go")),
+              el("p", more) if more is not None else None, class_="join", id="join")
+
+
+def win_page_name(commit):
+    """wins/<commit>.html for a 40-hex commit id, else None: beside the card, under a name made of nothing else."""
+    name = f"wins/{commit}.html" if isinstance(commit, str) else None
+    return name if name is not None and WIN_PAGE_NAME.match(name) else None
+
+
+def win_page_link(commit):
+    """The page of an integration as index.html links it; None for anything but a 40-hex commit id."""
+    name = win_page_name(commit)
+    return None if name is None else Link(name)
+
+
+def beside(commit):
+    """<commit>.svg: the card, as the page in the same folder links it; None for anything but a 40-hex commit id."""
+    return Link(f"{commit}.svg") if matching(commit, SHA) else None
+
+
+def repo_link(repo_url):
+    """The repository's address as a link, when it was given and checked; else None."""
+    return Link(repo_url) if matching(repo_url, REPO_URL) else None
+
+
+def site_address(value):
+    """The site's address, if it is one this tool accepts (SITE_URL, bounded, no « . » or « .. » segment); else None."""
+    return value if matching(value, SITE_URL, SITE_URL_MAX) and not {".", ".."} & set(value.split("/")[3:]) else None
+
+
+def embed_markdown(site_url, project, win):
+    """The Markdown that shows a card elsewhere and links it back to its page; None without the site's address. Every
+    part is a checked value: the address (site_address), the project's identifier, a task id, a 40-hex commit id."""
+    if site_address(site_url) is None or win_name(win["commit"]) is None:
+        return None
+    alt = " · ".join(filter(None, ["La Ruche", project, win["task"], "accepted by the judge"]))
+    return f"[![{alt}]({site_url}/wins/{win['commit']}.svg)]({site_url}/wins/{win['commit']}.html)"
+
+
+def figure_words(figure):
+    """« 4.3 % better · instructions n6 », or « Accepted by the judge » when no figure leads."""
+    return f"{gain_text(figure['gain'])} {better(figure['metric'])}" if figure else "Accepted by the judge"
+
+
+def reading(row):
+    """What one row of the judge's measures says, from its flags alone. « Worse » comes first: a project may accept a
+    small loss on one figure (miniz allows 1 % on an instruction count), and the page must not print it as a gain."""
+    lost = round(100 * row["gain"], 1) < 0
+    if row["worse"] == 1:
+        noise = "worse, beyond the noise"
+    else:
+        noise = ("worse, " if lost else "") + {1: "beyond the noise", 0: "within the noise"}.get(row["sure"], "no noise flag in the ledger")
+    if not row["goal"]:
+        return noise
+    return "the figure the task asked for" + ("" if row["sure"] is None and row["worse"] != 1 and not lost else f" · {noise}")
+
+
+def story(win):
+    """One sentence that tells an integration, as the children of a paragraph: this file's words around checked fields
+    (a task id and its title from the feed, a login or an account's number, a model identifier, a date, a commit id)."""
+    title = plain(win["title"], 100)
+    task = ["Task ", el("code", win["task"]), f": {title}" + ("" if title.endswith((".", "!", "?", "…")) else ".") if title else ".", " "]
+    profile = member_link(win["login"]) if win["login"] else None
+    if profile is not None:
+        who = ["the AI coding assistant of ", el("strong", el("a", "@" + win["login"], href=profile, rel="nofollow noopener"))]
+    else:
+        who = f"the AI coding assistant of GitHub account {win['member_id']}" if win["member_id"] else "a member's AI coding assistant"
+    return [task if win["task"] else None, "Written by ", who,
+            [" (declared model: ", el("code", win["model"]), ")"] if win["model"] else None,
+            ", measured and accepted by the project's judge in a sandbox" if win["judged"] else ", accepted",
+            f", and integrated on {date(win['at'])} as commit ", el("code", win["commit"][:10]),
+            ", credited to that account." if win["member_id"] else "."]
+
+
+def render_win_page(project, win, repo_url=None, join=None, site_url=None):
+    """The permanent page of one integration: the figure, one sentence of story, everything the judge measured, how to
+    check it without trusting this page, the card and how to show it, how to take part. It is the address a card
+    links to. It carries no date of making: its bytes change only when what it says does."""
+    figure, name, words = win["figure"], project or "this project", figure_words(win["figure"])
+    described = f"{words} in {name}. " + (f"Task {win['task']}, accepted" if win["task"] else "Accepted") \
+        + f" by the judge, integrated on {date(win['at'])}."
+    address = f"{site_url}/wins/{win['commit']}.html" if site_address(site_url) else None
+    head = el("head", el("meta", charset="utf-8"), el("meta", name="viewport", content="width=device-width, initial-scale=1"),
+              el("meta", http_equiv="Content-Security-Policy", content=CSP), el("meta", name="referrer", content="no-referrer"),
+              el("meta", name="description", content=described),
+              el("meta", property="og:title", content=" · ".join(filter(None, [words, project, "La Ruche"]))),
+              el("meta", property="og:description", content=described),
+              el("meta", property="og:url", content=address) if address else None,
+              el("title", " · ".join(filter(None, [words, win["task"], "La Ruche"]))), el("style", CSS))
+    header = el("header",
+                el("p", "La Ruche · ", el("a", project or "a hive project", href=UP), " · accepted by the judge", class_="hive"),
+                el("h1", gain_text(figure["gain"]) if figure else "Accepted", el("span", better(figure["metric"]) if figure else "by the judge"),
+                   class_="figure"),
+                el("p", story(win), class_="story"),
+                el("p", f"This is the first integration of this account in {name}.", class_="none") if win["first"] else None)
+
+    if win["measures"]:
+        rows = [[row["metric"].replace("_", " "), gain_text(row["gain"]), reading(row)] for row in win["measures"]]
+        looks = ["asked" if row["goal"] else None if row["sure"] == 1 or row["worse"] == 1 else "soft" for row in win["measures"]]
+        measured = [table([("Measure", False), ("Gain", True), ("Reading", False)], rows, stack=False, looks=looks),
+                    el("p", "« Beyond the noise »: the judge repeats its runs, and the difference is larger than what they vary by. "
+                            "« No noise flag in the ledger »: the project keeps no such mark for that figure.", class_="note")]
+    else:
+        measured = el("p", "The ledger keeps no measured gain for this contribution.", class_="soft")
+    changed = win["changed"]
+    facts = " ".join(filter(None, [
+        f"{win['outputs']:,} outputs compared with the base: identical." if win["outputs"] else None,
+        f"Suspect constructs: {win['suspects']:,}." if win["suspects"] is not None else None,
+        f"Changed: {changed['files']:,} file{'' if changed['files'] == 1 else 's'}, {changed['lines']:,} line{'' if changed['lines'] == 1 else 's'}."
+        if changed else None,
+        f"{win['measures_left_out']:,} more measures are in the ledger." if win["measures_left_out"] else None,
+        "A gain is measured on the judge's own inputs and machine; it is not a promise for another workload." if win["measures"] else None]))
+
+    repo, title = repo_name(repo_url), plain(win["title"], 100)
+    on_github = commit_link(repo_url, win["commit"])
+    check = [el("p", "A picture proves nothing; the commit and the project's public ledger do."),
+             el("p", "The integrated commit", [", in ", el("a", repo, href=repo_link(repo_url), rel="nofollow noopener")] if repo else None, ":"),
+             el("code", win["commit"], class_="copy"),
+             el("p", el("a", "This commit on GitHub", href=on_github, rel="nofollow noopener")) if on_github else None,
+             el("p", "The task: ", el("code", win["task"]), f" ({title})" if title else None, ".") if win["task"] else None,
+             el("p", "In the project's ledger, this contribution is the « verdict » line whose commit is this id; every figure on this page "
+                     "is read from that line.", class_="note"),
+             el("p", "The model is what the worker declared: a statistic, not a proof.", class_="note") if win["model"] else None]
+
+    markdown = embed_markdown(site_url, project, win)
+    show = [el("div", render_win(project, win, repo_url), class_="card"),
+            el("p", "The card is the file ", el("a", el("code", f"{win['commit'][:10]}….svg"), href=beside(win["commit"])), " beside this page."),
+            [el("p", "Markdown for a README or a profile; the image links back to this page:"), el("code", markdown, class_="copy")]
+            if markdown else None,
+            el("p", "Showing it earns nothing in the hive: no points, no rank, no counter.", class_="note")]
+
+    up = Link("../" + LOCAL_JOIN) if join == LOCAL_JOIN else join or Link(DEFAULT_JOIN_URL)
+    sections = [el("section", el("h2", "What the judge measured"), measured, el("p", facts, class_="note") if facts else None),
+                el("section", el("h2", "Check it yourself"), check, id="verify"),
+                el("section", el("h2", "Show it"), show, id="show"),
+                join_block(up, el("a", f"All of {project}'s integrations" if project else "All the integrations", href=UP))]
+    body = el("body", header, el("main", sections),
+              el("footer", el("p", "Made from the project's public ledger. No script, no tracker, nothing loaded from elsewhere.")), class_="one")
+    return "<!DOCTYPE html>\n" + el("html", head, body, lang="en") + "\n"
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Files
 
 
@@ -1003,30 +1189,33 @@ def summary_json(data):
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026") + "\n"
 
 
-def render(data, title="", repo_url=None, join=None):
+def render(data, title="", repo_url=None, join=None, site_url=None):
     """{file name: text} for one project's page. The same data gives the same bytes.
 
-    Every integration has its card and every member with an integration has a card and a badge, at every run: a card
-    that someone embedded once is still there later, whatever came after it. Nothing is capped and nothing relies on
-    what an earlier run left in the folder: each file is derived again from the whole ledger, so a card also follows
-    what changed since (a login that passed to another account is no longer shown; a task's title is the feed's).
-    The cost is linear: about 3.5 kB per integration and 3 kB per member."""
-    files = {"index.html": render_html(data, title, repo_url, join or Link(DEFAULT_JOIN_URL)),
+    Every integration has its card and its page, and every member with an integration has a card and a badge, at
+    every run: what someone embedded or linked once is still there later, whatever came after it. Nothing is capped
+    and nothing relies on what an earlier run left in the folder (a site is often built in an empty one): each file is
+    derived again from the whole ledger, so a card also follows what changed since (a login that passed to another
+    account is no longer shown; a task's title is the feed's, its goal the task file's). The cost is linear: see
+    COST below."""
+    join = join or Link(DEFAULT_JOIN_URL)
+    files = {"index.html": render_html(data, title, repo_url, join),
              "badge.svg": render_badge(data["totals"]["integrations"]) + "\n", "summary.json": summary_json(data)}
     for member in data["members"]:
         files[card_name(member["id"])] = render_card(data["project"], member) + "\n"
         files[badge_name(member["id"])] = render_member_badge(data["project"], member) + "\n"
     for win in data["_wins"]:
-        name = win_name(win["commit"])
-        if name is not None:
+        name, own = win_name(win["commit"]), win_page_name(win["commit"])
+        if name is not None and own is not None:
             files[name] = render_win(data["project"], win, repo_url) + "\n"
+            files[own] = render_win_page(data["project"], win, repo_url, join, site_url)
     return files
 
 
 def write(out, files):
     """Writes each file whole or not at all, under `out` and nowhere else: a name is one of the three constants,
-    members/<digits>.svg, members/<digits>-badge.svg or wins/<40 hex>.svg, whatever asked for it. Nothing is ever
-    deleted: a file of an earlier run that this run does not write stays as it was."""
+    members/<digits>.svg, members/<digits>-badge.svg, wins/<40 hex>.svg or wins/<40 hex>.html, whatever asked for
+    it. Nothing is ever deleted: a file of an earlier run that this run does not write stays as it was."""
     out = Path(out)
     if any(name not in FIXED_NAMES and not any(pattern.match(name) for pattern in NAMES) for name in files):
         raise PageError("a file name this tool does not write")
@@ -1050,11 +1239,15 @@ def main(argv=None):
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--join", action="store_true", help="the join page is join.html, beside index.html")
     where.add_argument("--join-url", help=f"the join page's address on github.com (default: {DEFAULT_JOIN_URL})")
+    parser.add_argument("--site-url", help="the address --out is published at, as https://owner.github.io/site/project (no final slash): "
+                                           "the page of an integration then gives the Markdown that embeds its card")
     parser.add_argument("--now", help="the instant the page is made for, as 2026-11-13T00:00:00Z (default: HIVE_NOW, or the clock)")
     args = parser.parse_args(argv)
     try:
         if args.repo_url is not None and (not REPO_URL.match(args.repo_url) or args.repo_url.rsplit("/", 1)[1] in (".", "..")):
             raise PageError("--repo-url: https://github.com/owner/name")
+        if args.site_url is not None and site_address(args.site_url) is None:
+            raise PageError("--site-url: https://host/path, lower-case host, plain path segments, no final slash, query or fragment")
         if args.join_url is not None and (not JOIN_URL.match(args.join_url) or {".", ".."} & set(args.join_url.split("/"))):
             raise PageError("--join-url: an address under https://github.com/")
         try:
@@ -1065,8 +1258,8 @@ def main(argv=None):
             raise PageError("--now, or HIVE_NOW: an instant like 2026-11-13T00:00:00Z")
         if not Path(args.state).is_dir():
             raise PageError("--state: the folder of one project's state")
-        join = Link("join.html") if args.join else Link(args.join_url or DEFAULT_JOIN_URL)
-        files = render(collect(args.state, now, args.tasks), plain(args.title, 160), args.repo_url, join)
+        join = LOCAL_JOIN if args.join else Link(args.join_url or DEFAULT_JOIN_URL)
+        files = render(collect(args.state, now, args.tasks), plain(args.title, 160), args.repo_url, join, args.site_url)
         write(args.out, files)
     except PageError as error:
         print(f"page: {hive.safe_text(error, 400)}", file=sys.stderr)
