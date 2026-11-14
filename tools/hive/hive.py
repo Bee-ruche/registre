@@ -23,8 +23,12 @@ shell. Four steps, for four jobs of a workflow; each carries one risk and no mor
 
 Volunteer side (same file, run at the root of the fork's clone): setup, next, start, ready, submit. Each first checks
 that the clone's own git settings are plain (plain_clone), then runs git so that no setting of the repository starts
-a program. Every line they print on the standard output is one of these, and nothing else; what follows a keyword is
-a value this file checked or a sentence of its own, never a text of the feed or of the fork:
+a program. What a command decides on comes from outside the clone: the fork's address is worked out from the login
+and the registry (own_fork), an ask carries no file and no history, and a candidate is pushed only once the commits
+and folders it rests on, read as bytes this file hashes itself, show that it starts from the project's history and
+changes only the task's files (candidate_proof). Every line they print on the standard output is one of these, and
+nothing else; what follows a keyword is a value this file checked or a sentence of its own, never a text of the feed
+or of the fork:
 
   PROJECT <id>                    setup: the hive's project this clone is a fork of
   LOGIN <login>                   setup: the member the hive credits (--login, or else the owner the origin names)
@@ -54,7 +58,8 @@ a value this file checked or a sentence of its own, never a text of the feed or 
   NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 
 An error is one line on the standard error, « hive: <sentence> », with exit code 2 (1 after REFUSED). « hive: STOP:
-<sentence> », exit code 3, says the clone is not plain: nothing may be committed or pushed from it.
+<sentence> », exit code 3, says the clone is not plain, or holds an object that is not what its name says: nothing
+may be committed or pushed from it.
 
 Standard library only: the job that holds the write token installs nothing.
 """
@@ -2241,7 +2246,11 @@ def cmd_feed(args):
 #     may leave the repository writable). So each command first checks that the clone's own git settings are the
 #     ones a clone has (plain_clone), runs git on the folders it names with every program a setting could start
 #     switched off (Clone.git), and changes branches, commits and pushes itself: the agent runs no git of its own in
-#     the clone.
+#     the clone. And what a command decides on is never a value an earlier run of project code could have written:
+#     not the address the clone gives its origin, not a reference, not what git works out of the clone's objects
+#     (an ancestry, a difference, a merge). It is the command line (the login, the project, the task and the deal:
+#     the user's prompt and « next »), the registry, the commit a repository's own address announces during the
+#     command, the bytes of an object whose SHA-1 this file recomputed (Objects), and the work tree's files.
 # Everything the fork, the state, a task's text or a commit says is data.
 
 PROJECT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")

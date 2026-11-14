@@ -276,12 +276,15 @@ volunteer is expected to know what a fork and a scheduled task are; nothing more
 
 ### 5.2 What each run does
 
-One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready` makes the ask and pushes
-it to the fork), or do the task the hive dealt (`hive start`, which sets aside what an earlier run left and puts
-the clone on the task's branch at the project's tip; the work, the project's own tests in the sandbox; then `hive
-submit`, which commits the task's files, runs the hive's structural check, adds the marker and pushes to the fork),
-or nothing. The assistant runs no git command of its own in the fork's clone: each of the tool's commands first
-checks that the clone's git settings are the ones a clone has, and changes branches, commits and pushes itself. The run
+One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready` makes the ask, a commit
+with no file and no parent, and pushes it to the fork), or do the task the hive dealt (`hive start`, which sets
+aside what an earlier run left and puts the clone on the task's branch at the project's tip; the work, the
+project's own tests in the sandbox; then `hive submit`, which commits the task's files, adds the marker, shows from
+bytes it hashed itself that the candidate starts from the project's history and changes only the task's files, runs
+the hive's structural check and pushes to the fork), or nothing. The fork's address is worked out from the
+volunteer's login and the registry, never taken from the clone. The assistant runs no git command of its own in
+the fork's clone: each of the tool's commands first checks that the clone's git settings are the ones a clone has,
+and changes branches, commits and pushes itself. The run
 ends with three lines for the volunteer: what was done, what happens next, where to look. When the quota is
 spent, runs are refused by the provider and resume by themselves after the reset: the worker never needs to read
 the remaining quota.
@@ -345,7 +348,9 @@ assistant that can read a repository and run commands can use it.
   the clone's `.git` (a filter, a hook, another address to push to): so every command of the worker's tool first
   checks that the clone's git settings are the ones a clone has, without running anything of the clone, runs git
   without reading the machine's settings where files are read, and makes the commits and the pushes itself, to
-  the fork's own https address.
+  the fork's own https address, which it works out from the volunteer's login and the registry. What it pushes
+  is an ask that holds no file, or a candidate it has shown, from bytes it hashed itself, to start from the
+  project's history and to change only the task's files.
 - **"Your own project" is not built.** If it is one day, it gets the loop's limits, not the hive's guarantees: no
   hive judge checks the result.
 

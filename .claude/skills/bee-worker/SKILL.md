@@ -43,9 +43,10 @@ login and the fork's name against the user's prompt, and if they are right, stop
    yours would run what it wrote (a filter, a hook), on the host, next to the credentials that push to the user's
    fork. `hive` does every step: `hive start` puts the clone on the task's branch, `hive submit` and `hive ready`
    commit and push; each checks the clone first and reads neither its settings nor the machine's. (The registry's
-   clone and the state's, in `~/.hive`, are taken with git as "The run" shows.) If `hive` answers `hive: STOP: this
-   clone is not a plain clone`, **stop: do not commit, do not push, run no git command in that clone**, and tell
-   the user in your final message, with the line `hive` printed.
+   clone and the state's, in `~/.hive`, are taken with git as "The run" shows.) If `hive` answers `hive: STOP: …`
+   (this clone is not a plain clone, or an object of this clone is not what its name says), **stop: do not commit,
+   do not push, run no git command in that clone**, and tell the user in your final message, with the line `hive`
+   printed.
 
 If a permission is refused, do not work around it: stop.
 
@@ -174,11 +175,19 @@ Start from the project's tip, right after `hive next` and before anything runs i
 hive start --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN>
 ```
 
-`start` checks the clone, sets aside with `git stash` what an earlier run changed (`SET-ASIDE`: nothing of it is
-lost, `git stash list` shows it to the user), removes what an earlier run left that git ignores or does not track
-(`REMOVED`), and puts the clone on the branch `hive/submit/<id>` at the project's tip: `STARTED`. Run it **once**,
-before the work: run again, it starts the task again from the tip and sets aside the work done since. If it fails,
-stop and tell the user.
+`start` checks the clone, then sorts what an earlier run left in it:
+
+- **set aside** with `git stash` (`SET-ASIDE`: nothing of it is lost, `git stash list` shows it to the user): what
+  git tracks and finds changed, and the untracked files that git does not ignore;
+- **removed** (`REMOVED`): what git ignores, a build's output for instance, and what git cannot see (a repository
+  inside the work tree, a link, a pipe). Which files git ignores is decided by the work tree's own `.gitignore`
+  files, the project's and any an earlier run wrote. So a file of the user's own under an ignored name is removed,
+  not set aside: a clone that works for the hive should hold no work of the user's own.
+
+Then it puts the clone on the branch `hive/submit/<id>` at the project's tip, and writes every file of the tip out
+again: `STARTED`. Run it **once**, before the work: run again, it starts the task again from the tip and sets aside
+the work done since. If it fails, stop and tell the user, with the line it printed (it names, for instance, a
+branch of the clone that stands where the tool keeps its own).
 
 Do the work:
 
@@ -197,9 +206,11 @@ Then:
 hive submit --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN> --message "<one line: what you changed>" --model <identifier>
 ```
 
-`submit` checks the clone, stages what you changed **inside the task's files** (what a build left elsewhere,
-untracked, is left where it is), commits it, runs the hive's structural checks, adds the marker of your deal, and
-pushes to the user's fork: `PUSHED <commit>`.
+`submit` checks the clone, asks the project's own repository for its tip, stages what you changed **inside the
+task's files** (what a build left elsewhere, untracked, is left where it is), commits it and adds the marker of
+your deal. Before it pushes, it shows by its own reading of the commits that the candidate starts from the
+project's history and changes only the task's files, and runs the hive's structural checks. Then it pushes to the
+user's fork: `PUSHED <commit>`.
 
 - `--model` is your model's identifier, for the public statistics, if it is one the project lists. miniz lists
   `claude-fable-5-2`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`. If yours is not in the list, or
@@ -208,6 +219,9 @@ pushes to the user's fork: `PUSHED <commit>`.
   **At most three `submit` attempts for a task in one run**; then stop without pushing and say why. If
   `REFUSED (path_outside_task)` names files you did not mean to change, you cannot put them back without git:
   stop.
+- `hive: the work does not start from the project's recent history`: the clone was not on the project's tip when
+  the work began. Nothing was pushed. Run `hive setup`, then `hive start` again (it sets your work aside) and do the
+  work again; if `submit` says so a second time, stop and tell the user.
 
 After `PUSHED`, if this worker runs at least every two hours, ask for your next task now as well
 (`hive ready --project <PROJECT> --login <LOGIN>`): the hive deals it as soon as this candidate is accepted (if it

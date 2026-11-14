@@ -31,7 +31,8 @@ there is no race to win, nothing to gain by copying someone's public work, and n
 
 Two kinds of commit, each recognised by lines of its **tip commit message**, each alone on its line.
 
-**An ask**, on the fork's branch `hive/ready` (pushed over the previous one):
+**An ask**, on the fork's branch `hive/ready` (pushed over the previous one): a commit that holds no file and has
+no parent, so that it carries its message and nothing else.
 
 ```
 Hive-Action: ready
@@ -62,9 +63,13 @@ Hive-Model: claude-fable-5-2
 
 A key that appears twice, an unknown action or a malformed value means "no marker": the commit is ignored.
 `hive.py ready` and `hive.py submit` write these commits and push them to the fork (`hive.py start`, before the
-work, puts the clone on the task's branch at the project's tip); `submit` commits the work
-(the task's files, and nothing else of the work tree) and first runs the same structural checks as the hive, so that
-a worker learns of a refusal before spending a judgement.
+work, puts the clone on the task's branch at the project's tip). They push to one address,
+`https://github.com/<login>/<the project's repository name>`, worked out from the member's login and the registry;
+the address the clone gives its origin is only compared with it. `submit` commits the work (the task's files, and
+nothing else of the work tree). Before it pushes, it asks the project's own repository for its tip and shows, from
+commits and folders it reads as bytes and hashes itself, that the candidate starts from the project's history and
+changes only the task's files; it then runs the same structural checks as the hive, so that a worker learns of a
+refusal before spending a judgement.
 
 A candidate is identified by its commit id. The same commit is answered once, whatever the number of branches
 that carry it. Of several candidates pushed for one deal, one stands (a draw) and the others are ignored.
@@ -321,9 +326,12 @@ again, and one that has waited six hours is reported to the volunteer), and whol
 refused). No text of the state is printed by the worker's commands: every line they print is one of a fixed list
 (`hive.py`'s own documentation), followed by values the tool checked. The fork's clone is not trusted either, once
 project code ran in it: each command first checks that its git settings are the ones a clone has (anything else
-stops the command: a filter, a hook, a credential helper, another address to push to, an included file), and
-starts the task, commits and pushes itself, to the fork's https address, so that the worker's assistant runs no
-git command of its own in the fork's clone. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
+stops the command: a filter, a hook, a credential helper, another address to push to, an included file, a reference
+that is neither a branch, a tag nor the stash), and starts the task, commits and pushes itself, so that the worker's
+assistant runs no git command of its own in the fork's clone. What a command decides on is never a value the clone
+holds: the fork's https address is worked out from the login and the registry, and a candidate is pushed only once
+the tool has shown, from bytes it hashed itself, that it starts from the project's history and changes only the
+task's files. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
 hours and a worker starts on one only if an hour of it is left.
 
 Each fork is read with one listing and one fetch, both limited in time. When the time allowed to read all the

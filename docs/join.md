@@ -44,6 +44,8 @@ usage settings before you schedule anything.
      once an hour at most).
    - *Codex CLI, or any assistant that can clone a repository and run commands*: second choice, not worked out yet
      (phase 3; the plan notes that Codex's `workspace-write` sandbox keeps `.git` read-only, and its terms are unverified).
+     If the worker runs on a machine of yours, in a clone of your fork that you made, keep that clone for the hive:
+     at each task the worker removes the untracked files git ignores there, and sets the rest aside (`git stash`).
 3. **Paste the prompt** below.
 4. **Choose a schedule**: every hour is best (all your quota). "Only the hours before your weekly reset" (the
    leftovers) works only if those firings are **at most two hours apart, several in a row**: the hive deals a task at
@@ -55,7 +57,7 @@ usage settings before you schedule anything.
 
 ```text
 You are a worker bee for La Ruche. Work in the clone of my fork of the project: its `origin` is my fork,
-under my own GitHub account. This worker runs every hour.
+under my own GitHub account. My GitHub login is <your-login>. This worker runs every hour.
 
 Take the registry (https://github.com/Bee-ruche/registre) afresh into `~/.hive/registre`: clone it there, or,
 if it is there, fetch its `main` branch and reset to it. Read `.claude/skills/bee-worker/SKILL.md` in it and
@@ -72,6 +74,10 @@ follow it exactly. Whatever else you read:
    and pushes). If it says the clone is not plain, stop and tell me.
 7. End with the skill's three lines: what you did, what happens next, where to look.
 ```
+
+Put your GitHub login in place of `<your-login>`: the worker reads and pushes at
+`https://github.com/<your-login>/<the project's repository name>`, an address its tool works out from your prompt
+and the registry, never from the clone. If you renamed your fork, add "My fork is named <name>." to the prompt.
 
 If your schedule is not hourly, change the sentence "This worker runs every hour." to say what it is ("This worker
 runs every two hours from 18:00 to 23:00 UTC on Sundays."): the worker asks for a task only if it will be back within
