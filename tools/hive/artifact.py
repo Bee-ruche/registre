@@ -18,7 +18,9 @@ What it takes is still only data from a job that held no key: the caller checks 
 its job published, the bundle against the plan) or believes it for nothing more than what that job may say (the
 judge's answers).
 
-    artifact.py take --name plan --member plan.json:33554432 --member candidates.bundle:2147483648 --into taken
+    artifact.py take --name plan --member plan.json:67108864 --into taken/plan
+
+(one file per archive, as the run uploads them: the plan, the candidates, the judge's answers)
 
 reads GITHUB_REPOSITORY and GITHUB_RUN_ID, and calls `gh` (which reads GH_TOKEN: a token that may read the
 repository's Actions is enough). Exit codes: 0 taken; 3 the run has no artifact of that name; 1 refused, or failed.

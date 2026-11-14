@@ -17,7 +17,8 @@ shell. Four steps, for four jobs of a workflow; each carries one risk and no mor
   judge   runs contributors' code, in the judge's container. Holds no secret and cannot change the plan. Writes
           the judge's answers by judged commit id.
   apply   the only step that can write to the project. Runs nobody's code and talks to no fork: it takes the candidates from
-          the plan, derives every commit itself, takes from the judging step the judge's answers only, pushes the
+          the plan, derives every commit itself, takes from the judging step the judge's answers and the list of
+          what it started on, nothing else, pushes the
           judged commits (never anything but a descendant of the judged tip) and records.
 
 Volunteer side (same file, run at the root of the fork's clone): setup, next, ready, submit. Each first checks that
@@ -600,7 +601,8 @@ def ignored_ok(data):
 
 def read_ignored(folder):
     """What the hive does not read again, fork by fork: {fork's id: [commit ids]}: branch tips without a marker,
-    tips marked for another member than the fork's owner, claims the hive did not record. Kept per fork, and only
+    tips marked for another member than the fork's owner, submits for a deal their member does not hold, asks already
+    served. Kept per fork, and only
     for commits still at a tip of that fork: what one fork pushes never costs another its entries."""
     data = read_state(folder, "ignored.json", {})
     return data if ignored_ok(data) else {}
