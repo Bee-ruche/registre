@@ -3472,6 +3472,7 @@ class Volunteer(Base):
         self.registry, self.state_root, self.err = str(self.w.registry), str(self.w.state.parent), ""
         self.settings = self.alice.work / ".git/config"
         self.pristine = self.settings.read_text()
+        self.checked_out = self.only_files(self.work_tree())  # the project's tip, as git writes it in a work tree
 
     def run_cli(self, *argv, cwd=None, local=True):
         """(exit code, standard output) of a command; what it wrote on the standard error is kept in self.err.
@@ -3549,6 +3550,43 @@ class Volunteer(Base):
 
     def fork_branches(self):
         return sh("git", "for-each-ref", "--format=%(refname)", "refs/heads", cwd=self.alice.bare).stdout.split()
+
+    def work_tree(self, cwd=None):
+        """Every entry of a work tree but its own .git: {path: what it is}, a file by its bytes, a link by where it
+        leads (never followed), a folder by its permission bits."""
+        root, found = Path(cwd or self.alice.work), {}
+        for folder, folders, files in os.walk(root):
+            if Path(folder) == root and ".git" in folders:
+                folders.remove(".git")
+            for name in folders + files:
+                path = Path(folder) / name
+                relative = str(path.relative_to(root))
+                if path.is_symlink():
+                    found[relative] = ("link", os.readlink(path))
+                elif path.is_dir():
+                    found[relative] = ("folder", os.lstat(path).st_mode & 0o7777)
+                elif path.is_file():
+                    found[relative] = ("file", path.read_bytes())
+                else:
+                    found[relative] = ("other", None)
+        return found
+
+    def clone_state(self):
+        """What a command that refuses must leave as it found it: the work tree, HEAD, every reference (the stash's
+        included) and the clone's settings."""
+        refs = sh("git", "for-each-ref", "--format=%(refname) %(objectname)", cwd=self.alice.work).stdout
+        return self.work_tree(), (self.alice.work / ".git/HEAD").read_text(), refs, self.settings.read_bytes()
+
+    def tip_files(self):
+        """The files of the project's tip as git wrote them in the fresh clone (its .gitattributes changes line ends):
+        {path: ("file", bytes)}, folders apart."""
+        return self.checked_out
+
+    def only_files(self, tree):
+        return {path: what for path, what in tree.items() if what[0] != "folder"}
+
+    def stashes(self):
+        return sh("git", "stash", "list", "--format=%gs", cwd=self.alice.work).stdout.splitlines()
 
 
 class TestVolunteerSide(Volunteer):
@@ -4057,9 +4095,11 @@ class TestVolunteerSide(Volunteer):
                                        "clone of your fork (git clone, without --depth) and run setup again\n")
 
     def test_submit_commits_the_tasks_files_marks_the_candidate_and_pushes_it(self):
-        """After the sandbox the worker runs no git of its own: submit stages, commits, marks and pushes."""
+        """The worker runs no git of its own: start puts the clone on the task's branch, submit stages, commits, marks
+        and pushes."""
         dealt = self.w.deal(self.alice, "toy-0001")
-        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n").write("build/out.o", b"\0\1").write("notes.txt", "x\n")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n").write("build/out.o", b"\0\1").write("notes.txt", "x\n")
         base = self.head()
         with mock.patch.dict(os.environ):
             for name in [name for name in os.environ if name.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]:
@@ -4223,18 +4263,20 @@ class TestVolunteerSide(Volunteer):
         before = self.head()
         for login in ("a b", "-alice", "alice-", "a" * 40, "al\nice", "alice/toy", ""):
             for command in (("next", "--project", "toy", "--state", self.state_root), ("ready", "--no-push"),
-                            ("submit", "--project", "toy", "--task", "toy-0001", "--deal", NOW, "--no-push")):
+                            ("submit", "--project", "toy", "--task", "toy-0001", "--deal", NOW, "--no-push"),
+                            ("start", "--project", "toy", "--task", "toy-0001", "--deal", NOW)):
                 with self.subTest(login=login, command=command[0]):
                     self.one_line(self.run_cli(*command, "--registry", self.registry, f"--login={login}"), "--login: your GitHub login")
         for tip in ("--force", "-h", "origin/main^{tree}", "HEAD~1", "origin/main origin/main", "@{-1}", "x" * 201):
             with self.subTest(tip=tip):
                 self.one_line(self.ready(f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
                 self.one_line(self.submit("toy-0001", NOW, f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
+                self.one_line(self.begin("toy-0001", NOW, f"--upstream={tip}"), "--upstream: a branch's name or a commit id")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
     def test_without_a_tip_given_submit_checks_the_candidate_on_the_tip_setup_fetched(self):
-        """The worker's guide gives submit no --upstream. The candidate is then checked as the hive will check it:
-        merged on the project's tip that setup fetched (upstream/<the project's branch>), which may be ahead of the
+        """The worker's guide gives start and submit no --upstream. The task is then started from, and the candidate
+        checked on, the project's tip that setup fetched (upstream/<the project's branch>), which may be ahead of the
         fork's own copy of that branch."""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.w.upstream_commit("lib.c", LIB.replace("return 0;", "return 10;"))
@@ -4246,7 +4288,9 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((code, text.startswith("REFUSED (conflict): the candidate does not merge on the project's tip: start again from it ")),
                          (1, True), text + self.err)
         self.spoken(text)
-        sh("git", "checkout", "--quiet", "--force", "-B", "hive/submit/toy-0001", "upstream/main", cwd=self.alice.work)
+        code, text = self.run_cli("start", "--registry", self.registry, "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--login", "alice")
+        self.assertEqual((code, self.spoken(text)[:2]), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
+                                                             f"STARTED hive/submit/toy-0001 at {self.w.tip()}"]), self.err)
         self.alice.write("lib.c", LIB.replace("return 0;", "return 10; /* FAST */"))
         code, text = self.run_cli(*submit)
         self.assertEqual((code, self.spoken(text)[0].split()[0], self.fork_branches()), (0, "NOT-PUSHED", ["refs/heads/main"]), text + self.err)
@@ -4375,6 +4419,278 @@ class TestVolunteerSide(Volunteer):
             self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)
         self.assertEqual([who("HEAD"), who("HEAD^")], ["Ann Author <ann@example.invalid>|Carl Committer <carl@example.invalid>"] * 2,
                          "the candidate's two commits, the work and its marker")
+
+    def then_start(self, task="toy-0001", deal=NOW):
+        """The line start ends on: what to do next, with the values it checked."""
+        return (f"THEN: change only the task's files; build and test inside the sandbox only, never on the host; run no git command "
+                f"yourself; then run: hive.py submit --project toy --task {task} --deal {deal} --login alice --message \"<one line: what "
+                "you changed>\"")
+
+    def test_start_puts_a_fresh_clone_on_the_tasks_branch_at_the_projects_tip(self):
+        """What submit commits on is the branch HEAD names, and what the hive merges the candidate on is the project's
+        tip: start makes HEAD name the task's branch, hive/submit/<task>, at that tip, and changes nothing else. It
+        writes no setting (a branch that follows another is one), and says what it did in lines of the tool's own."""
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)), (0, [f"STARTED hive/submit/toy-0001 at {self.start}", self.then_start()]), self.err)
+        self.assertEqual(((self.alice.work / ".git/HEAD").read_text(), self.head()), ("ref: refs/heads/hive/submit/toy-0001\n", self.start))
+        self.assertEqual(self.settings.read_text(), self.pristine, "no setting was written")
+        self.assertEqual((self.only_files(self.work_tree()), self.stashes()), (self.tip_files(), []), "nothing to set aside, nothing removed")
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"], "start pushes nothing")
+
+    def test_start_sets_aside_the_work_of_a_clone_left_on_another_branch(self):
+        """A clone may be left on another branch, with work in progress: someone's, or an earlier run's. What could be
+        someone's work (a change to a tracked file, a new file git does not ignore, a change staged) is stashed, where
+        « git stash list » shows it, and the branch it was on stays where it was. The stash names who made it as every
+        commit of the tool does, whatever the machine's settings would have said."""
+        self.alice.write("lib.c", LIB + "int committed;\n").commit("work in progress")
+        kept = self.head()
+        self.alice.write("lib.c", LIB + "int changed;\n").write("notes/idea.txt", "an idea\n").write("src/staged.c", "int s;\n")
+        sh("git", "add", "src/staged.c", cwd=self.alice.work)
+        with mock.patch.dict(os.environ):
+            for name in [name for name in os.environ if name.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]:
+                del os.environ[name]  # a machine whose only identity is in its own settings, which these commands do not read
+            code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:2]), (0, ["SET-ASIDE 3 change(s) of an earlier run: git stash list shows them",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(((self.alice.work / ".git/HEAD").read_text(), self.head()), ("ref: refs/heads/hive/submit/toy-0001\n", self.start))
+        self.assertEqual(sh("git", "rev-parse", "claude/work", cwd=self.alice.work).stdout.strip(), kept, "the branch it was on stays")
+        self.assertEqual(self.stashes(), ["On claude/work: hive start toy-0001: what the work tree held before"])
+        shown = [sh("git", "show", f"stash@{{0}}{where}", cwd=self.alice.work).stdout for where in (":lib.c", "^2:src/staged.c", "^3:notes/idea.txt")]
+        self.assertEqual(shown, [LIB + "int changed;\n", "int s;\n", "an idea\n"], "nothing of it is lost")
+        self.assertEqual(sh("git", "log", "-1", "--format=%cn <%ce>", "stash@{0}", cwd=self.alice.work).stdout.strip(),
+                         "alice <alice@users.noreply.github.com>")
+        self.assertEqual((self.only_files(self.work_tree()), sh("git", "status", "--porcelain", "--ignored", cwd=self.alice.work).stdout),
+                         (self.tip_files(), ""))
+
+    def test_what_an_earlier_run_left_under_an_ignored_name_is_removed(self):
+        """A build writes under names git ignores, by a .gitignore of the work tree or by .git/info/exclude. « git stash
+        --include-untracked » leaves those where they are: they would survive every run, never be seen by submit, and
+        be there again when the next task's code runs in the sandbox. start removes them, and says how many."""
+        self.alice.write(".gitignore", "build/\n*.o\n").write("build/lib.a", b"\0").write("build/deep/x.d", "x\n").write("src/a.o", b"\0")
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("cache/\n")
+        self.alice.write("cache/state", "kept by a build\n")
+        self.assertEqual(sorted(sh("git", "status", "--porcelain", "--ignored", cwd=self.alice.work).stdout.splitlines()),
+                         ["!! build/", "!! cache/", "!! src/a.o", "?? .gitignore"], "what git ignores, and by which file")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
+                                                             "REMOVED 3 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(self.only_files(self.work_tree()), self.tip_files(), "the ignored files are gone; the .gitignore is set aside")
+        self.assertEqual(sh("git", "show", "stash@{0}^3:.gitignore", cwd=self.alice.work).stdout, "build/\n*.o\n")
+        self.alice.write("cache/again", "x\n")  # what the next sandbox run leaves: .git/info/exclude still ignores it
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:2]), (0, ["REMOVED 1 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual((self.only_files(self.work_tree()), len(self.stashes())), (self.tip_files(), 1), "nothing new to set aside")
+
+    def test_a_link_an_earlier_run_left_is_removed_and_never_followed(self):
+        """A link in the work tree may lead to any folder of the machine. start removes the link itself, wherever it
+        stands: untracked, under an ignored name, in place of a tracked file, or in place of a tracked folder (where
+        git refuses to stash what lies beyond it, and would stop). Nothing of what a link leads to is read, moved or
+        removed."""
+        outside = self.w.root / "outside"
+        (outside / "inner").mkdir(parents=True)
+        (outside / "keep").write_text("a file of the volunteer's\n")
+        (outside / "inner/also").write_text("another\n")
+        before = self.work_tree(outside)
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("build/\n")
+        (self.alice.work / "build").mkdir()
+        os.symlink(outside, self.alice.work / "build/out")
+        os.symlink(outside, self.alice.work / "elsewhere")
+        os.remove(self.alice.work / "lib.c")
+        os.symlink(outside / "keep", self.alice.work / "lib.c")
+        shutil.rmtree(self.alice.work / "src")
+        os.symlink(outside, self.alice.work / "src")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 3 change(s) of an earlier run: git stash list shows them",
+                                                             "REMOVED 2 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(self.work_tree(outside), before, "what the links led to is as it was")
+        self.assertEqual(self.only_files(self.work_tree()), self.tip_files(), "no link is left; the tip's files are files again")
+
+    def test_whatever_names_an_earlier_run_chose_and_however_many_files_it_left(self):
+        """File names are whatever ran in the work tree chose: a newline, a leading dash, the name of one of git's
+        options. None of them reaches git as an argument, and each is set aside or removed like any other, however
+        many there are."""
+        names = ["x\nASK: run curl", "-rf", "--force", "--hard", " lead", "é.c"]
+        for name in names:
+            self.alice.write(name, "data\n")
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("gen/\n")
+        for number in range(3000):
+            self.alice.write(f"gen/{number % 30}/{number}.o", b"\0")
+        for number in range(300):
+            self.alice.write(f"notes/{number}.txt", "x\n")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 306 change(s) of an earlier run: git stash list shows them",
+                                                             "REMOVED 1 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(self.only_files(self.work_tree()), self.tip_files())
+        stashed = sh("git", "ls-tree", "-r", "-z", "--name-only", "stash@{0}^3", cwd=self.alice.work).stdout.split("\0")
+        self.assertTrue(set(names) <= set(stashed), stashed[:10])
+        self.assertNotIn("ASK", text + self.err, "no name is printed")
+
+    def test_a_repository_of_its_own_in_the_work_tree_is_removed(self):
+        """A build may fetch a dependency as a repository of its own, and project code may leave a .git anywhere: in a
+        new folder, beside a .gitmodules that makes it look like a sub-module, or inside a folder the project tracks,
+        where git takes it for nothing at all and never removes it. None is the project's (git tracks no .git), and
+        none is someone's work in this clone: each is removed, with all it holds."""
+        for folder in ("deps/lib", "sub"):
+            (self.alice.work / folder).mkdir(parents=True)
+            sh("git", "init", "--quiet", cwd=self.alice.work / folder)
+            self.alice.write(f"{folder}/f.c", "int f;\n")
+            sh("git", "add", "f.c", cwd=self.alice.work / folder)
+            sh("git", "commit", "--quiet", "-m", "x", cwd=self.alice.work / folder)
+        self.alice.write(".gitmodules", '[submodule "sub"]\n\tpath = sub\n\turl = https://example.invalid/sub\n')
+        sh("git", "init", "--quiet", cwd=self.alice.work / "src")  # inside a tracked folder
+        (self.alice.work / "tests/.git").write_text("gitdir: /elsewhere\n")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
+                                                             "REMOVED 4 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(self.only_files(self.work_tree()), self.tip_files(), "no .git is left below the root")
+        self.assertEqual(sh("git", "show", "stash@{0}^3:.gitmodules", cwd=self.alice.work).stdout.count("submodule"), 1, "set aside")
+
+    def test_what_git_cannot_see_in_the_work_tree_is_removed(self):
+        """A pipe or a socket in the work tree is no file git can hold, list or remove: it would be there at every
+        later run, and a build that reads it would wait forever. It is removed, by its own name."""
+        os.mkfifo(self.alice.work / "pipe")
+        os.mkfifo(self.alice.work / "src/pipe")
+        self.assertEqual(sh("git", "status", "--porcelain", "--ignored", cwd=self.alice.work).stdout, "", "git does not see them")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:2]), (0, ["REMOVED 2 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        self.assertEqual(self.only_files(self.work_tree()), self.tip_files())
+
+    def test_a_folder_an_earlier_run_made_read_only_is_opened_first(self):
+        """An account other than root cannot remove a file from a read-only folder, nor write one into it: git would
+        stop half-way, the work set aside and nothing started. So every folder of the work tree that its owner cannot
+        list and change is opened to its owner first (and to no one else), a link never. (The tests run as root,
+        whom nothing stops: they see the folders opened.)"""
+        outside = self.w.root / "outside"
+        outside.mkdir(mode=0o500)
+        os.chmod(outside, 0o500)
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("build/\n")
+        self.alice.write("src/new.c", "int n;\n").write("build/deep/x.o", b"\0").write("lib.c", "changed\n", mode=0o444)
+        os.symlink(outside, self.alice.work / "build/out")
+        for folder in ("build/deep", "build", "src"):
+            os.chmod(self.alice.work / folder, 0o555)
+        os.chmod(self.alice.work / "tests", 0o500)
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 2 change(s) of an earlier run: git stash list shows them",
+                                                             "REMOVED 1 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+        tree = self.work_tree()
+        self.assertEqual((tree["src"], tree["tests"]), (("folder", 0o755), ("folder", 0o700)), "opened to its owner, and no more")
+        self.assertEqual(self.only_files(tree), self.tip_files())
+        self.assertEqual(os.lstat(outside).st_mode & 0o777, 0o500, "the folder a link led to is as it was")
+
+    def test_start_touches_nothing_when_a_value_or_the_clone_is_wrong(self):
+        """Each refusal comes before the first change: a task that is not open, a deal that is not an instant, a tip
+        that is not a plain name or not in the clone, a login that is not one or not the fork's owner, a clone that is
+        not plain. The command ends with one line, and the clone (its work tree with what an earlier run left, HEAD,
+        every reference, its settings) is as it was."""
+        self.alice.write("lib.c", LIB + "int work;\n").write("notes.txt", "x\n").write("cache/x", "x\n")
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("cache/\n")
+        before = self.clone_state()
+        for wrong, said in ((("--task", "toy-9999"), "task toy-9999 is not in the project's tasks"),
+                            (("--task", "toy-0003"), "task toy-0003 is closed: the hive takes no candidate for it"),
+                            (("--deal", "today"), "--deal: the instant 'next' printed after DEAL"),
+                            (("--deal", "2026-99-99T99:99:99Z"), "--deal: the instant 'next' printed after DEAL"),
+                            (("--upstream", "--force"), "--upstream: a branch's name or a commit id"),
+                            (("--upstream", "origin/main^{tree}"), "--upstream: a branch's name or a commit id"),
+                            (("--upstream", "nowhere"), "the project's tip (nowhere) is not in this clone: run hive.py setup, then this "
+                                                        "command again"),
+                            ((), "the project's tip (refs/remotes/upstream/main) is not in this clone: run hive.py setup, then this "
+                                 "command again"),
+                            (("--login", "a b"), "--login: your GitHub login")):
+            with self.subTest(wrong=wrong):
+                command = ["start", "--registry", self.registry, "--project", "toy", "--task", "toy-0001", "--deal", NOW, "--login", "alice"]
+                if wrong and wrong[0] != "--upstream":
+                    command[command.index(wrong[0]) + 1] = wrong[1]
+                elif wrong:
+                    command.append(f"--upstream={wrong[1]}")
+                self.one_line(self.run_cli(*command), said)
+                self.assertEqual(self.clone_state(), before)
+        sh("git", "remote", "set-url", "origin", "https://github.com/mallory/toy.git", cwd=self.alice.work)
+        self.one_line(self.begin("toy-0001", NOW), "origin belongs to mallory, not to alice: a worker pushes only to its user's own fork")
+        sh("git", "remote", "set-url", "origin", str(self.alice.bare), cwd=self.alice.work)
+        before = self.clone_state()
+        (self.alice.work / ".git/info/attributes").write_text("* filter=x\n")
+        self.assertEqual(self.begin("toy-0001", NOW), (3, ""), self.err)
+        (self.alice.work / ".git/info/attributes").unlink()
+        self.assertEqual(self.clone_state(), before, "a clone that is not plain is not touched either")
+
+    def test_start_run_again_starts_the_task_again_and_sets_the_work_aside(self):
+        """start cannot tell a new run from the same run: it does the same each time. Run again after some work, it
+        starts the task again from the tip, and the work is set aside, not lost: the worker's guide says to run it
+        once, before the work, and a later run that starts the task again finds the earlier work in the stash."""
+        self.assertEqual(self.begin("toy-0001", NOW)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* half done */\n")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
+                                                         f"STARTED hive/submit/toy-0001 at {self.start}", self.then_start()]), self.err)
+        self.assertEqual(sh("git", "show", "stash@{0}:lib.c", cwd=self.alice.work).stdout, LIB + "/* half done */\n")
+        self.assertEqual(self.stashes(), ["On hive/submit/toy-0001: hive start toy-0001: what the work tree held before"])
+        self.assertEqual(((self.alice.work / ".git/HEAD").read_text(), self.head(), self.only_files(self.work_tree())),
+                         ("ref: refs/heads/hive/submit/toy-0001\n", self.start, self.tip_files()))
+        self.assertEqual(self.begin("toy-0001", NOW), (0, f"STARTED hive/submit/toy-0001 at {self.start}\n{self.then_start()}\n"),
+                         "nothing left to set aside: the same as on a fresh clone")
+
+    def test_a_candidate_the_branch_held_stays_in_its_log(self):
+        """A candidate whose push did not land is on the task's branch only; a later start resets that branch to the
+        tip. The commits it held stay in the branch's log (git reflog), which start writes whatever the clone's
+        settings say: a clone may switch the logs off."""
+        self.assertIn("\tlogallrefupdates = true\n", self.pristine)
+        self.settings.write_text(self.pristine.replace("\tlogallrefupdates = true\n", "\tlogallrefupdates = false\n"))
+        self.assertEqual(self.begin("toy-0001", NOW)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        code, text = self.submit("toy-0001", NOW, "--no-push")
+        candidate = self.head()
+        self.assertEqual((code, text.split()[0]), (0, "NOT-PUSHED"), self.err)
+        self.assertEqual(self.begin("toy-0001", NOW)[0], 0, self.err)
+        self.assertEqual(self.head(), self.start)
+        logged = sh("git", "reflog", "show", "--format=%H", "refs/heads/hive/submit/toy-0001", cwd=self.alice.work).stdout.split()
+        self.assertIn(candidate, logged)
+
+    def test_what_git_could_not_remove_ends_the_command_and_nothing_is_started(self):
+        """STARTED says the work tree holds the tip's files and nothing else. When git leaves a leftover where it was
+        (here its « clean » is made to do nothing, as a folder it may not change makes it), or a leftover cannot be
+        removed, the command ends with one line, and HEAD has not moved. (`subprocess.run` and `os.unlink` are
+        replaced, each for one case.)"""
+        with open(self.alice.work / ".git/info/exclude", "a") as exclude:
+            exclude.write("build/\n")
+        self.alice.write("build/x.o", b"\0")
+        real = subprocess.run
+
+        def run(command, **options):
+            if "clean" in command:
+                return subprocess.CompletedProcess(command, 0, b"", b"")
+            return real(command, **options)
+        with mock.patch.object(hive.subprocess, "run", side_effect=run):
+            self.one_line(self.begin("toy-0001", NOW), "the work tree still holds files an earlier run left, which git could not set aside or "
+                                                      "remove: tell the user")
+        self.assertEqual((self.alice.work / ".git/HEAD").read_text(), "ref: refs/heads/claude/work\n")
+        os.mkfifo(self.alice.work / "pipe")
+        os.symlink(self.w.root, self.alice.work / "src2")
+        shutil.rmtree(self.alice.work / "src")
+        os.symlink(self.w.root, self.alice.work / "src")
+        for name, said in (("src", "a link an earlier run left in the work tree could not be removed: tell the user"),
+                           ("pipe", "a file an earlier run left in the work tree could not be removed: tell the user")):
+            unlink = os.unlink
+
+            def refused(path, *more, name=name, unlink=unlink, **options):
+                if os.fsdecode(path).endswith("/" + name):
+                    raise PermissionError(13, "Permission denied", path)
+                return unlink(path, *more, **options)
+            with mock.patch.object(os, "unlink", side_effect=refused):
+                self.one_line(self.begin("toy-0001", NOW), said)
+            self.assertEqual((self.alice.work / ".git/HEAD").read_text(), "ref: refs/heads/claude/work\n")
+        self.assertEqual(self.begin("toy-0001", NOW)[0], 0, self.err)
 
 
 class TestTheWorkersClone(Volunteer):
@@ -4600,6 +4916,41 @@ class TestTheWorkersClone(Volunteer):
             self.assertEqual((command()[0], pwned.exists()), (3, False), name)
         sh("git", "status", cwd=self.alice.work)
         self.assertTrue(pwned.exists(), "git itself runs it: the test plants what it means to")
+
+    def test_start_runs_no_filter_and_no_hook_that_the_machines_settings_define(self):
+        """The two git commands the worker's guide used to give, run with plain git, read the machine's settings: a
+        filter they define (git-lfs is a common one) ran on files and on a .gitattributes an earlier run left in the
+        work tree, and so did a hook of theirs. start runs the same steps through Clone.git, which reads no setting of
+        the machine: the control below, on a copy of the same clone, shows that plain git runs all three."""
+        root = self.w.root
+        hooks, machine = root / "machine-hooks", root / "gitconfig"
+        hooks.mkdir()
+        (hooks / "post-checkout").write_text(f"#!/bin/sh\ntouch {root}/HOOKED\n")
+        os.chmod(hooks / "post-checkout", 0o755)
+        machine.write_text(f'[filter "x"]\n\tclean = "touch {root}/CLEANED; cat"\n\tsmudge = "touch {root}/SMUDGED; cat"\n'
+                           f"[core]\n\thooksPath = {hooks}\n")
+        # The project's tip moves on: its lib.c differs from the clone's, and its own .gitattributes selects the filter.
+        tree = sh("git", "mktree", cwd=self.alice.work, stdin="".join(
+            f"100644 blob {sh('git', 'hash-object', '-w', '--stdin', cwd=self.alice.work, stdin=content).stdout.strip()}\t{name}\n"
+            for name, content in ((".gitattributes", "*.c filter=x\n"), ("lib.c", LIB + "int moved;\n")))).stdout.strip()
+        tip = sh("git", "commit-tree", tree, "-p", self.start, "-m", "the tip moves", cwd=self.alice.work).stdout.strip()
+        sh("git", "update-ref", "refs/remotes/origin/main", tip, cwd=self.alice.work)
+        # What an earlier run left: a .gitattributes that selects the filter for every file, and a changed file.
+        self.alice.write(".gitattributes", "* filter=x\n").write("src/a.c", "int changed;\n")
+        copy = root / "copy"
+        shutil.copytree(self.alice.work, copy, symlinks=True)
+        marks = [root / name for name in ("CLEANED", "SMUDGED", "HOOKED")]
+        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(machine)}):
+            for command in (["git", "stash", "--include-untracked", "--quiet"], ["git", "checkout", "-B", "hive/submit/toy-0001", tip]):
+                subprocess.run(command, cwd=copy, env=dict(os.environ), check=True, capture_output=True)
+            self.assertEqual([mark.exists() for mark in marks], [True, True, True], "plain git runs the filter both ways, and the hook")
+            for mark in marks:
+                mark.unlink()
+            code, text = self.begin("toy-0001", NOW)
+        lines = self.spoken(text)
+        self.assertEqual((code, lines[0].startswith("SET-ASIDE "), lines[1]), (0, True, f"STARTED hive/submit/toy-0001 at {tip}"), self.err)
+        self.assertEqual([mark.exists() for mark in marks], [False, False, False], "start ran none of them")
+        self.assertEqual(self.head(), tip)
 
     def test_what_git_a_cloud_session_and_a_checkout_action_write_is_plain(self):
         self.settings.write_text(

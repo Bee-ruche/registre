@@ -2338,14 +2338,16 @@ class Clone:
     def __init__(self, root, settings):
         self.root, self.git_dir, self.settings = root, root / ".git", settings
 
-    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False):
+    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True):
         """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
         turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read:
         a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
         because for these commands no filter is defined anywhere (the clone's own settings define none:
         plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings ARE
         read: the volunteer's credentials and proxy live there, and a fetch or a push converts no file. raw: the
-        input and the output are bytes (file names are bytes for git)."""
+        input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
+        whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
+        reading takes for a file of that name, and then removes nothing)."""
         environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
                             "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
@@ -2357,7 +2359,8 @@ class Clone:
                 raise HiveError("not an address a worker talks to")
             environment["GIT_ALLOW_PROTOCOL"] = parts[2]
         environment.update(env or {})
-        command = ["git", *GIT_BASE, *GIT_WORKER, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
+        worker = GIT_WORKER if literal else tuple(option for option in GIT_WORKER if option != "--literal-pathspecs")
+        command = ["git", *GIT_BASE, *worker, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
         try:
             result = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout, env=environment, cwd=self.root,
                                     **({} if raw else {"text": True, "errors": "replace"}))
@@ -2950,7 +2953,7 @@ def cmd_start(args):
         raise HiveError("--upstream: a branch's name or a commit id")
     found = clone.git("rev-parse", "--verify", "--quiet", f"{upstream}^{{commit}}", check=False)
     tip = found.stdout.strip()
-    if found.returncode != 0 or not is_sha(tip):
+    if found.returncode != 0:
         raise HiveError(f"the project's tip ({upstream}) is not in this clone: run hive.py setup, then this command again")
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
@@ -2964,7 +2967,7 @@ def cmd_start(args):
         raise HiveError("a link an earlier run left in the work tree could not be removed: tell the user") from None
     before = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
     clone.git("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before",
-              env=who)
+              env=who, literal=False)
     after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
     set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
     removed += len(untracked(clone))
