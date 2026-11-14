@@ -53,7 +53,8 @@ or of the fork:
   ASKED <commit>                  ready: the ask is pushed to the fork
   WITHDRAWN                       ready --withdraw: the ask is taken back
   REFUSED (<reason>): <sentence> <details as JSON>
-                                  submit: a structural rule is broken: nothing was committed or pushed
+                                  submit: a structural rule is broken: nothing was committed or pushed (the details
+                                  are numbers, and paths that the project's own commit holds)
   PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
   NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 
@@ -2882,6 +2883,62 @@ def project_tip(clone, address, branch):
     return tip
 
 
+def holds(objects, tree, path):
+    """True if a tree holds an entry at this path (bytes), each folder on the way read as its own bytes and hashed."""
+    parts = path.split(b"/")
+    for number, part in enumerate(parts):
+        entry = folder_listing(objects.held("tree", tree)).get(part) if part else None
+        if entry is None or (number < len(parts) - 1 and entry[0] != FOLDER_MODE):
+            return False
+        tree = entry[1]
+    return True
+
+
+def named_paths(objects, tree, paths):
+    """The details of a refusal for paths outside the task: how many there are, and the names of ten at most. A name
+    is printed only if the project's own commit holds an entry at that path (`tree`, read as bytes this tool hashed):
+    a name the project does not hold is one that whatever ran in the clone chose, letter by letter, and what a
+    command prints is read by an agent. Those are counted (new_names), never printed."""
+    known = [path for path in sorted(paths) if holds(objects, tree, path.encode("utf-8", errors="surrogateescape"))]
+    detail = {"paths": [safe_text(path, 200) for path in known[:10]], "files": len(paths)}
+    return {**detail, "new_names": len(paths) - len(known)} if len(known) < len(paths) else detail
+
+
+def made_by(raw, who, login):
+    """True if a commit's own bytes name, as its author and as its committer, once each and whatever the dates, one of
+    the two names this tool commits under for the member: the one the environment gives now (`who`: Clone.identity),
+    or the member's login with the address GitHub gives every account."""
+    lines = raw.split(b"\n\n", 1)[0].split(b"\n")
+    plain = (login, f"{login}@users.noreply.github.com")
+    for kind, named in (("author", (who["GIT_AUTHOR_NAME"], who["GIT_AUTHOR_EMAIL"])), ("committer", (who["GIT_COMMITTER_NAME"], who["GIT_COMMITTER_EMAIL"]))):
+        said = [line for line in lines if line.startswith(kind.encode() + b" ")]
+        if len(said) != 1 or not any(re.fullmatch(re.escape(f"{kind} {name} <{email}> ".encode()) + rb"[0-9]{1,12} [+-][0-9]{4}", said[0])
+                                     for name, email in (named, plain)):
+            return False
+    return True
+
+
+def rests_on(clone, tip, head, limits):
+    """(base, its tree, own): the commit of the project's history that the clone's HEAD rests on, and the clone's own
+    commits above it, the nearest first, each as (id, tree, its bytes). Read as candidate_proof reads: from the tip
+    the project's own address announced, through bytes this tool hashed. A candidate is made on `base`, never on the
+    clone's own commits: those are whatever the branch held, an earlier candidate or anything else, and none of them
+    goes to the fork unless it is the candidate itself, made by this tool, run again."""
+    with Objects(clone) as objects:
+        if objects.read("commit", tip) is None:
+            raise HiveError(NOT_HELD)
+        base, _ = start_of_candidate(objects, head, project_history(objects, tip), limits["commits"])
+        if base is None:
+            raise HiveError(NO_START)
+        own, commit = [], head
+        while commit != base:  # (one parent each: start_of_candidate)
+            raw = objects.held("commit", commit)
+            tree, parents = commit_header(raw)
+            own.append((commit, tree, raw))
+            commit = parents[0]
+        return base, commit_header(objects.held("commit", base))[0], own
+
+
 def candidate_proof(clone, tip, candidate, task, limits):
     """What « submit » shows of a candidate before it moves a branch or pushes. It rests on the commit the project's
     own address announced (`tip`), on the task's files as the registry gives them, and on bytes this tool hashed
@@ -2909,8 +2966,9 @@ def candidate_proof(clone, tip, candidate, task, limits):
             new, parents = commit_header(objects.held("commit", commit))
             outside.update(changed_outside(objects, old, new, task["files"]))
             commit = parents[0]
+        detail = named_paths(objects, old, outside)
     if outside:
-        raise Refusal("path_outside_task", {"paths": [safe_text(path, 200) for path in sorted(outside)[:10]], "files": len(outside)})
+        raise Refusal("path_outside_task", detail)
 
 
 def said_again(args):
@@ -3501,11 +3559,14 @@ def cmd_submit(args):
     """Volunteer side: makes the candidate of a deal out of the work tree, and pushes it. The agent runs no git of its
     own in the clone: this command stages what changed inside the task's files (a tracked file changed
     outside them is refused, an untracked one is left where it is: a build's leftovers are not the work), commits
-    it and adds the marker, as commits on no branch yet. Then it shows, by its own reading, that the candidate starts
-    from the project's history and changes only the task's files (candidate_proof), checks it as the hive will, on
-    the tip the project's own address gives during the command (check_structure), and only then moves the branch
-    and pushes to the member's own fork. A refusal leaves every branch where it was, and pushes nothing; so does
-    --no-push, once every check has passed."""
+    it and adds the marker, as commits on no branch yet. A candidate is two commits of this tool's own, the work and
+    its marker, made on the commit of the project's history that the clone rests on (rests_on): never on commits the
+    clone's branch held, which stay behind, an earlier candidate included. Then it shows, by its own reading, that
+    the candidate starts from the project's history and changes only the task's files (candidate_proof), checks it
+    as the hive will, on the tip the project's own address gives during the command (check_structure), and only
+    then moves the branch and pushes to the member's own fork. A refusal leaves every branch where it was, and
+    pushes nothing; so does --no-push, once every check has passed. A refusal names a path only if the project's own
+    commit holds it (named_paths)."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -3526,29 +3587,39 @@ def cmd_submit(args):
     address = project_address(config, args.upstream_url)
     root = str(clone.root)
     head = clone.git("rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
+    tip = project_tip(clone, address, config["branch"])
+    base, base_tree, own = rests_on(clone, tip, head, config["limits"])
     inside, outside = [], []
     for path, tracked in work_tree_changes(clone):
         if in_task_files(path.decode("utf-8", errors="surrogateescape"), task["files"]):
             inside.append(path)
         elif tracked:
-            outside.append(path.decode("utf-8", errors="replace"))
+            outside.append(path.decode("utf-8", errors="surrogateescape"))
     if outside:
-        detail = {"paths": [safe_text(path, 200) for path in sorted(outside)[:10]], "files": len(outside)}
+        with Objects(clone) as objects:
+            detail = named_paths(objects, base_tree, outside)
         print(f"REFUSED (path_outside_task): {REASONS['path_outside_task']} {json.dumps(detail)}")
         sys.exit(1)
-    tip = project_tip(clone, address, config["branch"])
     if inside:
         clone.git("add", "--all", "--pathspec-from-file=-", "--pathspec-file-nul", stdin=b"\0".join(inside), raw=True)
     tree = clone.git("write-tree").stdout.strip()
     who = clone.identity(login)
-    work = head if tree == tree_of(root, head) else clone.commit(tree, head, title + "\n", who)
     lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
              f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
     wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal}
-    # Run again after a push that did not land, or after --no-push: the same candidate. Else the marker is a new
-    # commit, on no branch until every check below has passed.
-    again = work == head and read_marker(commit_message(root, head)) == wanted
-    marker = head if again else clone.commit(tree, work, "\n".join(lines) + "\n", who)
+    # Run again after a push that did not land, or after --no-push: the same candidate, if HEAD is one this tool made
+    # for this member, this task and this deal out of the same files: the marker and, below it, the work, each with
+    # the tree the work tree gives now. Else the candidate is made anew on the project's commit: the work, then the
+    # marker, on no branch until every check below has passed. Whatever else the clone's branch held stays behind.
+    said = [raw.partition(b"\n\n")[2].decode("utf-8", errors="replace") for _, _, raw in own]
+    again = (1 <= len(own) <= 2 and (len(own) == 2) == (tree != base_tree) and all(tree == held and made_by(raw, who, login) for _, held, raw in own)
+             and said[0] == "\n".join(lines) + "\n" and read_marker(said[0]) == wanted
+             and all(text.endswith("\n") and ONE_LINE.match(text[:-1]) and not MARKER_LINE.match(text[:-1]) for text in said[1:]))
+    if again:
+        work, marker = (own[1][0] if len(own) == 2 else base), head
+    else:
+        work = base if tree == base_tree else clone.commit(tree, base, title + "\n", who)
+        marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
     try:
         candidate_proof(clone, tip, marker, task, config["limits"])
         figures = check_structure(root, tree_of(root, tip), merge_tree(root, tip, work, config["limits"]), task, config)

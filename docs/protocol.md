@@ -66,10 +66,12 @@ A key that appears twice, an unknown action or a malformed value means "no marke
 work, puts the clone on the task's branch at the project's tip). They push to one address,
 `https://github.com/<login>/<the project's repository name>`, worked out from the member's login and the registry;
 the address the clone gives its origin is only compared with it. `submit` commits the work (the task's files, and
-nothing else of the work tree). Before it pushes, it asks the project's own repository for its tip and shows, from
-commits and folders it reads as bytes and hashes itself, that the candidate starts from the project's history and
-changes only the task's files; it then runs the same structural checks as the hive, so that a worker learns of a
-refusal before spending a judgement.
+nothing else of the work tree) and its marker, two commits made on the project's commit that the clone rests on:
+whatever else the clone's branch held stays behind. Before it pushes, it asks the project's own repository for its
+tip and shows, from commits and folders it reads as bytes and hashes itself, that the candidate starts from the
+project's history and changes only the task's files; it then runs the same structural checks as the hive, so that
+a worker learns of a refusal before spending a judgement. A refusal it prints names a path only if the project
+holds it.
 
 A candidate is identified by its commit id. The same commit is answered once, whatever the number of branches
 that carry it. Of several candidates pushed for one deal, one stands (a draw) and the others are ignored.

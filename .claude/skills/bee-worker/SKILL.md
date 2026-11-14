@@ -80,7 +80,8 @@ THEN: <sentence>                next, start, ready, submit: what to do after thi
 ASKED <commit>                  ready: the ask is pushed to the fork
 WITHDRAWN                       ready --withdraw: the ask is taken back
 REFUSED (<reason>): <sentence> <details as JSON>
-                                submit: a structural rule is broken: nothing was committed or pushed
+                                submit: a structural rule is broken: nothing was committed or pushed (the details
+                                are numbers, and paths that the project's own commit holds)
 PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
 NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 ```
@@ -208,9 +209,10 @@ hive submit --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN> --mess
 
 `submit` checks the clone, asks the project's own repository for its tip, stages what you changed **inside the
 task's files** (what a build left elsewhere, untracked, is left where it is), commits it and adds the marker of
-your deal. Before it pushes, it shows by its own reading of the commits that the candidate starts from the
-project's history and changes only the task's files, and runs the hive's structural checks. Then it pushes to the
-user's fork: `PUSHED <commit>`.
+your deal: two commits of its own, made on the project's commit, whatever else the clone's branch held. Before it
+pushes, it shows by its own reading of the commits that the candidate starts from the project's history and
+changes only the task's files, and runs the hive's structural checks. Then it pushes to the user's fork:
+`PUSHED <commit>`.
 
 - `--model` is your model's identifier, for the public statistics, if it is one the project lists. miniz lists
   `claude-fable-5-2`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`. If yours is not in the list, or
@@ -218,7 +220,8 @@ user's fork: `PUSHED <commit>`.
 - `REFUSED (<reason>)`: nothing was committed or pushed. Fix exactly that in the files and run `submit` again.
   **At most three `submit` attempts for a task in one run**; then stop without pushing and say why. If
   `REFUSED (path_outside_task)` names files you did not mean to change, you cannot put them back without git:
-  stop.
+  stop. It names only paths the project itself holds; a name the project does not hold is counted (`new_names`),
+  never printed, and a path you did not make is not yours to look for: stop and tell the user.
 - `hive: the work does not start from the project's recent history`: the clone was not on the project's tip when
   the work began. Nothing was pushed. Run `hive setup`, then `hive start` again (it sets your work aside) and do the
   work again; if `submit` says so a second time, stop and tell the user.
