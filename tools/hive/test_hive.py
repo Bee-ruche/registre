@@ -4222,6 +4222,28 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
         self.assertEqual(sh("git", "show", "main:lib.c", cwd=self.w.upstream).stdout, LIB + "/* FAST */\n/* and one more thing */\n")
 
+    def test_next_starts_on_a_deal_that_has_exactly_an_hour_left(self):
+        """A worker starts on a deal only if an hour of it is left: with exactly an hour it starts, a second later it
+        is too late."""
+        self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        self.assertEqual(self.w.feed_file()["deals"][hive.member_mark("alice")]["until"], "2026-11-12T14:00:01Z")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:00:01Z"}):
+            self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"))
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:00:02Z"}):
+            self.assertEqual(self.next(), (0, "WAIT: your deal ends at 2026-11-12T14:00:01Z, under 1 hour from now: too late to start\n"))
+
+    def test_next_gives_the_goal_and_the_tier_the_registry_sets_for_the_task(self):
+        """A task may set a goal of its own, a figure the judge must reach, and a tier. Next gives them as the
+        registry has them: a worker told « correct » for a task that asks for a gain would push work the hive
+        refuses, at the cost of a wait."""
+        self.w.deal(self.alice, "toy-0004")
+        self.w.run()
+        lines = self.spoken(self.next()[1])
+        self.assertEqual((lines[0], lines[4:11]), ("TASK toy-0004", [
+            '| {"id": "toy-0004"}', '| {"title": "Gain of 2 %"}', '| {"files": ["lib.c"]}', '| {"size": "S"}', '| {"tier": 2}',
+            '| {"goal": {"kind": "metric", "name": "gain", "min": 0.02}}', '| {"context": ""}']))
+
     def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
         """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
         behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
