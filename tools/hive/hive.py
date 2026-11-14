@@ -3213,7 +3213,8 @@ def cmd_next(args):
         if wait:
             print(f"WAIT until {wait}: your last deal ended without an accepted candidate; the hive deals you nothing before then")
         elif asked is None:
-            print(f"ASK: you hold no task. If this worker runs at least every {again} hours, ask for one: hive.py ready")
+            print(f"ASK: you hold no task. If this worker runs at least every {again} hours, ask for one: hive.py ready --project "
+                  f"{config['project']} {said_again(args)}")
         elif now() - asked >= dt.timedelta(hours=ASK_PATIENCE_HOURS):
             print(f"ASK-UNANSWERED since {iso(asked)}: the hive has not dealt you a task for {ASK_PATIENCE_HOURS} hours: stop, do not "
                   "ask again in this run, tell the user")
@@ -3562,7 +3563,8 @@ def cmd_ready(args):
     push(clone, fork, commit, READY_BRANCH)
     print(f"ASKED {commit}")
     print("THEN: stop here. The hive deals at its next run (about an hour): the next run of this worker finds the task. If this "
-          "worker will not run again, take the ask back so that no task waits for it: hive.py ready --withdraw")
+          f"worker will not run again, take the ask back so that no task waits for it: hive.py ready --project {config['project']} "
+          f"{said_again(args)} --withdraw")
 
 
 def cmd_submit(args):
@@ -3651,9 +3653,9 @@ def cmd_submit(args):
     print(f"PUSHED {marker}")
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
-          f"every {hours} hours (hourly is best), ask for its next task now (hive.py ready): the hive deals it as soon as this "
-          "candidate is accepted; if it is refused, the ask stays and is served once the wait is over. If it does not run that "
-          "often, do not ask: a task dealt and left costs a wait.")
+          f"every {hours} hours (hourly is best), ask for its next task now (hive.py ready --project {config['project']} "
+          f"{said_again(args)}): the hive deals it as soon as this candidate is accepted; if it is refused, the ask stays and is served "
+          "once the wait is over. If it does not run that often, do not ask: a task dealt and left costs a wait.")
 
 
 def main(argv=None):

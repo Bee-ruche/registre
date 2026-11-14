@@ -3451,7 +3451,7 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"UPSTREAM upstream/[A-Za-z0-9._/-]+",
     r"NOTE this fork holds (\.claude/settings\.json|\.claude/settings\.local\.json|\.mcp\.json|\.cursor) at its root: your tool may "
     r"already have run something from it\. Stop, and tell the user\.",
-    r"ASK: you hold no task\. If this worker runs at least every [0-9]+ hours, ask for one: hive\.py ready",
+    rf"ASK: you hold no task\. If this worker runs at least every [0-9]+ hours, ask for one: hive\.py ready --project toy {WHOSE}",
     rf"ASK-UNANSWERED since {INSTANT}: the hive has not dealt you a task for 6 hours: stop, do not ask again in this run, tell the user",
     r"WAIT: the project is paused: the hive deals nothing and judges nothing for now",
     r"WAIT: the hive has not published a feed for this project yet",
@@ -3478,11 +3478,11 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     rf"then run: hive\.py submit --project toy --task toy-[0-9]{{4}} --deal {INSTANT} {WHOSE} --message \"<one "
     rf"line: what you changed>\"",
     r"THEN: stop here\. The hive deals at its next run \(about an hour\): the next run of this worker finds the task\. If this worker "
-    r"will not run again, take the ask back so that no task waits for it: hive\.py ready --withdraw",
+    rf"will not run again, take the ask back so that no task waits for it: hive\.py ready --project toy {WHOSE} --withdraw",
     r"THEN: [0-9]+ file\(s\) and [0-9]+ changed line\(s\) are with the hive\. If this worker runs at least every [0-9]+ hours \(hourly "
-    r"is best\), ask for its next task now \(hive\.py ready\): the hive deals it as soon as this candidate is accepted; if it is "
-    r"refused, the ask stays and is served once the wait is over\. If it does not run that often, do not ask: a task dealt and left "
-    r"costs a wait\.",
+    rf"is best\), ask for its next task now \(hive\.py ready --project toy {WHOSE}\): the hive deals it as soon as this candidate is "
+    r"accepted; if it is refused, the ask stays and is served once the wait is over\. If it does not run that often, do not ask: a task "
+    r"dealt and left costs a wait\.",
     rf"ASKED {COMMIT}",
     r"WITHDRAWN",
     r"REFUSED \([a-z_]+\): [ -~]+ \{.*\}",
@@ -3491,7 +3491,7 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"and push it",
     rf"NOT-PUSHED {COMMIT}: the candidate is committed and nothing was pushed; run the same command again without --no-push to push it",
 )]
-ASK = "ASK: you hold no task. If this worker runs at least every 2 hours, ask for one: hive.py ready\n"
+ASK = "ASK: you hold no task. If this worker runs at least every 2 hours, ask for one: hive.py ready --project toy --login Alice\n"
 # What a command stops on when the clone's origin is not the fork the tool derives from the login and the registry.
 OTHER_FORK = ("this clone's origin is not https://github.com/{who}/toy, the fork this worker reads and pushes to (your login, and the project's "
               "own repository name): nothing was pushed. If the user's prompt gives your fork another name, give it: --fork <name>; take no name "
@@ -4050,6 +4050,29 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((self.ready("--withdraw"), self.fork_branch("hive/ready")), ((0, "WITHDRAWN\n"), None))
         self.assertEqual(self.ready("--withdraw"), (0, "WITHDRAWN\n"), "nothing to take back is no error")
 
+    def test_the_commands_the_tools_own_sentences_give_are_whole(self):
+        """Three sentences tell a worker to run « ready »: the ASK line of « next », and what « ready » and « submit »
+        say to do then. « ready » takes a project and a login: each sentence gives the command with both, and with the
+        fork's name when the command line gave one, so that it runs as it is written."""
+        def given(text):
+            return [shlex.split(command) for command in re.findall(r"hive\.py (ready(?: --[a-z-]+(?: [A-Za-z0-9._-]+)?)+)", text)]
+
+        self.w.run()
+        for more in ((), ("--fork", "toy")):
+            whole = ["ready", "--project", "toy", "--login", "alice", *more]
+            code, text = self.run_cli("next", "--registry", self.registry, "--project", "toy", "--state", self.state_root, "--login", "alice", *more)
+            self.assertEqual((code, len(self.spoken(text)), given(text)), (0, 1, [whole]), self.err)
+            code, text = self.run_cli(*given(text)[0], "--registry", self.registry)  # word for word
+            self.assertEqual((code, self.spoken(text)[0], given(text)), (0, f"ASKED {self.fork_branch('hive/ready')}", [[*whole, "--withdraw"]]), self.err)
+            self.assertEqual((self.run_cli(*given(text)[0], "--registry", self.registry), self.fork_branch("hive/ready")), ((0, "WITHDRAWN\n"), None), self.err)
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        code, text = self.submit("toy-0001", dealt, "--fork", "toy")
+        self.assertEqual((code, self.spoken(text)[0][:7], given(text)), (0, "PUSHED ", [["ready", "--project", "toy", "--login", "alice", "--fork", "toy"]]), self.err)
+        self.assertEqual(self.run_cli(*given(text)[0], "--registry", self.registry)[0], 0, self.err)
+        self.assertIsNotNone(self.fork_branch("hive/ready"), "the ask for the next task, by the command « submit » gave")
+
     def test_an_ask_carries_no_file_and_no_history_and_the_hive_serves_it(self):
         """An ask says one thing, in its message: deal this member a task. Its commit holds no file (the empty tree)
         and has no parent, whatever the clone is on and whatever its references name: nothing the clone holds goes to
@@ -4424,7 +4447,7 @@ class TestVolunteerSide(Volunteer):
         candidate = self.fork_branch("hive/submit/toy-0001")
         self.assertEqual((code, lines[0], len(lines)), (0, f"PUSHED {candidate}", 2), self.err)
         self.assertTrue(lines[1].startswith("THEN: 1 file(s) and 1 changed line(s) are with the hive. If this worker runs at least every "
-                                            "2 hours (hourly is best), ask for its next task now (hive.py ready)"))
+                                            "2 hours (hourly is best), ask for its next task now (hive.py ready --project toy --login alice): "))
         history = sh("git", "log", "--format=%H|%an <%ae>|%cn <%ce>|%s", "-3", candidate, cwd=self.alice.bare).stdout.splitlines()
         who = "alice <alice@users.noreply.github.com>"
         self.assertEqual([line.split("|", 1)[1] for line in history],
