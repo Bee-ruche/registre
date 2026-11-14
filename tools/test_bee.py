@@ -7627,6 +7627,23 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         output_text, verdict, calls = self.collect({}, zip=self.packed(("small.bin", stored(1 << 19))))
         self.assertEqual(verdict["gain"], 0.05, "what else it holds, when it is not heavy, changes nothing")
         self.only_its_own_files(calls)
+        # Nothing stays once a pass is over, even of what the folder held when it began, and even if the pass took no archive.
+        runner, elsewhere = self.dir.parent / "runner", self.dir.parent / "elsewhere"
+        (runner / "verdict").mkdir()
+        (runner / "verdict" / "verdict.json").write_text("{}", encoding="utf-8")
+        (runner / "fork-archive.zip").write_bytes(b"left there")
+        output_text, verdict, calls = self.collect({}, verdict=None)
+        self.assertEqual((verdict, self.asked(calls)), (None, ([], [])), output_text)
+        self.assertEqual([p.name for p in runner.iterdir()], ["api"])
+        # The archive is a file of the pass's own making: what was left under its name, were it a link, is removed, never written through.
+        (runner / "fork-archive.zip").symlink_to(elsewhere)
+        output_text, verdict, calls = self.collect({})
+        self.assertEqual((verdict["gain"], elsewhere.exists(), [p.name for p in runner.iterdir()]), (0.05, False, ["api"]), output_text)
+        # On a machine where the limit on a file's size cannot be set (here a function takes ulimit's place), no archive is asked for.
+        with mock.patch.dict(os.environ, {"BASH_FUNC_ulimit%%": "() { return 1; }"}):
+            output_text, verdict, calls = self.collect({})
+        self.assertEqual((verdict, self.asked(calls)), (None, (["99007"], [])), output_text)
+        self.said(output_text, self.NOT_WHOLE)
 
     def test_a_verdict_that_is_not_a_plain_file_is_no_verdict(self):
         """In an archive a folder or a link is a member that says it is one, and a link's data is where it leads. Such a
@@ -8075,7 +8092,7 @@ class TestArchiveMember(unittest.TestCase):
             "that member is not a plain file": [zip_of(("verdict.json", {"data": good[1], "mode": mode}))  # a folder, a link, a pipe, devices, a socket
                                                 for mode in (0o040755, 0o120777, 0o010644, 0o020644, 0o060644, 0o140644)]
                                                + [zip_of(("verdict.json", {"data": good[1], "attributes": 0x10}))],  # a folder, as MS-DOS says it
-            "that member is encrypted": [zip_of(("verdict.json", {"data": good[1], "flags": flags})) for flags in (0x1, 0x41)],
+            "that member is encrypted": [zip_of(("verdict.json", {"data": good[1], "flags": flags})) for flags in (0x1, 0x40, 0x41)],
             "that member is neither stored nor deflated": [zip_of(("verdict.json", {"data": good[1], "method": method}))
                                                            for method in (zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA)],
             "that member declares more than 16 bytes": [zip_of(("verdict.json", "x" * 17)), zip_of(("verdict.json", {"zeros": 4 << 20}))]}

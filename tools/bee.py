@@ -9507,7 +9507,7 @@ def archive_member(path, name, most):
                 raise refused("that member is neither stored nor deflated")
             if member.file_size > most:
                 raise refused(f"that member declares more than {most} bytes")
-            with archive.open(member) as source:  # the member itself: its name, looked up again, could be another's
+            with archive.open(member) as source:  # the member found above, not its name looked up a second time
                 data = source.read(most + 1)  # one byte beyond what is allowed, never more
             if len(data) > most:
                 raise refused(f"that member holds more than {most} bytes")
