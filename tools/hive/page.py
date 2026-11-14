@@ -130,11 +130,29 @@ def plain(value, limit):
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
+def direction(gain, sure, worse):
+    """The one place that decides whether the page may say « better » or « worse » of a figure: "better", "worse",
+    "" (the figure is zero) or None (no direction is stated).
+
+    The judge gives a figure (a gain: above zero is better, below zero is worse) and up to two flags from its noise
+    test: sure_ (1: better, beyond the noise) and worse_ (1: worse, beyond the noise). The figure and the flags are
+    not computed the same way (in the registry's judge, a ratio of medians and a sign test on paired runs), so they
+    can disagree: most runs faster and a slower median. The page never states a direction the judge did not state,
+    and never chooses between two things it stated. So there is no direction when the figure is above zero and
+    worse_ is 1, when it is below zero and sure_ is 1, or when both flags are 1: the figure is then printed as the
+    judge measured it, with its unit, and no « better », « worse » or « beyond the noise » beside it (reading()), and
+    it never leads a card (headline(), read_report())."""
+    if (sure == 1 and worse == 1) or (gain > 0 and worse == 1) or (gain < 0 and sure == 1):
+        return None
+    return "better" if gain > 0 else "worse" if gain < 0 else ""
+
+
 def headline(report):
     """{"metric": name, "gain": fraction} from a verdict's report, or None. Among the keys gain_<name> whose value is
-    a number (not a boolean, not a string) above zero and at most GAIN_MAX, and whose sibling sure_<name> is the number
-    1, the largest gain wins (a tie goes to the first name in alphabetical order). A gain that would show as 0.0 %
-    is no figure. Nothing is computed from a string; <name> must be an identifier."""
+    a number (not a boolean, not a string) above zero and at most GAIN_MAX, whose sibling sure_<name> is the number
+    1 and whose sibling worse_<name> is not (direction()), the largest gain wins (a tie goes to the first name in
+    alphabetical order). A gain that would show as 0.0 % is no figure. Nothing is computed from a string; <name> must
+    be an identifier."""
     if not isinstance(report, dict):
         return None
     best = None
@@ -146,7 +164,7 @@ def headline(report):
             continue
         if type(value) is float and not math.isfinite(value):
             continue
-        if not 0 < value <= GAIN_MAX:
+        if not 0 < value <= GAIN_MAX or direction(value, 1, flag(report.get("worse_" + key[5:]))) != "better":
             continue
         gain = round(float(value), 6)
         if round(100 * gain, 1) <= 0:
@@ -197,7 +215,8 @@ def read_report(report, goal=None):
                      "worse": flag(report.get("worse_" + key[5:])), "goal": goal is not None and key[5:] == goal})
     rows.sort(key=lambda row: (not row["goal"], row["sure"] != 1 and row["worse"] != 1, -row["gain"], row["metric"]))
     asked = rows[0] if rows and rows[0]["goal"] else None
-    if asked is not None and shows(asked["gain"]) and asked["worse"] != 1 and (asked["sure"] == 1 or "sure_" + asked["metric"] not in report):
+    if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" \
+            and (asked["sure"] == 1 or "sure_" + asked["metric"] not in report):
         figure = {"metric": asked["metric"], "gain": asked["gain"], "goal": True}
     else:
         figure = None if best is None else {**best, "goal": False}
@@ -1159,11 +1178,18 @@ def figure_words(figure):
     return f"{gain_text(figure['gain'])} {better(figure['metric'])}" if figure else "Accepted by the judge"
 
 
+NO_READING = "no reading: the figure and its noise flag point opposite ways"
+
+
 def reading(row):
-    """What one row of the judge's measures says, from its flags alone. « Worse » comes first: a project may accept a
-    small loss on one figure (miniz allows 1 % on an instruction count), and the page must not print it as a gain."""
+    """What one row of the judge's measures says, from its figure and its flags, when they agree (direction()); when
+    they do not, NO_READING: the figure stands alone in its column, as the judge measured it, and the page says
+    neither « better » nor « worse » of it. « Worse » comes first otherwise: a project may accept a small loss on
+    one figure (miniz allows 1 % on an instruction count), and the page must not print it as a gain."""
     lost = round(100 * row["gain"], 1) < 0
-    if row["worse"] == 1:
+    if direction(row["gain"], row["sure"], row["worse"]) is None:
+        noise = NO_READING
+    elif row["worse"] == 1:
         noise = "worse, beyond the noise"
     else:
         noise = ("worse, " if lost else "") + {1: "beyond the noise", 0: "within the noise"}.get(row["sure"], "no noise flag in the ledger")
@@ -1214,9 +1240,12 @@ def render_win_page(project, win, repo_url=None, join=None, site_url=None):
     if win["measures"]:
         rows = [[row["metric"].replace("_", " "), gain_text(row["gain"]), reading(row)] for row in win["measures"]]
         looks = ["asked" if row["goal"] else None if row["sure"] == 1 or row["worse"] == 1 else "soft" for row in win["measures"]]
+        unread = any(direction(row["gain"], row["sure"], row["worse"]) is None for row in win["measures"])
         measured = [table([("Measure", False), ("Gain", True), ("Reading", False)], rows, stack=False, looks=looks),
                     el("p", "« Beyond the noise »: the judge repeats its runs, and the difference is larger than what they vary by. "
-                            "« No noise flag in the ledger »: the project keeps no such mark for that figure.", class_="note")]
+                            "« No noise flag in the ledger »: the project keeps no such mark for that figure."
+                            + (" « No reading »: the judge's figure and its noise flag do not say the same; this page prints the figure "
+                               "and calls it neither better nor worse." if unread else ""), class_="note")]
     else:
         measured = el("p", "The ledger keeps no measured gain for this contribution.", class_="soft")
     changed = win["changed"]

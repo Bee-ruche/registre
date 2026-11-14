@@ -1445,17 +1445,55 @@ class TestWinPage(Case):
     def test_each_measure_is_read_from_its_flags(self):
         def read(gain, sure=None, worse=None, goal=False):
             return page.reading({"metric": "m", "gain": gain, "sure": sure, "worse": worse, "goal": goal})
-        self.assertEqual([read(0.05, 1, 0), read(0.05, 0, 0), read(0.05), read(-0.05, 0, 1), read(-0.05, 0, 0), read(-0.05), read(-0.05, 1),
-                          read(0.05, 0, 1), read(-0.0004, 0), read(0.0)],
+        self.assertEqual([read(0.05, 1, 0), read(0.05, 0, 0), read(0.05), read(-0.05, 0, 1), read(-0.05, 0, 0), read(-0.05),
+                          read(-0.0004, 0), read(0.0), read(-0.05, None, 1), read(0.0, 1, 0), read(0.0, 0, 1)],
                          ["beyond the noise", "within the noise", "no noise flag in the ledger", "worse, beyond the noise", "worse, within the noise",
-                          "worse, no noise flag in the ledger", "worse, beyond the noise", "worse, beyond the noise", "within the noise",
-                          "no noise flag in the ledger"])
+                          "worse, no noise flag in the ledger", "within the noise", "no noise flag in the ledger", "worse, beyond the noise",
+                          "beyond the noise", "worse, beyond the noise"])
         asked = "the figure the task asked for"
-        self.assertEqual([read(0.05, goal=True), read(0.05, 1, 0, True), read(0.05, 0, 0, True), read(-0.05, goal=True), read(0.05, None, 1, True)],
+        self.assertEqual([read(0.05, goal=True), read(0.05, 1, 0, True), read(0.05, 0, 0, True), read(-0.05, goal=True), read(-0.05, None, 1, True)],
                          [asked, f"{asked} · beyond the noise", f"{asked} · within the noise", f"{asked} · worse, no noise flag in the ledger",
                           f"{asked} · worse, beyond the noise"])
+        # A figure and a flag that point opposite ways, or two flags that do: no direction is stated, whatever the size.
+        none = page.NO_READING
+        self.assertEqual([read(-0.05, 1), read(-0.05, 1, 0), read(0.05, 0, 1), read(0.05, None, 1), read(0.05, 1, 1), read(-0.05, 1, 1), read(0.0, 1, 1),
+                          read(-0.0004, 1, 0), read(0.0004, 0, 1)], [none] * 9)
+        self.assertEqual([read(0.05, None, 1, True), read(-0.05, 1, 0, True), read(0.05, 1, 1, True)], [f"{asked} · {none}"] * 3)
+        self.assertNotRegex(none, r"better|worse|beyond|within")
+        self.assertEqual([page.direction(*row) for row in ((0.05, 1, 0), (0.05, None, None), (0.05, 0, 0), (-0.05, 0, 1), (-0.05, None, None), (0.0, 1, 0),
+                                                            (0, 0, 1), (-0.05, 1, 0), (0.05, 0, 1), (0.05, 1, 1), (-0.05, 1, 1), (0.0, 1, 1))],
+                         ["better", "better", "better", "worse", "worse", "", "", None, None, None, None, None])
         self.assertEqual([page.gain_text(value) for value in (0.043, 10, 0, -0.0004, 0.0004, -0.03, -1.5, 0.0005)],
                          ["4.3 %", "1000.0 %", "0.0 %", "0.0 %", "0.0 %", "−3.0 %", "−150.0 %", "0.1 %"], "a loss wears a real minus sign")
+
+    def test_no_direction_is_stated_when_the_judge_s_figure_and_its_noise_flag_disagree(self):
+        """The registry's judge compares medians for the figure and paired runs for the flags: nine runs of ten faster
+        and a slower median give sure_ 1 with a gain below zero. The page prints the figure and states no direction."""
+        report = {"gain_compression_throughput_n1": -0.03, "sure_compression_throughput_n1": 1, "worse_compression_throughput_n1": 0,
+                  "gain_decompression_throughput": 0.04, "sure_decompression_throughput": 0, "worse_decompression_throughput": 1,
+                  "gain_both": 0.07, "sure_both": 1, "worse_both": 1, "gain_ratio": 0.001, "sure_ratio": 0, "worse_ratio": 0}
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "ada", 101, "toy-0001", report=report),
+                     verdict(2, "2026-11-02T09:00:00Z", "ada", 101, "toy-0002", report={"gain_both": 0.07, "sure_both": 1, "worse_both": 1})])
+        for options in ((), ("--tasks", self.tasks([task("toy-0001", gain_goal("gain_decompression_throughput")), task("toy-0002", gain_goal("gain_both"))]))):
+            files = self.make(*options)
+            self.harmless(files)
+            seen = Seen(files[self.first])
+            asked = "the figure the task asked for · " if options else ""
+            self.assertEqual(sorted(seen.rows[1:]), sorted([["both", "7.0 %", page.NO_READING], ["decompression throughput", "4.0 %", asked + page.NO_READING],
+                                                            ["compression throughput n1", "−3.0 %", page.NO_READING], ["ratio", "0.1 %", "within the noise"]]))
+            self.assertIn("« No reading »: the judge's figure and its noise flag do not say the same; this page prints the figure and calls it neither "
+                          "better nor worse.", seen.said)
+            for name in (self.first, self.second, f"wins/{sha(5001)}.svg", f"wins/{sha(5002)}.svg", "index.html"):
+                # A page: what it opens on, before its tables (their rows are held here, and the notes under them explain
+                # the words); a card: everything.
+                said = told(files[name]).split("What the judge measured")[0].split("Progress")[0]
+                self.assertNotRegex(said, r"(?i)better|worse|beyond the noise", (name, "no direction the judge did not state"))
+                self.assertNotRegex(said, r"[0-9] %", (name, "and a figure without a direction leads nothing"))
+            self.assertEqual([row[2] for row in Seen(files["index.html"]).rows if row[0].startswith("2026-11-0")], ["no figure"] * 2)
+            self.assertEqual([(r["figure"], r["headline"]) for r in self.summary(files)["recent"]], [(None, None)] * 2)
+            self.assertTrue(Seen(files[self.second]).said.startswith("La Ruche · toy · accepted by the judgeAcceptedby the judgeTask toy-0002"))
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "ada", 101, "toy-0001", report={"gain_ratio": 0.001, "sure_ratio": 0, "worse_ratio": 0})])
+        self.assertNotRegex(Seen(self.make()[self.first]).said, r"(?i)no reading", "the note comes only with such a row")
 
     def test_a_verdict_of_an_unexpected_shape_gives_a_page_that_shows_none_of_it(self):
         odd = {"gain_a": {"<script>alert(1)</script>": 1}, "gain_b": "<img src=x onerror=alert(1)>", "gain_<script>": 0.5, "sure_c": "<script>",
