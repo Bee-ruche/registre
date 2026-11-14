@@ -1790,13 +1790,17 @@ def guarded_push(repo, remote, branch, expected, new, allow_local=False):
 
 
 def verdict_event(outcome, instant, kind="verdict"):
-    event = {"type": kind, "at": iso(instant), "task": outcome["task"], "deal": outcome["deal"], "member": outcome["login"],
+    """A verdict's line. An accepted one names its member by login and by account number: it is a credit. A refused
+    one carries the account's number alone, which the hive's own counting needs, and no login: the ledger does not
+    write a person's name beside a refusal. (That is discretion, not secrecy: the deal's line names its member, and
+    the candidate sits in the member's public fork.)"""
+    event = {"type": kind, "at": iso(instant), "task": outcome["task"], "deal": outcome["deal"],
              "member_id": outcome["member_id"], "repo_id": outcome["repo_id"], "sha": outcome["sha"],
              "result": outcome["result"], "judged": outcome["judged"], "model": outcome["model"]}
     if outcome["result"] == "refused":
         event.update(reason=outcome["reason"], detail=outcome["detail"])
     else:
-        event.update(commit=outcome["commit"], figures=outcome["figures"], report=outcome["report"])
+        event.update(member=outcome["login"], commit=outcome["commit"], figures=outcome["figures"], report=outcome["report"])
     return event
 
 
@@ -1806,7 +1810,7 @@ def events_of(outcomes, instant, run):
     for outcome in outcomes:
         if outcome["result"] == "error":
             events.append({"type": "error", "kind": outcome["kind"], "at": iso(instant), "run": run, "task": outcome["task"],
-                           "deal": outcome["deal"], "member": outcome["login"], "member_id": outcome["member_id"], "repo_id": outcome["repo_id"],
+                           "deal": outcome["deal"], "member_id": outcome["member_id"], "repo_id": outcome["repo_id"],
                            "sha": outcome["sha"], **({"unproven": True} if outcome.get("unproven") else {})})
         elif outcome["result"] in ("accepted", "refused"):
             events.append({**verdict_event(outcome, instant), "run": run})
@@ -1916,7 +1920,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
              if o is not unsure and (not any(o is k for k in kept) or o["result"] != "accepted")]
     # What the judge ran on and the hive could not use, because an earlier push of the run did not land: no fault of
     # these candidates', no cost to them, and a line all the same. Every run of the judge leaves one.
-    unused = [{"type": "unused", "at": iso(instant), "run": run, "task": o["task"], "deal": o["deal"], "member": o["login"],
+    unused = [{"type": "unused", "at": iso(instant), "run": run, "task": o["task"], "deal": o["deal"],
                "member_id": o["member_id"], "repo_id": o["repo_id"], "sha": o["sha"]} for o in outcomes[len(kept):]
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(events_of(kept, instant, run) + voids + unused)

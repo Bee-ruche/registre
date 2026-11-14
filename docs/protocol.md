@@ -294,13 +294,15 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`; each carries the key of
   its run. **It holds no text a fork wrote**: logins, the numeric ids of the account and of its fork, task ids of
   the project, commit ids, instants, reason codes, a model identifier the project lists, whole numbers under the
-  hive's own keys, and the judge's figures the project lists.
+  hive's own keys, and the judge's figures the project lists. **A login is written beside a deal and beside an
+  accepted candidate, which is a credit; a refusal, a run without an answer and an expired deal carry the account's
+  number alone.** That is discretion, not secrecy: the deal names its member, and the candidate sits in a public fork.
 - `feed.json`: the project's tasks with their status (`open`, `dealt`, `done`, `closed`), their tier, the number
   of judged refusals and the task's context; and, **under a hash of each login** that a worker computes for its
   own, the task a member holds, since when, until when and whether its candidate was seen (`deals`), and until
   when a member is dealt nothing (`wait`). It holds nothing a contributor wrote. The hash keeps sentences a login
   could spell out of the feed; it hides nobody, since the owners of forks are public.
-- `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is counted for a model, never for a member).
+- `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is added up for a model, not for a member).
 - `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
   member, an ask that was used, a submit that is not a candidate). Only what is still at a tip of that fork is
   kept: what one fork pushes never costs another its entries.

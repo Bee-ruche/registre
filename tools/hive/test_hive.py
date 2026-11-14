@@ -373,6 +373,36 @@ class TestIntegration(Base):
         self.assertTrue(shown.startswith(f"{int(hive.parse_iso('2026-12-24T08:30:00Z').timestamp())}|"), shown[:40])
         self.assertIn(f"Hive-Candidate: {later}\nHive-Model: undeclared\n", shown, "a model the project does not list is not repeated")
 
+    def test_the_ledger_writes_no_login_beside_a_refusal(self):
+        """An accepted candidate is a credit: its line names its member. A refused one, a run spent without an answer,
+        an expired deal carry the account's number, which the hive counts with, and no login. It is discretion and no
+        more: the deal's line names its member (a worker finds its wait through it), and the candidate sits in a public
+        fork. What a worker is told does not change."""
+        self.alice.submit("toy-0001", model="claude-fable-5-2")
+        bob = self.w.fork("bob", 102)
+        bob.submit("toy-0004", content=LIB + "/* REFUSE */\n")
+        carol = self.w.fork("carol", 103)
+        carol.submit("toy-0005", content=LIB + "/* ENVERR */\n")  # the judge fails on this one, and works on the project itself
+        self.w.fork("dave", 104)
+        self.w.deal(self.w.forks["dave"], "toy-0002", at="2026-11-12T03:00:00Z")  # a deal left without a candidate, long over
+        self.w.run()
+        lines = self.w.load()[2].events  # every line, the deals and the expiries too
+        named = {(e["type"], e.get("result") or e.get("kind") or "") for e in lines if "member" in e}
+        self.assertEqual(named, {("deal", ""), ("intent", "accepted"), ("verdict", "accepted")},
+                         "a deal and a credit (promised, then recorded) name their member; nothing else does")
+        quiet = [e for e in lines if "member" not in e]
+        self.assertLessEqual({("verdict", "refused"), ("error", "judge"), ("expired", "")}, {(e["type"], e.get("result") or e.get("kind") or "") for e in quiet})
+        self.assertTrue(all(type(e["member_id"]) is int for e in quiet), "each still carries the account's number")
+        for e in quiet:
+            for login in ("alice", "bob", "carol", "dave"):
+                self.assertNotIn(login, json.dumps(e), e["type"])
+        self.assertEqual([e["member"] for e in lines if e["type"] == "verdict" and e["result"] == "accepted"], ["alice"])
+        config, tasks, ledger = self.w.load()
+        feed = json.loads((self.w.state / "feed.json").read_text())
+        self.assertEqual(sorted(feed["wait"]), sorted(hive.member_mark(login) for login in ("bob", "dave")),
+                         "the two whose deal ended badly are told their wait, as before, under the mark each can compute for itself")
+        self.assertEqual(ledger.standing(102, hive.now(), config)[1], feed["wait"][hive.member_mark("bob")])
+
     def test_a_candidate_is_answered_once(self):
         self.alice.submit("toy-0001", content=LIB + "/* REFUSE */\n")
         self.assertEqual(self.one(self.w.run())["reason"], "judge_refused")
@@ -1478,7 +1508,8 @@ class TestApply(Base):
         self.nothing_integrated()
         outcomes, tip = self.w.apply({forged: {"code": 0, "report": {}}, **self.verdicts})
         self.assertEqual(([(o["login"], o["result"]) for o in outcomes], tip), ([("alice", "accepted")], self.commit))
-        self.assertEqual({e["member"] for e in self.w.events()}, {"alice"})
+        self.assertEqual(({e["member"] for e in self.w.events() if "member" in e}, {e["member_id"] for e in self.w.events()}), ({"alice"}, {101}),
+                         "every line is alice's, and no line names anyone else")
 
     def test_a_submit_from_someone_who_does_not_hold_the_task_vouched_for(self):
         bob = self.w.fork("bob", 102)
@@ -1713,7 +1744,8 @@ class TestFirstReview(Base):
         outcome = self.one(self.w.run())
         self.assertEqual((outcome["login"], outcome["member_id"], outcome["result"]), ("alice", 101, "accepted"))
         self.assertEqual(sh("git", "show", "-s", "--format=%an", "main", cwd=self.w.upstream).stdout.strip(), "alice")
-        self.assertEqual({e["member"] for e in self.w.events()}, {"alice"})
+        self.assertEqual(({e["member"] for e in self.w.events() if "member" in e}, {e["member_id"] for e in self.w.events()}), ({"alice"}, {101}),
+                         "every line is alice's, and no line names anyone else")
 
     def test_a_copy_the_hive_sees_first_does_not_hide_the_commit_from_its_owner(self):
         bob = self.w.fork("bob", 102)
@@ -2189,7 +2221,7 @@ class TestSecondReview(Base):
         answers = {e["sha"]: e.get("reason", e["result"]) for e in self.w.events() if e["type"] == "verdict"}
         self.assertEqual(answers[waiting], "accepted")
         failures = [e for e in self.w.events() if e["type"] == "error"]
-        self.assertTrue(all(e["sha"] == failing and e["member"] == "mallory" for e in failures))
+        self.assertTrue(all(e["sha"] == failing and e["member_id"] == 666 and "member" not in e for e in failures))
         self.assertLessEqual(len(failures), hive.JUDGE_ATTEMPTS)
         self.assertEqual(sum(1 for seen in judge_by_content.seen if seen and b"ENVERR" in seen), len(failures),
                          "each time the judge ran on it, it was counted")
