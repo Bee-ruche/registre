@@ -3255,16 +3255,42 @@ def remove_unseen(root):
     return removed
 
 
+def place_inside(root, path):
+    """Where a path that git names lies in the work tree, as bytes, or None if nothing of the work tree is there
+    because a folder above it is missing, or is not a folder (a link is never followed). Raises NotPlain when the
+    path is not one of a work tree at all: git reads an index whatever paths it holds, and the index is a file of
+    .git that whatever ran in the clone may have written. A path that is absolute, or has an empty part, a « . »,
+    a « .. » or a « .git », leads out of the work tree or into the clone's own folders; nothing this tool removes
+    or empties is named by such a path."""
+    parts = path.split(b"/")
+    if any(part in (b"", b".", b"..") or part.lower() == b".git" for part in parts):
+        raise not_plain("its index names a path that is not inside the work tree")
+    place = os.fsencode(root)
+    for part in parts[:-1]:
+        place = os.path.join(place, part)
+        try:
+            if not stat.S_ISDIR(os.lstat(place).st_mode):
+                return None
+        except OSError:
+            return None
+    return os.path.join(place, parts[-1])
+
+
+def submodule_places(clone):
+    """The places, inside the work tree, of the folders the index holds as sub-modules (place_inside: a path of the
+    index that leads anywhere else stops the command)."""
+    paths = [record.partition(b"\t")[2] for record in clone.git("ls-files", "-s", "-z", raw=True).stdout.split(b"\0") if record.startswith(b"160000 ")]
+    return [place for place in (place_inside(clone.root, path) for path in paths) if place is not None]
+
+
 def empty_submodules(clone):
     """Empties the folders that the index holds as a sub-module (a commit of another repository, which no worker
     command checks out): git lists nothing inside one, so what an earlier run wrote there would stay. The folder
-    itself stays, empty, as a checkout leaves it; anything else in its place is replaced by one. Returns how many
+    itself stays, empty, as a checkout leaves it; anything else in its place is replaced by one. Only a place inside
+    the work tree, reached through folders and never through a link, is touched (submodule_places). Returns how many
     entries were removed."""
-    removed, root = 0, os.fsencode(clone.root)
-    for record in clone.git("ls-files", "-s", "-z", raw=True).stdout.split(b"\0"):
-        if not record.startswith(b"160000 "):
-            continue
-        path = os.path.join(root, record.partition(b"\t")[2])
+    removed = 0
+    for path in submodule_places(clone):
         if not os.path.lexists(path):
             continue
         if stat.S_ISDIR(os.lstat(path).st_mode):
@@ -3380,6 +3406,7 @@ def cmd_start(args):
     if not is_sha(held):
         raise HiveError("this clone is on a branch that has no commit: there is nothing to set aside what it holds against. Nothing was "
                         "changed: stop, and tell the user")
+    submodule_places(clone)  # (an index that names a path outside the work tree stops the command here, before any change)
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
     removed = 0
@@ -3396,8 +3423,10 @@ def cmd_start(args):
     open_folders(clone.root)
     try:
         for path in links_over_folders(clone):
-            os.unlink(os.path.join(root, path))
-            removed += 1
+            place = place_inside(clone.root, path)
+            if place is not None and os.path.islink(place):
+                os.unlink(place)
+                removed += 1
     except OSError:
         raise HiveError("a link an earlier run left in the work tree could not be removed: tell the user") from None
     before = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()

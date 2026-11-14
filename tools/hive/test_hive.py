@@ -3646,6 +3646,25 @@ class Volunteer(Base):
                 git("update-index", "--add", "--cacheinfo", f"{mode},{git('hash-object', '-w', '--stdin', stdin=text)},{path}")
         return git("commit-tree", git("write-tree"), *[word for parent in parents for word in ("-p", parent)], "-m", message)
 
+    def plant_index(self, more):
+        """Replaces the clone's index by one that holds what it held and these entries too ({path as bytes: (mode,
+        id)}), written here byte by byte, as whatever may write into .git could: git itself never writes a path that
+        leaves the work tree, and reads an index that holds one without complaint."""
+        listed = subprocess.run(["git", "ls-files", "-s", "-z"], cwd=self.alice.work, capture_output=True, check=True).stdout
+        entries = {}
+        for record in filter(None, listed.split(b"\0")):
+            mode, sha, _ = record.split(b"\t", 1)[0].split()
+            entries[record.split(b"\t", 1)[1]] = (int(mode, 8), sha.decode())
+        entries.update(more)
+        data = b"DIRC" + struct.pack(">II", 2, len(entries))
+        for path in sorted(entries):
+            mode, sha = entries[path]
+            entry = struct.pack(">10I", 0, 0, 0, 0, 0, 0, mode, 0, 0, 0) + bytes.fromhex(sha) + struct.pack(">H", min(len(path), 0xfff)) + path
+            data += entry + b"\0" * (8 - len(entry) % 8)
+        index = self.alice.work / ".git/index"
+        index.unlink()
+        index.write_bytes(data + hashlib.sha1(data).digest())
+
     def object_bytes(self, sha):
         """(kind, bytes) of an object of the clone."""
         kind = sh("git", "cat-file", "-t", sha, cwd=self.alice.work).stdout.strip()
@@ -5229,6 +5248,43 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual({path: what[0] for path, what in tree.items() if path.split("/")[0] in ("vendor", "third", "deps")},
                          {"vendor": "folder", "third": "folder", "third/party": "folder", "deps": "folder", "deps/lib": "folder"},
                          "each sub-module's folder is there, empty, as a checkout leaves it")
+
+    def test_a_path_of_the_index_that_leaves_the_work_tree_stops_start_and_nothing_is_touched(self):
+        """start empties, itself, the folders the index holds as sub-modules, and the index is a file of .git: git
+        reads one whatever paths it holds. A sub-module's entry whose path is absolute, climbs out of the work tree
+        (« .. »), names the work tree itself (« . ») or lies in the clone's own .git would have start empty a folder
+        that is not the work tree's: the volunteer's own files, or the clone and all its branches. Each stops the
+        command as a clone that is not plain does: exit code 3, one line, before anything is set aside or removed,
+        here or elsewhere."""
+        outside = self.w.root / "outside"
+        (outside / "deep").mkdir(parents=True)
+        for name in ("keep", "deep/keep"):
+            (outside / name).write_text("a file of the volunteer's\n")
+        untouched = self.work_tree(outside)
+        self.alice.write("notes.txt", "what start would set aside\n").write("build/out.o", b"\0what start would remove")
+        before, index = self.work_tree(), self.alice.work / ".git/index"
+        pristine, hooks = index.read_bytes(), sorted(os.listdir(self.alice.work / ".git/hooks"))
+        climbing = os.path.relpath(outside, self.alice.work).encode()
+        self.assertTrue(climbing.startswith(b"../"), climbing)
+        for path in (os.fsencode(outside), climbing, b".", b"..", b"src/../../" + climbing, b".git/hooks", b"src/.GIT/x"):
+            with self.subTest(path=path):
+                index.write_bytes(pristine)
+                self.plant_index({path: (0o160000, self.start)})
+                listed = subprocess.run(["git", "ls-files", "-s", "-z"], cwd=self.alice.work, capture_output=True).stdout.split(b"\0")
+                self.assertIn(b"160000 " + self.start.encode() + b" 0\t" + path, listed, "git reads the index, and names the path")
+                self.assertEqual(self.begin("toy-0001", NOW), (3, ""), self.err)
+                self.assertEqual(self.err, "hive: STOP: this clone is not a plain clone: its index names a path that is not inside the work tree. "
+                                           "Do not commit or push from it, and run no git command in it: tell the user\n")
+                self.assertEqual(self.work_tree(outside), untouched, "nothing outside the work tree was touched")
+                self.assertEqual(self.work_tree(), before, "nothing was set aside, removed or written")
+                self.assertEqual((sorted(os.listdir(self.alice.work / ".git/hooks")), (self.alice.work / ".git/refs/stash").exists()), (hooks, False))
+        # A sub-module's entry inside the work tree is one start empties: the folder stays, what an earlier run wrote in it goes.
+        index.write_bytes(pristine)
+        self.plant_index({b"vendor/lib": (0o160000, self.start)})
+        self.alice.write("vendor/lib/left.o", b"\0left by a build")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[-2]), (0, f"STARTED hive/submit/toy-0001 at {self.start}"), self.err)
+        self.assertEqual(self.work_tree(outside), untouched)
 
     def test_start_reads_no_state(self):
         """start needs no clone of the hive's state: the task is the one next printed, from the registry, and submit
