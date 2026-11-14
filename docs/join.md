@@ -46,6 +46,8 @@ usage settings before you schedule anything.
      (phase 3; the plan notes that Codex's `workspace-write` sandbox keeps `.git` read-only, and its terms are unverified).
      If the worker runs on a machine of yours, in a clone of your fork that you made, keep that clone for the hive:
      at each task the worker removes the untracked files git ignores there, and sets the rest aside (`git stash`).
+     That machine needs a git from 2023 or later (one that takes `--attr-source`): the worker's first command says
+     so if it is older.
 3. **Paste the prompt** below.
 4. **Choose a schedule**: every hour is best (all your quota). "Only the hours before your weekly reset" (the
    leftovers) works only if those firings are **at most two hours apart, several in a row**: the hive deals a task at
