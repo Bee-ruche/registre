@@ -6,6 +6,7 @@ Standard library only, no network. `python3 tools/hive/test_page.py`
 """
 
 import contextlib
+import html
 import io
 import json
 import os
@@ -287,19 +288,22 @@ class TestFigures(Case):
         self.assertEqual(data["measures"], {"yield": 0.75, "time_to_answer_seconds": None,
                                             "judge_runs_per_integration": 2.0, "waiting": None})
         self.assertEqual(data["refusals"], [{"reason": reason, "count": 1} for reason in ("conflict", "judge_refused", "path_outside_task")])
+        # Three accounts in all: no model has enough members behind it for its judged count and its rate to be shown
+        # (TestNobodyIsRanked holds the models' table when there are enough).
         self.assertEqual(data["models"], [
-            {"model": None, "judged": 2, "accepted": 2, "acceptance_rate": 1.0},
-            {"model": "claude-fable-5-2", "judged": 1, "accepted": 1, "acceptance_rate": 1.0},
-            {"model": "gpt-x", "judged": 1, "accepted": 0, "acceptance_rate": 0.0}])
+            {"model": None, "judged": None, "accepted": 2, "acceptance_rate": None, "too_few_members": True},
+            {"model": "claude-fable-5-2", "judged": None, "accepted": 1, "acceptance_rate": None, "too_few_members": True},
+            {"model": "gpt-x", "judged": None, "accepted": 0, "acceptance_rate": None, "too_few_members": True}])
         self.assertEqual([(r["at"][:10], r["task"], r["login"], r["commit"]) for r in data["recent"]],
                          [("2026-11-12", "toy-0004", "carol", sha(5012)), ("2026-11-10", "toy-0002", "alice-new", sha(5007)),
                           ("2026-11-01", "toy-0001", "alice-new", sha(5001))])
         # The page says the same.
-        self.assertEqual(seen.row("alice-new"), ["alice-new", "2", "2", "100 % (2 of 2)", "2026-11-10", "card · badge"])
-        self.assertEqual(seen.row("carol"), ["carol", "1", "1", "100 % (1 of 1)", "2026-11-12", "card · badge"])
-        self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
-        self.assertEqual(seen.row("gpt-x"), ["gpt-x", "1", "0", "0 %"])
-        self.assertEqual(seen.row("undeclared"), ["undeclared", "2", "2", "100 %"])
+        self.assertEqual(seen.rows[seen.rows.index(seen.row("alice-new")) - 1], ["Member", "Accepted contributions", "To show"])
+        self.assertEqual(seen.row("alice-new"), ["alice-new", "2", "card · badge"])
+        self.assertEqual(seen.row("carol"), ["carol", "1", "card · badge"])
+        self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", page.TOO_FEW, "1", page.TOO_FEW])
+        self.assertEqual(seen.row("gpt-x"), ["gpt-x", page.TOO_FEW, "0", page.TOO_FEW])
+        self.assertEqual(seen.row("undeclared"), ["undeclared", page.TOO_FEW, "2", page.TOO_FEW])
         for reason in ("conflict", "judge_refused", "path_outside_task"):
             self.assertEqual(seen.row(reason), [reason, "1", hive.REASONS[reason]])
         self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0004 Title of toy-0004", "no figure", "carol", sha(5012)[:10]])
@@ -334,7 +338,8 @@ class TestFigures(Case):
     def test_a_login_taken_over_by_another_account_is_no_longer_shown_for_the_first(self):
         self.ledger([verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0002")])
         files = self.make()
-        self.assertEqual([(m["id"], m["login"]) for m in self.summary(files)["members"]], [(101, None), (105, "Alice")])
+        self.assertEqual([(m["id"], m["login"]) for m in self.summary(files)["members"]], [(105, "Alice"), (101, None)],
+                         "an account without a login is listed after those that have one")
         seen = self.harmless(files)
         self.assertEqual(seen.hrefs.count("https://github.com/Alice"), 3, "the first screen, the integrations and the members' table, for account 105 only")
         self.assertIsNotNone(seen.row("account 101"))
@@ -346,25 +351,30 @@ class TestFigures(Case):
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-08T09:00:00Z"}):
             self.assertEqual(self.summary(self.make())["week"]["integrations"], 0, "HIVE_NOW is the clock, as for the hive")
 
-    def test_the_top_fifty_members_by_integrations_and_the_latest_thirty_integrations(self):
+    def test_every_member_with_an_integration_is_listed_by_login_and_the_latest_thirty_integrations_are(self):
         lines, number = [], 0
-        for member in range(59, -1, -1):  # m00 has 60 integrations, m59 has one; the most active come last in time
+        login = lambda member: f"m{member * 37 % 60:02d}"  # noqa: E731  (the logins' order is not the order of the counts)
+        for member in range(59, -1, -1):  # account 1000 has 60 integrations, account 1059 has one; the most active come last in time
             for _ in range(60 - member):
                 number += 1
                 lines.append(verdict(number, f"2026-10-{1 + number % 28:02d}T00:00:00Z" if member else f"2026-11-{1 + number % 9:02d}T00:00:00Z",
-                                     f"m{member:02d}", 1000 + member, "toy-0001"))
+                                     login(member), 1000 + member, "toy-0001"))
         self.ledger(lines)
         files = self.make()
         data, seen = self.summary(files), self.harmless(files)
-        self.assertEqual([m["login"] for m in data["members"]], [f"m{member:02d}" for member in range(60)], "all of them in summary.json")
-        shown = [row[0] for row in seen.rows if len(row) == 6 and row[0].startswith("m")]
-        self.assertEqual(shown, [f"m{member:02d}" for member in range(50)])
-        self.assertEqual([i for i in seen.ids if i.startswith("member-")], [f"member-{1000 + member}" for member in range(50)],
+        listed = sorted(range(60), key=login)  # the sixty accounts, as a dictionary lists their logins
+        self.assertEqual([m["login"] for m in data["members"]], [f"m{position:02d}" for position in range(60)], "all of them, by login")
+        self.assertEqual([m["integrations"] for m in data["members"]], [60 - member for member in listed])
+        self.assertNotIn([m["integrations"] for m in data["members"]], (sorted(range(1, 61)), sorted(range(1, 61), reverse=True)),
+                         "the order is not the order of the counts, either way")
+        shown = [row for row in seen.rows if len(row) == 3 and row[0].startswith("m")]
+        self.assertEqual(shown, [[login(member), str(60 - member), "card · badge"] for member in listed], "the table lists every one of them: no cut")
+        self.assertEqual([i for i in seen.ids if i.startswith("member-")], [f"member-{1000 + member}" for member in listed],
                          "each row has its anchor, made from the account's number")
         self.assertEqual([h for h in seen.hrefs if h.startswith("members/")],
-                         [f"members/{1000 + member}{end}.svg" for member in range(50) for end in ("", "-badge")], "and says where its card and badge are")
+                         [f"members/{1000 + member}{end}.svg" for member in listed for end in ("", "-badge")], "and says where its card and badge are")
         self.assertEqual([(m["card"], m["badge"]) for m in data["members"]],
-                         [(f"members/{1000 + member}.svg", f"members/{1000 + member}-badge.svg") for member in range(60)])
+                         [(f"members/{1000 + member}.svg", f"members/{1000 + member}-badge.svg") for member in listed])
         self.assertEqual(len(data["recent"]), 30)
         self.assertEqual([r["at"] for r in data["recent"]], sorted((r["at"] for r in data["recent"]), reverse=True))
         self.assertEqual({r["login"] for r in data["recent"]}, {"m00"})
@@ -396,6 +406,159 @@ class TestFigures(Case):
         self.assertIn("join.html", self.harmless(self.make("--join")).hrefs)
         other = "https://github.com/Bee-ruche/registre/blob/hive/docs/join.md"
         self.assertIn(other, self.harmless(self.make("--join-url", other), join=other).hrefs)
+
+
+def told(text):
+    """What a file tells a reader: its text and its labels, without the markup, the styles and the drawing's numbers."""
+    text = re.sub(r"(?s)<style>.*?</style>", " ", text)
+    labels = re.findall(r'(?:aria-label|content|data-label)="([^"]*)"', text)
+    return html.unescape(" ".join([re.sub(r"<[^>]+>", " ", text), *labels]))
+
+
+def people(value):
+    """Every object of a JSON value that speaks of one person: it holds a login or an account's number."""
+    if isinstance(value, dict):
+        if {"login", "member", "member_id", "id"} & set(value):
+            yield value
+        for inner in value.values():
+            yield from people(inner)
+    elif isinstance(value, list):
+        for inner in value:
+            yield from people(inner)
+
+
+class TestNobodyIsRanked(Case):
+    """The page ranks nobody: every member with an accepted contribution is listed, by login, with the number of its
+    accepted contributions; what was refused is counted for the project, and for a model once enough members stand
+    behind it, never for a person, in any file."""
+
+    def several(self):
+        """Six accounts whose counts follow neither the logins' order nor its reverse; three of them had candidates
+        refused, in numbers (41, 67, 23; with their accepted ones 42, 69, 23 judged) that nothing else on the site is."""
+        lines, number = [], 0
+
+        def some(count, login, member_id, day, result="accepted"):
+            nonlocal number
+            for _ in range(count):
+                number += 1
+                lines.append(verdict(number, f"2026-11-{day:02d}T09:00:00Z", login, member_id, "toy-0001", result,
+                                     reason=None if result == "accepted" else "judge_refused"))
+        for count, login, member_id in ((5, "Zoe", 201), (1, "bob", 202), (3, "alice", 203), (2, "Carol", 204), (4, "no login", 206)):
+            some(count, login, member_id, 6 + member_id % 3)
+        for count, login, member_id in ((41, "bob", 202), (67, "Carol", 204), (23, "dave", 205)):
+            some(count, login, member_id, 1, "refused")
+        self.ledger(lines)
+
+    def test_members_are_listed_by_login_with_what_was_accepted_and_no_file_says_what_was_refused_of_a_person(self):
+        self.several()
+        files = self.make("--repo-url", REPO, "--site-url", SITE)
+        data, seen = self.summary(files), self.harmless(files, site=SITE)
+        self.assertEqual([(m["login"], m["id"], m["integrations"]) for m in data["members"]],
+                         [("alice", 203, 3), ("bob", 202, 1), ("Carol", 204, 2), ("Zoe", 201, 5), (None, 206, 4)],
+                         "as a dictionary lists the logins, case ignored; an account without a login comes after")
+        self.assertEqual({key for member in data["members"] for key in member},
+                         {"id", "login", "integrations", "first_integration", "last_integration", "card", "badge"})
+        head = seen.rows.index(["Member", "Accepted contributions", "To show"])
+        self.assertEqual(seen.rows[head + 1:head + 6], [[who, count, "card · badge"] for who, count in (
+            ("alice", "3"), ("bob", "1"), ("Carol", "2"), ("Zoe", "5"), ("account 206", "4"))], "the table says the same, and nothing more")
+        self.assertEqual(data["members_without_integration"], 1, "counted, not named")
+        self.assertEqual((data["totals"]["judged"], data["totals"]["refused"], data["totals"]["integrations"]), (146, 131, 15), "the project's own figures")
+        # No file says how many candidates of one person were judged or refused, nor a rate of theirs.
+        self.assertGreater(len(files), 40)
+        for name, text in files.items():
+            said = told(text)
+            self.assertNotRegex(said, r"\b(41|42|67|69|23)\b", name)
+            self.assertNotRegex(said, r"(?i)\btop\b|leader|\bbest\b|most active|\b1st\b|\bfirst place\b|\bscore", name)
+            if name.startswith("members/"):
+                self.assertNotRegex(said, r"(?i)refus|judged|\brate\b|%|\brank", name)
+            if name.startswith("wins/"):
+                self.assertNotRegex(said, r"(?i)refus|\brate\b", name)
+        for person in people(data):
+            self.assertEqual([key for key in person if re.search(r"judged|refus|rate|rank|accepted|score|position|yield", key)], [], person)
+        self.assertNotIn("dave", "".join(files.values()), "an account with no accepted contribution is named nowhere")
+        self.assertIn("nobody is ranked", seen.said)
+
+    def test_members_with_the_same_login_in_another_case_or_no_login_at_all_are_listed_by_account_number(self):
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "b", 9, "toy-0001"), verdict(2, "2026-11-02T09:00:00Z", "", 8, "toy-0001"),
+                     verdict(3, "2026-11-03T09:00:00Z", "A", 7, "toy-0001"), verdict(4, "2026-11-04T09:00:00Z", "-", 6, "toy-0001"),
+                     verdict(5, "2026-11-05T09:00:00Z", "a-", 5, "toy-0001"), verdict(6, "2026-11-06T09:00:00Z", "a-b", 4, "toy-0001")])
+        self.assertEqual([(m["login"], m["id"]) for m in self.summary(self.make())["members"]],
+                         [("A", 7), ("a-b", 4), ("b", 9), (None, 5), (None, 6), (None, 8)])
+
+    def rows(self, **models):
+        """page.model_rows() for {model: (judged, accepted, the accounts behind it)}, as (model, judged, accepted, rate, kept back)."""
+        rows = page.model_rows({None if model == "undeclared" else model.replace("_", "-"): {"judged": judged, "accepted": accepted, "ids": set(ids)}
+                                for model, (judged, accepted, ids) in models.items()})
+        self.assertEqual([set(row) for row in rows], [{"model", "judged", "accepted", "acceptance_rate", "too_few_members"}] * len(rows))
+        return [tuple(row.values()) for row in rows]
+
+    def test_a_model_s_judged_count_and_rate_are_shown_once_enough_members_stand_behind_it(self):
+        self.assertEqual(page.MODEL_MEMBERS_MIN, 5)
+        five, four, others = range(1, 6), range(11, 15), range(21, 27)
+        # Five accounts: shown. Four: kept back, with the number accepted. Those kept back have five accounts between them.
+        self.assertEqual(self.rows(model_a=(7, 3, five), model_b=(50, 2, four), model_c=(9, 1, [15])),
+                         [("model-a", 7, 3, 0.4286, False), ("model-b", None, 2, None, True), ("model-c", None, 1, None, True)])
+        # The rows shown are in the order of their judged counts; those kept back in the order of their names, whatever
+        # their figures; « undeclared » is a row like another.
+        self.assertEqual(self.rows(model_a=(7, 3, five), model_d=(8, 8, others), model_z=(90, 1, [15, 16]), model_y=(1, 1, [17, 18, 19]),
+                                   undeclared=(40, 0, [20])),
+                         [("model-d", 8, 8, 1.0, False), ("model-a", 7, 3, 0.4286, False), (None, None, 0, None, True),
+                          ("model-y", None, 1, None, True), ("model-z", None, 1, None, True)])
+        self.assertEqual(self.rows(undeclared=(40, 4, five))[0], (None, 40, 4, 0.1, False))
+        # The project's totals are on the page: one row kept back alone is the totals minus the rows shown. So rows are
+        # kept back, the one with the fewest accounts first, until those kept back have enough accounts between them.
+        self.assertEqual(self.rows(model_a=(7, 3, five), model_b=(50, 2, four)),
+                         [("model-a", None, 3, None, True), ("model-b", None, 2, None, True)], "four accounts kept back alone: the other row too")
+        self.assertEqual(self.rows(model_a=(7, 3, five), model_b=(50, 2, four), model_d=(8, 8, others)),
+                         [("model-d", 8, 8, 1.0, False), ("model-a", None, 3, None, True), ("model-b", None, 2, None, True)],
+                         "the row with the fewest accounts joins it, and that is enough")
+        self.assertEqual(self.rows(model_a=(7, 3, five), model_b=(50, 2, four), model_c=(9, 1, [11])),
+                         [("model-a", None, 3, None, True), ("model-b", None, 2, None, True), ("model-c", None, 1, None, True)],
+                         "an account behind two rows kept back is one account")
+        self.assertEqual(self.rows(model_b=(50, 2, four)), [("model-b", None, 2, None, True)])
+        self.assertEqual(self.rows(), [])
+
+    def test_the_page_keeps_back_the_judged_count_of_a_model_few_members_declared(self):
+        lines = [verdict(n, "2026-11-01T09:00:00Z", f"m{n}", 300 + n, "toy-0001", "accepted" if n < 4 else "refused", model="model-a",
+                         reason=None if n < 4 else "judge_refused") for n in range(1, 8)]  # seven accounts, three accepted
+        lines += [verdict(10 + n, "2026-11-02T09:00:00Z", "solo", 400, "toy-0002", "accepted" if n == 0 else "refused", model="model-b",
+                          reason=None if n == 0 else "judge_refused") for n in range(42)]  # one account: 42 judged, 41 refused
+        lines += [verdict(60 + n, "2026-11-03T09:00:00Z", None, None, "toy-0003", "refused", model="model-b", reason="judge_refused")
+                  for n in range(4)]  # lines without an account add no account
+        lines += [verdict(70 + n, "2026-11-04T09:00:00Z", f"n{n}", 500 + n, "toy-0004", "refused", reason="judge_refused") for n in range(4)]
+        self.ledger(lines)
+        files = self.make()
+        data, seen = self.summary(files), self.harmless(files)
+        self.assertEqual(data["models"], [
+            {"model": "model-a", "judged": 7, "accepted": 3, "acceptance_rate": 0.4286, "too_few_members": False},
+            {"model": None, "judged": None, "accepted": 0, "acceptance_rate": None, "too_few_members": True},
+            {"model": "model-b", "judged": None, "accepted": 1, "acceptance_rate": None, "too_few_members": True}])
+        self.assertEqual([seen.row(name) for name in ("model-a", "undeclared", "model-b")],
+                         [["model-a", "7", "3", "43 %"], ["undeclared", page.TOO_FEW, "0", page.TOO_FEW], ["model-b", page.TOO_FEW, "1", page.TOO_FEW]])
+        self.assertIn("Declared by each worker: a statistic, not a proof. " + page.MODELS_NOTE, seen.said)
+        self.assertIn("at least 5 members", page.MODELS_NOTE)
+        own = Seen(files[f"wins/{sha(5010)}.html"]).said
+        self.assertIn("@solo", own)
+        self.assertIn("declared model: model-b", own, "the page of an accepted contribution names its member and the model it declared")
+        for name, text in files.items():
+            self.assertNotRegex(told(text), r"\b(41|42|45|46)\b", (name, "how many of that member's candidates were judged or refused"))
+
+    def test_an_acceptance_without_a_judgement_is_an_integration_and_not_a_judged_candidate(self):
+        """The hive writes no such line. If the ledger holds one, it is an integration like another for its member, its
+        card and the badges, which all count the same lines; it is not in what the judge judged and accepted."""
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001", judged=False), verdict(2, "2026-11-11T09:00:00Z", "alice", 101, "toy-0002"),
+                     verdict(3, "2026-11-11T10:00:00Z", "bob", 102, "toy-0003", "refused", reason="judge_refused")])
+        files = self.make()
+        data = self.summary(files)
+        self.assertEqual([(m["login"], m["integrations"]) for m in data["members"]], [("alice", 2)])
+        self.assertIn(">2 accepted by the judge<", files["members/101-badge.svg"])
+        self.assertIn("2 verified contributions", files["badge.svg"])
+        self.assertEqual(sorted(name for name in files if name.startswith("wins/") and name.endswith(".svg")), [f"wins/{sha(5000 + n)}.svg" for n in (1, 2)])
+        self.assertEqual(data["totals"], {**data["totals"], "verdicts": 3, "judged": 2, "accepted": 1, "integrations": 2})
+        self.assertEqual({key: data["week"][key] for key in ("integrations", "judged", "accepted", "acceptance_rate")},
+                         {"integrations": 2, "judged": 2, "accepted": 1, "acceptance_rate": 0.5})
+        self.assertEqual(data["measures"]["yield"], 0.5)
+        self.assertEqual([(m["model"], m["accepted"]) for m in data["models"]], [(None, 1)], "a model's row counts what was judged")
 
 
 class TestHostile(Case):
@@ -1328,7 +1491,7 @@ class TestEndToEnd(test_hive.Base):
                        "--tasks", str(self.w.registry / "hive/tasks/toy.jsonl")])  # the registry's own task file, as a run has it
         text, data = (out / "index.html").read_text(encoding="utf-8"), json.loads((out / "summary.json").read_text())
         seen = Seen(text)
-        self.assertEqual(seen.row("alice"), ["alice", "1", "1", "100 % (1 of 1)", "2026-11-12", "card · badge"])
+        self.assertEqual(seen.row("alice"), ["alice", "1", "card · badge"])
         self.assertIsNone(seen.row("bob"))
         self.assertEqual(seen.row("2026-11-12"), ["2026-11-12", "toy-0001 Make f0 faster", "no figure", "alice", self.w.tip()[:10]])
         self.assertTrue(seen.said.startswith(
@@ -1337,8 +1500,8 @@ class TestEndToEnd(test_hive.Base):
         self.assertIn("https://github.com/alice", seen.hrefs)
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{self.w.tip()}", seen.hrefs)
         self.assertEqual(seen.row("judge_refused"), ["judge_refused", "1", hive.REASONS["judge_refused"]])
-        self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", "1", "1", "100 %"])
-        self.assertEqual(seen.row("undeclared"), ["undeclared", "1", "0", "0 %"])
+        self.assertEqual(seen.row("claude-fable-5-2"), ["claude-fable-5-2", page.TOO_FEW, "1", page.TOO_FEW])
+        self.assertEqual(seen.row("undeclared"), ["undeclared", page.TOO_FEW, "0", page.TOO_FEW], "two accounts: too few for a model's judged count")
         self.assertEqual((data["project"], data["totals"]["integrations"], data["totals"]["judged"], data["stats_json"]), ("toy", 1, 2, "agrees"))
         self.assertEqual(data["tasks"], {"done": 1, "dealt": 1, "open": 2, "closed": 1, "total": 5})
         self.assertEqual((dealt, data["measures"]["waiting"]), (test_hive.NOW, None), "carol's task is dealt; no candidate waits")

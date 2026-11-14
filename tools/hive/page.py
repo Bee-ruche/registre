@@ -72,7 +72,11 @@ STATUS_WORDS = {"done": "done", "dealt": "being worked on", "open": "open", "clo
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 WEEK = dt.timedelta(days=7)
 YEARS = (2000, 2999)  # an instant outside these years is not one
-MEMBERS_SHOWN, MODELS_SHOWN, RECENT_SHOWN = 50, 30, 30  # rows of index.html's tables; the cards are not capped (render())
+MODELS_SHOWN, RECENT_SHOWN = 30, 30  # rows of two of index.html's tables; the members' table and the cards are not capped
+# How many candidates of a model were judged, next to how many were accepted, says how many were refused. With few
+# members behind a model, that is a figure about them: the page of an accepted contribution names its member and the
+# model it declared. So a model's judged count and its rate are shown once this many accounts stand behind them.
+MODEL_MEMBERS_MIN = 5
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 MEASURES_MAX = 40  # rows of « what the judge measured » kept for one integration
 COUNT_MAX = 10 ** 16 - 1  # a count in a report (outputs compared, files, lines): sixteen digits, as the hive reads them
@@ -349,7 +353,12 @@ def rate(part, whole):
 def collect(state, now, tasks=None):
     """Everything the page shows, as plain data (it is also summary.json). Members are counted by account id and
     named by the login of their latest event; only members with an integration are named at all. `tasks` is the path
-    of the registry's task file of the project, or None: it says which figure each task asked for (read_goals)."""
+    of the registry's task file of the project, or None: it says which figure each task asked for (read_goals).
+
+    Nobody is ranked. The members are every account with an accepted contribution, in the alphabetical order of their
+    logins (case ignored; then the accounts without a login, by number), each with the number of its accepted
+    contributions and nothing else: what was refused is counted for the project and for a model (model_rows), never
+    for a person, here or in any file."""
     goals = read_goals(tasks) if tasks is not None else {}
     objects, skipped = read_ledger(state)
     events = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
@@ -384,9 +393,11 @@ def collect(state, now, tasks=None):
         if not accepted:
             refusals[event["reason"]] = refusals.get(event["reason"], 0) + 1
         if judged:
-            row = models.setdefault(event["model"], {"judged": 0, "accepted": 0})
+            row = models.setdefault(event["model"], {"judged": 0, "accepted": 0, "ids": set()})
             row["judged"] += 1
             row["accepted"] += accepted
+            if member_id is not None:
+                row["ids"].add(member_id)
         if in_week:
             week["judged"] += judged
             week["accepted"] += accepted and judged
@@ -394,9 +405,7 @@ def collect(state, now, tasks=None):
             if accepted and member_id is not None:
                 week["ids"].add(member_id)
         if member_id is not None:
-            row = members.setdefault(member_id, {"integrations": 0, "judged": 0, "accepted": 0, "first": None, "last": None})
-            row["judged"] += judged
-            row["accepted"] += accepted and judged
+            row = members.setdefault(member_id, {"integrations": 0, "first": None, "last": None})
             if accepted:
                 row["integrations"] += 1
                 row["first"] = min(row["first"] or event["at"], event["at"])
@@ -407,10 +416,10 @@ def collect(state, now, tasks=None):
                 firsts[member_id] = event  # the account's first integration: the earliest instant, then the ledger's order
     totals["judge_failures"] = sum(1 for event in events if event["type"] == "error" and event["judge"])
 
+    # An order that is no score: the login, as a dictionary lists it; an account without a login comes after, by number.
     named = sorted(((member_id, row) for member_id, row in members.items() if row["integrations"]),
-                   key=lambda item: (-item[1]["integrations"], -item[1]["judged"], item[0]))
+                   key=lambda item: (login_of(item[0]) is None, (login_of(item[0]) or "").lower(), item[0]))
     recent.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    model_rows = sorted(models.items(), key=lambda item: (-item[1]["judged"], -item[1]["accepted"], item[0] or ""))
     integrations = totals["integrations"]
 
     def first(event):
@@ -436,13 +445,11 @@ def collect(state, now, tasks=None):
         "totals": totals,
         "week": {"since": iso(since), "integrations": week["integrations"], "members": len(week["ids"]),
                  "judged": week["judged"], "accepted": week["accepted"], "acceptance_rate": rate(week["accepted"], week["judged"])},
-        "members": [{"id": member_id, "login": login_of(member_id), "integrations": row["integrations"], "judged": row["judged"],
-                     "accepted": row["accepted"], "acceptance_rate": rate(row["accepted"], row["judged"]),
+        "members": [{"id": member_id, "login": login_of(member_id), "integrations": row["integrations"],
                      "first_integration": iso(row["first"]), "last_integration": iso(row["last"]),
                      "card": card_name(member_id), "badge": badge_name(member_id)} for member_id, row in named],
         "members_without_integration": len(members) - len(named),
-        "models": [{"model": model, "judged": row["judged"], "accepted": row["accepted"],
-                    "acceptance_rate": rate(row["accepted"], row["judged"])} for model, row in model_rows],
+        "models": model_rows(models),
         "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), "member_id": event["member_id"],
                     "login": login_of(event["member_id"]), "commit": event["commit"], "headline": event["headline"],
                     "figure": event["figure"], "first": first(event),
@@ -468,12 +475,37 @@ def win_name(commit):
     return name if name is not None and WIN_NAME.match(name) else None
 
 
+def model_rows(models):
+    """The models' table, from {model: {"judged", "accepted", "ids": the accounts behind them}}: a row {"model",
+    "judged", "accepted", "acceptance_rate", "too_few_members"} for each model (None: no model declared).
+
+    A row says how many candidates were judged, and its rate, only when at least MODEL_MEMBERS_MIN accounts stand
+    behind it. The others say « too few members to show » (too_few_members, with judged and the rate None) and keep
+    the number accepted, which the pages of the accepted contributions say anyway. The page also prints the project's
+    totals, so what the rows keep back can be had from the totals and the rows shown: more rows are kept back, the
+    one with the fewest accounts first, until those kept back have MODEL_MEMBERS_MIN accounts between them, or all
+    are. The rows shown come first, the most judged first; the rows kept back follow in the alphabetical order of
+    their names, an order that says nothing of their figures."""
+    rows = sorted(models.items(), key=lambda item: (len(item[1]["ids"]), item[0] or ""))
+    kept_back = [item for item in rows if len(item[1]["ids"]) < MODEL_MEMBERS_MIN]
+    shown = rows[len(kept_back):]
+    while kept_back and shown and len(set().union(*(row["ids"] for _, row in kept_back))) < MODEL_MEMBERS_MIN:
+        kept_back.append(shown.pop(0))
+    shown.sort(key=lambda item: (-item[1]["judged"], -item[1]["accepted"], item[0] or ""))
+    kept_back.sort(key=lambda item: item[0] or "")
+    return [{"model": model, "judged": row["judged"], "accepted": row["accepted"],
+             "acceptance_rate": rate(row["accepted"], row["judged"]), "too_few_members": False} for model, row in shown] \
+        + [{"model": model, "judged": None, "accepted": row["accepted"], "acceptance_rate": None, "too_few_members": True}
+           for model, row in kept_back]
+
+
 def compare_stats(stats, models):
     """« agrees », « differs » or « absent »: whether stats.json, which the hive writes from the same ledger, gives
     the models' figures this page counted. The page shows its own count either way; a difference is a stale file."""
     if not isinstance(stats, dict) or not isinstance(stats.get("models"), dict):
         return "absent"
-    return "agrees" if stats["models"] == {model or "undeclared": row for model, row in models.items()} else "differs"
+    counted = {model or "undeclared": {"judged": row["judged"], "accepted": row["accepted"]} for model, row in models.items()}
+    return "agrees" if stats["models"] == counted else "differs"
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -630,10 +662,6 @@ def percent(value):
     return "n/a" if value is None else f"{100 * value:.0f} %"
 
 
-def out_of(part, whole):
-    return "n/a" if not whole else f"{100 * part / whole:.0f} % ({part} of {whole})"
-
-
 def day(stamp):
     return stamp[:10]
 
@@ -688,6 +716,9 @@ def progress_bar(tasks):
 
 WHAT = ("A project of La Ruche: volunteers' AI coding assistants do its tasks one at a time, "
         "and a judge in a sandbox decides what is integrated.")  # what a stranger is told first, in one sentence
+TOO_FEW = "too few members to show"  # in place of a model's judged count and rate (model_rows)
+MODELS_NOTE = (f"How many candidates of a model were judged, and its rate, are shown once at least {MODEL_MEMBERS_MIN} members stand "
+               "behind them: with fewer, they would be figures about those members.")
 
 
 def render_html(data, title, repo_url, join):
@@ -732,31 +763,35 @@ def render_html(data, title, repo_url, join):
     sections.append(el("section", el("h2", "Recent integrations"), recent))
 
     if data["members"]:
-        shown = data["members"][:MEMBERS_SHOWN]
-        rows = [[member_cell(m["login"], m["id"]), m["integrations"], m["judged"], out_of(m["accepted"], m["judged"]), day(m["last_integration"]),
-                 [el("a", "card", href=Link(card_name(m["id"]))), " · ", el("a", "badge", href=Link(badge_name(m["id"])))]] for m in shown]
-        note = f"{len(data['members'])} members have an integration" + (f"; the first {len(shown)} are shown" if len(shown) < len(data["members"]) else "")
-        members = [table([("Member", False), ("Integrations", True), ("Judged", True), ("Accepted", True), ("Last integration", True), ("To show", False)],
-                         rows, ids=[f"member-{m['id']}" for m in shown]),
-                   el("p", f"{note}. A member is a GitHub account, counted by its numeric id and shown under its latest login; "
-                           "a name appears here only with work the judge accepted.", class_="note"),
-                   el("p", "Every member with an integration has a card at members/<account id>.svg and a badge at members/<account id>-badge.svg, "
-                           "also when the table does not show them. They name no login, so they stay right when an account is renamed.", class_="note")]
+        count = len(data["members"])
+        rows = [[member_cell(m["login"], m["id"]), m["integrations"],
+                 [el("a", "card", href=Link(card_name(m["id"]))), " · ", el("a", "badge", href=Link(badge_name(m["id"])))]] for m in data["members"]]
+        members = [table([("Member", False), ("Accepted contributions", True), ("To show", False)], rows,
+                         ids=[f"member-{m['id']}" for m in data["members"]]),
+                   el("p", f"{count} member{' has' if count == 1 else 's have'} a contribution the judge accepted. They are listed in the "
+                           "alphabetical order of their logins: nobody is ranked, and what was refused is counted for the project, never for a "
+                           "member. A member is a GitHub account, counted by its numeric id and shown under its latest login; a name appears "
+                           "here only with work the judge accepted.", class_="note"),
+                   el("p", "Each has a card at members/<account id>.svg and a badge at members/<account id>-badge.svg. They name no login, so "
+                           "they stay right when an account is renamed.", class_="note")]
     else:
         members = el("p", "No member has an integration yet.", class_="soft")
     sections.append(el("section", el("h2", "Members"), members))
 
     if data["models"]:
-        shown, rest = data["models"][:MODELS_SHOWN], data["models"][MODELS_SHOWN:]
-        rows = [[el("code", m["model"]) if m["model"] is not None else el("span", "undeclared", class_="soft"),
-                 m["judged"], m["accepted"], percent(m["acceptance_rate"])] for m in shown]
+        def named(row):
+            return el("code", row["model"]) if row["model"] is not None else el("span", "undeclared", class_="soft")
+        told = [m for m in data["models"] if not m["too_few_members"]]
+        shown, rest = told[:MODELS_SHOWN], told[MODELS_SHOWN:]
+        rows = [[named(m), m["judged"], m["accepted"], percent(m["acceptance_rate"])] for m in shown]
         if rest:
             judged, accepted = sum(m["judged"] for m in rest), sum(m["accepted"] for m in rest)
             rows.append([el("span", f"{len(rest)} others", class_="soft"), judged, accepted, percent(rate(accepted, judged))])
+        rows += [[named(m), TOO_FEW, m["accepted"], TOO_FEW] for m in data["models"] if m["too_few_members"]]
         models = table([("Model", False), ("Judged", True), ("Accepted", True), ("Rate", True)], rows)
     else:
         models = el("p", "No candidate has been judged yet.", class_="soft")
-    sections.append(el("section", el("h2", "Models"), models, el("p", "Declared by each worker: a statistic, not a proof.", class_="note")))
+    sections.append(el("section", el("h2", "Models"), models, el("p", "Declared by each worker: a statistic, not a proof. " + MODELS_NOTE, class_="note")))
 
     if data["refusals"]:
         rows = [[el("code", r["reason"]) if r["reason"] else el("span", "unknown", class_="soft"), r["count"],
