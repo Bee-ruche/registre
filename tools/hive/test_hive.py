@@ -4184,6 +4184,44 @@ class TestVolunteerSide(Volunteer):
                 self.one_line(self.submit("toy-0001", NOW, f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
+    def test_without_a_tip_given_submit_checks_the_candidate_on_the_tip_setup_fetched(self):
+        """The worker's guide gives submit no --upstream. The candidate is then checked as the hive will check it:
+        merged on the project's tip that setup fetched (upstream/<the project's branch>), which may be ahead of the
+        fork's own copy of that branch."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.w.upstream_commit("lib.c", LIB.replace("return 0;", "return 10;"))
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
+        submit = ("submit", "--registry", self.registry, "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--no-push")
+        self.alice.write("lib.c", LIB.replace("return 0;", "return 20;"))
+        code, text = self.run_cli(*submit)
+        self.assertEqual((code, text.startswith("REFUSED (conflict): the candidate does not merge on the project's tip: start again from it ")),
+                         (1, True), text + self.err)
+        self.spoken(text)
+        sh("git", "checkout", "--quiet", "--force", "-B", "hive/submit/toy-0001", "upstream/main", cwd=self.alice.work)
+        self.alice.write("lib.c", LIB.replace("return 0;", "return 10; /* FAST */"))
+        code, text = self.run_cli(*submit)
+        self.assertEqual((code, self.spoken(text)[0].split()[0], self.fork_branches()), (0, "NOT-PUSHED", ["refs/heads/main"]), text + self.err)
+        self.assertEqual(sh("git", "rev-parse", "HEAD~2", cwd=self.alice.work).stdout.strip(), self.w.tip(), "the work and its marker, on the tip")
+
+    def test_work_added_after_a_candidate_makes_a_new_candidate_that_holds_it(self):
+        """A worker that changes one more thing after submit runs submit again, in the same words. What is pushed
+        then is a new candidate, which holds the new work: PUSHED never names a commit that lacks what the work
+        tree held."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n")
+        code, text = self.submit("toy-0001", dealt)
+        first = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, text.splitlines()[0]), (0, f"PUSHED {first}"), self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n/* and one more thing */\n")
+        code, text = self.submit("toy-0001", dealt)
+        second = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, text.splitlines()[0], second == first), (0, f"PUSHED {second}", False), self.err)
+        self.assertEqual(sh("git", "show", f"{second}:lib.c", cwd=self.alice.bare).stdout, LIB + "/* FAST */\n/* and one more thing */\n")
+        self.assertEqual(sh("git", "rev-parse", f"{second}~2", cwd=self.alice.bare).stdout.strip(), first, "on the first candidate")
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        self.assertEqual(sh("git", "show", "main:lib.c", cwd=self.w.upstream).stdout, LIB + "/* FAST */\n/* and one more thing */\n")
+
     def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
         """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
         behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
