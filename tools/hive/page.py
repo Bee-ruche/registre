@@ -4,24 +4,50 @@
     python3 tools/hive/page.py --state <state folder of one project> --out <folder>
                                [--title "..."] [--repo-url https://github.com/owner/name]
                                [--tasks <the registry's hive/tasks/<project>.jsonl>]
-                               [--join | --join-url https://github.com/...] [--now 2026-11-13T00:00:00Z]
+                               [--join | --join-url https://github.com/...]
+                               [--site-url https://owner.github.io/site/project] [--now 2026-11-13T00:00:00Z]
 
 It reads ledger.jsonl, feed.json and stats.json and writes static files that a GitHub Pages site or a README can
 show. The hive deals each open task to one member at a time; the page shows how the tasks stand, what the judge
 accepted, and how many dealt candidates wait for the judge (from the feed's deals):
 
-  index.html              one page: progress, this week, members, models, integrations, refusals, measures
+  index.html              one page: what this is, the latest accepted contribution and how to take part; then
+                          progress, this week, the recent integrations, the members, the models, what was refused,
+                          three measures
+  wins/<commit>.svg       a card for every integration, named by the integrated commit's 40-hex id: the task, the
+                          member, the date and one figure the judge measured: the one the task asked for when --tasks
+                          says which and the report holds it, else the largest gain beyond the noise
+  wins/<commit>.html      the permanent page of that integration, where its card leads: everything the judge
+                          measured, how to check it without trusting the page, the card and how to show it
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
-  wins/<commit>.svg       a card for each of the latest integrations, named by the integrated commit's 40-hex id: the
-                          task, the member, the date and one figure the judge measured: the one the task asked for
-                          when --tasks says which and the report holds it, else the largest gain beyond the noise
+  members/<id>-badge.svg  the same member's badge
   badge.svg               the project's badge
   summary.json            the same figures, for other tools
+
+The rules the page follows, each stated where it is applied:
+
+  - Nobody is ranked. Every member with an accepted contribution is listed, by login, with the number of its
+    accepted contributions. What was refused is counted for the project, and for a model once MODEL_MEMBERS_MIN
+    accounts stand behind it, never for a person, in any file (collect(), model_rows()).
+  - No direction is stated that the judge did not state: a figure and a noise flag that point opposite ways are
+    printed without « better » or « worse » (direction()).
+  - Each answer of the ledger is read once, and no line dated after the instant the page is made for (once(),
+    collect()): the counts, the cards and the badges agree, and the latest contribution is never from the future.
+  - What the hive's own side ended is not listed as a refusal of a candidate (HIVE_SIDE), and « judge runs » counts
+    every run of the judge the ledger holds a line for (judge_runs()).
+  - A login is set in a fixed-width face wherever it credits someone, and the page of a contribution gives the
+    account's number beside it (render_win(), story(), member_cell()).
+  - The page says what the ledger says, and no more. The ledger records that the hive integrated a commit, on the
+    date of its line, for an account's number, under the login that account had then. The page does not ask GitHub
+    who holds that login today, does not check again that the commit is still in the project's history, and gives
+    the ledger's date: for a push that a later run recorded, that run's. The page of a contribution says so.
 
 Trust: the ledger holds strings that strangers chose (logins, model identifiers), within patterns the hive checks.
 This file trusts none of that. Every value read is checked again against its pattern, and dropped or replaced when
 it does not match; everything placed in HTML or SVG goes through one builder that escapes it; a link is built from
-a checked login or a 40-hex commit id and from nothing else; a file's name is one of three constants or an integer.
+a checked login, a 40-hex commit id or an address given on the command line and checked, and from nothing else; a
+file's name is one of three constants, or an account's number or a 40-hex commit id under members/ or wins/.
+write() checks its whole plan against the output folder before it writes anything, and follows no link there.
 The page has no script, loads nothing, and names a member only for work the judge accepted.
 
 Standard library only. The figures come from the ledger; stats.json is only compared with them.
@@ -956,7 +982,9 @@ WIDE, NARROW = frozenset("MWmw@%"), frozenset("iljtfrI1.,:;·'|() -")
 # stays readable when the host page's theme is not the reader's system theme. Contrast of the text on the surface:
 # .i 19:1 and .j 7.8:1 in light, 15:1 and 9.6:1 in dark. It holds no address, no import and none of the characters
 # that HTML and XML write differently: the same bytes stand in a card's file and in the page that shows the card. Its
-# class names are single letters and the pages' are longer: neither restyles the other.
+# class names are single letters and the pages' are longer: neither restyles the other. « m » is the fixed-width face
+# of what must be read letter by letter (a task's id, a commit's id, a login): fonts the reader has, ending with the
+# generic one, and none that is fetched.
 CARD_CSS = Markup(
     ".s{fill:#fcfcfb;stroke:#d9b56a}.i{fill:#0b0b0b}.j{fill:#52514e}.h{fill:#eda100}.e{fill:#b87900}.c{fill:#fcfcfb}"
     ".l{stroke:#bdb9a6;fill:none}.k{stroke:#a86d00;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}"
@@ -1259,10 +1287,12 @@ def story(win):
                f", GitHub account {win['member_id']}" if win["member_id"] else None]
     else:
         who = f"the AI coding assistant of GitHub account {win['member_id']}" if win["member_id"] else "a member's AI coding assistant"
+    # The last clause says what the ledger says: the hive recorded an integration, on the date of its line. Whether
+    # the commit is in the project's history today, the page does not know (render_win_page() says so).
     return [task if win["task"] else None, "Written by ", who,
             [" (declared model: ", el("code", win["model"]), ")"] if win["model"] else None,
             ", measured and accepted by the project's judge in a sandbox" if win["judged"] else ", accepted",
-            f", and integrated on {date(win['at'])} as commit ", el("code", win["commit"][:10]),
+            f"; the hive's ledger records its integration on {date(win['at'])} as commit ", el("code", win["commit"][:10]),
             ", credited to that account." if win["member_id"] else "."]
 
 
@@ -1272,7 +1302,7 @@ def render_win_page(project, win, repo_url=None, join=None, site_url=None):
     links to. It carries no date of making: its bytes change only when what it says does."""
     figure, name, words = win["figure"], project or "this project", figure_words(win["figure"])
     described = f"{words} in {name}. " + (f"Task {win['task']}, accepted" if win["task"] else "Accepted") \
-        + f" by the judge, integrated on {date(win['at'])}."
+        + f" by the judge; integration recorded on {date(win['at'])}."
     address = f"{site_url}/wins/{win['commit']}.html" if site_address(site_url) else None
     head = el("head", el("meta", charset="utf-8"), el("meta", name="viewport", content="width=device-width, initial-scale=1"),
               el("meta", http_equiv="Content-Security-Policy", content=CSP), el("meta", name="referrer", content="no-referrer"),
@@ -1317,6 +1347,12 @@ def render_win_page(project, win, repo_url=None, join=None, site_url=None):
              el("p", "The task: ", el("code", win["task"]), f" ({title})" if title else None, ".") if win["task"] else None,
              el("p", "In the project's ledger, this contribution is the « verdict » line whose commit is this id; every figure on this page "
                      "is read from that line.", class_="note"),
+             # What the page cannot know, said in the ledger's terms: the date is the line's, the history is not read
+             # again, and a login is the last one the ledger saw for the account's number.
+             el("p", "This page says what the ledger recorded, on the date of that line, and no more: it does not check again that the commit "
+                     "is still in the project's history.",
+                     f" The login is the one the ledger last recorded for GitHub account {win['member_id']}; an account can be renamed, its "
+                     "number stays." if win["login"] and win["member_id"] else None, class_="note"),
              el("p", "The model is what the worker declared: a statistic, not a proof.", class_="note") if win["model"] else None]
 
     markdown = embed_markdown(site_url, project, win)
@@ -1370,8 +1406,8 @@ def render(data, title="", repo_url=None, join=None, site_url=None):
     every run: what someone embedded or linked once is still there later, whatever came after it. Nothing is capped
     and nothing relies on what an earlier run left in the folder (a site is often built in an empty one): each file is
     derived again from the whole ledger, so a card also follows what changed since (a login that passed to another
-    account is no longer shown; a task's title is the feed's, its goal the task file's). The cost is linear: see
-    COST below."""
+    account is no longer shown; a task's title is the feed's, its goal the task file's). The cost is linear in the
+    ledger: two files for each integration and two for each member, all written again at every run."""
     join = join or Link(DEFAULT_JOIN_URL)
     files = {"index.html": render_html(data, title, repo_url, join),
              "badge.svg": render_badge(data["totals"]["integrations"]) + "\n", "summary.json": summary_json(data)}

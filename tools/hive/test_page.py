@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Tests of the project page (tools/hive/page.py): the figures, what a hostile ledger cannot do, the empty state,
-the same bytes for the same input, and one run on a ledger the hive itself wrote.
+the same bytes for the same input, and one run on a ledger the hive itself wrote. And the rules the page follows:
+nobody is ranked and nothing refused is said of a person, no direction the judge did not state, each answer read
+once and none from the future, what the hive ended apart from what was refused, every run of the judge counted,
+logins in a fixed-width face, no link followed in the output folder, and what every page tells the browser.
 
 Standard library only, no network. `python3 tools/hive/test_page.py`
 """
@@ -1304,9 +1307,9 @@ class TestOnce(Case):
 
     def test_a_line_without_a_whole_id_counts_for_itself(self):
         bare = {"type": "verdict", "at": "2026-11-10T09:00:00Z", "result": "accepted", "member": "alice", "member_id": 101, "judged": True}
+        failed = failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge")
         self.ledger([bare, bare, {**bare, "sha": "abc", "commit": "abc"}, {**bare, "sha": ["x"], "commit": sha(5001)[:-1]},
-                     {**failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "run": "not a key"}, {**failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "run": "not a key"},
-                     {**failure(4, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "sha": "x"}, {**failure(4, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "sha": "x"}])
+                     {**failed, "run": "not a key"}, {**failed, "run": "not a key"}, {**failed, "sha": "x"}, {**failed, "sha": "x"}])
         data = self.summary(self.make())
         self.assertEqual((data["totals"]["integrations"], data["totals"]["judge_failures"], data["ledger"]["repeated_lines"]), (4, 4, 0),
                          "only whole ids are compared: nothing is merged on a guess")
@@ -1657,9 +1660,9 @@ class TestWinPage(Case):
         text, seen = files[self.first], Seen(files[self.first])
         self.assertTrue(seen.said.startswith(
             "La Ruche · toy · accepted by the judge4.3 %better · instructions n6Task toy-0001: Compare matches 16 bits at a time. Written by the AI "
-            "coding assistant of @ada, GitHub account 101 (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox, and integrated "
-            "on 21 Oct 2026 as commit 0000000000, credited to that account.This is the first integration of this account in toy."
-            "What the judge measured"), seen.said)
+            "coding assistant of @ada, GitHub account 101 (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox; "
+            "the hive's ledger records its integration on 21 Oct 2026 as commit 0000000000, credited to that account."
+            "This is the first integration of this account in toy.What the judge measured"), seen.said)
         self.assertEqual(seen.rows, [["Measure", "Gain", "Reading"],
                                      ["instructions n6", "4.3 %", "the figure the task asked for"],
                                      ["compression throughput n9", "5.2 %", "beyond the noise"],
@@ -1672,6 +1675,11 @@ class TestWinPage(Case):
         # Check it yourself: the commit's id, whole; the repository and the commit, linked; the task.
         self.assertIn(f"The integrated commit, in Bee-ruche/toy:{sha(5001)}This commit on GitHubThe task: toy-0001 (Compare matches 16 bits at a time).",
                       seen.said)
+        # What the page cannot know is said as what the ledger recorded: the date is the line's, the project's history is
+        # not read again, and the login is the last one the ledger saw for the account's number.
+        self.assertIn("every figure on this page is read from that line.This page says what the ledger recorded, on the date of that line, and no "
+                      "more: it does not check again that the commit is still in the project's history. The login is the one the ledger last "
+                      "recorded for GitHub account 101; an account can be renamed, its number stays.The model is what the worker declared", seen.said)
         for href in (REPO, f"{REPO}/commit/{sha(5001)}", "https://github.com/ada", f"{sha(5001)}.svg", "../index.html", JOIN):
             self.assertIn(href, seen.hrefs)
         # Show it: the card as its file holds it, and the Markdown that embeds it, which takes the site's address.
@@ -1680,7 +1688,7 @@ class TestWinPage(Case):
         self.assertIn(f'<code class="copy">{markdown}</code>', text)
         self.assertEqual((seen.metas["og:url"], seen.metas["og:title"], seen.metas["og:description"]),
                          (f"{SITE}/wins/{sha(5001)}.html", "4.3 % better · instructions n6 · toy · La Ruche",
-                          "4.3 % better · instructions n6 in toy. Task toy-0001, accepted by the judge, integrated on 21 Oct 2026."))
+                          "4.3 % better · instructions n6 in toy. Task toy-0001, accepted by the judge; integration recorded on 21 Oct 2026."))
         self.assertIn("<title>4.3 % better · instructions n6 · toy-0001 · La Ruche</title>", text)
         self.assertEqual(seen.metas["Content-Security-Policy"], page.CSP)
         # How to take part: the same words as on index.html, one link, the way back. No counter, no deadline.
@@ -1693,8 +1701,8 @@ class TestWinPage(Case):
         other = Seen(files[self.second])
         self.assertTrue(other.said.startswith(
             "La Ruche · toy · accepted by the judge3.2 %better · instructions n9Task toy-0002: Fewer instructions per probe. Written by the AI coding "
-            "assistant of @ada, GitHub account 101, measured and accepted by the project's judge in a sandbox, and integrated on 9 Nov 2026 as commit 0000000000, credited "
-            "to that account.What the judge measured"), other.said)
+            "assistant of @ada, GitHub account 101, measured and accepted by the project's judge in a sandbox; the hive's ledger records its "
+            "integration on 9 Nov 2026 as commit 0000000000, credited to that account.What the judge measured"), other.said)
         self.assertEqual(other.rows[1:], [["instructions n9", "3.2 %", "the figure the task asked for"],
                                           ["size", "2.9 %", "beyond the noise"],
                                           ["time", "−3.0 %", "worse, beyond the noise"],
@@ -1738,16 +1746,21 @@ class TestWinPage(Case):
         said = {n: Seen(files[f"wins/{sha(5000 + n)}.html"]).said for n in (1, 2, 3, 4)}
         self.assertTrue(said[1].startswith(
             "La Ruche · a hive project · accepted by the judgeAcceptedby the judgeTask toy-0001: A title! Written by the AI coding assistant of GitHub "
-            "account 101, measured and accepted by the project's judge in a sandbox, and integrated on 1 Nov 2026 as commit 0000000000, credited to that "
-            "account.This is the first integration of this account in this project.What the judge measuredThe ledger keeps no measured gain for this "
-            "contribution.Changed: 1 file, 3 lines.Check it yourself"), said[1])
+            "account 101, measured and accepted by the project's judge in a sandbox; the hive's ledger records its integration on 1 Nov 2026 as commit "
+            "0000000000, credited to that account.This is the first integration of this account in this project.What the judge measuredThe ledger "
+            "keeps no measured gain for this contribution.Changed: 1 file, 3 lines.Check it yourself"), said[1])
+        self.assertIn("it does not check again that the commit is still in the project's history.Show it", said[1],
+                      "no login is shown for this account: nothing is said of one")
         self.assertNotRegex(said[1], r"(?i)alice|gpt-x|declared", "a login that passed to another account, a model that is not an identifier: not shown")
-        self.assertIn("Task toy-0009. Written by the AI coding assistant of @Alice, GitHub account 105, measured", said[2], "a task the feed does not know: its id alone")
-        self.assertIn("accepted by the judgeAcceptedby the judgeWritten by a member's AI coding assistant, accepted, and integrated on 3 Nov 2026 as commit "
-                      "0000000000.What the judge measuredThe ledger keeps no measured gain for this contribution.Check it yourself", said[3],
+        self.assertIn("Task toy-0009. Written by the AI coding assistant of @Alice, GitHub account 105, measured", said[2],
+                      "a task the feed does not know: its id alone")
+        self.assertIn("accepted by the judgeAcceptedby the judgeWritten by a member's AI coding assistant, accepted; the hive's ledger records its "
+                      "integration on 3 Nov 2026 as commit 0000000000.What the judge measuredThe ledger keeps no measured gain for this contribution."
+                      "Check it yourself", said[3],
                       "no task, no account, not judged, no size of the change: none is invented")
         self.assertNotRegex(said[3], r"credited to that|first integration|The task|Changed|measured and accepted")
-        self.assertIn("of @Alice, GitHub account 105, accepted, and integrated on 4 Nov 2026", said[4], "« judged » is true or it is not")
+        self.assertIn("of @Alice, GitHub account 105, accepted; the hive's ledger records its integration on 4 Nov 2026", said[4],
+                      "« judged » is true or it is not")
         self.assertIn("All the integrations", said[4])
         self.assertIn(f"[![La Ruche · accepted by the judge]({SITE}/wins/{sha(5003)}.svg)]({SITE}/wins/{sha(5003)}.html)", files[f"wins/{sha(5003)}.html"])
 
@@ -1836,7 +1849,8 @@ class TestWinPage(Case):
             self.assertEqual(seen.rows, [], n)
             self.assertNotRegex(seen.said, r"[0-9] %|outputs compared|Suspect constructs|Changed|inf|nan", n)
         bare = Seen(files[f"wins/{sha(5006)}.html"])
-        self.assertIn("10.0 %better · aWritten by a member's AI coding assistant, accepted, and integrated on 6 Nov 2026 as commit 0000000000.", bare.said)
+        self.assertIn("10.0 %better · aWritten by a member's AI coding assistant, accepted; the hive's ledger records its integration on 6 Nov 2026 "
+                      "as commit 0000000000.", bare.said)
         self.assertEqual(self.summary(files)["totals"]["integrations"], 6, "the line of a kind this page does not know counts for nothing")
 
 
@@ -1954,9 +1968,9 @@ class TestEndToEnd(test_hive.Base):
         self.assertIn("toy-0001 · Make f0 faster", win.getAttribute("aria-label"))
         self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.html", f"{self.w.tip()}.svg"])
         own = Seen((out / "wins" / f"{self.w.tip()}.html").read_text(encoding="utf-8"))
-        self.assertIn("Task toy-0001: Make f0 faster. Written by the AI coding assistant of @alice, GitHub account 101 (declared model: claude-fable-5-2), measured and "
-                      f"accepted by the project's judge in a sandbox, and integrated on 12 Nov 2026 as commit {self.w.tip()[:10]}, credited to that "
-                      "account.This is the first integration of this account in toy.", own.said)
+        self.assertIn("Task toy-0001: Make f0 faster. Written by the AI coding assistant of @alice, GitHub account 101 (declared model: "
+                      "claude-fable-5-2), measured and accepted by the project's judge in a sandbox; the hive's ledger records its integration on "
+                      f"12 Nov 2026 as commit {self.w.tip()[:10]}, credited to that account.This is the first integration of this account in toy.", own.said)
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{self.w.tip()}", own.hrefs)
         self.assertIn(f"wins/{self.w.tip()}.html", seen.hrefs, "the date of the integration links to its page")
         self.assertNotIn("<script", text)
