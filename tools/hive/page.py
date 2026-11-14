@@ -33,7 +33,9 @@ The rules the page follows, each stated where it is applied:
     nothing either: the ledger is public and names the member of every answer, and with a handful of members the
     project's totals say much of each. The page says so. What the judge measured of a candidate refused for a
     figure, and what the hive did with the part of the project an ask preferred, are listed line by line, with
-    the task and the date and no member: the page has no history of a member's deals, and makes none.
+    the task and the date and no member: the page has no history of a member's deals, and makes none. A line that
+    would say, beside a task a member is named for, how that member's last deal ended is counted and not listed
+    (UNLISTED).
   - No direction is stated that the judge did not state: a figure and a noise flag that point opposite ways are
     printed without « better » or « worse » (direction()).
   - Each answer of the ledger is read once, and no line dated after the instant the page is made for (once(),
@@ -124,6 +126,10 @@ HIVE_SIDE = hive.HIVE_SIDE_REASONS
 # a figure is short. Written again here, as the patterns are; a line written before that rule has no report.
 MEASURED = ("goal_not_met", "requirement_not_met")
 SHORT_SHOWN, SHORT_MEASURES = 30, 3  # the latest such candidates listed on index.html, and the measures given for each
+GOAL_MORE = 8  # the further conditions of a task's goal that the page counts and names
+# A deal whose preference was not kept for this reason is counted and never listed with its task: the task's latest deal
+# is its integrator's, whom the page names beside the task, and the reason says how that member's last deal ended.
+UNLISTED = "last_deal_not_accepted"
 # What a deal's line says of the part of the project its ask preferred (hive.plan): the part is one of the files the
 # project's tasks name, as the registry writes it; kept or not; and, when not, one of these reasons, in this file's
 # own words. Checked again here: a path of printable ASCII, a yes or a no, a reason of this list.
@@ -298,9 +304,13 @@ def goal_metric(task):
 
 
 def goal_bounds(task):
-    """{"min": fraction or None, "max": fraction or None} that a task's goal sets on its own gain (goal_metric), or None
-    when the goal is on no gain or sets no bound this page can print: a bound is a finite number (never a boolean or
-    a string) between -GAIN_MAX and GAIN_MAX."""
+    """{"min": fraction or None, "max": fraction or None, "more": n, "also": [metrics]} that a task's goal sets on its
+    own gain (goal_metric), or None when the goal is on no gain or sets no bound this page can print: a bound is a
+    finite number (never a boolean or a string) between -GAIN_MAX and GAIN_MAX. A goal may ask more than its own
+    figure (« and »: miniz asks a gain in instructions and the stopwatch beyond the noise): `more` counts those
+    further conditions (GOAL_MORE at most), and `also` names the figures they are on, each an identifier, without its
+    gain_, sure_ or worse_: a candidate may reach the bound and miss one of them, and the page must not read as if the
+    bound were all that was asked."""
     if goal_metric(task) is None:
         return None
     bounds = {}
@@ -308,7 +318,13 @@ def goal_bounds(task):
         value = task["goal"].get(key)
         usable = type(value) in (int, float) and (type(value) is int or math.isfinite(value)) and -GAIN_MAX <= value <= GAIN_MAX
         bounds[key] = round(float(value), 6) if usable else None
-    return bounds if bounds["min"] is not None or bounds["max"] is not None else None
+    if bounds["min"] is None and bounds["max"] is None:
+        return None
+    more = task["goal"].get("and")
+    more = more[:GOAL_MORE] if isinstance(more, list) else []
+    names = [condition.get("name") for condition in more if isinstance(condition, dict)]
+    also = [matching(name.partition("_")[2] if name.startswith(("gain_", "sure_", "worse_")) else name, METRIC) for name in names if isinstance(name, str)]
+    return {**bounds, "more": len(more), "also": sorted({name for name in also if name is not None})}
 
 
 def read_tasks(path):
@@ -658,7 +674,7 @@ def collect(state, now, tasks=None):
         "preferences": {"named": len(named_parts), "kept": sum(1 for _, _, event in named_parts if event["prefer"]["kept"]),
                         "not_kept": [{"because": because, "count": not_kept[because]} for because in PREFER_WORDS if because in not_kept],
                         "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), **event["prefer"]}
-                                   for at, _, event in named_parts[:PREFERS_SHOWN]]},
+                                   for at, _, event in [item for item in named_parts if item[2]["prefer"]["because"] != UNLISTED][:PREFERS_SHOWN]]},
         "measures": {
             "yield": rate(totals["accepted"], totals["judged"]),
             "time_to_answer_seconds": None,  # the ledger says when a candidate was answered, not when it was pushed
@@ -911,22 +927,28 @@ def task_cell(item):
 
 def asked_words(item):
     """What a candidate refused for a figure was asked, as far as this page knows it. For the goal of a task whose
-    figure is a gain and whose bound the task file gave: « at least 2.0 % · instructions n6 ». For a goal this page
-    was not told, the words say so; for a figure the project requires of every contribution, the hive's own words
-    for that refusal: the project's file, which sets those figures, is not given to this page."""
+    figure is a gain and whose bound the task file gave: « at least 2.0 % · instructions n6 », and, when the goal asks
+    more than that bound, how many further conditions and on which figures: the bound may be met and the candidate
+    refused for one of them. For a goal this page was not told, the words say so; for a figure the project requires
+    of every contribution, the hive's own words for that refusal: the project's file, which sets those figures, is
+    not given to this page."""
     asked = item["asked"]
     if asked is None:
         return "the task's goal (its figure is not known to this page)" if item["reason"] == "goal_not_met" else hive.REASONS[item["reason"]]
     bound = " and ".join(filter(None, [f"at least {gain_text(asked['min'])}" if asked["min"] is not None else None,
                                        f"at most {gain_text(asked['max'])}" if asked["max"] is not None else None]))
-    return f"{bound} · {asked['metric'].replace('_', ' ')}"
+    more = f", and {asked['more']} more condition{'' if asked['more'] == 1 else 's'} of the task's goal" if asked["more"] else ""
+    on = f" (on {', '.join(name.replace('_', ' ') for name in asked['also'])})" if more and asked["also"] else ""
+    return f"{bound} · {asked['metric'].replace('_', ' ')}{more}{on}"
 
 
 def measured_words(item):
-    """What the judge measured of a candidate refused for a figure: its first SHORT_MEASURES measures in read_report()'s
-    order (the task's own figure first, when the page was told which), each with the reading its own flags give
-    (reading()), and how many more the ledger keeps."""
-    shown = item["measures"][:SHORT_MEASURES]
+    """What the judge measured of a candidate refused for a figure: SHORT_MEASURES of its measures, each with the
+    reading its own flags give (reading()), and how many more the ledger keeps. The task's own figure comes first when
+    the page was told which, then the figures the goal's further conditions are on (what was missed is then among
+    those shown), then the others in read_report()'s order."""
+    also = item["asked"]["also"] if item["asked"] else ()
+    shown = sorted(item["measures"], key=lambda row: (not row["goal"], row["metric"] not in also))[:SHORT_MEASURES]  # (a stable sort)
     more = len(item["measures"]) - len(shown) + item["measures_left_out"]
     return "; ".join(f"{gain_text(row['gain'])} · {row['metric'].replace('_', ' ')}: {reading(row)}" for row in shown) \
         + (f"; and {more:,} more in the ledger" if more else "")
@@ -1065,7 +1087,8 @@ def render_html(data, title, repo_url, join):
 
     preferences = data["preferences"]
     if preferences["named"]:  # what the hive did with the part of the project an ask preferred: line by line, and no member
-        rows = [[day(item["at"]), task_cell(item), prefer_words(item)] for item in preferences["recent"]]
+        rows = [[day(item["at"]), task_cell(item), prefer_words(item)] for item in preferences["recent"]] \
+            or [[el("span", "none to list", class_="soft"), "", ""]]
         why = "; ".join(f"{PREFER_WORDS[r['because']]} ({r['count']:,})" for r in preferences["not_kept"])
         sections.append(el("section", el("h2", "Parts of the project that asks preferred"),
                            el("p", f"Deals whose ask named a part of the project: {preferences['named']:,}. Kept: {preferences['kept']:,}."
@@ -1074,7 +1097,9 @@ def render_html(data, title, repo_url, join):
                            el("p", "A member may say which part of the project it prefers: one of the files the project's tasks name. The hive "
                                    "follows it only when its own rules lose nothing by it: the member's last deal was accepted, and a task of "
                                    "that part was among those it could be dealt anyway. A preference never changes who is served first. The "
-                                   f"latest {PREFERS_SHOWN} are listed, and no member is named.", class_="note")))
+                                   f"latest {PREFERS_SHOWN} are listed, and no member is named. A deal whose preference was not kept because "
+                                   "its member's last deal was not accepted is counted above and not listed: the task of a row may be one a "
+                                   "member is named for elsewhere on this page, which says nothing refused of a person.", class_="note")))
 
     waiting = measures["waiting"]
     runs = measures["judge_runs_per_integration"]

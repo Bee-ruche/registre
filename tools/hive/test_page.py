@@ -454,7 +454,6 @@ class TestFigures(Case):
         seen, data = self.harmless(files), self.summary(files)
         self.assertEqual(self.prefer_rows(seen), [
             ["2026-11-05", "toy-0001 Title of toy-0001", "The ask named lib.c; the hive did not keep it: the project does not offer preferences."],
-            ["2026-11-04", "toy-0002 Title of toy-0002", "The ask named lib.c; the hive did not keep it: the member's last deal was not accepted."],
             ["2026-11-03", "toy-0001 Title of toy-0001",
              "The ask named docs/read me.md; the hive did not keep it: the member had no deal that came to an end yet."],
             ["2026-11-02", "toy-0002 Title of toy-0002",
@@ -464,6 +463,8 @@ class TestFigures(Case):
                          {"named": 5, "kept": 1, "not_kept": [{"because": because, "count": 1} for because in hive.PREFER_BECAUSE]})
         self.assertEqual(data["preferences"]["recent"][-1], {"at": "2026-11-01T09:00:00Z", "task": "toy-0001", "title": "Title of toy-0001",
                                                              "file": "lib.c", "kept": True, "because": None})
+        self.assertEqual([item["because"] for item in data["preferences"]["recent"]], ["not_offered", "no_deal_yet", "no_free_task", None],
+                         "the deal whose member's last deal was not accepted is counted, and not listed with its task")
         self.assertIn("Deals whose ask named a part of the project: 5. Kept: 1. Not kept: the project does not offer preferences (1); the member "
                       "had no deal that came to an end yet (1); the member's last deal was not accepted (1); no task of that part was free for "
                       "the member at its turn (1).", seen.said)
@@ -473,6 +474,29 @@ class TestFigures(Case):
         for login in ("alice", "bob", "carol", "dave", "erin", "fred", "gina"):
             self.assertNotIn(login, files["index.html"] + files["summary.json"])
         self.assertNotRegex(told(files["index.html"]), r"\b10[1-7]\b")
+
+    def test_no_line_says_beside_a_task_how_a_members_last_deal_ended(self):
+        """A task is integrated by the holder of its latest deal, and the page names that member beside the task. A
+        row that gave the task of a deal with « the member's last deal was not accepted » would say it of that member:
+        such a deal is counted, and not listed. Nothing refused is said of a person, by one line or by two."""
+        self.assertEqual(page.UNLISTED, "last_deal_not_accepted")
+        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"}),
+                     verdict(1, "2026-11-01T12:00:00Z", "alice", 101, "toy-0001"),
+                     dealt(2, "2026-11-02T09:00:00Z", "alice", 101, "toy-0002", {"file": "lib.c", "kept": True})])
+        self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "dealt"}))
+        files = self.make()
+        seen, data = self.harmless(files), self.summary(files)
+        self.assertEqual(seen.row("2026-11-01")[:2] + seen.row("2026-11-01")[3:4], ["2026-11-01", "toy-0001 Title of toy-0001", "alice"],
+                         "the integration names its member beside the task")
+        self.assertEqual(self.prefer_rows(seen), [["2026-11-02", "toy-0002 Title of toy-0002",
+                                                   "The ask named lib.c, and the hive kept it: the task dealt is one of that part."]])
+        self.assertEqual((data["preferences"]["named"], data["preferences"]["not_kept"], [item["task"] for item in data["preferences"]["recent"]]),
+                         (2, [{"because": "last_deal_not_accepted", "count": 1}], ["toy-0002"]))
+        self.assertEqual(seen.said.count("last deal was not accepted"), 2, "in the count and in the note, never in a row")
+        self.assertIn("Not kept: the member's last deal was not accepted (1).", seen.said)
+        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"})])
+        seen = self.harmless(self.make())
+        self.assertEqual(self.prefer_rows(seen), [["none to list", "", ""]], "counted, and the table says there is nothing to list")
 
     def test_a_ledger_whose_deals_name_no_part_gives_the_page_it_gave_before(self):
         lines = [dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"), verdict(1, "2026-11-02T09:00:00Z", "alice", 101, "toy-0001")]
@@ -747,7 +771,7 @@ class TestRefusals(Case):
              "and 1 more in the ledger"]], "the latest first; the task's own figure first; the noise words from the flags alone")
         self.assertEqual([(item["task"], item["reason"], item["asked"], [row["metric"] for row in item["measures"]]) for item in data["short_of_a_figure"]], [
             ("toy-0002", "requirement_not_met", None, ["x", "ratio_n6", "instructions_n6", "compression_throughput_n6"]),
-            ("toy-0001", "goal_not_met", {"metric": "instructions_n6", "min": 0.02, "max": None},
+            ("toy-0001", "goal_not_met", {"metric": "instructions_n6", "min": 0.02, "max": None, "more": 0, "also": []},
              ["instructions_n6", "x", "ratio_n6", "compression_throughput_n6"])])
         self.assertEqual(data["short_of_a_figure"][1]["measures"][0], {"metric": "instructions_n6", "gain": 0.012, "sure": None, "worse": None, "goal": True})
         self.assertEqual(data["refusals"], [{"reason": "goal_not_met", "count": 2}, {"reason": "judge_refused", "count": 1},
@@ -781,7 +805,29 @@ class TestRefusals(Case):
                 self.assertEqual(self.short_rows(seen)[1][3], said)
         self.assertEqual([page.goal_bounds({"goal": goal}) for goal in (gain_goal("gain_x"), {"kind": "metric", "name": "gain_x", "max": 3},
                                                                         {"kind": "metric", "name": "gain_x", "min": 10.5}, {"kind": "correct"}, None)],
-                         [{"min": 0.02, "max": None}, {"min": None, "max": 3.0}, None, None, None])
+                         [{"min": 0.02, "max": None, "more": 0, "also": []}, {"min": None, "max": 3.0, "more": 0, "also": []}, None, None, None])
+
+    def test_a_goal_that_asks_more_than_its_own_figure_is_not_read_as_that_bound_alone(self):
+        """A goal may ask a gain AND something else (miniz: fewer instructions, and the stopwatch beyond the noise). A
+        candidate may then reach the bound and be refused for the other condition: the page says the goal asks more,
+        on which figures, and shows those figures among what was measured, whatever larger gains the report holds."""
+        goal = gain_goal("gain_instructions_n6", **{"and": [{"name": "sure_compression_throughput_n6", "min": 1}]})
+        report = {"gain_instructions_n6": 0.03, "gain_compression_throughput_n6": 0.004, "sure_compression_throughput_n6": 0,
+                  "worse_compression_throughput_n6": 0, "gain_y": 0.05, "sure_y": 1, "gain_x": 0.04, "sure_x": 1, "gain_ratio_n6": -0.002, "worse_ratio_n6": 1}
+        data, seen, _ = self.short_of_a_figure("--tasks", self.tasks([task("toy-0001", goal)]), report=report)
+        self.assertEqual(self.short_rows(seen)[1][3:], [
+            "at least 2.0 % · instructions n6, and 1 more condition of the task's goal (on compression throughput n6)",
+            "3.0 % · instructions n6: the figure the task asked for; 0.4 % · compression throughput n6: within the noise; "
+            "5.0 % · y: beyond the noise; and 2 more in the ledger"], "the bound is met; what was missed is among the figures shown")
+        self.assertEqual(data["short_of_a_figure"][1]["asked"],
+                         {"metric": "instructions_n6", "min": 0.02, "max": None, "more": 1, "also": ["compression_throughput_n6"]})
+        hostile = [{"name": "sure_<script>alert(1)</script>", "min": 1}, {"name": ["sure_a"]}, "sure_a", 7, {"min": 1}, {"name": "worse_b", "max": 0},
+                   {"name": "gain_c", "min": 0.1}, {"name": "outputs_compared", "min": 1}, *({"name": f"sure_m{n}", "min": 1} for n in range(20))]
+        self.assertEqual(page.goal_bounds({"goal": gain_goal("gain_a", **{"and": hostile})}),
+                         {"min": 0.02, "max": None, "more": page.GOAL_MORE, "also": ["b", "c", "outputs_compared"]},
+                         "the conditions are counted up to a bound, and a figure is named only by an identifier")
+        for more in ("sure_a", {"name": "sure_a"}, 7, None, []):
+            self.assertEqual(page.goal_bounds({"goal": gain_goal("gain_a", **{"and": more})}), {"min": 0.02, "max": None, "more": 0, "also": []})
 
     def test_a_refusal_whose_line_keeps_no_figure_is_shown_as_before(self):
         """A line written before the ledger kept the figures has no report; a report may also hold no gain the page
