@@ -593,9 +593,14 @@ class TestIntegration(Base):
         """A project's judge may read files frozen at an old commit of the project, by their git id (a corpus). The
         trees the hive writes for the judge are plain files: the commits the project's file lists are made readable in
         the base, and in the base only."""
-        old = self.start
-        frozen = sh("git", "rev-parse", f"{old}:lib.c", cwd=self.w.seed).stdout.strip()
+        first = self.start
+        self.w.upstream_commit("lib.c", LIB + "int earlier;\n")
+        old = self.w.tip()  # a commit with a parent, which the project's file does not list
+        frozen = sh("git", "rev-parse", f"{old}:lib.c", cwd=self.w.upstream).stdout.strip()
         self.w.upstream_commit("lib.c", LIB + "int since;\n")  # the project moved on: the old commit is not its tip any more
+        template = Path(self.tmp.name) / "template/hooks"
+        template.mkdir(parents=True)
+        (template / "post-checkout").write_text("#!/bin/sh\ntouch PLANTED\n")
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old]}})
         alice = self.w.fork("ann", 111)
         alice.write("src/h.c", "int h;\n").commit().marker("toy-0002").push()
@@ -606,26 +611,34 @@ class TestIntegration(Base):
                 return subprocess.run(["git", "-C", str(folder), *args], capture_output=True, env={**os.environ, **GIT_ENV})
             seen.append({"commit": has(base, "cat-file", "-e", f"{old}^{{commit}}").returncode,
                          "file": has(base, "cat-file", "blob", frozen).stdout,
-                         "parents": has(base, "cat-file", "-e", f"{old}^").returncode != 0 or old == self.w_first(),
+                         "parent": has(base, "cat-file", "-e", f"{first}^{{commit}}").returncode == 0,
                          "refs": has(base, "for-each-ref").stdout, "remotes": has(base, "remote").stdout,
+                         "hooks": sorted(p.name for p in (base / ".git/hooks").glob("*")) if (base / ".git/hooks").exists() else [],
                          "candidate": (candidate / ".git").exists(), "tip": (base / "lib.c").read_text()})
             return judge_by_content(base, candidate, task, tip, commit)
 
-        self.assertEqual(self.one(self.w.run(judge))["result"], "accepted")
-        self.assertEqual(seen, [{"commit": 0, "file": LIB.encode(), "parents": True, "refs": b"", "remotes": b"", "candidate": False,
-                                 "tip": LIB + "int since;\n"}], "the old commit and its files, by id; the tree is the tip's; nothing else")
+        with mock.patch.dict(os.environ, {"GIT_TEMPLATE_DIR": str(template.parent)}):
+            self.assertEqual(self.one(self.w.run(judge))["result"], "accepted")
+        self.assertEqual(seen, [{"commit": 0, "file": (LIB + "int earlier;\n").encode(), "parent": False, "refs": b"", "remotes": b"",
+                                 "hooks": [], "candidate": False, "tip": LIB + "int since;\n"}],
+                         "the old commit and its files, by id, not its parent; the tree is the tip's; nothing of the machine's")
+        sh("git", "tag", "-a", "-m", "a tag", "frozen", old, cwd=self.w.upstream)
+        tag = sh("git", "rev-parse", "frozen", cwd=self.w.upstream).stdout.strip()
+        self.assertNotEqual(tag, old)
+        self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [tag]}})
+        self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n")
+        with self.assertRaisesRegex(hive.HiveError, f"judge.history: commit {tag[:12]} is not in the hive's clone"):
+            self.w.run()  # (a tag that names the commit is not the commit: the project's file lists commits)
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": ["1" * 40]}})
         self.w.fork("bob", 102).submit("toy-0001", content=LIB + "int since;\n/* tuned */\n")
         with self.assertRaisesRegex(hive.HiveError, "judge.history: commit 111111111111 is not in the hive's clone"):
             self.w.run()
-        self.assertEqual([e["type"] for e in self.w.events()], ["verdict"], "the hive's own lack: said loudly, and held against no candidate")
+        self.assertEqual([e["type"] for e in self.w.events() if e["type"] not in ("deal", "expired")], ["verdict"],
+                         "the hive's own lack: said loudly, and held against no candidate")
         for bad in (["HEAD"], "x", [old, 7], [old] * 17):
             self.w.set_config({"judge": {"metrics": ["gain"], "history": bad}})
             with self.subTest(bad=bad), self.assertRaisesRegex(hive.HiveError, "judge.history"):
                 self.w.load()
-
-    def w_first(self):
-        return sh("git", "rev-list", "--max-parents=0", "HEAD", cwd=self.w.seed).stdout.strip()
 
     def test_a_goal_on_a_metric(self):
         self.alice.submit("toy-0004")
@@ -777,6 +790,61 @@ class TestStructure(Base):
         self.w.record()
         verdicts, _ = self.w.judge()
         self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {long: "too_many_commits", fine: "accepted"})
+
+    def weight(self, sha):
+        return int(sh("git", "rev-list", "--objects", "--disk-usage", sha, f"^{self.w.tip()}", cwd=self.w.harvest).stdout)
+
+    def test_a_candidate_whose_commits_weigh_too_much_is_not_carried_to_the_other_steps(self):
+        """What a candidate changes in the end may be one line, and its commits carry anything on the way: a file added
+        and removed. The plan weighs each candidate's own commits, as git stores them."""
+        self.alice.write("src/bulk.bin", os.urandom(300_000)).commit("bulk")  # (bytes that do not compress)
+        sh("git", "rm", "-q", "src/bulk.bin", cwd=self.alice.work)
+        self.alice.commit("and gone")
+        heavy = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
+        fine = self.w.fork("bob", 102).submit("toy-0001")
+        self.w.plan()  # (the plan's clone now holds both)
+        light, bulk = self.weight(fine), self.weight(heavy)
+        self.assertTrue(light < 20_000 < 300_000 < bulk, (light, bulk))
+        self.w.set_config({"limits": {"history_bytes": bulk}})
+        self.assertEqual([c["heavy"] for c in self.w.plan()["queue"]], [False, False], "exactly the limit is fine")
+        self.w.set_config({"limits": {"history_bytes": bulk - 1}})
+        made = self.w.plan()
+        self.assertEqual({c["sha"]: (c["heavy"], c["long"]) for c in made["queue"]}, {heavy: (True, False), fine: (False, False)})
+        self.assertNotIn("weight", made["queue"][0])
+        listed = sh("git", "bundle", "list-heads", str(self.w.bundle), cwd=self.w.harvest).stdout
+        self.assertEqual((fine in listed, heavy in listed), (True, False), "its commits stay in the plan's clone")
+        self.assertLess(self.w.bundle.stat().st_size, 20_000, "the file the other steps take holds the light one only")
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        outcomes = self.w.apply(verdicts)[0]
+        self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in outcomes}, {heavy: "history_too_big", fine: "accepted"})
+        self.assertEqual(next(o["detail"] for o in outcomes if o["sha"] == heavy), {"bytes": bulk})
+        for bad in ({"heavy": "no"}, {"heavy": None}):
+            with self.subTest(bad=bad), self.assertRaises(hive.HiveError):
+                hive.read_plan({**made, "queue": [{**made["queue"][0], **bad}]}, self.w.load()[0])
+
+    def test_the_candidates_carried_to_the_other_steps_have_a_bound_and_the_rest_waits(self):
+        shas = [self.w.fork("bob", 102).submit("toy-0001"), self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n"),
+                self.w.fork("dave", 104).submit("toy-0005", path="run.sh", content="#!/bin/sh\n# faster\n")]
+        self.w.plan()
+        weights = sorted(self.weight(sha) for sha in shas)
+        with mock.patch.object(hive, "BUNDLE_BYTES", weights[1] + weights[2]):  # room for any two of them, never for the three
+            first = self.w.plan()
+            self.assertEqual(len(first["queue"]), 2, "the third waits: it is not in this plan at all")
+            with mock.patch.object(hive, "BUNDLE_BYTES", 0), mock.patch.object(hive, "write_bundle"):
+                self.assertEqual(len(self.w.plan()["queue"]), 1, "the first is always carried")
+            answered = [r["sha"] for r in self.w.run()]
+            self.assertEqual((len(answered), set(answered) <= set(first_two := {c["sha"] for c in first["queue"]})), (2, True))
+            later = [r["sha"] for r in self.w.run()]
+            self.assertEqual(later, sorted(set(shas) - first_two), "the one that waited is answered at the next run, and it alone")
+        self.assertEqual(sorted(e["sha"] for e in self.w.events() if e["type"] == "verdict"), sorted(shas))
+        self.assertGreaterEqual(hive.BUNDLE_BYTES, 2 * hive.DEFAULTS["limits"]["history_bytes"])
+        self.assertLessEqual(2 * hive.BUNDLE_BYTES, 2 << 30, "what the steps with a key accept to take (the workflow's own figure)")
+
+    def test_a_file_of_candidates_heavier_than_the_plan_measured_stops_the_plan(self):
+        self.w.fork("bob", 102).submit("toy-0001")
+        with mock.patch.object(hive, "BUNDLE_BYTES", 100), self.assertRaisesRegex(hive.HiveError, "heavier than the plan measured"):
+            self.w.plan()
 
     def test_a_history_exactly_as_long_as_the_limit_is_fine(self):
         for i in range(4):
@@ -1406,6 +1474,43 @@ class TestApply(Base):
                 hive.read_plan(not_a_plan, self.w.load()[0])
         self.nothing_integrated()
         self.assertEqual(self.w.events(), [])
+
+    def test_two_steps_derive_the_same_commit_whatever_the_machine_or_the_clone_says(self):
+        """The judging step and the write step run on two machines and must build the same commit from the same plan:
+        its id depends on nothing but the plan (a commit's message declares its encoding, when a setting names one)."""
+        tip, task, member = self.w.tip(), TASKS[0], {"login": "alice", "id": 101}
+        tree = sh("git", "rev-parse", f"{tip}^{{tree}}", cwd=self.w.writer).stdout.strip()
+
+        def built():
+            return hive.squash_commit(self.w.writer, tree, tip, task, member, tip, hive.parse_iso(NOW), "claude-fable-5-2")
+
+        plain = built()
+        self.assertNotIn("encoding", sh("git", "cat-file", "commit", plain, cwd=self.w.writer).stdout.split("\n\n")[0])
+        loud = sh("git", "-c", "i18n.commitEncoding=ISO-8859-1", "commit-tree", tree, "-p", tip, "-m", "x", cwd=self.w.writer).stdout.strip()
+        self.assertIn("encoding ISO-8859-1", sh("git", "cat-file", "commit", loud, cwd=self.w.writer).stdout, "what such a setting does to a commit")
+        for name, environment in (("a setting given in the environment", {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "i18n.commitEncoding",
+                                                                         "GIT_CONFIG_VALUE_0": "ISO-8859-1"}),
+                                  ("a setting given as a parameter", {"GIT_CONFIG_PARAMETERS": "'i18n.commitEncoding=ISO-8859-1'"}),
+                                  ("another time zone, another language", {"TZ": "Asia/Tokyo", "LANG": "fr_FR.UTF-8"}),
+                                  ("another identity", {"GIT_AUTHOR_NAME": "x", "GIT_COMMITTER_EMAIL": "x@example.invalid", "EMAIL": "y@example.invalid"})):
+            with self.subTest(name), mock.patch.dict(os.environ, environment):
+                self.assertEqual(built(), plain)
+        sh("git", "config", "i18n.commitEncoding", "ISO-8859-1", cwd=self.w.writer)
+        sh("git", "config", "user.name", "someone else", cwd=self.w.writer)
+        self.assertEqual(built(), plain, "a setting of the clone itself")
+
+    def test_answers_about_commits_the_write_step_does_not_derive_are_said_loudly(self):
+        """If the two steps did not build the same commits, every answer would be about a commit the write step does not
+        know: nothing would be integrated, at this run and at every other. That is said, once the run is recorded."""
+        self.alice.submit("toy-0001")
+        _, verdicts, _ = self.w.sweep()
+        (commit, answer), = verdicts.items()
+        with self.assertRaisesRegex(hive.HiveError, "the judging step's answers are about commits this step does not derive"):
+            self.w.apply({"1" * 40: answer}, started=["1" * 40])  # (what the judging step started on is named by its own ids)
+        self.assertEqual(([e["type"] for e in self.w.events() if e["type"] in ("verdict", "error")], self.w.tip()), ([], self.start))
+        self.assertEqual(self.w.apply({"1" * 40: answer})[0][0]["kind"], "none",
+                         "a candidate the judging step started on and did not answer is its own case, and no alarm")
+        self.assertEqual(self.one(self.w.run())["result"], "accepted", "with the answers it derives, the same candidate is integrated")
 
     def test_answers_the_write_step_cannot_read_are_no_answers(self):
         """The file of answers comes from the job that runs contributors' code. Absent, not JSON, of another shape, or

@@ -133,7 +133,7 @@ it**: exactly what would land.
 
 | Reason code | Refused when |
 | --- | --- |
-| `unrelated`, `too_many_commits`, `conflict`, `empty` | the branch does not come from the project, is too long, does not merge on the tip, or changes nothing |
+| `unrelated`, `too_many_commits`, `history_too_big`, `conflict`, `empty` | the branch does not come from the project, is too long, holds commits that together weigh more than the project allows (32 MiB as git stores them, unless the project says otherwise: whatever a commit added on the way counts, even removed since), does not merge on the tip, or changes nothing |
 | `path_outside_task` | a changed path is not one of the task's files (a hard rule, not a warning) |
 | `protected_path` | a changed path is protected, **at any depth of the tree**: CI and editor automation (`.github/`, `.vscode/`, `.devcontainer/`…), what steers git (`.gitattributes`, `.gitmodules`), **agent instruction files and folders** (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.cursor/`…), the hive's files (`hive/` at the root), and what the project adds (its tests, its judge) |
 | `special_file`, `mode_change` | a symbolic link or submodule, an empty folder or a folder that is not, byte for byte, the one git writes for its entries (written by hand: an entry twice, entries out of order), a changed file mode |
@@ -161,7 +161,7 @@ the hive runs those git commands with an empty attribute source.
 
 | Job | Holds | Runs contributors' code | Talks to forks | What it does |
 | --- | --- | --- | --- | --- |
-| `plan` | nothing | no | **yes, once** | reads the forks; decides the deals whose time is up, the candidates and the new deals; writes **the plan** and a bundle of the candidates' git objects; publishes the plan's SHA-256 |
+| `plan` | nothing | no | **yes, once** | reads the forks; decides the deals whose time is up, the candidates and the new deals; writes **the plan** and a bundle of the candidates' git objects (1 GiB at most: the candidates beyond it wait for the next run, oldest deal first; one whose own commits are too many or too heavy is refused without being carried); publishes the plan's SHA-256 |
 | `record` | the right to write the hive's state | no | no | checks that the plan is the one `plan` published; writes the plan's deals and the feed, **within minutes of the run's start** |
 | `judge` | nothing | **yes**, in the judge's container | no | judges the plan's candidates; writes **a table from the id of each judged commit to the judge's answer** |
 | `apply` | the right to write the project and the state | no | no | checks the plan; derives every commit by itself; looks each one up in the judge's table; pushes; records |

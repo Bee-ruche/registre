@@ -120,8 +120,9 @@ ALWAYS_PROTECTED = ("hive/**",)  # at the root: the hive's own files in a projec
 DEFAULTS = {
     "branch": "main",
     "protected": [],
-    "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "heads_per_fork": 30,
-               "judgements_per_sweep": 20, "discovery_seconds": 900, "judging_seconds": 14400, "queue": 500},
+    # history_bytes: what a candidate's own commits may weigh together, as git stores them
+    "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "history_bytes": 32 << 20,
+               "heads_per_fork": 30, "judgements_per_sweep": 20, "discovery_seconds": 900, "judging_seconds": 14400, "queue": 500},
     # deals_per_day: the deals an account may be given in a day, not counting those whose candidate was accepted
     "members": {"min_account_age_days": 90, "deals_per_day": 5, "banned": [], "only": None},
     "models": [],  # the model identifiers the project keeps statistics for; any other is recorded as undeclared
@@ -134,6 +135,7 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "task_closed": "the task was closed while the candidate waited",
     "unrelated": "the candidate shares no history with the project",
     "too_many_commits": "too many commits since the project's history",
+    "history_too_big": "the candidate's commits, taken together, weigh more than the project allows",
     "conflict": "the candidate does not merge on the project's tip: start again from it",
     "empty": "the candidate changes nothing",
     "bad_path": "a changed path is not a plain, printable path",
@@ -155,7 +157,10 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
-            "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true", "-c", "merge.renames=false")
+            "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true", "-c", "merge.renames=false",
+            "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
+# Settings git would take from the environment: never, on the hive's side (two steps must derive the same commit).
+GIT_SETTINGS_OF_THE_ENVIRONMENT = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG", "GIT_TEMPLATE_DIR")
 GIT_ISOLATED = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0",
                 "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1"}
 
@@ -210,14 +215,21 @@ def log(message):
     print(safe_text(message, 400), file=sys.stderr)
 
 
+def isolated_environment():
+    """The environment of a git command of the hive's side: the machine's own settings are not read, and none comes
+    from the environment either."""
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in GIT_SETTINGS_OF_THE_ENVIRONMENT and not name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))}
+    environment.update(GIT_ISOLATED)
+    return environment
+
+
 def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True, attributes=True):
     """Runs git on a repository, never through a shell, with hooks off; isolated from the machine's configuration
     (the hive's side) unless the caller is the volunteer's own clone. attributes=False: the command reads no
     .gitattributes at all, neither a work tree's nor a commit's (the empty tree is its attribute source), so that what
     a tree says never changes how the hive merges, counts lines or finds binary files. Needs git 2.40."""
-    environment = dict(os.environ)
-    if isolated:
-        environment.update(GIT_ISOLATED)
+    environment = isolated_environment() if isolated else dict(os.environ)
     environment.update(env or {})
     try:
         source = () if attributes else (f"--attr-source={EMPTY_TREE}",)
@@ -235,7 +247,7 @@ def git_capped(repo, *args, limit, timeout=300):
     the command is stopped there, so that what the hive reads does not grow with what a fork sends."""
     try:
         process = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                   stdin=subprocess.DEVNULL, env={**os.environ, **GIT_ISOLATED})
+                                   stdin=subprocess.DEVNULL, env=isolated_environment())
     except OSError as e:
         raise HiveError(f"git {args[0]}: {type(e).__name__}") from e
     late = []
@@ -263,7 +275,7 @@ def git_raw(repo, *args, stdin=b"", timeout=120):
     finished process; raises HiveError only if it does not end in time."""
     try:
         return subprocess.run(["git", *GIT_BASE, "-C", str(repo), *args], input=stdin, capture_output=True, timeout=timeout,
-                              env={**os.environ, **GIT_ISOLATED})
+                              env=isolated_environment())
     except subprocess.TimeoutExpired as e:
         raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
 
@@ -722,7 +734,7 @@ def blob_bytes(repo, sha, limit):
         return None
     try:
         read = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "cat-file", "blob", sha], capture_output=True, timeout=120,
-                              env={**os.environ, **GIT_ISOLATED})
+                              env=isolated_environment())
     except subprocess.TimeoutExpired as e:
         raise HiveError("git cat-file: timeout after 120 s") from e
     if read.returncode != 0:
@@ -907,7 +919,7 @@ def materialize(repo, tree, target):
             raise HiveError(f"tree {tree[:12]}: an entry the hive does not write ({safe_text(path, 80)})")
         entries.append((mode, blob, path))
     reader = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), "cat-file", "--batch"], stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE, env={**os.environ, **GIT_ISOLATED})
+                              stdout=subprocess.PIPE, env=isolated_environment())
     try:
         for mode, blob, path in entries:
             destination = target / path
@@ -1260,6 +1272,25 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         # without its history being carried to the other steps.
         count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}")
         candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
+        # And what they weigh, as git stores them: one too heavy is refused the same way, without being carried.
+        # (A history that is too long is not walked to be weighed: it is refused already.)
+        weight = 0 if candidate["long"] else int(git(repo, "rev-list", "--objects", "--disk-usage", candidate["sha"],
+                                                     f"^{need_sha(tip)}").stdout.strip())
+        candidate["heavy"] = weight > config["limits"]["history_bytes"]
+        candidate["weight"] = 0 if candidate["heavy"] else weight
+    # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for the
+    # next run, where the oldest deal is first again. The first one is always carried.
+    carried, within = 0, []
+    for candidate in queue:
+        if within and carried + candidate["weight"] > BUNDLE_BYTES:
+            break
+        carried += candidate.pop("weight")
+        within.append(candidate)
+    for candidate in queue[len(within):]:
+        del candidate["weight"]
+    if len(within) < len(queue):
+        log(f"the candidates' file is full: {len(queue) - len(within)} candidate(s) wait for the next run")
+    queue = within
     waiting = {(c["member_id"], c["task"]) for c in queue}
 
     # 3. askers
@@ -1307,10 +1338,19 @@ def member_mark(login):
     return hashlib.sha256(f"hive-member:{login.lower()}".encode()).hexdigest()[:16]
 
 
+BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, as git stores them)
+
+
+def carried(plan_):
+    """The plan's candidates whose commits are carried to the other steps: not those refused for their history alone."""
+    return [candidate for candidate in plan_["queue"] if not (candidate["long"] or candidate["heavy"])]
+
+
 def write_bundle(repo, plan_, path):
     """The candidates' objects in one file, for the steps that never talk to a fork; records its SHA-256 in the plan.
-    No file when there is no candidate."""
-    shas = [candidate["sha"] for candidate in plan_["queue"] if not candidate["long"]]
+    No file when there is no candidate. A file heavier than twice what the plan measured is the hive's own failure,
+    said loudly: the steps that take it accept no more."""
+    shas = [candidate["sha"] for candidate in carried(plan_)]
     if not shas:
         return
     refs = []
@@ -1322,18 +1362,19 @@ def write_bundle(repo, plan_, path):
     finally:
         for ref in refs:
             git(repo, "update-ref", "-d", ref, check=False)
+    if os.path.getsize(path) >= 2 * BUNDLE_BYTES:
+        raise HiveError("the candidates' file is heavier than the plan measured: nothing is done")
     plan_["bundle_sha256"] = file_sha256(path)
 
 
 def read_bundle(repo, plan_, path):
     """Brings the plan's candidates into this clone from the plan's own file, checked against the plan."""
-    carried = [candidate for candidate in plan_["queue"] if not candidate["long"]]
-    if not carried:
+    if not carried(plan_):
         return
     if not plan_["bundle_sha256"] or file_sha256(path) != plan_["bundle_sha256"]:
         raise HiveError("the bundle is not the plan's")
     git(repo, "bundle", "unbundle", str(path), timeout=900)
-    for candidate in carried:
+    for candidate in carried(plan_):
         if git(repo, "cat-file", "-e", f"{need_sha(candidate['sha'])}^{{commit}}", check=False).returncode != 0:
             raise HiveError("the bundle lacks one of the plan's candidates")
 
@@ -1357,7 +1398,7 @@ def read_plan(plan_, config):
     def candidate_ok(c):
         return (member_ok(c) and is_sha(c.get("sha")) and isinstance(c.get("login"), str) and LOGIN.match(c["login"])
                 and (c.get("model") is None or c["model"] in config["models"]) and stamp(c.get("deal"))
-                and type(c.get("declined")) is bool and type(c.get("long")) is bool)
+                and type(c.get("declined")) is bool and type(c.get("long")) is bool and type(c.get("heavy")) is bool)
 
     def deal_ok(c):
         return (member_ok(c) and isinstance(c.get("member"), str) and bool(LOGIN.match(c["member"]))
@@ -1486,6 +1527,8 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
                 raise Refusal("not_answered")
             if entry["long"]:  # the plan counted its commits: its objects were not carried to this step
                 raise Refusal("too_many_commits", {"commits": config["limits"]["commits"] + 1})
+            if entry["heavy"]:  # nor these, which the plan weighed
+                raise Refusal("history_too_big", {"bytes": config["limits"]["history_bytes"] + 1})
             if halt or broken or judged >= budget:
                 continue  # not tried in this run; oldest deal first: it is first at the next
             tree, figures, commit = derive(repo, tip, entry, task, config, instant)
@@ -1578,10 +1621,11 @@ def with_history(repo, folder, commits):
     have is the hive's own failure, said loudly."""
     if not commits:
         return
-    git(folder, "init", "--quiet")
+    git(folder, "init", "--quiet", "--template=")  # (an empty store: no file of the machine's is copied into it)
     for commit in commits:
+        named = git(repo, "cat-file", "-t", need_sha(commit), check=False)
         listed = git_raw(repo, "rev-list", "--objects", "--no-walk", f"{need_sha(commit)}^{{commit}}")
-        if listed.returncode != 0:
+        if named.stdout.strip() != "commit" or listed.returncode != 0:  # (a tag that names a commit is not the commit)
             raise HiveError(f"judge.history: commit {commit[:12]} is not in the hive's clone of the project")
         ids = b"".join(line.split(b" ", 1)[0] + b"\n" for line in listed.stdout.splitlines())
         pack = git_raw(repo, "pack-objects", "--stdout", "-q", stdin=ids, timeout=600)
@@ -1803,6 +1847,13 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     if accepted and checkpoint:
         checkpoint()
     reached, failure, kept, unsure = tip, None, outcomes, None
+    derived = {outcome["commit"] for outcome in outcomes if outcome.get("commit")}
+    if answers and derived and not derived & set(answers) and not any(outcome["result"] == "error" for outcome in outcomes):
+        # The judging step answered, and about none of the commits this step derives from the same plan: the two
+        # steps do not build the same commits (another git, another setting). Said loudly, once what can be recorded
+        # is recorded: silent, it would repeat at every run.
+        failure = HiveError("the judging step's answers are about commits this step does not derive from the same plan: "
+                            "the two steps differ (their git, their settings); nothing was integrated")
     for outcome in accepted:
         try:
             landed = guarded_push(repo, remote, config["branch"], reached, outcome["commit"], allow_local)
