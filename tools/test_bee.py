@@ -1000,7 +1000,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "suite.yml": {"contents": "read"},  # ruche-0132 (the switch's own check, ruche-0143, went with the switch: November 2026)
                        "hive-tests.yml": {"contents": "read"},  # the hive protocol's tests (docs/protocol.md)
                        "hive.yml": {}}  # the hive's hourly run: nothing for the run, each job asks for what it needs (TestHiveWorkflow)
-        self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
+        # Every entry of the folder, whatever its name ends with: GitHub also runs a workflow written in a .yaml file.
+        self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").iterdir()), sorted(permissions))
         for name, expected_ones in permissions.items():
             with self.subTest(stream=name):
                 stream = self.stream(name)
@@ -20015,8 +20016,9 @@ class TestGitHelper(unittest.TestCase):
 # an empty shard or a failed process fails the run.
 # Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
 # A run starts all its processes at once, and the suite holds tests that start this very file: so a run never starts more
-# than MOST_PROCESSES processes, whatever the number of tests, and none is started from inside a process of a run (each is
-# told that it is one, by INSIDE in its environment). Either way the run fails and nothing is run.
+# than MOST_PROCESSES processes, whatever the number of tests, and this file's own entry (`--processes`) starts no run from
+# inside a process of one (each is told that it is one, by INSIDE in its environment). Either way the run fails and nothing
+# is run. (The tests of the runner itself call run_in_parallel on a stand-in module of five tests, from inside a process.)
 
 MOST_PROCESSES = 64
 INSIDE = "BEE_SUITE_PROCESS"
@@ -24007,18 +24009,24 @@ class TestHiveWorkflow(unittest.TestCase):
 
     def test_no_other_workflow_names_the_hives_environments_or_keys(self):
         """An environment gives its keys to any job that names it, in any workflow of a branch it accepts: the two
-        environments accept `main` only (a setting), and on `main` this file alone names them."""
-        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
-            if path.name == "hive.yml":
-                continue
+        environments accept `main` only (a setting), and on `main` this file alone names them. Every file of the folder
+        is read, whatever its name ends with (the list of them is held by test_the_workflows_security_is_unchanged). And
+        no job of any workflow, this one included, is another repository's workflow: a workflow that is called runs with
+        its caller's rights, and its text is not in this repository for a test or a reviewer to read."""
+        for path in sorted((ROOT / ".github/workflows").iterdir()):
             with self.subTest(workflow=path.name):
                 text = path.read_text(encoding="utf-8")
-                for word in ("hive-state", "hive-apply", "HIVESTATESECRET", "HIVEAPPLYSECRET", "create-github-app-token"):
-                    self.assertNotIn(word.lower(), text.lower())
                 for name, job in yaml.safe_load(text)["jobs"].items():
+                    if "uses" in job:
+                        self.assertRegex(job["uses"], r"\A\./\.github/workflows/[a-z-]+\.yml\Z", f"{name}: a workflow of this repository")
+                    if path.name == "hive.yml":
+                        continue
                     environment = job.get("environment")
                     named = environment.get("name") if isinstance(environment, dict) else environment
                     self.assertIn(named, (None, "github-pages"), f"{name}: an environment this test does not know")
+                if path.name != "hive.yml":
+                    for word in ("hive-state", "hive-apply", "HIVESTATESECRET", "HIVEAPPLYSECRET", "create-github-app-token"):
+                        self.assertNotIn(word.lower(), text.lower())
         with self.assertRaisesRegex(AssertionError, "a key twice"):  # (the parser of setUpClass does refuse a key written twice)
             yaml.load("a:\n  b: 1\n  b: 2\n", Loader=type(self).once_loader())
 
