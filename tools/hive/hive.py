@@ -27,7 +27,7 @@ a program. Every line they print on the standard output is one of these, and not
 a value this file checked or a sentence of its own, never a text of the feed or of the fork:
 
   PROJECT <id>                    setup: the hive's project this clone is a fork of
-  LOGIN <login>                   setup: the fork's owner, the member the hive credits
+  LOGIN <login>                   setup: the member the hive credits (--login, or else the owner the origin names)
   UPSTREAM <ref>                  setup: the project's tip in this clone
   NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
   ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
@@ -2247,6 +2247,7 @@ def cmd_feed(args):
 PROJECT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 ONE_LINE = re.compile(r"[ -~]{1,200}\Z")  # a command, a commit's title: one line of printable ASCII
 REVISION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")  # a branch's name or a commit id, never an option
+FORK_NAME = re.compile(r"[A-Za-z0-9._-]{1,100}\Z")  # a repository's name on GitHub
 GITHUB_URL = re.compile(r"https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?\Z")
 # The address a Claude cloud session gave its checkouts when it reached GitHub through a proxy on the machine itself
 # (the session this was written in has GitHub's own https address instead):
@@ -2620,31 +2621,49 @@ def hive_project(registry, project):
     return config, tasks, hive_projects(registry)
 
 
-def own_fork(clone, configs, login=None):
-    """(address, owner) of the clone's origin, once it is the member's own fork as far as this machine can tell: an
-    https address on GitHub (plain_clone), not a project's own repository, and owned by `login` when the caller
-    names one (what « setup » printed, before any project code ran). Every push goes to this address. Whether the
-    owner is a person's account or an organization's cannot be told without asking GitHub: the hive reads no
-    organization's fork, and the worker's guide says so."""
-    url = clone.settings.get("remote.origin.url")
-    if url is None:
+def own_fork(clone, config, configs, login, fork=None):
+    """The address of the member's own fork, the only one a worker command reads or pushes to:
+    https://github.com/<login>/<name>. Neither part comes from the clone: the login is the command line's (the
+    user's prompt, or what « setup » printed), and the name is the project's own repository name, from the registry,
+    unless --fork gives another (a fork its owner renamed). The address the clone itself gives its origin is whatever
+    ran in the clone last: no push follows it. It is only compared with the address derived here, and the command
+    stops if it names another repository. Refused too: the project's own repository, as the origin or as the
+    address. Whether the owner is a person's account or an organization's cannot be told without asking GitHub: the
+    hive reads no organization's fork, and the worker's guide says so.
+
+    In the tests a fork is a folder of the machine, which names nobody: that folder is then the address. A folder is
+    an address only while LOCAL_REMOTES is set, which no option and no variable does (plain_clone refuses it
+    otherwise), and never when the origin is an address on GitHub."""
+    name = config["repo"].split("/")[1] if fork is None else fork
+    if not (FORK_NAME.match(name) and name.strip(".")) or name.endswith(".git"):
+        raise HiveError("--fork: the name of your fork's repository on GitHub, and nothing else (letters, digits, dots, dashes)")
+    address = f"https://github.com/{login}/{name}"
+    origin = clone.settings.get("remote.origin.url")
+    if origin is None:
         raise HiveError("this clone has no origin: run this in a clone of your own fork of the project")
-    owner, name, _ = remote_parts(url)
+    owner, repository, _ = remote_parts(origin)  # (an address a worker talks to: plain_clone)
     if owner is None:  # a folder of the machine (tests): it names nobody
-        if not login:
-            raise HiveError("--login: your GitHub login (origin does not name its owner)")
-        return url, login
-    if any(f"{owner}/{name}".lower() == config["repo"].lower() for config in configs):
-        raise HiveError(f"origin is the project itself ({owner}/{name}), not a fork of it: a worker pushes only to its user's own "
-                        "fork. Fork the project under your own account, and run this in a clone of that fork")
-    if login and login.lower() != owner.lower():
-        raise HiveError(f"origin belongs to {owner}, not to {safe_text(login, 40)}: a worker pushes only to its user's own fork")
-    return url, owner
+        return origin
+    for said, named in (("origin", f"{owner}/{repository}"), (address, f"{login}/{name}")):
+        project = next((other["repo"] for other in configs if other["repo"].lower() == named.lower()), None)
+        if project:
+            raise HiveError(f"{said} is the project itself ({project}), not a fork of it: a worker pushes only to its user's own "
+                            "fork. Fork the project under your own account, and run this in a clone of that fork")
+    if not same_repository(origin, address):
+        raise HiveError(f"this clone's origin is not {address}, the fork this worker reads and pushes to (your login, and the project's "
+                        "own repository name): nothing was pushed. If your fork has another name, give it: --fork <name>")
+    return address
+
+
+def said_again(args):
+    """What every later command of the run is given again, as this one was: the login, and the fork's name if the
+    command line gave one. (Both were checked: own_fork.)"""
+    return f"--login {args.login}" + (f" --fork {args.fork}" if args.fork is not None else "")
 
 
 def push(clone, url, source, branch):
     """Pushes one commit (or, with an empty source, a deletion) to one branch of the member's own fork, over what was
-    there. To the address own_fork checked, never to a remote's name: a name is resolved through settings."""
+    there. To the address own_fork derived, never to a remote's name: a name is resolved through settings."""
     try:
         clone.git("push", "--quiet", "--force", "--no-verify", "--no-follow-tags", "--no-signed", "--recurse-submodules=no", url,
                   f"{source}:refs/heads/{branch}", to=url, timeout=300)
@@ -2660,17 +2679,28 @@ def cmd_setup(args):
     clone = plain_clone()
     if args.project is not None and not PROJECT_ID.match(args.project):
         raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
+    if args.login is not None and not LOGIN.match(args.login):
+        raise HiveError("--login: your GitHub login")
     configs = hive_projects(args.registry)
-    origin, login = own_fork(clone, configs)
-    if clone.git("remote", "get-url", "--push", "origin", to=origin).stdout.strip() != clone.git("remote", "get-url", "origin", to=origin).stdout.strip():
-        raise HiveError("a push to origin would not go to the address it is fetched from (a pushInsteadOf rule of your git settings): "
-                        "a worker pushes only to the address it checked. Remove the rule, or use a machine without it")
-    name = remote_parts(origin)[1] or ""
-    chosen = [c for c in configs if (c["project"] == args.project if args.project else c["repo"].split("/")[1].lower() == name.lower())]
+    origin = clone.settings.get("remote.origin.url")
+    if origin is None:
+        raise HiveError("this clone has no origin: run this in a clone of your own fork of the project")
+    # setup runs first, in a clone that is usually fresh: when the command line names no login, the member is the
+    # owner the origin names, and when it names no project, the project is the one whose repository has the origin's
+    # name. Both are then said (LOGIN, PROJECT), and every later command is given them on its command line.
+    owner, name, _ = remote_parts(origin)
+    login = args.login or owner
+    if not login:
+        raise HiveError("--login: your GitHub login (origin does not name its owner)")
+    chosen = [c for c in configs if (c["project"] == args.project if args.project else c["repo"].split("/")[1].lower() == (name or "").lower())]
     if len(chosen) != 1:
         known = ", ".join(c["project"] for c in configs) or "none"
         raise HiveError(f"which project is this fork of? Give --project (the hive's projects: {known})")
     config = chosen[0]
+    own_fork(clone, config, configs, login, args.fork)
+    if clone.git("remote", "get-url", "--push", "origin", to=origin).stdout.strip() != clone.git("remote", "get-url", "origin", to=origin).stdout.strip():
+        raise HiveError("a push to origin would not go to the address it is fetched from (a pushInsteadOf rule of your git settings): "
+                        "a worker pushes only to the address it checked. Remove the rule, or use a machine without it")
     branch, project_url = config["branch"], f"https://github.com/{config['repo']}.git"
     if not (isinstance(branch, str) and REVISION.match(branch) and ".." not in branch):
         raise HiveError("the project's branch is not a plain branch name")
@@ -2829,7 +2859,7 @@ def cmd_next(args):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
     config, tasks, configs = hive_project(args.registry, args.project)
-    origin, _ = own_fork(clone, configs, args.login)
+    fork = own_fork(clone, config, configs, args.login, args.fork)
     paused_now = "WAIT: the project is paused: the hive deals nothing and judges nothing for now"
     if config.get("paused"):
         print(paused_now)
@@ -2848,7 +2878,7 @@ def cmd_next(args):
     again = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     deal, wait = my_deal(feed, args.login)
     if deal is None:
-        asked = None if wait else waiting_ask(clone, origin, args.login, state)
+        asked = None if wait else waiting_ask(clone, fork, args.login, state)
         if wait:
             print(f"WAIT until {wait}: your last deal ended without an accepted candidate; the hive deals you nothing before then")
         elif asked is None:
@@ -2861,7 +2891,7 @@ def cmd_next(args):
         return
     task = tasks.get(deal["task"])
     left = (parse_iso(deal["until"]) - now()).total_seconds() / 3600
-    if deal.get("candidate") is True or pushed_candidate(clone, origin, deal["task"], deal["at"]):
+    if deal.get("candidate") is True or pushed_candidate(clone, fork, deal["task"], deal["at"]):
         print("WAIT: your candidate is pushed and the hive has not answered it yet")
     elif task is None or task.get("closed"):
         print("WAIT: the hive dealt you a task that your clone of the registry does not list as open: update it")
@@ -2884,9 +2914,9 @@ def cmd_next(args):
         if check:
             print(f"CHECK (inside the sandbox only): {SANDBOX} {check}")
         print(f"THEN: put the clone on the project's tip (upstream/{config['branch']}) for this task: hive.py start --project "
-              f"{config['project']} --task {task['id']} --deal {deal['at']} --login {args.login}; then change only the task's files, and "
-              f"run: hive.py submit --project {config['project']} --task {task['id']} --deal {deal['at']} --message \"<one line: what you "
-              "changed>\"")
+              f"{config['project']} --task {task['id']} --deal {deal['at']} {said_again(args)}; then change only the task's files, and "
+              f"run: hive.py submit --project {config['project']} --task {task['id']} --deal {deal['at']} {said_again(args)} --message "
+              "\"<one line: what you changed>\"")
 
 
 def work_tree_changes(clone):
@@ -3062,7 +3092,7 @@ def cmd_start(args):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
     config, tasks, configs = hive_project(args.registry, args.project)
-    own_fork(clone, configs, args.login)
+    own_fork(clone, config, configs, args.login, args.fork)
     task = tasks.get(args.task)
     if task is None:
         raise HiveError(f"task {safe_text(args.task, 40)} is not in the project's tasks")
@@ -3132,7 +3162,7 @@ def cmd_start(args):
         print(f"REMOVED {removed} leftover file(s) or folder(s) of an earlier run")
     print(f"STARTED {branch} at {tip}")
     print(f"THEN: change only the task's files; build and test inside the sandbox only, never on the host; run no git command "
-          f"yourself; then run: hive.py submit --project {config['project']} --task {task['id']} --deal {args.deal} --login {args.login} "
+          f"yourself; then run: hive.py submit --project {config['project']} --task {task['id']} --deal {args.deal} {said_again(args)} "
           "--message \"<one line: what you changed>\"")
 
 
@@ -3142,16 +3172,16 @@ def cmd_ready(args):
     no file (its tree is the empty one) and no history (it has no parent), so that nothing this clone holds goes to
     the fork with it. The hive reads its message, and « next » its date, which is this tool's own clock: how long the
     ask has waited."""
-    if args.login is not None and not LOGIN.match(args.login):
+    if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
-    origin, owner = own_fork(clone, hive_projects(args.registry), args.login)
-    login = args.login or owner
+    config, _, configs = hive_project(args.registry, args.project)
+    fork, login = own_fork(clone, config, configs, args.login, args.fork), args.login
     if args.withdraw:
         if args.no_push:
             raise HiveError("--withdraw is a push: it does not go with --no-push")
-        if clone.git("ls-remote", origin, f"refs/heads/{READY_BRANCH}", to=origin, timeout=60).stdout.strip():
-            push(clone, origin, "", READY_BRANCH)
+        if clone.git("ls-remote", fork, f"refs/heads/{READY_BRANCH}", to=fork, timeout=60).stdout.strip():
+            push(clone, fork, "", READY_BRANCH)
         print("WITHDRAWN")
         return
     if args.tier not in (1, 2, 3):
@@ -3164,7 +3194,7 @@ def cmd_ready(args):
         print(f"NOT-PUSHED {commit}: the ask is made and nothing was pushed; run the same command again without --no-push to make "
               "the ask anew and push it")
         return
-    push(clone, origin, commit, READY_BRANCH)
+    push(clone, fork, commit, READY_BRANCH)
     print(f"ASKED {commit}")
     print("THEN: stop here. The hive deals at its next run (about an hour): the next run of this worker finds the task. If this "
           "worker will not run again, take the ask back so that no task waits for it: hive.py ready --withdraw")
@@ -3176,12 +3206,11 @@ def cmd_submit(args):
     outside them is refused, an untracked one is left where it is: a build's leftovers are not the work), commits
     it, checks the result as the hive will, and only then moves the branch, adds the marker and pushes to the
     member's own fork. A refusal leaves every branch where it was."""
-    if args.login is not None and not LOGIN.match(args.login):
+    if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
     config, tasks, configs = hive_project(args.registry, args.project)
-    origin, owner = own_fork(clone, configs, args.login)
-    login = args.login or owner
+    fork, login = own_fork(clone, config, configs, args.login, args.fork), args.login
     task = tasks.get(args.task)
     if task is None:
         raise HiveError(f"task {safe_text(args.task, 40)} is not in the project's tasks")
@@ -3237,7 +3266,7 @@ def cmd_submit(args):
         print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without --no-push "
               "to push it")
         return
-    push(clone, origin, marker, branch)
+    push(clone, fork, marker, branch)
     print(f"PUSHED {marker}")
     again = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
@@ -3292,15 +3321,17 @@ def main(argv=None):
     p.add_argument("--tip")
     p.set_defaults(run=cmd_feed)
 
-    def worker_side(p, pushes=False):
+    def worker_side(p, login=True, pushes=False):
         p.set_defaults(volunteer=True)
         p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]), help="the registry's tree (trusted: this tool's own)")
+        p.add_argument("--login", required=login, help="your GitHub login: the account your fork is under (your user's prompt names it, "
+                                                         "or setup printed it)")
+        p.add_argument("--fork", help="the name of your fork's repository, if it is not the project's own (a fork you renamed)")
         if pushes:
-            p.add_argument("--login", help="your GitHub login, as setup printed it (the owner of this clone's origin)")
             p.add_argument("--no-push", action="store_true", help="make the commit without pushing it")
 
     p = sub.add_parser("setup", help="volunteer: check this clone of your fork, find its project and fetch the project's tip")
-    worker_side(p)
+    worker_side(p, login=False)
     p.add_argument("--project")
     p.add_argument("--upstream-url", help=argparse.SUPPRESS)
     p.set_defaults(run=cmd_setup)
@@ -3308,7 +3339,6 @@ def main(argv=None):
     worker_side(p)
     p.add_argument("--project", required=True)
     p.add_argument("--state", required=True, help="a clone of the hive's state repository")
-    p.add_argument("--login", required=True)
     p.set_defaults(run=cmd_next)
     p = sub.add_parser("start", help="volunteer: set aside what an earlier run left and put the clone on the task's branch, at the "
                                      "project's tip (before the work)")
@@ -3316,11 +3346,11 @@ def main(argv=None):
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--deal", required=True, help="the deal's instant, as « next » printed it")
-    p.add_argument("--login", required=True, help="your GitHub login, as setup printed it (the owner of this clone's origin)")
     p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
     p.set_defaults(run=cmd_start)
     p = sub.add_parser("ready", help="volunteer: ask the hive for a task (pushes the ask to your fork)")
     worker_side(p, pushes=True)
+    p.add_argument("--project", required=True)
     p.add_argument("--tier", type=int, default=3, help="the hardest tier this worker takes (1, 2 or 3)")
     p.add_argument("--withdraw", action="store_true", help="take the ask back instead")
     p.set_defaults(run=cmd_ready)
