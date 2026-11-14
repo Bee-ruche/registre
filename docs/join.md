@@ -49,10 +49,11 @@ usage settings before you schedule anything.
      If the worker runs on a machine of yours, in a clone of your fork that you made, keep that clone for the hive:
      at each task the worker removes the untracked files git ignores there, and sets the rest aside (`git stash`).
      That machine needs a git from 2023 or later (one that takes `--attr-source`): the worker's first command says
-     so if it is older. And start your assistant in another folder, never inside that clone: an assistant loads
-     the agent files of the folder it starts in (`CLAUDE.md`, `AGENTS.md`, `.claude/`) before it reads your prompt,
-     and in a clone that is kept those files are whatever was last written there. The worker's tool shows, at each
-     task, that they are the project's own, but only once it runs.
+     so if it is older. And start your assistant in a folder that does not contain that clone, never inside it nor
+     above it: an assistant loads the agent files of the folder it starts in and of those it reads below it
+     (`CLAUDE.md`, `AGENTS.md`, `.claude/`) before it reads your prompt, and in a clone that is kept those files
+     are whatever was last written there. Say in the prompt where the clone is ("The clone is at <path>."). The
+     worker's tool shows, at each task, that those files are the project's own, but only once it runs.
 3. **Paste the prompt** below.
 4. **Choose a schedule**: every hour is best (all your quota). "Only the hours before your weekly reset" (the
    leftovers) works only if those firings are **at most two hours apart, several in a row**: the hive deals a task at

@@ -3192,6 +3192,14 @@ class TestDealing(Base):
         self.assertEqual(said(self.alice), ({"toy-0001", "toy-0004", "toy-0005"}, {self.not_kept("src/", "no_free_task")}))
         self.assertEqual(said(self.bob, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")}, "where the member stands is decided before the tasks")
         self.assertEqual(said(carol, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")})
+        # A refusal that cost the member nothing (the hive could not answer its candidate), after an accepted deal: the
+        # member is still of the first class, and its last deal did not end with an accepted candidate.
+        dave = self.w.fork("dave", 104)
+        self.answered(dave, "toy-0003")
+        self.assertEqual(hive.Ledger(self.w.state).last_deal_accepted(dave.id), True)
+        self.answered(dave, "toy-0003", "not_answered")
+        self.assertEqual((self.standing(dave)[:2], hive.Ledger(self.w.state).last_deal_accepted(dave.id)), ((0, None), False))
+        self.assertEqual(said(dave, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")})
         # A member of class 0 whose latest deal ended at no cost to it (its task was closed meanwhile): still served among
         # the first, and its preference waits for its next accepted deal.
         _, _, ledger = self.w.load()
@@ -3365,6 +3373,30 @@ class TestDealing(Base):
                 self.assertEqual((self.w.tip(), self.w.events(), self.w.promises(), self.lines("deal")), before,
                                  "nothing was pushed and nothing was written")
         self.assertEqual(hive.deal_prefer({"task": "toy-0005"}, tasks), None, "a deal whose ask named no part says nothing")
+        # What a deal says is held against the project's setting and its member's standing too, as the plan read them:
+        # bob's last deal was accepted and the project offers preferences, so neither « not offered » nor « needs an
+        # accepted deal » is true of it; and a part one open task alone lists is kept for nobody.
+        _, _, ledger = self.w.load()
+        self.assertEqual((ledger.last_deal_accepted(self.bob.id), config["members"]["preferences"]), (True, True))
+        for prefer in ({"file": "lib.c", "kept": False, "because": "not_offered"}, {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}):
+            forged = [{**conditional, "prefer": prefer}]
+            self.assertEqual(hive.deal_prefer(forged[0], tasks), prefer, "the shape, the part and the task alone say nothing against it")
+            for step in (lambda: hive.deal_prefer(forged[0], tasks, config, ledger), lambda: self.w.record(conditional=forged),
+                         lambda: self.w.apply(verdicts, conditional=forged)):
+                with self.assertRaisesRegex(hive.HiveError, "what the task it deals does not bear out"):
+                    step()
+            self.assertEqual((self.w.tip(), self.w.events(), self.w.promises(), self.lines("deal")), before)
+        with self.assertRaisesRegex(hive.HiveError, "does not bear out"):
+            hive.deal_prefer({"task": "toy-0002", "member_id": self.bob.id, "prefer": {"file": "src/", "kept": True}}, tasks, config, ledger)
+        closed = {**config, "members": {**config["members"], "preferences": False}}
+        with self.assertRaisesRegex(hive.HiveError, "does not bear out"):
+            hive.deal_prefer(conditional, tasks, closed, ledger)
+        self.assertEqual(hive.deal_prefer({**conditional, "prefer": {"file": "lib.c", "kept": False, "because": "not_offered"}}, tasks, closed, ledger),
+                         {"file": "lib.c", "kept": False, "because": "not_offered"})
+        self.assertEqual(hive.deal_prefer({**conditional, "member_id": self.alice.id, "prefer": {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}},
+                                          tasks, config, ledger), {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}, "alice never had a deal")
+        with self.assertRaisesRegex(hive.HiveError, "does not bear out"):
+            hive.deal_prefer({**conditional, "member_id": self.alice.id}, tasks, config, ledger)
         self.assertEqual(self.one(self.w.apply(verdicts)[0])["result"], "accepted")
         self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "lib.c", "kept": True}, "the honest plan is applied")
         # What may be said of a deal whose task lists the part, and of one whose task does not.
@@ -4972,9 +5004,11 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.fork_branches(), ["refs/heads/hive/submit/toy-0001", "refs/heads/main"], "one branch, of the fork")
         again = self.submit("toy-0001", dealt, "--message", "Make f0 faster", "--model", "claude-fable-5-2")[1].splitlines()[0]
         self.assertEqual(again.split()[0], "PUSHED", "run again with nothing new: the candidate is made again, out of the same files")
-        self.assertEqual([sh("git", "show", "-s", f"--format={what}", again.split()[1], cwd=self.alice.bare).stdout for what in ("%T", "%s", "%P")],
-                         [sh("git", "show", "-s", f"--format={what}", candidate, cwd=self.alice.bare).stdout for what in ("%T", "%s")]
-                         + [sh("git", "rev-parse", f"{again.split()[1]}^", cwd=self.alice.bare).stdout], "the same tree and marker, on a work commit of its own")
+        self.assertEqual([sh("git", "show", "-s", f"--format={what}", again.split()[1], cwd=self.alice.bare).stdout for what in ("%T", "%s")],
+                         [sh("git", "show", "-s", f"--format={what}", candidate, cwd=self.alice.bare).stdout for what in ("%T", "%s")],
+                         "the same tree and the same marker")
+        self.assertEqual(sh("git", "show", "-s", "--format=%s", f"{again.split()[1]}^", cwd=self.alice.bare).stdout, "Make f0 faster\n",
+                         "on a work commit under the title given now")
         self.assertEqual(sh("git", "rev-parse", f"{again.split()[1]}~2", cwd=self.alice.bare).stdout.strip(), base, "on the project's commit, not on the first candidate")
         sh("git", "config", "user.name", "Alice L", cwd=self.alice.work)
         sh("git", "config", "user.email", "alice@example.invalid", cwd=self.alice.work)
@@ -5372,16 +5406,12 @@ class TestVolunteerSide(Volunteer):
     def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
         """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
         behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
-        with the git command that failed. The failures here are real ones: a lock another git left in the clone, a
-        fork that cannot be reached, a project's address that leads nowhere."""
+        with the git command that failed. The failures here are real ones: a fork that cannot be reached, a project's
+        address that leads nowhere."""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "/* FAST */\n")
-        before, lock = self.head(), self.alice.work / ".git/index.lock"
-        lock.write_text("")
-        self.one_line(self.submit("toy-0001", dealt), "git add failed (", begins=True)
-        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]), "nothing was committed, nothing was pushed")
-        lock.unlink()
+        before = self.head()
         away = self.w.root / "away.git"
         self.alice.bare.rename(away)
         pushing = "the push to your fork did not land (git push failed ("
@@ -5781,8 +5811,8 @@ class TestVolunteerSide(Volunteer):
         # (git cannot go on, and the tool repairs no such thing: one sentence that says what the user is to do.)
         self.assertEqual((self.begin("toy-0001", NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
         self.assertRegex(self.err, r"\Ahive: STOP: this clone could not be put on the task's branch \(git stash failed \([0-9]+\)\): an earlier "
-                                   r"run left it in a state this tool does not repair\. Run nothing from this clone, not even its sandbox, and do "
-                                   r"not commit or push from it: tell the user to take a fresh clone of the fork\n\Z")
+                                   r"run left it in a state this tool does not repair\. Run nothing from this clone, not even its sandbox, and push "
+                                   r"nothing from it: tell the user to take a fresh clone of the fork\n\Z")
         self.assertTrue(lock.is_dir(), "a folder of that name is not the tool's to remove")
         lock.rmdir()
         self.assertEqual((self.alice.work / "lib.c").read_bytes(), (LIB + "int again;\n").encode(), "and the work tree is as it was")
@@ -5831,8 +5861,31 @@ class TestVolunteerSide(Volunteer):
                 self.assertEqual((self.begin(task, NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
                 self.assertRegex(self.err, rf"\Ahive: STOP: this clone could not be put on the task's branch \(git {step} failed \([0-9]+\)\): an "
                                            r"earlier run left it in a state this tool does not repair\. Run nothing from this clone, not even its "
-                                           r"sandbox, and do not commit or push from it: tell the user to take a fresh clone of the fork\n\Z")
+                                           r"sandbox, and push nothing from it: tell the user to take a fresh clone of the fork\n\Z")
             shutil.rmtree(self.alice.work / ".git/refs/heads/hive/submit")
+        # When the work tree held something, it was set aside before git stopped: the sentence says so, since a fresh
+        # clone would not hold it.
+        sh("git", "update-ref", "refs/heads/hive/submit/toy-0001/x", self.start, cwd=self.alice.work)
+        self.alice.write("lib.c", LIB + "int half_done;\n")
+        self.assertEqual((self.begin("toy-0001", NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
+        self.assertRegex(self.err, r"take a fresh clone of the fork, once what this command set aside in it is copied out \(git stash list shows it\)\n\Z")
+        self.assertLess(len(self.err), 400, "the whole sentence fits the one line a command ends on")
+        self.assertEqual(len(sh("git", "stash", "list", cwd=self.alice.work).stdout.splitlines()), 1)
+        shutil.rmtree(self.alice.work / ".git/refs/heads/hive/submit")
+        sh("git", "checkout", "--quiet", "--", "lib.c", cwd=self.alice.work)
+        # An index git cannot read at all: start changes nothing and says the same; submit says to start again.
+        index = self.alice.work / ".git/index"
+        kept = index.read_bytes()
+        index.unlink()
+        index.write_bytes(b"XIRC" + kept[4:])
+        before = self.work_tree()
+        self.assertEqual((self.begin("toy-0001", NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
+        self.assertRegex(self.err, r"\Ahive: STOP: this clone could not be put on the task's branch \(git ls-files failed \([0-9]+\)\): an earlier "
+                                   r"run left it in a state this tool does not repair\. .* take a fresh clone of the fork\n\Z")
+        self.assertEqual(self.work_tree(), before)
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.one_line(self.submit("toy-0001", dealt), "git cannot read what this clone holds (its index): start the task again (hive.py start), which "
+                                                      "sets the work aside; if start stops too, tell the user")
 
     def test_a_branch_that_stands_where_the_tool_keeps_its_own_is_named_and_nothing_is_changed(self):
         """A task's branch is hive/submit/<task>. For git a name is a branch or a folder of branches, never both: a
@@ -6968,10 +7021,11 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         """What submit shows of a candidate does not depend on what git works out of the clone. git answers a question
         about history from the files in which it keeps what it once worked out: here a commit-graph, written by hand,
         that gives the project's first commit a parent of the clone's own, a commit that adds a workflow file. Asked
-        what the work would change once merged on the project's tip, git then names the task's file alone. submit
+        what the work would change once merged on the project's tip, git then names the task's file alone. The proof
         reads the candidate's own tree and the project's from their bytes, which it hashed, starting from the tip
-        the project's address gave: it finds the path the candidate adds outside the task, and refuses. No branch
-        moves and nothing is pushed."""
+        the project's address gave: of the clone's own commit it finds the path added outside the task, and refuses.
+        And submit builds on no such commit: its candidate is the project's commit with the task's file, and the fork
+        receives neither the planted commit nor its file."""
         dealt, work, first = self.w.deal(self.alice, "toy-0001"), self.alice.work, self.start
         self.w.upstream_commit("src/a.c", "int a; /* the project's second commit */\n")
         tip = self.w.tip()
@@ -6988,11 +7042,16 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                                               config), {"files": 1, "lines": 1}, "what git works out: the task's file, and nothing else")
         self.assertIn(".github/workflows/planted.yml", sh("git", "ls-tree", "-r", "--name-only", candidate, cwd=work).stdout.split(),
                       "what would be pushed")
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.candidate_proof(hive.Clone(work.resolve(), {}), tip, candidate, tasks["toy-0001"], config["limits"])
+        self.assertEqual((refusal.exception.reason, refusal.exception.detail), ("path_outside_task", {"paths": [".github"], "files": 1}))
         code, text = self.submit("toy-0001", dealt)
-        self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": [".github"], "files": 1}\n'),
-                         self.err)
-        self.spoken(text)
-        self.assertEqual((self.head(), self.fork_branches()), (candidate, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+        pushed = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {pushed}"), self.err)
+        self.assertEqual(sh("git", "-c", "core.commitGraph=false", "diff-tree", "-r", "--name-only", tip, pushed, cwd=self.alice.bare).stdout.split(),
+                         ["lib.c"], "the project's commit with the task's file, and nothing else")
+        for left in (planted, candidate):
+            self.assertNotEqual(sh("git", "cat-file", "-e", left, cwd=self.alice.bare, check=False).returncode, 0, "not sent to the fork")
 
     def test_every_commit_a_candidate_brings_changes_only_the_tasks_files_not_its_last_one_only(self):
         """The fork receives every commit that leads to the candidate, not the last one only. Here the clone's branch
@@ -7035,12 +7094,19 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         sh("git", "update-ref", "HEAD", planted, cwd=work)
         sh("git", "reset", "--quiet", "--hard", planted, cwd=work)
         self.alice.write("lib.c", LIB + "/* FAST */\n")
+        # What the proof says of a candidate that holds them: the project's own file and folder by name, the new name counted.
+        clone, (config, tasks, _) = hive.Clone(work.resolve(), {}), hive.hive_project(self.registry, "toy")
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.candidate_proof(clone, self.start, planted, tasks["toy-0001"], config["limits"])
+        self.assertEqual((refusal.exception.reason, refusal.exception.detail),
+                         ("path_outside_task", {"paths": ["run.sh", "src"], "files": 3, "new_names": 1}))
+        # And submit takes none of them: its candidate is the project's commit with the task's file, whatever the branch and the index hold.
         code, text = self.submit("toy-0001", dealt)
-        self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files '
-                                           '{"paths": ["run.sh", "src"], "files": 3, "new_names": 1}\n'), self.err)
+        candidate = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {candidate}"), self.err)
         self.assertNotIn("NOTICE", text + self.err)
-        self.spoken(text)
-        self.assertEqual((self.head(), self.fork_branches()), (planted, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+        self.assertEqual(sh("git", "diff-tree", "-r", "--name-only", self.start, candidate, cwd=self.alice.bare).stdout.split(), ["lib.c"])
+        sh("git", "push", "--quiet", "origin", ":refs/heads/hive/submit/toy-0001", cwd=work)
         # The same names staged in the index, on the project's own commit: counted too, by the first look at the work tree.
         sh("git", "reset", "--quiet", "--hard", self.start, cwd=work)
         self.alice.write(sentence, "x\n").write("lib.c", LIB + "/* FAST */\n")
@@ -7048,6 +7114,37 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         code, text = self.submit("toy-0001", dealt)
         self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files '
                                            '{"paths": [], "files": 1, "new_names": 1}\n'), self.err)
+
+    def test_a_candidate_holds_the_tasks_files_as_the_work_tree_has_them_whatever_the_index_says(self):
+        """The clone's index is a file of .git: the blob it names for a file, and the mark that makes git take the file
+        for unchanged, are whatever ran in the clone last. A candidate made from it could hold bytes the work tree
+        never showed, which the worker never read nor tested. submit makes the candidate's tree in an index of its
+        own, from the project's commit and from the task's files read again as files: what the fork receives is what
+        the work tree holds."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* the work, as the worker left it */\n")
+        planted = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=work, input=LIB + "/* planted: never in the work tree */\n", text=True,
+                                 capture_output=True, check=True).stdout.strip()
+        sh("git", "update-index", "--cacheinfo", f"100644,{planted},lib.c", cwd=work)
+        sh("git", "update-index", "--assume-unchanged", "lib.c", cwd=work)
+        self.assertEqual(sh("git", "write-tree", cwd=work).stdout.strip() != sh("git", "rev-parse", "HEAD^{tree}", cwd=work).stdout.strip(), True)
+        self.assertEqual(sh("git", "add", "--all", "lib.c", cwd=work).returncode, 0)
+        self.assertEqual(sh("git", "ls-files", "-s", "lib.c", cwd=work).stdout.split()[1], planted, "git itself keeps the planted blob for the file")
+        code, text = self.submit("toy-0001", dealt)
+        candidate = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {candidate}"), self.err)
+        self.assertEqual(sh("git", "show", f"{candidate}:lib.c", cwd=self.alice.bare).stdout, LIB + "/* the work, as the worker left it */\n")
+        self.assertNotEqual(sh("git", "cat-file", "-e", planted, cwd=self.alice.bare, check=False).returncode, 0, "the planted bytes were not sent")
+        # A file of the task that the work tree no longer holds is removed from the candidate, and a new one of a task's folder is taken.
+        dealt = self.w.deal(self.alice, "toy-0002")
+        self.assertEqual(self.begin("toy-0002", dealt)[0], 0, self.err)
+        os.remove(work / "src/a.c")
+        self.alice.write("src/new.c", "int new_one;\n").write("src/out.o", b"\0left by a build").write(".gitignore", "*.o\n")
+        code, text = self.submit("toy-0002", dealt)
+        self.assertEqual(code, 0, text + self.err)
+        self.assertEqual(sh("git", "diff-tree", "-r", "--name-status", self.start, self.fork_branch("hive/submit/toy-0002"), cwd=self.alice.bare).stdout.split(),
+                         ["D", "src/a.c", "A", "src/new.c"], "what git ignores (a build's leftover) is not the work")
 
     def test_no_commit_the_branch_holds_is_taken_into_a_candidate_whatever_it_looks_like(self):
         """submit makes its candidate anew at each run: the work, then its marker, on the project's commit. No commit the
@@ -7317,7 +7414,8 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                 failed[name] = (code, text, self.err)
         # submit reads the history: git stops there, and the command says so in its own words
         self.assertEqual(failed["submit"][:2], (2, ""))
-        self.assertRegex(failed["submit"][2], r"\Ahive: git rev-parse failed \([0-9]+\)\n\Z")
+        self.assertEqual(failed["submit"][2], "hive: git cannot say which commit this clone is on: start the task again (hive.py start), which sets "
+                                              "the work aside; if start stops too, tell the user\n")
         (self.alice.work / ".git/shallow").unlink()
         dealt = self.w.deal(self.alice, "toy-0001")
         self.alice.write("lib.c", LIB + "int honest;\n")
