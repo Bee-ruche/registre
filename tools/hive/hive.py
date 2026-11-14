@@ -3098,7 +3098,8 @@ class TipRules:
             except OSError as error:
                 raise HiveError(f"a folder of this tool's own could not be made ({type(error).__name__}): tell the user") from None
             scratch = Clone(Path(self.folder.name).resolve(), {})
-            scratch.git("init", "--quiet", "--template=")
+            # (Objects are named by SHA-1 there as in the clone, whatever this machine or a later git would choose.)
+            scratch.git("init", "--quiet", "--template=", "--object-format=sha1")
             records = []
             for path, (kind, mode, sha) in sorted(self.rules.items()):
                 if not self.stored(scratch, sha):
@@ -3141,13 +3142,13 @@ class TipRules:
 
 def work_tree_proof(clone, tip):
     """What « start » shows of the work tree before it says STARTED: that it holds the files of the project's tip, each
-    with the bytes a checkout of the tip writes, and nothing else. After « start » the agent reads those files, and
-    runs the sandbox's launcher from them, on the host: the sandbox is worth what that file is. git's own checkout
-    does not show it. git does not hash an object again when it reads one, and its index is a file of .git: what an
-    earlier run of project code left there decides what a checkout writes and what it leaves in place. So the proof
-    rests on the commit the project's own address announced (`tip`), on bytes this tool hashed itself (Objects), and
-    on the work tree's own entries, each looked at without following a link and read as a plain file: never on the
-    index, nor on what git says of the work tree.
+    with the tip's very bytes or with the bytes a checkout writes for them, and nothing else. After « start » the
+    agent reads those files, and runs the sandbox's launcher from them, on the host: the sandbox is worth what that
+    file is. git's own checkout does not show it. git does not hash an object again when it reads one, and its index
+    is a file of .git: what an earlier run of project code left there decides what a checkout writes and what it
+    leaves in place. So the proof rests on the commit the project's own address announced (`tip`), on bytes this
+    tool hashed itself (Objects), and on the work tree's own entries, each looked at without following a link and
+    read as a plain file: never on the index, nor on what git says of the work tree.
 
       - The tip's entries are listed from its commit and from every folder of its tree (tip_entries).
       - A file of the tip is a plain file whose bytes hash, as a blob, to the id the tip lists (file_blob_id).
@@ -3663,9 +3664,10 @@ def cmd_start(args):
     hashing them again, and leaves in place what the clone's index keeps from it. The agent is about to read those
     files, and to run the sandbox's launcher from them on the host. So the last step is this tool's own
     (work_tree_proof): from the tip's commit and folders, read as bytes it hashes, and from the work tree's entries,
-    read as plain files, it shows that the work tree holds the files of the tip, with the bytes a checkout of the tip
-    writes, and nothing else. STARTED is printed only then. Otherwise the command stops (« hive: STOP: … », exit code
-    3) and nothing is to be run from the clone, not even its sandbox.
+    read as plain files, it shows that the work tree holds the files of the tip, each with the tip's very bytes or,
+    where the project's own rules convert a file, with the bytes a checkout writes for it, and nothing else.
+    STARTED is printed only then. Otherwise the command stops (« hive: STOP: … », exit code 3) and nothing is to be
+    run from the clone, not even its sandbox.
 
     Run again, it does the same: it starts the task again from the tip, and sets aside what was done since (the
     work is in « git stash list », not lost). So it runs once per task and per run, before the work."""

