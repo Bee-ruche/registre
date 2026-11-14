@@ -2185,7 +2185,7 @@ PLAIN_CONFIG = tuple((re.compile(key + r"\Z"), re.compile(value + r"\Z")) for ke
     # What a branch follows: read by « git pull » and « git status », which no worker command runs.
     (rf"branch\.{_BRANCH}\.remote", r"origin|upstream|\."),
     (rf"branch\.{_BRANCH}\.merge", rf"refs/heads/{_BRANCH}"),
-    # Who commits: text that ends up in the author field of the fork's own commits, which the hive never copies.
+    # Who commits, for the git commands a person runs in the clone. The worker commands never read it (Clone.identity).
     (r"user\.name", r"[^\x00-\x1f\x7f<>]{1,100}"),
     (r"user\.email", r"[^\x00-\x20\x7f<>]{1,200}"),
     # actions/checkout, when it keeps the job's token (persist-credentials, its default up to v5), writes it as a
@@ -2247,7 +2247,7 @@ class Clone:
         input and the output are bytes (file names are bytes for git)."""
         environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
-                            "GIT_PAGER": "cat", "GIT_EDITOR": "true"})
+                            "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
         if to is None:
             environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
         else:
@@ -2269,10 +2269,12 @@ class Clone:
 
     def identity(self, login, at=None):
         """Who commits, said outright for each commit (these commands read no setting of the machine, which is where
-        a name usually lives): what the environment names, else the clone's own setting, else the member's login.
-        The hive copies none of it: an integrated commit is authored by the fork's owner as GitHub names them."""
-        name = os.environ.get("GIT_AUTHOR_NAME") or self.settings.get("user.name") or login
-        email = os.environ.get("GIT_AUTHOR_EMAIL") or self.settings.get("user.email") or f"{login}@users.noreply.github.com"
+        a name usually lives): what the environment names, else the member's login and the address GitHub gives every
+        account for that purpose. Never the clone's own setting: git copies a committer's name into its logs, and
+        the clone's settings are whatever ran in the clone last. The hive copies none of it: an integrated commit
+        is authored by the fork's owner as GitHub names them."""
+        name = os.environ.get("GIT_AUTHOR_NAME") or login
+        email = os.environ.get("GIT_AUTHOR_EMAIL") or f"{login}@users.noreply.github.com"
         who = {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email, "GIT_COMMITTER_NAME": os.environ.get("GIT_COMMITTER_NAME") or name,
                "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL") or email}
         if at is not None:
@@ -2293,9 +2295,11 @@ def plain_clone():
     empty folder: reading a configuration file starts nothing, and since git does the reading there is no setting
     that this function and git would read differently. Raises NotPlain (exit code 3, « hive: STOP: … »).
 
-    Refused: a .git that is not a folder, or that borrows another repository's settings (commondir) or adds a second
-    file of them (config.worktree); any setting outside PLAIN_CONFIG, any included file, a setting given twice; any
-    file in .git/hooks that is not a sample; .git/info/attributes. A .gitattributes in the work tree needs no
+    Refused: a .git that is not a folder, or that borrows another repository's settings (commondir), objects
+    (alternates) or history (grafts), or adds a second file of settings (config.worktree); anything inside .git that
+    is a link, or neither a file nor a folder, or (outside the objects) a file with a second name; any setting
+    outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a sample;
+    .git/info/attributes. A .gitattributes in the work tree needs no
     refusal: it can only select a filter, a diff or a merge program that some setting defines, and none does once
     the clone's own settings are plain and the machine's are not read (Clone.git)."""
     root = Path.cwd().resolve()
@@ -2304,10 +2308,32 @@ def plain_clone():
         raise HiveError("no .git here: run this at the root of the clone of your fork")
     if git_dir.is_symlink() or not git_dir.is_dir():
         raise not_plain(".git is not a folder")
+    # Nothing inside .git may lead out of it. Git writes some of its files in place (it appends to the log of each
+    # branch it moves) and makes others where a folder's name leads: a link is then a way to write a file of the
+    # machine. A clone holds none; its objects alone may have other names (a clone made from a folder shares them),
+    # and git never writes into an object.
+    def unreadable(error):
+        raise not_plain("a folder inside .git cannot be read")
+    for folder, folders, files in os.walk(git_dir, onerror=unreadable):  # a link to a folder is listed, not entered
+        shared = Path(folder).relative_to(git_dir).parts[:1] == ("objects",)
+        for name in folders + files:
+            try:
+                entry = os.lstat(os.path.join(folder, name))
+            except OSError:
+                raise not_plain("a file inside .git cannot be read") from None
+            if stat.S_ISLNK(entry.st_mode):
+                raise not_plain("it holds a link inside .git, where git would write through it")
+            if not (stat.S_ISDIR(entry.st_mode) or stat.S_ISREG(entry.st_mode)):
+                raise not_plain("it holds, inside .git, something that is neither a file nor a folder")
+            if stat.S_ISREG(entry.st_mode) and entry.st_nlink > 1 and not shared:
+                raise not_plain("it holds, inside .git, a file that has another name elsewhere, where git would write to it")
     for name, found in (("commondir", "it borrows another repository's settings (.git/commondir)"),
                         ("config.worktree", "it holds a second file of settings (.git/config.worktree)"),
                         ("info/attributes", "it holds attributes of its own (.git/info/attributes), which choose programs to "
-                                            "run on files")):
+                                            "run on files"),
+                        ("objects/info/alternates", "it borrows another repository's objects (.git/objects/info/alternates)"),
+                        ("objects/info/http-alternates", "it borrows another repository's objects (.git/objects/info/http-alternates)"),
+                        ("info/grafts", "it rewrites its own history for git (.git/info/grafts)")):
         if os.path.lexists(git_dir / name):
             raise not_plain(found)
     hooks = git_dir / "hooks"
@@ -2749,7 +2775,7 @@ def cmd_submit(args):
         marker = head  # run again after a push that did not land: the same candidate
     else:
         marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
-        clone.git("update-ref", "-m", f"hive submit {task['id']}", "HEAD", marker, head)
+        clone.git("update-ref", "-m", f"hive submit {task['id']}", "HEAD", marker, head, env=who)  # (the branch's log names who moved it)
     branch = SUBMIT_BRANCH.format(task=task["id"])
     if args.no_push:
         print(f"NOT-PUSHED {marker}: git push --force origin {marker}:refs/heads/{branch}")

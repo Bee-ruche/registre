@@ -356,8 +356,10 @@ class TestIntegration(Base):
         self.assertEqual(body.strip().splitlines()[2:], [hive.UNATTENDED, "", "Hive-Task: toy-0001", "Hive-Member: alice",
                                                          f"Hive-Candidate: {candidate}", "Hive-Model: claude-fable-5-2"],
                          "what it is, in the hive's own words: an agent's work, which model it declared, and that no person read it")
-        dates = sh("git", "show", "-s", "--format=%aI|%cI", tip, cwd=self.w.upstream).stdout.strip()
-        self.assertEqual(dates, "2026-11-12T12:00:00+00:00|2026-11-12T12:00:00+00:00", "dated at the run that judged it, not at the project's previous commit")
+        # The dates as the commit itself bears them (seconds and zone), which no version of git prints differently.
+        dates = re.findall(r"(?m)^(?:author|committer) .*> (\d+ [+-]\d{4})$", sh("git", "cat-file", "commit", tip, cwd=self.w.upstream).stdout)
+        self.assertEqual(dates, [f"{int(hive.parse_iso('2026-11-12T12:00:00Z').timestamp())} +0000"] * 2,
+                         "dated at the run that judged it, not at the project's previous commit")
         self.assertIn("tuned", sh("git", "show", f"{tip}:lib.c", cwd=self.w.upstream).stdout)
         verdict = [e for e in self.w.events() if e["type"] == "verdict"]
         self.assertEqual(len(verdict), 1)
@@ -367,8 +369,8 @@ class TestIntegration(Base):
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-12-24T08:30:00Z"}):
             later = self.w.fork("bob", 102).submit("toy-0002", path="src/b.c", content="int b;\n", model="some-other-model")
             second = self.one(self.w.run())["commit"]
-        shown = sh("git", "show", "-s", "--format=%aI|%B", second, cwd=self.w.upstream).stdout
-        self.assertTrue(shown.startswith("2026-12-24T08:30:00+00:00|"), shown[:40])
+        shown = sh("git", "show", "-s", "--format=%at|%B", second, cwd=self.w.upstream).stdout
+        self.assertTrue(shown.startswith(f"{int(hive.parse_iso('2026-12-24T08:30:00Z').timestamp())}|"), shown[:40])
         self.assertIn(f"Hive-Candidate: {later}\nHive-Model: undeclared\n", shown, "a model the project does not list is not repeated")
 
     def test_a_candidate_is_answered_once(self):
@@ -3640,7 +3642,9 @@ class TestVolunteerSide(Volunteer):
                 del os.environ[name]
             self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)  # no model this time: another marker
         self.assertEqual(sh("git", "log", "--format=%an <%ae>|%s", "-2", cwd=self.alice.work).stdout.splitlines(),
-                         ["Alice L <alice@example.invalid>|Hive submit: toy-0001", f"{who}|Hive submit: toy-0001"], "the clone's own name")
+                         [f"{who}|Hive submit: toy-0001"] * 2, "never the clone's own name: its settings are whatever ran there last")
+        log = (self.alice.work / ".git/logs/HEAD").read_text().splitlines()[-1]
+        self.assertTrue(log.endswith("\thive submit toy-0001") and f" {who} " in log and "Alice L" not in log, log)
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
     def test_submit_refuses_what_changed_outside_the_tasks_files_and_a_refusal_moves_nothing(self):
@@ -3741,7 +3745,7 @@ class TestTheWorkersClone(Volunteer):
         os.symlink(self.w.root, git_dir / "hooks")
         self.refused("a folder of hooks that is a link")
         (git_dir / "hooks").unlink()
-        for name in ("info/attributes", "commondir", "config.worktree"):
+        for name in ("info/attributes", "commondir", "config.worktree", "objects/info/alternates", "objects/info/http-alternates", "info/grafts"):
             (git_dir / name).write_text("* filter=x\n")
             self.refused(name)
             (git_dir / name).unlink()
@@ -3767,6 +3771,51 @@ class TestTheWorkersClone(Volunteer):
         (self.alice.work / ".git").unlink()
         for name, command in self.every_command():
             self.assertEqual((command(), "no .git here" in self.err), ((2, ""), True), "not a clone at all")
+
+    def test_nothing_inside_git_leads_out_of_the_clone(self):
+        """Git appends to the log of a branch it moves, in place: a link there (or a second name of a file of the
+        machine) is a way to write that file, with the committer's name in the line. Every command stops instead."""
+        git_dir, victim = self.alice.work / ".git", self.w.root / "victim"
+        victim.write_text("# a file of the volunteer's\n")
+        self.alice.write("lib.c", LIB + "int honest;\n")
+        with open(self.settings, "a") as f:
+            f.write("[user]\n\tname = x $(touch PLANTED)\n\temail = a@b\n")  # (a name a clone may hold: it is never read)
+        before = self.head()
+
+        def planted(path, plant, why):
+            saved = None
+            if os.path.lexists(path):
+                saved = path.with_name(path.name + ".saved")
+                path.rename(saved)
+            plant(path)
+            # (the saved copy is a file of .git like any other: it is not what stops the command)
+            self.refused(why)
+            if path.is_dir() and not path.is_symlink():
+                path.rmdir()
+            else:
+                path.unlink()
+            if saved:
+                saved.rename(path)
+
+        log = git_dir / "logs/HEAD"
+        self.assertTrue(log.is_file(), "a clone keeps a log of its HEAD")
+        planted(log, lambda path: os.symlink(victim, path), "the log of HEAD is a link to a file elsewhere")
+        planted(log, lambda path: os.link(victim, path), "the log of HEAD is a second name of a file elsewhere")
+        planted(git_dir / "logs/refs/heads/hive/submit", lambda path: (path.parent.mkdir(parents=True, exist_ok=True), os.symlink(self.w.root, path)),
+                "the logs of the branches to come lead to a folder elsewhere")
+        planted(git_dir / "logs", lambda path: os.symlink(self.w.root, path), "the folder of logs is a link")
+        planted(git_dir / "objects/pack", lambda path: os.symlink(self.w.root, path), "a folder of objects is a link")
+        planted(git_dir / "index", lambda path: os.symlink(victim, path), "the index is a link")
+        planted(git_dir / "FETCH_HEAD", lambda path: os.symlink(victim, path), "a file git rewrites in place is a link")
+        planted(git_dir / "refs/heads/x", lambda path: os.symlink(git_dir / "HEAD", path), "a link to a file of .git itself")
+        planted(git_dir / "pipe", lambda path: os.mkfifo(path), "neither a file nor a folder")
+        shared = git_dir / "objects/pack/shared.pack"
+        os.link(victim, shared)  # a clone made from a folder of the machine shares its objects: git never writes into one
+        self.assertEqual((victim.read_text(), self.head()), ("# a file of the volunteer's\n", before), "nothing was written, no commit made")
+        self.assertEqual([command()[0] for _, command in self.every_command()[1:]], [0, 0, 0], self.err)
+        shared.unlink()
+        self.assertEqual(victim.read_text(), "# a file of the volunteer's\n")
+        self.assertFalse((self.alice.work / "PLANTED").exists() or (self.w.root / "PLANTED").exists())
 
     def test_a_filter_planted_in_the_clone_is_not_run(self):
         """The proof that submit ran the clone's own settings: a clean filter in .git/config, selected by
@@ -3813,9 +3862,11 @@ class TestTheWorkersClone(Volunteer):
             for name in [name for name in os.environ if name.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]:
                 del os.environ[name]
             dated = f"{int(hive.parse_iso(NOW).timestamp())} +0000"
+            self.assertEqual((clone.settings["user.name"], clone.settings["user.email"]), ("Alice Liddell", "alice@example.invalid"))
             self.assertEqual(clone.identity("alice", hive.parse_iso(NOW)), {
-                "GIT_AUTHOR_NAME": "Alice Liddell", "GIT_AUTHOR_EMAIL": "alice@example.invalid", "GIT_COMMITTER_NAME": "Alice Liddell",
-                "GIT_COMMITTER_EMAIL": "alice@example.invalid", "GIT_AUTHOR_DATE": dated, "GIT_COMMITTER_DATE": dated})
+                "GIT_AUTHOR_NAME": "alice", "GIT_AUTHOR_EMAIL": "alice@users.noreply.github.com", "GIT_COMMITTER_NAME": "alice",
+                "GIT_COMMITTER_EMAIL": "alice@users.noreply.github.com", "GIT_AUTHOR_DATE": dated, "GIT_COMMITTER_DATE": dated},
+                "the member's login and GitHub's address for it, whatever the clone's own settings name")
 
     def test_git_is_told_which_folders_and_which_settings(self):
         """What every git command of a worker carries: the clone's folders by name (a GIT_DIR of the environment is
