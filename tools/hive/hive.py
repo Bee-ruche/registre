@@ -2353,8 +2353,9 @@ class Clone:
         except subprocess.TimeoutExpired as e:
             raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
         if check and result.returncode != 0:
-            stderr = result.stderr.decode("utf-8", errors="replace") if raw else result.stderr
-            raise HiveError(f"git {args[0]} failed ({result.returncode}): {safe_text(stderr.strip(), 300)}")
+            # git's own words are not repeated: they can quote a file of the clone (a line of .git/shallow, a
+            # reference's name), and what this tool prints is read by an agent.
+            raise HiveError(f"git {args[0]} failed ({result.returncode})")
         return result
 
     def identity(self, login, at=None):
@@ -2376,6 +2377,20 @@ class Clone:
         return self.git("commit-tree", need_sha(tree), "-p", need_sha(parent), stdin=message, env=who).stdout.strip()
 
 
+def first_bytes(path, most):
+    """The first bytes of a plain file, as bytes; nothing if it cannot be read."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return b""
+    try:
+        return os.read(descriptor, most) if stat.S_ISREG(os.fstat(descriptor).st_mode) else b""
+    except OSError:
+        return b""
+    finally:
+        os.close(descriptor)
+
+
 def plain_clone():
     """The clone this command runs in (the current folder: its root), once its own git settings are known to be the
     ones a clone has. Project code that ran here, even in the sandbox, may have written into .git: a setting that
@@ -2387,7 +2402,8 @@ def plain_clone():
 
     Refused: a .git that is not a folder, or that borrows another repository's settings (commondir), objects
     (alternates) or history (grafts), or adds a second file of settings (config.worktree); anything inside .git that
-    is a link, or neither a file nor a folder, or (outside the objects) a file with a second name; any setting
+    is a link, or neither a file nor a folder, or (outside the objects) a file with a second name; a reference that
+    names another reference, or a HEAD that names neither a branch nor a commit; any setting
     outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a sample;
     .git/info/attributes. A .gitattributes in the work tree needs no
     refusal: it can only select a filter, a diff or a merge program that some setting defines, and none does once
@@ -2417,6 +2433,18 @@ def plain_clone():
                 raise not_plain("it holds, inside .git, something that is neither a file nor a folder")
             if stat.S_ISREG(entry.st_mode) and entry.st_nlink > 1 and not shared:
                 raise not_plain("it holds, inside .git, a file that has another name elsewhere, where git would write to it")
+            if stat.S_ISREG(entry.st_mode) and Path(folder).relative_to(git_dir).parts[:1] == ("refs",):
+                # A reference that names another one: git would write the other in its place. A clone holds one, the
+                # remote's own HEAD, which names a branch of that same remote and which no worker command writes.
+                where, said = Path(folder).relative_to(git_dir).parts, first_bytes(os.path.join(folder, name), 300).decode("ascii", errors="replace")
+                usual = len(where) == 3 and where[1] == "remotes" and name == "HEAD" and ".." not in said \
+                    and re.fullmatch(rf"ref: refs/remotes/{re.escape(where[2])}/[A-Za-z0-9][A-Za-z0-9._/-]{{0,199}}\n?", said)
+                if said.startswith("ref:") and not usual:
+                    raise not_plain("it holds a reference that names another reference, which git would write in its place")
+    # HEAD names a branch of this clone, or a commit: what a command moves is that branch, and nothing HEAD could name.
+    head = first_bytes(git_dir / "HEAD", 300).decode("ascii", errors="replace")
+    if not (re.fullmatch(r"ref: refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\n?", head) and ".." not in head) and not re.fullmatch(r"[0-9a-f]{40}\n?", head):
+        raise not_plain("its HEAD names neither a branch nor a commit")
     for name, found in (("commondir", "it borrows another repository's settings (.git/commondir)"),
                         ("config.worktree", "it holds a second file of settings (.git/config.worktree)"),
                         ("info/attributes", "it holds attributes of its own (.git/info/attributes), which choose programs to "
@@ -2540,8 +2568,8 @@ def push(clone, url, source, branch):
         clone.git("push", "--quiet", "--force", "--no-verify", "--no-follow-tags", "--no-signed", "--recurse-submodules=no", url,
                   f"{source}:refs/heads/{branch}", to=url, timeout=300)
     except HiveError as error:
-        raise HiveError(f"the push to your fork did not land ({error}). Nothing else was pushed: run the command again, or stop "
-                        "and tell the user") from None
+        raise HiveError(f"the push to your fork did not land ({error}). Nothing else was pushed: run the command again; if it "
+                        "fails again, stop and tell the user to check that this machine may push to the fork") from None
 
 
 def cmd_setup(args):
@@ -2666,7 +2694,7 @@ def fork_tip(clone, url, branch):
         sha = clone.git("rev-parse", "--verify", f"{scratch}^{{commit}}", check=False).stdout.strip()
         raw = clone.git("cat-file", "commit", sha, check=False).stdout if is_sha(sha) else ""
     finally:
-        clone.git("update-ref", "-d", scratch, check=False)
+        clone.git("update-ref", "--no-deref", "-d", scratch, check=False)
     if not raw:
         return None
     head, _, message = raw.partition("\n\n")
@@ -2878,7 +2906,11 @@ def cmd_submit(args):
         marker = head  # run again after a push that did not land: the same candidate
     else:
         marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
-        clone.git("update-ref", "-m", f"hive submit {task['id']}", "HEAD", marker, head, env=who)  # (the branch's log names who moved it)
+        # The branch HEAD names is moved by its own name, and HEAD itself when it names a commit: never a reference
+        # that another one would lead to. (The branch's log names who moved it.)
+        named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
+        moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
+        clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
     branch = SUBMIT_BRANCH.format(task=task["id"])
     if args.no_push:
         print(f"NOT-PUSHED {marker}: git push --force origin {marker}:refs/heads/{branch}")
