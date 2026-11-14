@@ -480,6 +480,11 @@ class TestFolder(Case):
         self.out.unlink()
         self.out.write_text("a file")
         self.refused("the folder itself")
+        # A folder asked for under a file: nothing can be made there, and the run says so in one line.
+        before = tree(self.root)
+        self.make(out=self.out / "under" / "a file", code=2)
+        self.assertEqual(tree(self.root), before)
+        self.assertRegex(self.errors, r"\Apage: --out: the folder itself could not be written \([A-Za-z ]+\): the site is not whole\n\Z")
 
     def test_a_folder_or_a_pipe_where_a_file_goes_stops_the_run_with_one_line_and_the_site_as_it_was(self):
         (self.out / self.own).mkdir(parents=True)

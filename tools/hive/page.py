@@ -77,7 +77,7 @@ MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")
 MARK = re.compile(r"[0-9a-f]{16}\Z")  # a hash of a login, in the feed's deals; never shown
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 RUN = re.compile(r"[0-9a-f]{32}\Z")  # a run's key, in the ledger's lines; never shown
-ISO =re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
+ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 REPO_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 JOIN_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:/[A-Za-z0-9._-]{1,100}){1,12}\Z")
@@ -1427,7 +1427,7 @@ def found_at(path):
     "a folder", "a file" or "neither a file nor a folder" (a pipe, a device)."""
     try:
         mode = os.lstat(path).st_mode
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):  # nothing there, or nothing can be there: write() will say why
         return None
     return "a link" if stat.S_ISLNK(mode) else "a folder" if stat.S_ISDIR(mode) else "a file" if stat.S_ISREG(mode) else "neither a file nor a folder"
 
@@ -1445,7 +1445,10 @@ def check_plan(out, names):
     out = Path(out)
 
     def need(path, shown, wanted):
-        found = found_at(path)
+        try:
+            found = found_at(path)
+        except OSError as error:
+            raise PageError(f"--out: {shown} cannot be looked at ({error.strerror or type(error).__name__}): nothing is written") from None
         if found not in (None, wanted):
             raise PageError(f"--out: {shown} is {found}, where this tool writes {wanted}: nothing is written")
     need(out, "the folder itself", "a folder")
