@@ -101,6 +101,7 @@ VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still lo
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
 JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the judge examined the candidate: a real attempt
+MEASURED_REASONS = ("goal_not_met", "requirement_not_met")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
@@ -1815,12 +1816,21 @@ def verdict_event(outcome, instant, kind="verdict"):
     """A verdict's line. An accepted one names its member by login and by account number: it is a credit. A refused
     one carries the account's number alone, which the hive's own counting needs, and no login: the ledger does not
     write a person's name beside a refusal. (That is discretion, not secrecy: the deal's line names its member, and
-    the candidate sits in the member's public fork.)"""
+    the candidate sits in the member's public fork.)
+
+    A candidate refused for a figure (MEASURED_REASONS: the judge ran, the candidate is correct, a figure is short)
+    keeps what the judge measured, as an accepted one does: `report`, the same numbers under the names the project
+    lists, bounded the same way (clean_report, by whichever step handed the judge's answer over). How far a candidate
+    fell short is what its member needs to know, and whoever is dealt the task next. Every other refusal carries no
+    report: one the judge itself refused (judge_refused) was not found correct, so its figures say nothing; one refused
+    before the judge has none."""
     event = {"type": kind, "at": iso(instant), "task": outcome["task"], "deal": outcome["deal"],
              "member_id": outcome["member_id"], "repo_id": outcome["repo_id"], "sha": outcome["sha"],
              "result": outcome["result"], "judged": outcome["judged"], "model": outcome["model"]}
     if outcome["result"] == "refused":
         event.update(reason=outcome["reason"], detail=outcome["detail"])
+        if outcome["reason"] in MEASURED_REASONS:
+            event["report"] = outcome["report"]
     else:
         event.update(member=outcome["login"], commit=outcome["commit"], figures=outcome["figures"], report=outcome["report"])
     return event

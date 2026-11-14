@@ -305,6 +305,16 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   hive's own keys, and the judge's figures the project lists. **A login is written beside a deal and beside an
   accepted candidate, which is a credit; a refusal, a run without an answer and an expired deal carry the account's
   number alone.** That is discretion, not secrecy: the deal names its member, and the candidate sits in a public fork.
+
+  A `verdict` line carries the task, the deal it answers, the candidate's commit id, the account's number and its
+  fork's, the result, whether the judge examined the candidate (`judged`) and the model the worker declared. An
+  accepted one adds its member's login, the integrated commit, what the hive counted of the change (`figures`) and
+  the judge's figures the project lists (`report`). A refused one adds its reason code and `detail` (whole numbers
+  under the hive's own keys), and no login on the line. **A candidate refused for a figure (`goal_not_met`,
+  `requirement_not_met`: the judge ran, the candidate is correct, a figure is short) keeps the same `report` as an
+  accepted one**, the same numbers bounded the same way: how far it fell short is what its member needs to know,
+  and whoever is dealt the task next. `judge_refused` and every refusal before the judge carry none. A refusal's
+  line written before this rule has no `report`; it stays valid, and whatever reads the ledger takes both.
 - `feed.json`: the project's tasks with their status (`open`, `dealt`, `done`, `closed`), their tier, the number
   of judged refusals and the task's context; and, **under a hash of each login** that a worker computes for its
   own, the task a member holds, since when, until when and whether its candidate was seen (`deals`), and until
