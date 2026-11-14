@@ -3879,6 +3879,49 @@ class TestVolunteerSide(Volunteer):
         with mock.patch.object(hive, "STATE_BYTES", 100):
             self.assertEqual(self.next(), (0, NOT_READ), "a feed larger than the tool reads")
 
+    def test_what_waits_on_the_fork_is_asked_of_the_fork_never_of_a_ref_left_in_the_clone(self):
+        """Whether an ask or a candidate waits is asked of the fork itself, through a ref of the clone that lasts the
+        time of the question. A ref of that name left in the clone (by a run that was stopped, or by project code,
+        which may write into .git) says nothing of the fork: when the fork has no such branch, or cannot be
+        reached, nothing waits there, and next says to ask, or to do the task."""
+        self.w.run()
+        ask = self.ready("--no-push")[1].split()[1][:-1]
+        sh("git", "update-ref", "refs/hive/mine", ask, cwd=self.alice.work)
+        self.assertEqual(self.next(), (0, ASK), "an ask that was never pushed does not wait")
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)
+        sh("git", "update-ref", "refs/hive/mine", self.head(), cwd=self.alice.work)
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "a candidate that was never pushed is still to do")
+        away = self.w.root / "away.git"
+        self.alice.bare.rename(away)
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "nor does a fork that cannot be reached hold it")
+        (self.w.state / "feed.json").write_text(json.dumps({**self.w.feed_file(), "deals": {}}))
+        sh("git", "update-ref", "refs/hive/mine", ask, cwd=self.alice.work)
+        self.assertEqual(self.next(), (0, ASK), "and no ask waits on a fork that cannot be reached")
+        away.rename(self.alice.bare)
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"])
+
+    def test_the_tip_of_the_tasks_branch_waits_only_if_it_is_marked_as_this_deals_candidate(self):
+        """Next asks the fork whether the work is already there, so that a worker does not do it twice. The tip of
+        the task's branch says so only if it is marked as a candidate, for this task and for this deal: work without
+        a marker, what an earlier deal of the same task left there, a commit marked for another task, or an ask,
+        leave the task to do."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n").commit().push()
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "work that carries no marker")
+        self.alice.marker("toy-0001", deal="2026-11-10T09:00:00Z").push()
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "the candidate of an earlier deal of the same task")
+        self.alice.marker("toy-0002", deal=dealt).push()
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "a commit marked for another task")
+        self.alice.marker("toy-0001", deal=dealt).push()
+        self.assertEqual(self.next(), (0, CANDIDATE_WAITS))
+        self.alice.ready(branch="hive/submit/toy-0001")
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "an ask, on the task's branch")
+        self.assertEqual(sh("git", "for-each-ref", "refs/hive", cwd=self.alice.work).stdout, "", "what was read of the fork leaves no ref")
+
     def test_a_file_of_the_state_is_read_up_to_a_size_and_not_at_all_beyond(self):
         """What a worker reads of the hive's state has a bound: a file of exactly that size is read, and one byte more
         makes it a file the tool does not read, whatever its first bytes say: a feed is never read in part."""
