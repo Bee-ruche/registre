@@ -4167,6 +4167,23 @@ class TestVolunteerSide(Volunteer):
         for name, command in self.every_command():
             self.one_line(command(), "this clone has no origin: run this in a clone of your own fork of the project")
 
+    def test_a_login_and_a_tip_are_plain_names_or_the_command_ends_with_one_line(self):
+        """What the command line gives goes into git commands and into the marker of a commit. A login is a GitHub
+        login; the project's tip is a branch's name or a commit id, never an option of git nor an expression git
+        would work out. The command says which of the two is wrong, in one line, and has made no commit."""
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        before = self.head()
+        for login in ("a b", "-alice", "alice-", "a" * 40, "al\nice", "alice/toy", ""):
+            for command in (("next", "--project", "toy", "--state", self.state_root), ("ready", "--no-push"),
+                            ("submit", "--project", "toy", "--task", "toy-0001", "--deal", NOW, "--no-push")):
+                with self.subTest(login=login, command=command[0]):
+                    self.one_line(self.run_cli(*command, "--registry", self.registry, f"--login={login}"), "--login: your GitHub login")
+        for tip in ("--force", "-h", "origin/main^{tree}", "HEAD~1", "origin/main origin/main", "@{-1}", "x" * 201):
+            with self.subTest(tip=tip):
+                self.one_line(self.ready(f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
+                self.one_line(self.submit("toy-0001", NOW, f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
+
     def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
         """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
         behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
