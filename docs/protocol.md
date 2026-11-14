@@ -124,14 +124,16 @@ tasks that share a file with them free too, of a tier it takes), the preference 
 this order:
 
 1. the project offers preferences (`members.preferences` in its file, on by default);
-2. the member's last deal that came to an end was accepted. For a member dealt in the run that answers its
-   candidate (below), that is where it stood before that answer;
-3. at least one of those tasks lists the part.
+2. the member's last deal that came to an end, in whatever way, ended with an accepted candidate (an ending that
+   cost the member nothing, such as a task the project closed, is no accepted candidate either). For a member dealt
+   in the run that answers its candidate (below), that is where it stood before that answer;
+3. at least two of those tasks list the part: a preference chooses a part, never a task.
 
 The task is then the same draw among those of these tasks that list the part. In every other case the plain draw
 runs, unchanged, and the deal's line says why the preference was not kept: `not_offered`, `needs_an_accepted_deal`
-(one word for a member that never had a deal come to an end and for one whose last deal was not accepted: the line
-names its member) or `no_free_task`. A member with several asks has a preference only if all of them name
+(one word for a member that never had a deal come to an end and for one whose last deal ended otherwise: the line
+names its member), `no_free_task` or `one_free_task` (one task alone listed the part: following the preference
+would have chosen it). A member with several asks has a preference only if all of them name
 the same part. Two things hold whatever an ask says: **a kept preference only ever gives a task the plain draw
 could have given, and the order in which askers are served reads no preference.** Nor do the waits, the day's
 deals, the tiers, or the rule on tasks that share a file.

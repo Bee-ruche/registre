@@ -49,7 +49,10 @@ usage settings before you schedule anything.
      If the worker runs on a machine of yours, in a clone of your fork that you made, keep that clone for the hive:
      at each task the worker removes the untracked files git ignores there, and sets the rest aside (`git stash`).
      That machine needs a git from 2023 or later (one that takes `--attr-source`): the worker's first command says
-     so if it is older.
+     so if it is older. And start your assistant in another folder, never inside that clone: an assistant loads
+     the agent files of the folder it starts in (`CLAUDE.md`, `AGENTS.md`, `.claude/`) before it reads your prompt,
+     and in a clone that is kept those files are whatever was last written there. The worker's tool shows, at each
+     task, that they are the project's own, but only once it runs.
 3. **Paste the prompt** below.
 4. **Choose a schedule**: every hour is best (all your quota). "Only the hours before your weekly reset" (the
    leftovers) works only if those firings are **at most two hours apart, several in a row**: the hive deals a task at
@@ -87,10 +90,11 @@ the prompt.
 
 If you would rather have your worker's tasks in one part of the project, add "Prefer the tasks of <file>." to the
 prompt, with one of the files the project's tasks name (on miniz: `miniz.c`, `miniz_tdef.c` or `miniz_tinfl.c`).
-This is optional, and the hive's own rules come first: it follows your preference once a task of yours has been
-accepted, and when a task of that file is free for you at your turn; otherwise your worker is dealt as anyone's,
-and the deal's line in the ledger says why. It never moves you ahead of anyone, and your worker does the task it
-is dealt, whichever it is.
+This is optional, and the hive's own rules come first: it follows your preference when your worker's last task was
+accepted, and when at least two tasks of that file are free for you at your turn (a preference chooses a part of
+the project, never a task: a file that a single task names cannot be chosen); otherwise your worker is dealt as
+anyone's, and the deal's line in the ledger says why. It never moves you ahead of anyone, and your worker does the
+task it is dealt, whichever it is.
 
 If your schedule is not hourly, change the sentence "This worker runs every hour." to say what it is ("This worker
 runs every two hours from 18:00 to 23:00 UTC on Sundays."): the worker asks for a task only if it will be back within

@@ -3133,39 +3133,46 @@ class TestDealing(Base):
 
     def test_a_member_whose_last_deal_was_accepted_is_dealt_a_task_of_the_part_it_prefers(self):
         """An ask may name a part of the project: one of the files its tasks name. When the member's last deal was
-        accepted and a task of that part is among those it could be dealt anyway, its task is drawn among these, and
-        the deal's line says so. The feed says nothing of it."""
+        accepted and at least two tasks of that part are among those it could be dealt anyway, its task is drawn among
+        these, and the deal's line says so. A part chooses no task: when one task alone lists it, the plain draw runs.
+        The feed says nothing of it."""
         self.answered(self.alice, "toy-0003")  # an accepted deal, on a task closed since
         self.assertEqual(self.standing(self.alice)[0], 0)
         self.alice.ready()
         plain = self.planned()
         self.assertEqual(({task for _, task, _ in plain}, self.told(plain)), (self.OPEN, {"null"}), "no preference: any open task, and no word of one")
-        self.alice.ready(prefer="src/")
-        self.assertEqual({(task, json.dumps(prefer, sort_keys=True)) for _, task, prefer in self.planned()}, {("toy-0002", self.kept("src/"))},
-                         "at every draw, the one task of that part")
         self.alice.ready(prefer="lib.c")
         among = self.planned()
         self.assertEqual(({task for _, task, _ in among}, self.told(among)), ({"toy-0001", "toy-0004", "toy-0005"}, {self.kept("lib.c")}),
                          "the same draw, among the tasks that list the part: never toy-0003, which lists it and is closed")
-        ask = self.alice.ready(prefer="src/")
+        # A part that one free task alone lists is not followed: that would be choosing the task, and nobody chooses a task.
+        self.alice.ready(prefer="src/")
+        alone = self.planned()
+        self.assertEqual(({task for _, task, _ in alone}, self.told(alone)), (self.OPEN, {self.not_kept("src/", "one_free_task")}),
+                         "the plain draw, among every task it could be dealt")
+        ask = self.alice.ready(prefer="lib.c")
         self.assertEqual(self.w.run(), [])
-        self.assertEqual(self.one(self.lines("deal")), {"type": "deal", "at": NOW, "until": "2026-11-12T15:00:00Z", "run": mock.ANY, "task": "toy-0002",
-                                                        "member": "alice", "member_id": 101, "repo_id": 1101, "prefer": {"file": "src/", "kept": True}})
+        dealt = self.one(self.lines("deal"))
+        self.assertIn(dealt["task"], {"toy-0001", "toy-0004", "toy-0005"})
+        self.assertEqual(dealt, {"type": "deal", "at": NOW, "until": "2026-11-12T15:00:00Z", "run": mock.ANY, "task": dealt["task"],
+                                 "member": "alice", "member_id": 101, "repo_id": 1101, "prefer": {"file": "lib.c", "kept": True}})
         self.assertEqual(hive.read_ignored(self.w.state), {"1101": [ask]}, "the ask is used once, as any ask")
         feed = self.w.feed_file()
-        self.assertEqual(feed["deals"], {hive.member_mark("alice"): {"task": "toy-0002", "at": NOW, "until": mock.ANY, "candidate": False}})
+        self.assertEqual(feed["deals"], {hive.member_mark("alice"): {"task": dealt["task"], "at": NOW, "until": mock.ANY, "candidate": False}})
         self.assertNotIn("prefer", json.dumps(feed), "the feed is as it was")
 
     def test_a_preference_that_is_not_kept_leaves_the_plain_draw_and_the_deal_says_why(self):
         """The hive's rules come first. A preference is not kept, decided in this order: when the project does not
         offer preferences; when the member never had a deal that came to an end, or its last deal was not accepted
         (one word for both: the deal's line names its member, and does not say how a deal of theirs ended); when no
-        task of the part is free for it at its turn. The plain draw then runs, unchanged."""
+        task of the part is free for it at its turn; when one alone is, since following it would choose that task. The
+        plain draw then runs, unchanged. And an ending that cost the member nothing (a task the project closed) is no
+        accepted deal either: what an accepted candidate earns lasts until the member's next deal ends, however it ends."""
         carol, holder = self.w.fork("carol", 103), self.w.fork("holder", 133)
         self.answered(self.alice, "toy-0003")
         self.answered(carol, "toy-0003", "judge_refused", at="2026-11-12T09:00:00Z")  # its wait is over
         self.assertEqual([self.standing(fork)[:2] for fork in (self.alice, self.bob, carol)], [(0, None), (1, None), (2, None)])
-        self.assertEqual(hive.PREFER_BECAUSE, ("not_offered", "needs_an_accepted_deal", "no_free_task"))
+        self.assertEqual(hive.PREFER_BECAUSE, ("not_offered", "needs_an_accepted_deal", "no_free_task", "one_free_task"))
 
         def said(fork, runs=24):
             fork.ready(prefer="src/")
@@ -3180,10 +3187,23 @@ class TestDealing(Base):
         for fork in (self.alice, self.bob, carol):
             self.assertEqual(said(fork), (self.OPEN, {self.not_kept("src/", "not_offered")}), "the project's switch is decided first")
         self.w.set_config({})
+        self.assertEqual(said(self.alice), (self.OPEN, {self.not_kept("src/", "one_free_task")}), "one task alone lists the part: no task is chosen")
         self.hold(holder, "toy-0002")  # the one task of src/ is held
         self.assertEqual(said(self.alice), ({"toy-0001", "toy-0004", "toy-0005"}, {self.not_kept("src/", "no_free_task")}))
         self.assertEqual(said(self.bob, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")}, "where the member stands is decided before the tasks")
         self.assertEqual(said(carol, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")})
+        # A member of class 0 whose latest deal ended at no cost to it (its task was closed meanwhile): still served among
+        # the first, and its preference waits for its next accepted deal.
+        _, _, ledger = self.w.load()
+        self.assertEqual((ledger.last_deal_accepted(self.alice.id), ledger.last_deal_accepted(self.bob.id), ledger.last_deal_accepted(carol.id)),
+                         (True, False, False))
+        hive.Ledger(self.w.state).append([{"type": "expired", "at": NOW, "task": "toy-0003", "deal": self.w.deal(self.alice, "toy-0003", fresh=True),
+                                           "member_id": self.alice.id, "repo_id": self.alice.id + 1000, "fault": True}])
+        _, _, ledger = self.w.load()
+        self.assertEqual((self.standing(self.alice)[:2], ledger.last_deal_accepted(self.alice.id)), ((0, None), False))
+        self.alice.ready(prefer="lib.c")
+        self.assertEqual(self.told(self.planned(6)), {self.not_kept("lib.c", "needs_an_accepted_deal")})
+        self.gone(self.alice)
         self.w.set_config({"members": {"preferences": False}})
         self.bob.ready(prefer="src/")
         self.w.run()
@@ -3243,16 +3263,16 @@ class TestDealing(Base):
             pushed = [self.alice.ready(branch=f"hive/ask{number}", prefer=prefer) for number, prefer in enumerate(prefers)]
             return self.told(self.planned(6)), pushed
 
-        self.assertEqual(asks("src/", "src/")[0], {self.kept("src/")})
-        self.assertEqual(asks("src/", "lib.c")[0], {"null"}, "they disagree: no preference, and no word of one")
-        self.assertEqual(asks("src/", None)[0], {"null"}, "one names a part, the other none")
-        self.assertEqual(asks("src/", "nothing the registry names")[0], {"null"})
-        self.assertEqual(asks("src/", "src/", "lib.c")[0], {"null"}, "all of them, however many")
-        said, pushed = asks("src/", "src/", "src/")
-        self.assertEqual(said, {self.kept("src/")})
+        self.assertEqual(asks("lib.c", "lib.c")[0], {self.kept("lib.c")})
+        self.assertEqual(asks("lib.c", "src/")[0], {"null"}, "they disagree: no preference, and no word of one")
+        self.assertEqual(asks("lib.c", None)[0], {"null"}, "one names a part, the other none")
+        self.assertEqual(asks("lib.c", "nothing the registry names")[0], {"null"})
+        self.assertEqual(asks("lib.c", "lib.c", "src/")[0], {"null"}, "all of them, however many")
+        said, pushed = asks("lib.c", "lib.c", "lib.c")
+        self.assertEqual(said, {self.kept("lib.c")})
         self.w.run()
         self.assertEqual((self.one(self.lines("deal"))["prefer"], sorted(hive.read_ignored(self.w.state)["1101"])),
-                         ({"file": "src/", "kept": True}, sorted(pushed)), "one deal, and every ask is used")
+                         ({"file": "lib.c", "kept": True}, sorted(pushed)), "one deal, and every ask is used")
 
     def test_a_member_dealt_conditionally_is_dealt_the_part_it_prefers_when_its_candidate_is_answered(self):
         """A member that holds a candidate in this run is dealt conditionally. Whether its preference is kept is the
@@ -3261,15 +3281,16 @@ class TestDealing(Base):
         self.answered(self.alice, "toy-0003")
         dealt = self.hold(self.alice, "toy-0002")[0]
         candidate = self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002", deal=dealt).push()
-        ask = self.alice.ready(prefer="run.sh")  # only toy-0005 lists it; toy-0001 and toy-0004 are free too
-        plans = [self.w.plan() for _ in range(12)]
-        self.assertEqual({json.dumps((made["deals"], [(d["member"], d["task"], d["prefer"], d["after"], d["asks"]) for d in made["conditional"]]))
-                          for made in plans}, {json.dumps(([], [("alice", "toy-0005", {"file": "run.sh", "kept": True}, [candidate], [ask])]))})
+        ask = self.alice.ready(prefer="lib.c")  # toy-0001, toy-0004 and toy-0005 list it, and are free
+        plans = [self.w.plan() for _ in range(24)]
+        self.assertEqual({json.dumps((made["deals"], [(d["member"], d["prefer"], d["after"], d["asks"]) for d in made["conditional"]])) for made in plans},
+                         {json.dumps(([], [("alice", {"file": "lib.c", "kept": True}, [candidate], [ask])]))})
+        self.assertEqual({d["task"] for made in plans for d in made["conditional"]}, {"toy-0001", "toy-0004", "toy-0005"}, "a draw among the tasks of the part")
         self.w.record()
         self.assertEqual((self.lines("deal"), hive.read_ignored(self.w.state)), ([], {}), "nothing before its candidate is answered")
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
         deal = self.one(self.lines("deal"))
-        self.assertEqual((deal["member"], deal["task"], deal["prefer"]), ("alice", "toy-0005", {"file": "run.sh", "kept": True}))
+        self.assertEqual((deal["member"], deal["task"] in {"toy-0001", "toy-0004", "toy-0005"}, deal["prefer"]), ("alice", True, {"file": "lib.c", "kept": True}))
         self.assertEqual(hive.read_ignored(self.w.state), {"1101": [ask]})
 
     def test_a_conditional_deal_that_is_not_recorded_leaves_no_word_of_the_preference(self):
@@ -3279,28 +3300,28 @@ class TestDealing(Base):
         self.answered(self.alice, "toy-0003")
         dealt = self.hold(self.alice, "toy-0002")[0]
         self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002", deal=dealt).push()
-        ask = self.alice.ready(prefer="run.sh")
-        self.assertEqual([d["prefer"] for d in self.w.plan()["conditional"]], [{"file": "run.sh", "kept": True}])
+        ask = self.alice.ready(prefer="lib.c")
+        self.assertEqual([d["prefer"] for d in self.w.plan()["conditional"]], [{"file": "lib.c", "kept": True}])
         self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
         self.assertEqual(self.lines("deal"), [])
         self.assertNotIn("prefer", (self.w.state / "ledger.jsonl").read_text())
         self.assertNotIn(ask, hive.read_ignored(self.w.state).get("1101", []), "its ask is not used")
         with self.at("14:00:00"):
             self.w.run()
-            self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "run.sh", "kept": False, "because": "needs_an_accepted_deal"})
+            self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"})
 
     def test_a_conditional_deal_is_decided_on_the_class_the_plan_computed_not_on_this_runs_answer(self):
         """bob never had a deal that came to an end: the candidate of its first deal is in this run. The plan decides
         on that (needs_an_accepted_deal), and the deal recorded after the candidate is accepted says what the plan decided."""
         dealt = self.hold(self.bob, "toy-0002")[0]
         self.bob.write("src/b.c", "int b;\n").commit().marker("toy-0002", deal=dealt).push()
-        self.bob.ready(prefer="run.sh")
+        self.bob.ready(prefer="lib.c")
         plans = [self.w.plan() for _ in range(24)]
         self.assertEqual({d["task"] for made in plans for d in made["conditional"]}, {"toy-0001", "toy-0004", "toy-0005"}, "the plain draw")
-        self.assertEqual({json.dumps(d["prefer"], sort_keys=True) for made in plans for d in made["conditional"]}, {self.not_kept("run.sh", "needs_an_accepted_deal")})
+        self.assertEqual({json.dumps(d["prefer"], sort_keys=True) for made in plans for d in made["conditional"]}, {self.not_kept("lib.c", "needs_an_accepted_deal")})
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
         self.assertEqual((self.standing(self.bob)[0], self.one(self.lines("deal"))["prefer"]),
-                         (0, {"file": "run.sh", "kept": False, "because": "needs_an_accepted_deal"}), "its last deal is accepted now; the plan decided before")
+                         (0, {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}), "its last deal is accepted now; the plan decided before")
 
     def test_the_steps_that_write_take_no_preference_that_is_not_the_registrys(self):
         """The plan comes from the step that read the forks. The steps that hold keys copy nothing of a preference:
@@ -3309,10 +3330,10 @@ class TestDealing(Base):
         self.answered(self.bob, "toy-0003")
         dealt = self.hold(self.bob, "toy-0002")[0]
         self.bob.write("src/b.c", "int b;\n").commit().marker("toy-0002", deal=dealt).push()
-        self.bob.ready(prefer="run.sh")
+        self.bob.ready(prefer="lib.c")
         _, verdicts, _ = self.w.sweep()
         conditional = self.one(self.w.made["conditional"])
-        self.assertEqual((self.w.made["deals"], conditional["prefer"]), ([], {"file": "run.sh", "kept": True}))
+        self.assertEqual((self.w.made["deals"], conditional["prefer"]), ([], {"file": "lib.c", "kept": True}))
         config, tasks, _ = self.w.load()
         before = (self.w.tip(), self.w.events(), self.w.promises(), self.lines("deal"))
         self.assertEqual((before[0], before[2:]), (self.start, ([], [])))
@@ -3323,26 +3344,33 @@ class TestDealing(Base):
                      {"file": "run.sh", "kept": "yes"}, {"file": "run.sh", "kept": 1}, {"file": ["run.sh"], "kept": True}, {"kept": True},
                      {"file": "run.sh", "kept": True, "note": "x"}, {"file": "run.sh\nx", "kept": True}, {"file": "x" * 201, "kept": True},
                      {"file": "../run.sh", "kept": True}, None, "run.sh", ["run.sh"], {})
-        for prefer in (*elsewhere, *shapeless):
+        # What the registry does not bear out of the task dealt: a kept preference for a part the task does not list, and
+        # « no task of that part was free » said of a deal whose task is one of that part.
+        untrue = ({"file": "src/", "kept": True}, {"file": "lib.c", "kept": False, "because": "no_free_task"})
+        for prefer in (*elsewhere, *shapeless, *untrue):
             forged = [{**conditional, "prefer": prefer}]
             with self.subTest(prefer=prefer):
                 with self.assertRaises(hive.HiveError):
                     hive.deal_prefer(forged[0], tasks)
-                self.assertEqual(hive.prefer_ok(prefer), prefer in elsewhere, "the shape alone")
-                if prefer not in elsewhere:
+                self.assertEqual(hive.prefer_ok(prefer), prefer in (*elsewhere, *untrue), "the shape alone")
+                if prefer not in (*elsewhere, *untrue):
                     with self.assertRaisesRegex(hive.HiveError, "the plan is unreadable"):
                         hive.read_plan({**self.w.made, "conditional": forged}, config)
                 for step in (lambda: self.w.record(conditional=forged), lambda: self.w.apply(verdicts, conditional=forged),
                              lambda: self.w.record(deals=[{k: v for k, v in forged[0].items() if k not in ("after", "asks")}]),
                              lambda: self.w.apply(verdicts, deals=[{k: v for k, v in forged[0].items() if k not in ("after", "asks")}])):
                     with self.assertRaisesRegex(hive.HiveError, "not one of the project's files as the registry writes them" if prefer in elsewhere
-                                                else "the plan is unreadable"):
+                                                else "what the task it deals does not bear out" if prefer in untrue else "the plan is unreadable"):
                         step()
                 self.assertEqual((self.w.tip(), self.w.events(), self.w.promises(), self.lines("deal")), before,
                                  "nothing was pushed and nothing was written")
         self.assertEqual(hive.deal_prefer({"task": "toy-0005"}, tasks), None, "a deal whose ask named no part says nothing")
         self.assertEqual(self.one(self.w.apply(verdicts)[0])["result"], "accepted")
-        self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "run.sh", "kept": True}, "the honest plan is applied")
+        self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "lib.c", "kept": True}, "the honest plan is applied")
+        # What may be said of a deal whose task lists the part, and of one whose task does not.
+        for task, prefer in (("toy-0001", {"file": "lib.c", "kept": False, "because": "one_free_task"}), ("toy-0002", {"file": "lib.c", "kept": False, "because": "no_free_task"}),
+                             ("toy-0002", {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}), ("toy-0001", {"file": "lib.c", "kept": False, "because": "not_offered"})):
+            self.assertEqual(hive.deal_prefer({"task": task, "prefer": prefer}, tasks), prefer)
 
     def test_over_many_draws_a_kept_preference_gives_a_task_its_member_could_be_dealt_anyway_and_moves_nobodys_turn(self):
         """The invariant of the dealing, held over many keys on tasks that share files, differ in tier, are closed or
@@ -3402,7 +3430,7 @@ class TestDealing(Base):
                     self.assertIn(task, mine, (number, prefers, deal))  # the invariant
                     plain = min(mine, key=lambda t: hive.draw(key, member, t))
                     listing = {t for t in mine if part in tasks[t]["files"]}
-                    why = "needs_an_accepted_deal" if klass[member] else None if listing else "no_free_task"
+                    why = "needs_an_accepted_deal" if klass[member] else "no_free_task" if not listing else "one_free_task" if len(listing) == 1 else None
                     if part is None:
                         self.assertEqual((task, "prefer" in deal), (plain, False), (number, prefers, deal))
                     elif why:
@@ -3872,7 +3900,7 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     rf"PUSHED {COMMIT}",
     rf"NOT-PUSHED {COMMIT}: the ask is made and nothing was pushed; run the same command again without --no-push to make the ask anew "
     r"and push it",
-    rf"NOT-PUSHED {COMMIT}: the candidate is committed and nothing was pushed; run the same command again without --no-push to push it",
+    rf"NOT-PUSHED {COMMIT}: the candidate is committed and nothing was pushed; run the same command again without --no-push to make the candidate anew and push it",
 )]
 ASK = "ASK: you hold no task. If this worker runs at least every 2 hours, ask for one: hive.py ready --project toy --login Alice\n"
 # What a command stops on when the clone's origin is not the fork the tool derives from the login and the registry.
@@ -4229,7 +4257,7 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(code, 0, self.err)
         marker = self.head()
         self.assertEqual(text, f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
-                               "--no-push to push it\n")
+                               "--no-push to make the candidate anew and push it\n")
         self.spoken(text)
         made = [sh("git", "rev-parse", name, cwd=self.alice.work).stdout.strip() for name in ("HEAD^^{tree}", "HEAD^^")]
         self.assertEqual(made, [sh("git", "rev-parse", f"{before}^{{tree}}", cwd=self.alice.work).stdout.strip(), self.start],
@@ -4586,7 +4614,7 @@ class TestVolunteerSide(Volunteer):
         code, text = self.submit("toy-0001", dealt, "--no-push", "--message", "The work")
         candidate = self.head()
         self.assertEqual((code, self.spoken(text)), (0, [f"NOT-PUSHED {candidate}: the candidate is committed and nothing was pushed; run the "
-                                                          "same command again without --no-push to push it"]), self.err)
+                                                          "same command again without --no-push to make the candidate anew and push it"]), self.err)
         self.assertEqual(self.fork_branches(), ["refs/heads/main"])
         code, text = self.submit("toy-0001", dealt, "--message", "The work")
         self.assertEqual((code, self.spoken(text)[0], self.fork_branch("hive/submit/toy-0001")), (0, f"PUSHED {candidate}", candidate), self.err)
@@ -4942,8 +4970,12 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(sorted(sh("git", "status", "--porcelain", "--untracked-files=all", cwd=self.alice.work).stdout.split()),
                          ["??", "??", "build/out.o", "notes.txt"], "what was not the task's is left where it was")
         self.assertEqual(self.fork_branches(), ["refs/heads/hive/submit/toy-0001", "refs/heads/main"], "one branch, of the fork")
-        self.assertEqual(self.submit("toy-0001", dealt, "--message", "Again", "--model", "claude-fable-5-2")[1].splitlines()[0],
-                         f"PUSHED {candidate}", "run again with nothing new: the same candidate, pushed again")
+        again = self.submit("toy-0001", dealt, "--message", "Make f0 faster", "--model", "claude-fable-5-2")[1].splitlines()[0]
+        self.assertEqual(again.split()[0], "PUSHED", "run again with nothing new: the candidate is made again, out of the same files")
+        self.assertEqual([sh("git", "show", "-s", f"--format={what}", again.split()[1], cwd=self.alice.bare).stdout for what in ("%T", "%s", "%P")],
+                         [sh("git", "show", "-s", f"--format={what}", candidate, cwd=self.alice.bare).stdout for what in ("%T", "%s")]
+                         + [sh("git", "rev-parse", f"{again.split()[1]}^", cwd=self.alice.bare).stdout], "the same tree and marker, on a work commit of its own")
+        self.assertEqual(sh("git", "rev-parse", f"{again.split()[1]}~2", cwd=self.alice.bare).stdout.strip(), base, "on the project's commit, not on the first candidate")
         sh("git", "config", "user.name", "Alice L", cwd=self.alice.work)
         sh("git", "config", "user.email", "alice@example.invalid", cwd=self.alice.work)
         with mock.patch.dict(os.environ):
@@ -5746,7 +5778,11 @@ class TestVolunteerSide(Volunteer):
                                                       "removed: tell the user")
         lock.unlink()
         lock.mkdir()
-        self.one_line(self.begin("toy-0001", NOW), "git stash failed (", begins=True)
+        # (git cannot go on, and the tool repairs no such thing: one sentence that says what the user is to do.)
+        self.assertEqual((self.begin("toy-0001", NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
+        self.assertRegex(self.err, r"\Ahive: STOP: this clone could not be put on the task's branch \(git stash failed \([0-9]+\)\): an earlier "
+                                   r"run left it in a state this tool does not repair\. Run nothing from this clone, not even its sandbox, and do "
+                                   r"not commit or push from it: tell the user to take a fresh clone of the fork\n\Z")
         self.assertTrue(lock.is_dir(), "a folder of that name is not the tool's to remove")
         lock.rmdir()
         self.assertEqual((self.alice.work / "lib.c").read_bytes(), (LIB + "int again;\n").encode(), "and the work tree is as it was")
@@ -5781,6 +5817,22 @@ class TestVolunteerSide(Volunteer):
         (git_dir / "objects/info/some.lock").write_text("")  # not where git keeps a lock this tool removes
         self.assertEqual((hive.stale_locks(git_dir), self.begin("toy-0001", NOW)[0]), ([], 0), self.err)
         self.assertTrue(folder.is_dir() and (git_dir / "objects/info/some.lock").exists())
+
+    def test_a_step_of_gits_that_fails_on_the_way_ends_start_with_what_the_user_is_to_do(self):
+        """What an earlier run left in .git may be more than this tool repairs: a branch below the task's own, where git
+        then cannot make the task's; a folder where git keeps a lock. git stops on it, at every run. start then says
+        so in one sentence of its own, as a stop (exit code 3), with what the user is to do: never a bare word of
+        git's, which would leave the worker to guess, run after run."""
+        for plant, step in ((lambda: sh("git", "update-ref", "refs/heads/hive/submit/toy-0001/x", self.start, cwd=self.alice.work), "checkout"),
+                            (lambda: (self.alice.work / ".git/refs/heads/hive/submit/toy-0002.lock").mkdir(parents=True), "checkout")):
+            plant()
+            task = "toy-0001" if "0001" in str(sorted((self.alice.work / ".git/refs/heads/hive/submit").iterdir())) else "toy-0002"
+            for _ in range(2):  # at every run, the same sentence
+                self.assertEqual((self.begin(task, NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
+                self.assertRegex(self.err, rf"\Ahive: STOP: this clone could not be put on the task's branch \(git {step} failed \([0-9]+\)\): an "
+                                           r"earlier run left it in a state this tool does not repair\. Run nothing from this clone, not even its "
+                                           r"sandbox, and do not commit or push from it: tell the user to take a fresh clone of the fork\n\Z")
+            shutil.rmtree(self.alice.work / ".git/refs/heads/hive/submit")
 
     def test_a_branch_that_stands_where_the_tool_keeps_its_own_is_named_and_nothing_is_changed(self):
         """A task's branch is hive/submit/<task>. For git a name is a branch or a folder of branches, never both: a
@@ -6997,45 +7049,58 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files '
                                            '{"paths": [], "files": 1, "new_names": 1}\n'), self.err)
 
-    def test_commits_that_only_look_like_the_tools_own_candidate_are_not_pushed_as_they_are(self):
-        """Run again with nothing new, submit pushes the same candidate: the commits it made itself, the work and its
-        marker, are on the branch. Commits that whatever may write into .git put there in their place are taken for
-        the same candidate only if they are what the tool makes: the marker's own words, the work's one line, the
-        tree the work tree gives now, and the member's name on both. Anything else stays behind, and the candidate
-        is made anew on the project's commit."""
+    def test_no_commit_the_branch_holds_is_taken_into_a_candidate_whatever_it_looks_like(self):
+        """submit makes its candidate anew at each run: the work, then its marker, on the project's commit. No commit the
+        clone's branch holds is taken into it, not even one that looks like the tool's own: the commits a first submit
+        left in the clone can be read by whatever runs there, which can then write, in their place, commits with the
+        same marker, the same tree and the member's name, and with a header, a title or a date of its own. Each stays
+        behind: what the fork receives is the work under the title given now and the marker, and nothing else."""
         dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "/* FAST */\n")
-        code, text = self.submit("toy-0001", dealt, "--no-push")
+        code, text = self.submit("toy-0001", dealt, "--no-push", "--message", "The title given now")
         own = self.head()
         self.assertEqual((code, text.split()[:2]), (0, ["NOT-PUSHED", f"{own}:"]), self.err)
-        marker = sh("git", "cat-file", "commit", own, cwd=work).stdout.split("\n\n", 1)[1]  # the marker's words, to the letter
+        made = {name: sh("git", "cat-file", "commit", commit, cwd=work).stdout for name, commit in (("marker", own), ("work", f"{own}^"))}
         tree, other = (sh("git", "rev-parse", f"{commit}^{{tree}}", cwd=work).stdout.strip() for commit in (own, self.start))
-        self.assertEqual(marker, f"Hive submit: toy-0001\n\nHive-Task: toy-0001\nHive-Action: submit\nHive-Deal: {dealt}\nHive-Member: alice\n")
+        self.assertEqual(made["marker"].split("\n\n", 1)[1], f"Hive submit: toy-0001\n\nHive-Task: toy-0001\nHive-Action: submit\nHive-Deal: {dealt}\nHive-Member: alice\n")
 
-        def commit(tree, parent, message, name=None):
-            who = {} if name is None else {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": "famous@example.invalid"}
-            return subprocess.run(["git", "commit-tree", tree, "-p", parent], cwd=work, env={**os.environ, **who}, input=message, text=True,
-                                  capture_output=True, check=True).stdout.strip()
-        for why, planted in (("the work names another author", lambda: commit(tree, commit(tree, self.start, "Work\n", "Someone Famous"), marker)),
-                             ("the marker names another author", lambda: commit(tree, commit(tree, self.start, "Work\n"), marker, "Someone Famous")),
-                             ("the work says more than one line", lambda: commit(tree, commit(tree, self.start, "Work\n\nand a text of its own\n"), marker)),
-                             ("the work has another tree", lambda: commit(tree, commit(other, self.start, "Work\n"), marker)),
-                             ("the marker says more than the tool's words", lambda: commit(tree, commit(tree, self.start, "Work\n"), marker + "and more\n")),
-                             ("a third commit lies below", lambda: commit(tree, commit(tree, commit(tree, self.start, "Below\n"), "Work\n"), marker))):
+        def written(raw):
+            """A commit of these very bytes, put in the clone's store as whatever writes into .git could."""
+            return subprocess.run(["git", "hash-object", "-t", "commit", "-w", "--stdin"], cwd=work, input=raw, text=True, capture_output=True,
+                                  check=True).stdout.strip()
+
+        def chain(work_raw, marker_raw=made["marker"]):
+            below = written(work_raw)
+            return written(re.sub(r"^parent [0-9a-f]{40}$", f"parent {below}", marker_raw, count=1, flags=re.M))
+        head, title = made["work"].split("\n\n", 1)
+        for why, planted in (("a header of its own", lambda: chain(head + "\nx-planted any bytes at all\n\n" + title)),
+                             ("a signature's header", lambda: chain(head + "\ngpgsig planted\n more\n\n" + title)),
+                             ("a title of its own", lambda: chain(head + "\n\nPlanted title\n")),
+                             ("more than a title", lambda: chain(head + "\n\n" + title + "\nand a text of its own\n")),
+                             ("a date of its own", lambda: chain(re.sub(r"> [0-9]+ \+0000$", "> 4102444800 +0000", head, flags=re.M) + "\n\n" + title)),
+                             ("another author", lambda: chain(re.sub(r"^author [^<]*<[^>]*>", "author Someone Famous <famous@example.invalid>", head, flags=re.M)
+                                                              + "\n\n" + title)),
+                             ("another tree below", lambda: chain(head.replace(f"tree {tree}", f"tree {other}") + "\n\n" + title)),
+                             ("a marker that says more", lambda: chain(made["work"], made["marker"] + "and more\n")),
+                             ("a third commit below", lambda: chain(re.sub(r"^parent [0-9a-f]{40}$", f"parent {written(made['work'])}", made["work"], flags=re.M)))):
             with self.subTest(why=why):
-                head = planted()
-                sh("git", "update-ref", "HEAD", head, cwd=work)
-                code, text = self.submit("toy-0001", dealt)
+                planted_head = planted()
+                self.assertNotEqual(planted_head, own)
+                sh("git", "update-ref", "HEAD", planted_head, cwd=work)
+                code, text = self.submit("toy-0001", dealt, "--message", "The title given now")
                 candidate = self.fork_branch("hive/submit/toy-0001")
-                self.assertEqual((code, self.spoken(text)[0], candidate == head), (0, f"PUSHED {candidate}", False), self.err)
-                self.assertEqual(sh("git", "log", "--format=%an|%s", candidate, cwd=self.alice.bare).stdout.splitlines(),
-                                 ["t|Hive submit: toy-0001", "t|Work on toy-0001", "t|seed"], "made anew, on the project's commit")
-                for left in sh("git", "rev-list", f"{self.start}..{head}", cwd=work).stdout.split():
-                    self.assertNotEqual(sh("git", "cat-file", "-e", left, cwd=self.alice.bare, check=False).returncode, 0, "not sent to the fork")
-        # The tool's own candidate, put back on the branch, is the same candidate.
-        sh("git", "update-ref", "HEAD", own, cwd=work)
-        self.assertEqual(self.submit("toy-0001", dealt)[1].splitlines()[0], f"PUSHED {own}", self.err)
+                self.assertEqual((code, self.spoken(text)[0], candidate == planted_head), (0, f"PUSHED {candidate}", False), self.err)
+                self.assertEqual([sh("git", "cat-file", "commit", commit, cwd=self.alice.bare).stdout for commit in (candidate, f"{candidate}^")],
+                                 [made["marker"], made["work"]], "the marker and the work as the tool writes them, to the letter")
+                for left in sh("git", "rev-list", f"{self.start}..{planted_head}", cwd=work).stdout.split():
+                    if left not in (own, sh("git", "rev-parse", f"{own}^", cwd=work).stdout.strip()):
+                        self.assertNotEqual(sh("git", "cat-file", "-e", left, cwd=self.alice.bare, check=False).returncode, 0, "not sent to the fork")
+        # Another title, given now: another candidate, under that title, and the first is not below it.
+        code, text = self.submit("toy-0001", dealt, "--message", "Another title")
+        candidate = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {candidate}"), self.err)
+        self.assertEqual(sh("git", "log", "--format=%s", candidate, cwd=self.alice.bare).stdout.splitlines(), ["Hive submit: toy-0001", "Another title", "seed"])
 
     def test_an_object_whose_bytes_are_not_what_its_name_says_stops_the_command(self):
         """An object's name is the hash of its bytes, and git does not hash an object again each time it reads one: a

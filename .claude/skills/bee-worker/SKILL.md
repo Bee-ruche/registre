@@ -156,10 +156,10 @@ hive ready --project <PROJECT> --login <LOGIN> --prefer <file>
   fork (rule 1). The commands `hive` itself prints for the ask do not carry it: add it yourself.
 - It must be one of the files the project's tasks name in the registry. If `hive` answers that it is not (its
   error lists them), do not pick another: ask without `--prefer`, and tell the user in a `Note:` line.
-- The hive follows a preference only when its own rules lose nothing by it: the account's last deal was accepted,
-  and a task of that file is free for it at its turn. Otherwise the task is drawn as for anyone, and the deal's
-  line in the ledger says why. A preference never changes who is served first, and you do the task you are dealt,
-  whichever it is.
+- The hive follows a preference only when its own rules lose nothing by it: the account's last deal ended with an
+  accepted candidate, and at least two tasks of that file are free for it at its turn (a preference chooses a
+  part, never a task). Otherwise the task is drawn as for anyone, and the deal's line in the ledger says why. A
+  preference never changes who is served first, and you do the task you are dealt, whichever it is.
 
 ### `ASK-UNANSWERED since <instant>`: your ask has waited six hours
 

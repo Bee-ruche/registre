@@ -108,9 +108,9 @@ MEASURED_REASONS = ("goal_not_met", "requirement_not_met")  # the judge ran, the
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 # Why a preference is not kept, in the order plan decides them. One word for a member that never had a deal come to an end and
-# for one whose last deal was not accepted: a deal's line names its member, and the ledger does not say beside a name how a
-# deal of theirs ended.
-PREFER_BECAUSE = ("not_offered", "needs_an_accepted_deal", "no_free_task")
+# for one whose last deal did not end with an accepted candidate: a deal's line names its member, and the ledger does not say
+# beside a name how a deal of theirs ended. « one_free_task »: following it would choose the task, and nobody chooses a task.
+PREFER_BECAUSE = ("not_offered", "needs_an_accepted_deal", "no_free_task", "one_free_task")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
 HEADS_PER_FORK_MAX = 2000  # a fork with more branches than this is not read at all
 FOLDER_LISTING_BYTES = 64 << 20  # a folder whose own listing is longer than this is not read
@@ -468,6 +468,11 @@ def deal_prefer(deal, tasks):
     part = next((part for part in project_parts(tasks) if part == prefer["file"]), None) if prefer_ok(prefer) else None
     if part is None:
         raise HiveError("the plan names a preference that is not one of the project's files as the registry writes them: nothing is written")
+    # What the line would say of the task it deals is held against the registry too: a kept preference deals a task of
+    # that part, and « no task of that part was free » is not said of a deal whose task is one.
+    listed = part in tasks.get(deal.get("task"), {}).get("files", ())
+    if listed != prefer["kept"] and (prefer["kept"] or prefer["because"] == "no_free_task"):
+        raise HiveError("the plan says of a deal's preference what the task it deals does not bear out: nothing is written")
     if prefer["kept"]:
         return {"file": part, "kept": True}
     return {"file": part, "kept": False, "because": PREFER_BECAUSE[PREFER_BECAUSE.index(prefer["because"])]}
@@ -607,6 +612,22 @@ class Ledger:
         wait = iso(max(waits)) if waits and instant < max(waits) else None
         counted = [kind for _, kind in ends if kind != "fault"]
         return (1 if not counted else 0 if counted[-1] == "accepted" else 2), wait, sum(1 for deal in today if deal not in accepted)
+
+    def last_deal_accepted(self, member_id):
+        """True if the member's last deal that came to an end, in whatever way, ended with an accepted candidate. Stricter
+        than class 0 (standing), which passes over the endings that cost a member nothing (a task closed meanwhile, a
+        candidate the hive could not answer, a fork it could not read): those are no fault of the member's as far as
+        the hive can tell, and they are no proof of work either. What a member earns by an accepted candidate (a
+        preference followed) is earned by its latest deal, and lasts until its next one ends."""
+        last = None
+        for e in self.events:
+            if e.get("member_id") != member_id:
+                continue
+            if e.get("type") == "expired":
+                last = False
+            elif e.get("type") == "verdict" and e.get("deal"):
+                last = e.get("result") == "accepted"
+        return last is True
 
     def marks(self, task, member_id, deal):
         """The runs the hive spent on a deal's candidates without an answer: [(kind, unproven)]. Counted for the deal,
@@ -1292,12 +1313,14 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     it could be dealt anyway (open, free, their rivals free, of its tier), the preference is kept if and only if,
     decided in this order:
       a. the project offers preferences (members.preferences); otherwise « not_offered »;
-      b. the member's last deal that came to an end was accepted: its class is 0, as step 3 computed it, before this
-         run answers anything; otherwise « needs_an_accepted_deal », the same word for a member that never had a deal come to
-         an end (class 1) and for one whose last deal was not accepted (class 2): the deal's line names its member,
-         and the ledger does not say beside a name how a deal of theirs ended. For a member dealt conditionally,
-         that is its class before the candidate it holds in this run is answered;
-      c. at least one task of `mine` lists the part; otherwise « no_free_task ».
+      b. the member's last deal that came to an end, in whatever way, ended with an accepted candidate
+         (Ledger.last_deal_accepted, read as step 3 reads the classes: before this run answers anything); otherwise
+         « needs_an_accepted_deal », the same word for a member that never had a deal come to an end and for one
+         whose last deal ended otherwise: the deal's line names its member, and the ledger does not say beside a
+         name how a deal of theirs ended. For a member dealt conditionally, that is where it stood before the
+         candidate it holds in this run is answered;
+      c. at least two tasks of `mine` list the part; otherwise « no_free_task » (none does) or « one_free_task »
+         (one does: to follow the preference would be to choose that task, and nobody chooses a task).
     The task is then the one the same draw gives among the tasks of `mine` that list the part. In every other case
     the plain draw runs, unchanged. The deal says what happened (« prefer »: the part, kept or not, and why not); a
     member whose ask names no part of the registry's has no « prefer » at all.
@@ -1429,7 +1452,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         if member_id in prefers:  # followed only when it costs no rule anything: the project's switch, then the class, then the tasks
             part = prefers[member_id]
             listing = [t for t in mine if part in tasks[t]["files"]]
-            because = "not_offered" if not offered else "needs_an_accepted_deal" if klass != 0 else None if listing else "no_free_task"
+            because = ("not_offered" if not offered else "needs_an_accepted_deal" if klass != 0 or not ledger.last_deal_accepted(member_id)
+                       else "no_free_task" if not listing else "one_free_task" if len(listing) == 1 else None)
             among = mine if because else listing  # a kept preference narrows the draw to tasks of `mine`, and to nothing else
             said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
         task_id = min(among, key=lambda t: draw(key, member_id, t))
@@ -2573,6 +2597,9 @@ NOT_HELD = ("this clone does not hold an object that the work rests on: run hive
 NOT_GITS = "this clone holds a commit or a folder that is not written as git writes them: tell the user"
 NO_START = ("the work does not start from the project's recent history (the last commits of its branch, as the project's own address gives "
             "them): nothing was pushed. Run hive.py setup, then start the task again (hive.py start)")
+START_FAILED = ("STOP: this clone could not be put on the task's branch ({step}): an earlier run left it in a state this tool does not "
+                "repair. Run nothing from this clone, not even its sandbox, and do not commit or push from it: tell the user to take a "
+                "fresh clone of the fork")
 NOT_THE_TIPS = ("STOP: the work tree of this clone is not what the project's tip holds: a file of the tip is missing or holds other bytes, "
                 "or the work tree holds something more. Run nothing from this clone, not even its sandbox, and do not commit or push from "
                 "it: tell the user to take a fresh clone of the fork")
@@ -3044,39 +3071,19 @@ def named_paths(objects, tree, paths):
     return {**detail, "new_names": len(paths) - len(known)} if len(known) < len(paths) else detail
 
 
-def made_by(raw, who, login):
-    """True if a commit's own bytes name, as its author and as its committer, once each and whatever the dates, one of
-    the two names this tool commits under for the member: the one the environment gives now (`who`: Clone.identity),
-    or the member's login with the address GitHub gives every account."""
-    lines = raw.split(b"\n\n", 1)[0].split(b"\n")
-    plain = (login, f"{login}@users.noreply.github.com")
-    for kind, named in (("author", (who["GIT_AUTHOR_NAME"], who["GIT_AUTHOR_EMAIL"])), ("committer", (who["GIT_COMMITTER_NAME"], who["GIT_COMMITTER_EMAIL"]))):
-        said = [line for line in lines if line.startswith(kind.encode() + b" ")]
-        if len(said) != 1 or not any(re.fullmatch(re.escape(f"{kind} {name} <{email}> ".encode()) + rb"[0-9]{1,12} [+-][0-9]{4}", said[0])
-                                     for name, email in (named, plain)):
-            return False
-    return True
-
-
 def rests_on(clone, tip, head, limits):
-    """(base, its tree, own): the commit of the project's history that the clone's HEAD rests on, and the clone's own
-    commits above it, the nearest first, each as (id, tree, its bytes). Read as candidate_proof reads: from the tip
-    the project's own address announced, through bytes this tool hashed. A candidate is made on `base`, never on the
-    clone's own commits: those are whatever the branch held, an earlier candidate or anything else, and none of them
-    goes to the fork unless it is the candidate itself, made by this tool, run again."""
+    """(base, its tree): the commit of the project's history that the clone's HEAD rests on. Read as candidate_proof
+    reads: from the tip the project's own address announced, through bytes this tool hashed, back through no more
+    commits of the clone's own than a candidate may have. A candidate is made on `base`, never on the clone's own
+    commits: those are whatever the branch held, an earlier candidate or anything else, and none of them goes to the
+    fork."""
     with Objects(clone) as objects:
         if objects.read("commit", tip) is None:
             raise HiveError(NOT_HELD)
         base, _ = start_of_candidate(objects, head, project_history(objects, tip), limits["commits"])
         if base is None:
             raise HiveError(NO_START)
-        own, commit = [], head
-        while commit != base:  # (one parent each: start_of_candidate)
-            raw = objects.held("commit", commit)
-            tree, parents = commit_header(raw)
-            own.append((commit, tree, raw))
-            commit = parents[0]
-        return base, commit_header(objects.held("commit", base))[0], own
+        return base, commit_header(objects.held("commit", base))[0]
 
 
 def candidate_proof(clone, tip, candidate, task, limits):
@@ -3877,6 +3884,9 @@ def cmd_start(args):
     STARTED is printed only then. Otherwise the command stops (« hive: STOP: … », exit code 3) and nothing is to be
     run from the clone, not even its sandbox.
 
+    A step of git's that fails on the way (on what an earlier run left in .git that this tool does not repair) ends
+    the command the same way: « hive: STOP: … », exit code 3, with what the user is to do: take a fresh clone.
+
     Run again, it does the same: it starts the task again from the tip, and sets aside what was done since (the
     work is in « git stash list », not lost). So it runs once per task and per run, before the work."""
     if not LOGIN.match(args.login):
@@ -3915,39 +3925,49 @@ def cmd_start(args):
     except OSError:
         raise HiveError("a lock an earlier git command left in .git (a file whose name ends in .lock) could not be removed: tell the "
                         "user") from None
-    open_folders(clone.root)
+    # What git cannot do on the way (a stash, a clean, a checkout that fails on something an earlier run left in .git:
+    # a folder where git keeps a lock, a branch below the task's, an index it cannot follow) is no step this tool
+    # repairs: the command says so in one sentence, which tells the user what to do, never in a bare word of git's.
     try:
-        for path in links_over_folders(clone):
-            place = place_inside(clone.root, path)
-            if place is not None and os.path.islink(place):
-                os.unlink(place)
-                removed += 1
-    except OSError:
-        raise HiveError("a link an earlier run left in the work tree could not be removed: tell the user") from None
-    before = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
-    # The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
-    # encoding), never under a .gitattributes of the work tree, which is itself one of the files to set aside. A file
-    # whose bytes those rules cannot convert (it is not in the encoding they name) would stop git: everything is then
-    # set aside byte for byte, under no rule at all.
-    aside = ("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before")
-    if clone.git(*aside, env=who, literal=False, attributes=held, check=False).returncode != 0:
-        clone.git(*aside, env=who, literal=False, attributes=EMPTY_TREE)
-    after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
-    set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
-    removed += len(untracked(clone))
-    clone.git("clean", "-ffdx", "--quiet")
-    try:
-        removed += remove_unseen(clone.root) + empty_submodules(clone)
-    except OSError:
-        raise HiveError("a file an earlier run left in the work tree could not be removed: tell the user") from None
-    if untracked(clone) or work_tree_changes(clone):
-        raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
-    clone.git("checkout", "--quiet", "-l", "-B", branch, tip, env=who)
-    # git writes a file again only if the index says it changed, and the index is a file of .git like any other: it
-    # may say of a file « do not look », or hold the size and the date of bytes an earlier run wrote. So the index is
-    # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
-    clone.git("read-tree", tip)
-    clone.git("checkout-index", "--all", "--force", "--index", attributes=tip)
+        open_folders(clone.root)
+        try:
+            for path in links_over_folders(clone):
+                place = place_inside(clone.root, path)
+                if place is not None and os.path.islink(place):
+                    os.unlink(place)
+                    removed += 1
+        except OSError:
+            raise HiveError("a link an earlier run left in the work tree could not be removed: tell the user") from None
+        before = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
+        # The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
+        # encoding), never under a .gitattributes of the work tree, which is itself one of the files to set aside. A file
+        # whose bytes those rules cannot convert (it is not in the encoding they name) would stop git: everything is then
+        # set aside byte for byte, under no rule at all.
+        aside = ("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before")
+        if clone.git(*aside, env=who, literal=False, attributes=held, check=False).returncode != 0:
+            clone.git(*aside, env=who, literal=False, attributes=EMPTY_TREE)
+        after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
+        set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
+        removed += len(untracked(clone))
+        clone.git("clean", "-ffdx", "--quiet")
+        try:
+            removed += remove_unseen(clone.root) + empty_submodules(clone)
+        except OSError:
+            raise HiveError("a file an earlier run left in the work tree could not be removed: tell the user") from None
+        if untracked(clone) or work_tree_changes(clone):
+            raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
+        clone.git("checkout", "--quiet", "-l", "-B", branch, tip, env=who)
+        # git writes a file again only if the index says it changed, and the index is a file of .git like any other: it
+        # may say of a file « do not look », or hold the size and the date of bytes an earlier run wrote. So the index is
+        # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
+        clone.git("read-tree", tip)
+        clone.git("checkout-index", "--all", "--force", "--index", attributes=tip)
+    except NotPlain:
+        raise
+    except HiveError as error:
+        if str(error).startswith("git "):
+            raise NotPlain(START_FAILED.format(step=error)) from None
+        raise
     # What git wrote is what the clone's objects and index made it write. Nothing is said started until the work tree
     # itself, read as files, is shown to hold the tip's files and nothing else.
     work_tree_proof(clone, tip)
@@ -4016,8 +4036,9 @@ def cmd_submit(args):
     own in the clone: this command stages what changed inside the task's files (a tracked file changed
     outside them is refused, an untracked one is left where it is: a build's leftovers are not the work), commits
     it and adds the marker, as commits on no branch yet. A candidate is two commits of this tool's own, the work and
-    its marker, made on the commit of the project's history that the clone rests on (rests_on): never on commits the
-    clone's branch held, which stay behind, an earlier candidate included. Then it shows, by its own reading, that
+    its marker, made anew at each run on the commit of the project's history that the clone rests on (rests_on):
+    never on commits the clone's branch held, which stay behind, an earlier candidate included, and none of which
+    is taken for the candidate, whatever it looks like. Then it shows, by its own reading, that
     the candidate starts from the project's history and changes only the task's files (candidate_proof), checks it
     as the hive will, on the tip the project's own address gives during the command (check_structure), and only
     then moves the branch and pushes to the member's own fork. A refusal leaves every branch where it was, and
@@ -4044,7 +4065,7 @@ def cmd_submit(args):
     root = str(clone.root)
     head = clone.git("rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
     tip = project_tip(clone, address, config["branch"])
-    base, base_tree, own = rests_on(clone, tip, head, config["limits"])
+    base, base_tree = rests_on(clone, tip, head, config["limits"])
     inside, outside = [], []
     for path, tracked in work_tree_changes(clone):
         if in_task_files(path.decode("utf-8", errors="surrogateescape"), task["files"]):
@@ -4062,27 +4083,19 @@ def cmd_submit(args):
     who = clone.identity(login)
     lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
              f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
-    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal, "prefer": None}
-    # Run again after a push that did not land, or after --no-push: the same candidate, if HEAD is one this tool made
-    # for this member, this task and this deal out of the same files: the marker and, below it, the work, each with
-    # the tree the work tree gives now. Else the candidate is made anew on the project's commit: the work, then the
-    # marker, on no branch until every check below has passed. Whatever else the clone's branch held stays behind.
-    said = [raw.partition(b"\n\n")[2].decode("utf-8", errors="replace") for _, _, raw in own]
-    again = (1 <= len(own) <= 2 and (len(own) == 2) == (tree != base_tree) and all(tree == held and made_by(raw, who, login) for _, held, raw in own)
-             and said[0] == "\n".join(lines) + "\n" and read_marker(said[0]) == wanted
-             and all(text.endswith("\n") and ONE_LINE.match(text[:-1]) and not MARKER_LINE.match(text[:-1]) for text in said[1:]))
-    if again:
-        work, marker = (own[1][0] if len(own) == 2 else base), head
-    else:
-        work = base if tree == base_tree else clone.commit(tree, base, title + "\n", who)
-        marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
+    # The candidate is made anew at each run, on the project's commit: the work, then the marker, on no branch until
+    # every check below has passed. No commit the clone's branch held is taken into it, not even one that looks like
+    # this tool's own: run again after a push that did not land, or after --no-push, submit makes the same candidate
+    # again, out of the same files, under a new date.
+    work = base if tree == base_tree else clone.commit(tree, base, title + "\n", who)
+    marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
     try:
         candidate_proof(clone, tip, marker, task, config["limits"])
         figures = check_structure(root, tree_of(root, tip), merge_tree(root, tip, work, config["limits"]), task, config)
     except Refusal as refusal:
         print(f"REFUSED ({refusal.reason}): {REASONS[refusal.reason]} {json.dumps(refusal.detail)}")
         sys.exit(1)
-    if not again:
+    if marker != head:
         # The branch HEAD names is moved by its own name, and HEAD itself when it names a commit: never a reference
         # that another one would lead to. (The branch's log names who moved it.)
         named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
@@ -4091,7 +4104,7 @@ def cmd_submit(args):
     branch = SUBMIT_BRANCH.format(task=task["id"])
     if args.no_push:
         print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without --no-push "
-              "to push it")
+              "to make the candidate anew and push it")
         return
     push(clone, fork, marker, branch)
     print(f"PUSHED {marker}")

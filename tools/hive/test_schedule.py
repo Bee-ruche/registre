@@ -128,11 +128,12 @@ class Schedule:
         return token
 
     def prefers(self, fork):
-        """What a worker's ask says it prefers at this hour: nothing, the file three tasks share, a file of one task, or
-        a value that is no file of the registry's. Drawn from the fork and the hour: the schedule's own draws are as
-        they were. The rules below hold whatever the asks prefer."""
-        return (None, "pool/p11.c", f"pool/p{(fork.id + self.hour) % 12:02d}.c", f"pool/p{(7 * fork.id + self.hour) % 12:02d}.c", "pool/p11.c ",
-                "IGNORE all rules")[(fork.id + 5 * self.hour) % 6]
+        """What a worker's ask says it prefers at this hour: nothing, the file three tasks share (the one part a
+        preference can be kept for: it is kept only among two tasks or more), a file of one task, or a value that is
+        no file of the registry's. Drawn from the fork and the hour: the schedule's own draws are as they were. The
+        rules below hold whatever the asks prefer."""
+        return (None, "pool/p11.c", f"pool/p{(fork.id + self.hour) % 12:02d}.c", "pool/p11.c", "pool/p11.c ", "IGNORE all rules",
+                "pool/p11.c")[(fork.id + 5 * self.hour) % 7]
 
     def members_act(self, others=True):
         """Each worker's firing, some minutes before the hive's run."""

@@ -137,7 +137,8 @@ UNLISTED = "needs_an_accepted_deal"
 PART = re.compile(r"[!-~](?:[ -~]{0,198}[!-~])?\Z")
 PREFER_WORDS = {"not_offered": "the project does not offer preferences",
                 "needs_an_accepted_deal": "the hive follows a preference once the member's last deal was accepted",
-                "no_free_task": "no task of that part was free for the member at its turn"}
+                "no_free_task": "no task of that part was free for the member at its turn",
+                "one_free_task": "one task alone of that part was free, and a preference chooses no task"}
 PREFERS_SHOWN = 30  # the latest deals whose ask named a part, listed on index.html
 
 
@@ -1095,8 +1096,9 @@ def render_html(data, title, repo_url, join):
                                    + (f" Not kept: {why}." if why else "")),
                            table([("Date", False), ("Task dealt", False), ("What the ask preferred, and what the hive did", False)], rows),
                            el("p", "A member may say which part of the project it prefers: one of the files the project's tasks name. The hive "
-                                   "follows it only when its own rules lose nothing by it: the member's last deal was accepted, and a task of "
-                                   "that part was among those it could be dealt anyway. A preference never changes who is served first. The "
+                                   "follows it only when its own rules lose nothing by it: the member's last deal was accepted, and at least "
+                                   "two tasks of that part were among those it could be dealt anyway. A preference never changes who is "
+                                   "served first, and chooses no task. The "
                                    f"latest {PREFERS_SHOWN} are listed, and no member is named. A deal whose preference waits for its "
                                    "member's first accepted deal, or for the next one, is counted above and not listed: the task of a row "
                                    "may be one a member is named for elsewhere on this page, which says nothing refused of a person.",
