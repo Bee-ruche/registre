@@ -423,6 +423,69 @@ class TestTargetedSchedules(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
 
+    def test_the_steps_that_write_take_every_plan_just_made_whatever_happened_before(self):
+        """The plan decides on the ledger and on what it has itself just decided, which is not written yet; the steps
+        that write hold its word before they use it. Over runs drawn at random, in which the project closes tasks
+        under their holders, what was written after a push is lost, a push lands and the step is told it did not,
+        and steps are run again, with asks that name a part of the project or none: the step that records never
+        refuses the plan just made, and no step ever says of such a plan that it is not the hive's."""
+        real_push = hive.guarded_push
+
+        def push_then_fail(*a, **k):
+            landed = real_push(*a, **k)
+            if landed:
+                raise hive.HiveError("git push: timeout after 180 s")
+            return landed
+
+        def honest(step):
+            try:
+                step()
+            except hive.HiveError as error:  # (a push that failed, a tip that moved: never the plan's own word)
+                self.assertNotRegex(str(error), "does not bear out|as the registry writes them|unreadable", "the plan just made was refused")
+
+        kept = 0
+        for seed in range(int(os.environ.get("HIVE_PLAN_SEEDS", "10"))):
+            with self.subTest(seed=seed), tempfile.TemporaryDirectory() as root:
+                rng, s, hour = random.Random(seed), Sim(root), 12
+                forks = [s.w.fork(f"m{i}", 300 + i) for i in range(3)]
+                tasks_file, ledger_file = s.w.registry / "hive/tasks/toy.jsonl", s.w.state / "ledger.jsonl"
+                closed, pushed = set(), set()
+                for _ in range(10):
+                    with mock.patch.dict(os.environ, {"HIVE_NOW": at(hour, -10)}):
+                        held = {d["member_id"]: d for d in s.w.load()[2].deals().values() if d["state"] == "live"}
+                        for fork in forks:
+                            deal = held.get(fork.id)
+                            if deal and deal["at"] not in pushed and rng.random() < 0.8:
+                                pushed.add(deal["at"])
+                                s.push(fork, deal["task"], f"s{seed}h{hour}m{fork.id}", rng.choice(["ok", "ok", "REFUSE"]), deal=deal["at"])
+                            if rng.random() < 0.9:
+                                fork.ready(prefer=rng.choice([None, "pool/p11.c", "pool/p11.c", "pool/p03.c"]))
+                    if rng.random() < 0.4:  # the project closes a task, one that is held if any is
+                        live = sorted(d["task"] for d in s.w.load()[2].deals().values() if d["state"] == "live")
+                        closed.add(rng.choice(live or [task["id"] for task in TASKS]))
+                        tasks_file.write_text("".join(json.dumps({**task, **({"closed": True} if task["id"] in closed else {})}) + "\n" for task in TASKS))
+                    fault, saved, s.elapsed = rng.choice(["none", "none", "lost", "unconfirmed", "again", "again"]), [], 0.0
+                    with mock.patch.object(hive.time, "monotonic", side_effect=lambda: s.elapsed), mock.patch.dict(os.environ, {"HIVE_NOW": at(hour)}):
+                        made = s.w.plan()
+                        kept += sum(1 for deal in (*made["deals"], *made["conditional"]) if deal.get("prefer", {}).get("kept"))
+                        s.w.record()
+                        if fault == "again":
+                            s.w.record()
+                        verdicts, _ = s.w.judge(s.judge)
+                        if fault == "unconfirmed":
+                            with mock.patch.object(hive, "guarded_push", side_effect=push_then_fail):
+                                honest(lambda: s.w.apply(verdicts))
+                        else:
+                            honest(lambda: s.w.apply(verdicts, checkpoint=lambda: saved.append(ledger_file.read_text())))
+                        if fault == "lost" and saved:
+                            ledger_file.write_text(saved[0])  # the pushes landed, and what was written after the promise is lost
+                        if fault == "again":
+                            honest(s.w.record)
+                            honest(lambda: s.w.apply(verdicts))
+                    hour += rng.choice([1, 1, 2, 4])
+        if "HIVE_PLAN_SEEDS" not in os.environ:
+            self.assertGreater(kept, 3, "over these runs preferences were kept, too")
+
     def test_candidates_that_never_end_cost_a_candidate_behind_them_one_run_and_no_mark(self):
         """Three accounts, dealt their tasks before the victim, each send a candidate that never ends: the time
         allowed for judging is used up before the victim's turn. It is not marked for it, and it goes first at the
