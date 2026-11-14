@@ -4124,6 +4124,78 @@ class TestTheWorkersClone(Volunteer):
         self.assertEqual(victim.read_text(), "# a file of the volunteer's\n")
         self.assertFalse((self.alice.work / "PLANTED").exists() or (self.w.root / "PLANTED").exists())
 
+    def test_a_git_folder_that_is_a_link_to_another_stops_every_command(self):
+        """A .git that is a link leads to a repository kept elsewhere: its settings may be plain, and git would follow
+        the link and commit there, on that repository's branches, from this folder's files. A clone's .git is a
+        folder of its own."""
+        git_dir, elsewhere = self.alice.work / ".git", self.w.root / "kept-elsewhere"
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        git_dir.rename(elsewhere)
+        os.symlink(elsewhere, git_dir)
+
+        def kept():
+            listed = sh("git", "--git-dir", str(elsewhere), "for-each-ref", cwd=self.w.root).stdout
+            return listed, (elsewhere / "HEAD").read_text(), sorted(os.listdir(elsewhere / "logs/refs/heads"))
+
+        before = kept()
+        self.assertEqual(sh("git", "status", "--porcelain", cwd=self.alice.work).stdout, " M lib.c\n", "git itself follows the link")
+        self.refused("a .git that is a link to a folder", ".git is not a folder")
+        self.assertEqual(kept(), before, "nothing moved in the repository the link leads to")
+
+    def test_what_cannot_be_read_inside_git_stops_every_command(self):
+        """The search for what leads out of .git must see all of it: a folder it cannot list, or an entry it cannot
+        ask the kind of, may be the link it looks for. (The tests' own account reads everything, so no such folder
+        can be made here: `os.scandir` and `os.lstat` are replaced, each for one path, and answer as the system
+        does to an account that may not read.)"""
+        git_dir = self.alice.work.resolve() / ".git"
+        self.alice.write("lib.c", LIB + "int ok;\n")
+
+        def denied(real, where):
+            def asked(*path, **options):
+                if path and isinstance(path[0], (str, os.PathLike)) and os.fspath(path[0]) == str(where):
+                    raise PermissionError(13, "Permission denied", str(where))
+                return real(*path, **options)
+            return asked
+
+        self.assertTrue((git_dir / "logs/refs").is_dir() and (git_dir / "logs/HEAD").is_file())
+        with mock.patch.object(os, "scandir", side_effect=denied(os.scandir, git_dir / "logs/refs")):
+            self.refused("a folder that cannot be listed", "a folder inside .git cannot be read")
+        with mock.patch.object(os, "lstat", side_effect=denied(os.lstat, git_dir / "logs/HEAD")):
+            self.refused("an entry whose kind cannot be asked", "a file inside .git cannot be read")
+        self.assertEqual([command()[0] for _, command in self.every_command()[1:]], [0, 0, 0], self.err)
+
+    def test_the_settings_are_read_whole_and_measured_to_the_byte(self):
+        """A clone's settings are checked whole or the clone is not used: what the check did not read, git would
+        still read. A file of exactly the size allowed is read and is plain; one byte more stops every command, and
+        does so however the system hands the file over. (Here in pieces of 4096 bytes: `os.read` is replaced, as a
+        disk on a network may answer.)"""
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        room = hive.CONFIG_BYTES - len(self.pristine.encode())
+        self.settings.write_text(self.pristine + "#" * (room - 1) + "\n")
+        self.assertEqual(self.settings.stat().st_size, hive.CONFIG_BYTES)
+        self.assertEqual([command()[0] for _, command in self.every_command()[1:]], [0, 0, 0], self.err)
+        too_large, real = ".git/config is larger than a clone's, or holds a NUL", os.read
+        self.settings.write_text(self.pristine + "#" * (room - 1) + "\n\n")
+        self.refused("one byte more than a clone's settings", too_large)
+        self.settings.write_text(self.pristine + "#" * (room - 1) + "\n[core]\n\tfsmonitor = touch PLANTED\n")
+        with mock.patch.object(os, "read", side_effect=lambda descriptor, most: real(descriptor, min(most, 4096))):
+            self.refused("settings whose end comes in a later piece", too_large)
+        self.assertFalse((self.alice.work / "PLANTED").exists())
+
+    def test_a_git_that_cannot_list_the_settings_ends_the_command(self):
+        """The clone's settings are listed by git itself, in an empty folder. If that git does not answer in time, or
+        is not on the machine at all, the settings are not known: the command ends with one line and exit code 2,
+        and no git runs on the clone. (`subprocess.run` is replaced: it fails for that one command and refuses any
+        other.)"""
+        for failure, said in ((subprocess.TimeoutExpired(["git"], 60), "TimeoutExpired"), (FileNotFoundError(2, "No such file or directory", "git"), "FileNotFoundError")):
+            def run(command, **options):
+                self.assertEqual(command[:2], ["git", "config"], "nothing else runs once the settings are not known")
+                raise failure
+            with mock.patch.object(hive.subprocess, "run", side_effect=run):
+                for name, command in self.every_command():
+                    self.assertEqual((command(), self.err, name), ((2, ""), f"hive: git config: {said}\n", name))
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"])
+
     def test_a_filter_planted_in_the_clone_is_not_run(self):
         """The proof that submit ran the clone's own settings: a clean filter in .git/config, selected by
         .git/info/attributes, both written by what ran « in the sandbox », fired at the first command on the host."""
