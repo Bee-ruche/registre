@@ -3726,8 +3726,7 @@ def cmd_submit(args):
     who = clone.identity(login)
     lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
              f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
-    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal,
-              "prefer": None}
+    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal, "prefer": None}
     # Run again after a push that did not land, or after --no-push: the same candidate, if HEAD is one this tool made
     # for this member, this task and this deal out of the same files: the marker and, below it, the work, each with
     # the tree the work tree gives now. Else the candidate is made anew on the project's commit: the work, then the

@@ -4485,10 +4485,10 @@ class TestVolunteerSide(Volunteer):
         self.alice.ready(prefer=long)  # written by hand in a fork: the line is no marker's line, and the ask prefers nothing
         self.assertEqual([sorted(d) for d in self.w.plan()["deals"]], [["member", "member_id", "repo_id", "task"]])
 
-    def test_submit_run_again_on_a_marker_that_carries_a_prefer_line_pushes_the_same_candidate(self):
-        """A « Hive-Prefer » line means nothing on a candidate. Run again, « submit » takes the commit the clone is on
-        for the candidate it made when its marker says this task, this deal and this member, with or without such a
-        line: it makes no second marker on top of it, and the hive judges that candidate."""
+    def test_submit_run_again_on_a_marker_that_carries_a_prefer_line_stacks_no_second_marker_on_it(self):
+        """A « Hive-Prefer » line means nothing on a candidate: a marker that carries one is still a marker of its task,
+        its deal and its member, as « submit » reads it. Run again on such a commit, « submit » pushes a candidate of
+        this deal, and never one more marker stacked on that one; the hive judges what it pushed."""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "/* FAST */\n")
@@ -4499,9 +4499,14 @@ class TestVolunteerSide(Volunteer):
         other = sh("git", "commit-tree", tree, "-p", work, "-m", message, cwd=self.alice.work).stdout.strip()
         sh("git", "update-ref", "HEAD", other, cwd=self.alice.work)  # the task's branch is now at a marker with one more line
         self.assertNotEqual(other, made)
+        wanted = {"task": "toy-0001", "action": "submit", "member": "alice", "model": None, "tier": None, "deal": dealt, "prefer": None}
+        self.assertEqual(hive.read_marker(message), wanted, "the marker of this deal, with or without the line")
         code, text = self.submit("toy-0001", dealt, "--message", "The work")
-        self.assertEqual((code, self.spoken(text)[0], self.head(), self.fork_branch("hive/submit/toy-0001")), (0, f"PUSHED {other}", other, other),
-                         self.err)
+        pushed = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0], self.head()), (0, f"PUSHED {pushed}", pushed), self.err)
+        self.assertEqual(hive.read_marker(sh("git", "show", "-s", "--format=%B", pushed, cwd=self.alice.bare).stdout), wanted)
+        behind = sh("git", "rev-list", pushed, cwd=self.alice.bare).stdout.split()[1:]  # what the candidate rests on
+        self.assertNotIn(other, behind, "the commit it was run on is the candidate itself or is left behind: never a marker under a marker")
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
     def test_the_commands_the_tools_own_sentences_give_are_whole(self):
@@ -6940,7 +6945,7 @@ class TestTheWorkersGuide(unittest.TestCase):
         blocks = [line for block in re.findall(r"```bash\n(.*?)```", guide, re.S) for line in block.splitlines()]
         written = [line.split("  #")[0].strip() for line in blocks if line.startswith("hive ")] \
             + [line for line in re.findall(r"`(hive (?:setup|next|start|ready|submit) [^`\n]*--[^`\n]*)`", guide)]
-        values = {"<PROJECT>": "toy", "<LOGIN>": "alice", "<id>": "toy-0001", "<DEAL>": NOW, "<identifier>": "a-model",
+        values = {"<PROJECT>": "toy", "<LOGIN>": "alice", "<id>": "toy-0001", "<DEAL>": NOW, "<identifier>": "a-model", "<file>": "lib.c",
                   '"<one line: what you changed>"': "'what changed'"}
         given = []
         commands = {name: mock.patch.object(hive, f"cmd_{name}", side_effect=given.append) for name in ("setup", "next", "start", "ready", "submit")}
