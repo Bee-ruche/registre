@@ -2361,7 +2361,7 @@ class Clone:
     def __init__(self, root, settings):
         self.root, self.git_dir, self.settings = root, root / ".git", settings
 
-    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True):
+    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True, attributes=None):
         """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
         turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read:
         a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
@@ -2370,7 +2370,8 @@ class Clone:
         read: the volunteer's credentials and proxy live there, and a fetch or a push converts no file. raw: the
         input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
         whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
-        reading takes for a file of that name, and then removes nothing)."""
+        reading takes for a file of that name, and then removes nothing). attributes: the commit or the tree whose
+        .gitattributes files the command follows, in place of those that lie in the work tree."""
         environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
                             "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
@@ -2383,7 +2384,8 @@ class Clone:
             environment["GIT_ALLOW_PROTOCOL"] = parts[2]
         environment.update(env or {})
         worker = GIT_WORKER if literal else tuple(option for option in GIT_WORKER if option != "--literal-pathspecs")
-        command = ["git", *GIT_BASE, *worker, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
+        source = () if attributes is None else (f"--attr-source={need_sha(attributes)}",)
+        command = ["git", *GIT_BASE, *worker, *source, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
         try:
             result = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout, env=environment, cwd=self.root,
                                     **({} if raw else {"text": True, "errors": "replace"}))
@@ -2983,6 +2985,21 @@ def empty_submodules(clone):
     return removed
 
 
+def branch_in_the_way(clone):
+    """The branch of this clone that stands where the tool keeps its own, or None. A task's branch is
+    hive/submit/<task>, and for git a name is a branch or a folder of branches, never both: while a branch is named
+    « hive » or « hive/submit », as a file of its own or as a line of packed-refs, git cannot make the task's."""
+    packed = set(packed_references(clone.git_dir))
+    for name in ("hive", "hive/submit"):
+        try:
+            loose = stat.S_ISREG(os.lstat(clone.git_dir / "refs/heads" / name).st_mode)
+        except OSError:
+            loose = False
+        if loose or f"refs/heads/{name}" in packed:
+            return name
+    return None
+
+
 def remove_entry(path):
     """Removes one entry of the work tree: a folder with all it holds (shutil.rmtree removes a link it meets and
     never enters it), and anything else by its own name, a link included."""
@@ -3008,10 +3025,13 @@ def cmd_start(args):
     the task is the one « next » printed, and « submit » and the hive check the deal.
 
     What an earlier run left in the work tree is set aside when it could be someone's work, and removed when it is a
-    leftover. Changes to tracked files and untracked files that git does not ignore are stashed (« git stash list »
-    shows them; nothing of them is lost). Then every file and folder that remains untracked, ignored ones included,
-    is removed, a repository of its own too (« git clean -ffdx »): what a build left under an ignored name would
-    otherwise be there again when the next task's code runs in the sandbox, where « submit » never sees it. So is
+    leftover. Set aside, in a stash (« git stash list » shows it; nothing of it is lost): what git tracks and finds
+    changed, and the untracked files that git does not ignore. Removed: every file and folder that then remains
+    untracked, which is what git ignores, a repository of its own too (« git clean -ffdx »): what a build left under
+    an ignored name would otherwise be there again when the next task's code runs in the sandbox, where « submit »
+    never sees it. Which files are ignored is decided by the work tree's own .gitignore files, the project's and any
+    an earlier run wrote: so a file of the user's own under an ignored name is removed, not set aside, and a clone
+    that works for the hive should hold no work of the user's own. So is removed
     what git cannot see: a .git below the root, a pipe, a socket, what lies in a sub-module's folder. A link is
     removed, never followed; a link that stands where the project has a folder is removed first, since git refuses
     to read past it. A read-only folder is opened to its owner first. These steps git cannot take are this
@@ -3019,10 +3039,22 @@ def cmd_start(args):
     enters the clone's own .git. Nothing outside the work tree is touched, and
     .git itself is not cleaned (git never cleans it): plain_clone checks it first, and a refusal touches nothing.
 
+    Two leftovers inside .git would stop this command at every later run. A lock on the index (.git/index.lock), which
+    a git command that was stopped leaves behind, is removed first: no other git runs in the clone while a worker
+    command does. A branch named « hive » or « hive/submit » keeps git from making any task's branch: it may be
+    someone's, so the command names it and stops before it changes anything.
+
+    The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
+    encoding), not under a .gitattributes of the work tree, which is one of the files to set aside; if those rules
+    cannot convert a file's bytes, everything is set aside byte for byte.
+
     Then the branch is made, or reset, at the tip, and HEAD names it (checkout -B, given the tip's commit id: so the
     branch follows no other, and no setting is written). The commits the branch held, a candidate whose push did not
-    land for instance, stay in its log (git reflog), which is written whatever the clone's settings say. Every step
-    runs through Clone.git: no hook, no filter, no setting of the machine, no network.
+    land for instance, stay in its log (git reflog), which is written whatever the clone's settings say. Last, the
+    index is made anew from the tip and every file of the tip is written out again: git writes a file only if its
+    index says the file changed, and the index is a file of .git, which may say « do not look » of a file an earlier
+    run rewrote. (What such a mark hid is not set aside: git never saw it.) Every step runs through Clone.git: no
+    hook, no filter, no setting of the machine, no network.
 
     Run again, it does the same: it starts the task again from the tip, and sets aside what was done since (the
     work is in « git stash list », not lost). So it runs once per task and per run, before the work."""
@@ -3045,10 +3077,24 @@ def cmd_start(args):
     tip = found.stdout.strip()
     if found.returncode != 0:
         raise HiveError(f"the project's tip ({upstream}) is not in this clone: run hive.py setup, then this command again")
+    in_the_way = branch_in_the_way(clone)
+    if in_the_way:
+        raise HiveError(f"this clone has a branch named {in_the_way}, where this tool keeps its own (hive/submit/<task>): git cannot make "
+                        "the task's branch beside it. Nothing was changed: stop, and tell the user to rename or remove that branch")
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
-    open_folders(clone.root)
     removed = 0
+    try:
+        # No other git runs in this clone while a worker command does (the agent runs none): a lock on the index is one
+        # that a command which was stopped left behind, and every later git that writes the index would stop on it.
+        if stat.S_ISREG(os.lstat(clone.git_dir / "index.lock").st_mode):
+            os.unlink(clone.git_dir / "index.lock")
+            removed += 1
+    except FileNotFoundError:
+        pass
+    except OSError:
+        raise HiveError("the lock an earlier git command left on the index (.git/index.lock) could not be removed: tell the user") from None
+    open_folders(clone.root)
     try:
         for path in links_over_folders(clone):
             os.unlink(os.path.join(root, path))
@@ -3056,8 +3102,14 @@ def cmd_start(args):
     except OSError:
         raise HiveError("a link an earlier run left in the work tree could not be removed: tell the user") from None
     before = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
-    clone.git("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before",
-              env=who, literal=False)
+    # The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
+    # encoding), never under a .gitattributes of the work tree, which is itself one of the files to set aside. A file
+    # whose bytes those rules cannot convert (it is not in the encoding they name) would stop git: everything is then
+    # set aside byte for byte, under no rule at all.
+    held = clone.git("rev-parse", "--verify", "--quiet", "HEAD^{commit}", check=False).stdout.strip()
+    aside = ("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before")
+    if clone.git(*aside, env=who, literal=False, attributes=held if is_sha(held) else tip, check=False).returncode != 0:
+        clone.git(*aside, env=who, literal=False, attributes=EMPTY_TREE)
     after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
     set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
     removed += len(untracked(clone))
@@ -3069,6 +3121,11 @@ def cmd_start(args):
     if untracked(clone) or work_tree_changes(clone):
         raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
     clone.git("checkout", "--quiet", "-l", "-B", branch, tip, env=who)
+    # git writes a file again only if the index says it changed, and the index is a file of .git like any other: it
+    # may say of a file « do not look », or hold the size and the date of bytes an earlier run wrote. So the index is
+    # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
+    clone.git("read-tree", tip)
+    clone.git("checkout-index", "--all", "--force", "--index", attributes=tip)
     if set_aside:
         print(f"SET-ASIDE {set_aside} change(s) of an earlier run: git stash list shows them")
     if removed:
