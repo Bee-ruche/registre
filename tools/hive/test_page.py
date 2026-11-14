@@ -281,7 +281,7 @@ class TestFigures(Case):
     def test_the_figures_of_a_hand_written_ledger(self):
         files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
         data, seen = self.summary(files), self.harmless(files)
-        self.assertEqual(data["totals"], {"verdicts": 6, "judged": 4, "accepted": 3, "integrations": 3, "refused": 3,
+        self.assertEqual(data["totals"], {"verdicts": 6, "judged": 4, "accepted": 3, "integrations": 3, "refused": 3, "ended_by_hive": 0,
                                           "judge_failures": 2})
         self.assertEqual(data["tasks"], {"done": 3, "dealt": 1, "open": 2, "closed": 1, "total": 7})
         self.assertEqual(data["week"], {"since": "2026-11-05T12:00:00Z", "integrations": 2, "members": 2, "judged": 3, "accepted": 2,
@@ -407,6 +407,47 @@ class TestFigures(Case):
         self.assertIn("join.html", self.harmless(self.make("--join")).hrefs)
         other = "https://github.com/Bee-ruche/registre/blob/hive/docs/join.md"
         self.assertIn(other, self.harmless(self.make("--join-url", other), join=other).hrefs)
+
+
+class TestRefusals(Case):
+    """What was refused of candidates, and, apart from it, what the hive's own side ended at no cost to the member."""
+
+    def refused(self, *reasons):
+        self.ledger([verdict(n, f"2026-10-{n:02d}T09:00:00Z", "bob", 102, "toy-0001", "refused", judged=reason == "judge_refused", reason=reason)
+                     for n, reason in enumerate(reasons, 1)])
+        files = self.make()
+        return self.summary(files), self.harmless(files)
+
+    def test_what_the_hive_itself_ended_is_not_listed_as_a_refusal_of_a_candidate(self):
+        data, seen = self.refused("not_answered", "task_closed", "task_closed", "conflict", "judge_refused")
+        self.assertEqual(data["refusals"], [{"reason": "conflict", "count": 1}, {"reason": "judge_refused", "count": 1}])
+        self.assertEqual(data["ended_by_hive"], [{"reason": "not_answered", "count": 1}, {"reason": "task_closed", "count": 2}])
+        self.assertEqual({key: data["totals"][key] for key in ("verdicts", "refused", "ended_by_hive")}, {"verdicts": 5, "refused": 2, "ended_by_hive": 3})
+        head = seen.rows.index(["Reason", "Candidates", "What it means"])
+        self.assertEqual(seen.rows[head + 1:], [[reason, "1", hive.REASONS[reason]] for reason in ("conflict", "judge_refused")],
+                         "the table of what was refused holds the candidates' refusals and no other")
+        self.assertIn("A refusal says something about the candidate, not about its member."
+                      "Ended by the hive, at no cost to the member: 3. These candidates were not refused: "
+                      f"not_answered (1), {hive.REASONS['not_answered']}; task_closed (2), {hive.REASONS['task_closed']}.Three measures", seen.said)
+
+    def test_with_nothing_refused_the_page_says_so_and_still_says_what_the_hive_ended(self):
+        data, seen = self.refused("task_closed")
+        self.assertEqual((data["refusals"], data["totals"]["refused"], data["totals"]["ended_by_hive"]), ([], 0, 1))
+        self.assertIn(f"No candidate has been refused yet.Ended by the hive, at no cost to the member: 1. These candidates were not refused: "
+                      f"task_closed (1), {hive.REASONS['task_closed']}.Three measures", seen.said)
+        data, seen = self.refused("conflict")
+        self.assertEqual((data["ended_by_hive"], data["totals"]["ended_by_hive"]), ([], 0))
+        self.assertNotIn("Ended by the hive", seen.said)
+
+    def test_the_hive_s_side_is_two_reasons_and_every_other_reason_is_a_refusal_of_the_candidate(self):
+        self.assertEqual(page.HIVE_SIDE, ("not_answered", "task_closed"))
+        self.assertEqual(page.HIVE_SIDE, hive.HIVE_SIDE_REASONS)
+        self.assertRegex(hive.REASONS["not_answered"], r"the hive spent .* for no fault it can pin on them")
+        self.assertRegex(hive.REASONS["task_closed"], r"the task was closed while the candidate waited")
+        data, seen = self.refused(*hive.REASONS, "a reason of tomorrow")
+        self.assertEqual({r["reason"] for r in data["refusals"]}, {*hive.REASONS, None} - {"not_answered", "task_closed"})
+        self.assertEqual({r["reason"] for r in data["ended_by_hive"]}, {"not_answered", "task_closed"})
+        self.assertEqual((data["totals"]["refused"], data["totals"]["ended_by_hive"]), (len(hive.REASONS) - 1, 2), "a reason the page does not know is a refusal")
 
 
 def told(text):
@@ -643,7 +684,7 @@ class TestHostile(Case):
         self.assertEqual([m["model"] for m in data["models"]], [None, "claude-fable-5-2"], "a model that is not an identifier is undeclared")
         self.assertEqual({r["task"] for r in data["recent"]}, {"toy-0001", "toy-0002", None}, "a task id that is not one is unknown")
         self.assertEqual(data["tasks"], {"done": 2, "dealt": 0, "open": 0, "closed": 0, "total": 2}, "a task counts once, under a real id and status")
-        self.assertEqual(data["totals"], {"verdicts": 38, "judged": 35, "accepted": 32, "integrations": 35, "refused": 3,
+        self.assertEqual(data["totals"], {"verdicts": 38, "judged": 35, "accepted": 32, "integrations": 35, "refused": 3, "ended_by_hive": 0,
                                           "judge_failures": 0}, "« judged » is true or it is not; a line too long to be honest is not read")
         self.assertEqual({r["commit"] for r in data["recent"] if r["member_id"] == 300 and r["at"] == "2026-11-10T01:00:00Z"},
                          {None, sha(5040), sha(5041), sha(5042), sha(5055)})

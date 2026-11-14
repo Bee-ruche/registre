@@ -81,6 +81,10 @@ MODEL_MEMBERS_MIN = 5
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 MEASURES_MAX = 40  # rows of « what the judge measured » kept for one integration
 COUNT_MAX = 10 ** 16 - 1  # a count in a report (outputs compared, files, lines): sixteen digits, as the hive reads them
+# The answers that are the hive's or the project's doing, not the candidate's (hive.HIVE_SIDE_REASONS: « no cost at
+# all »): the task was closed while the candidate waited, or the hive spent its runs without an answer. The ledger
+# records them as refused verdicts; the page does not list them under what was refused of candidates.
+HIVE_SIDE = hive.HIVE_SIDE_REASONS
 
 
 class PageError(Exception):
@@ -431,8 +435,8 @@ def collect(state, now, tasks=None):
         return login if login is not None and holder[login.lower()][1] == member_id else None
 
     since = now - WEEK
-    members, models, refusals, recent, firsts = {}, {}, {}, [], {}
-    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "judge_failures"), 0)
+    members, models, refusals, ended, recent, firsts = {}, {}, {}, {}, [], {}
+    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "ended_by_hive", "judge_failures"), 0)
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
         accepted, judged, member_id = event["accepted"], event["judged"], event["member_id"]
@@ -441,9 +445,11 @@ def collect(state, now, tasks=None):
         totals["judged"] += judged
         totals["accepted"] += accepted and judged
         totals["integrations"] += accepted
-        totals["refused"] += not accepted
         if not accepted:
-            refusals[event["reason"]] = refusals.get(event["reason"], 0) + 1
+            # An answer the hive's own side caused (HIVE_SIDE) is no refusal of the candidate: it is counted apart.
+            mine = event["reason"] in HIVE_SIDE
+            totals["ended_by_hive" if mine else "refused"] += 1
+            (ended if mine else refusals)[event["reason"]] = (ended if mine else refusals).get(event["reason"], 0) + 1
         if judged:
             row = models.setdefault(event["model"], {"judged": 0, "accepted": 0, "ids": set()})
             row["judged"] += 1
@@ -506,6 +512,7 @@ def collect(state, now, tasks=None):
                     "card": win_name(event["commit"]), "page": win_page_name(event["commit"])} for at, _, event in recent[:RECENT_SHOWN]],
         "refusals": [{"reason": reason, "count": count}
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
+        "ended_by_hive": [{"reason": reason, "count": count} for reason, count in sorted(ended.items())],
         "measures": {
             "yield": rate(totals["accepted"], totals["judged"]),
             "time_to_answer_seconds": None,  # the ledger says when a candidate was answered, not when it was pushed
@@ -767,6 +774,7 @@ def progress_bar(tasks):
 
 WHAT = ("A project of La Ruche: volunteers' AI coding assistants do its tasks one at a time, "
         "and a judge in a sandbox decides what is integrated.")  # what a stranger is told first, in one sentence
+ENDED_BY_HIVE = "Ended by the hive, at no cost to the member"  # the name of what HIVE_SIDE counts
 TOO_FEW = "too few members to show"  # in place of a model's judged count and rate (model_rows)
 MODELS_NOTE = (f"How many candidates of a model were judged, and its rate, are shown once at least {MODEL_MEMBERS_MIN} members stand "
                "behind them: with fewer, they would be figures about those members.")
@@ -852,6 +860,11 @@ def render_html(data, title, repo_url, join):
                             "not about its member.", class_="note")]
     else:
         refusals = el("p", "No candidate has been refused yet.", class_="soft")
+    if data["ended_by_hive"]:  # not refusals: a line of their own, under a name that says whose doing they are
+        last = data["ended_by_hive"][-1]
+        refusals = [refusals, el("p", el("strong", f"{ENDED_BY_HIVE}: {totals['ended_by_hive']}."), " These candidates were not refused: ",
+                                 [[el("code", r["reason"]), f" ({r['count']}), {hive.REASONS[r['reason']]}", "." if r is last else "; "]
+                                  for r in data["ended_by_hive"]])]
     sections.append(el("section", el("h2", "What was refused, and why"), refusals))
 
     waiting = measures["waiting"]
