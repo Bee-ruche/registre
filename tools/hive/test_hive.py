@@ -5939,7 +5939,9 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         empty folder outside the clone: it is given the tip's .gitattributes and the file's blob, from bytes the tool
         hashed, and names no folder of the clone. It reads no setting of the machine either: a filter those settings
         define, which the project's rules select for the converted files, is not run, and their own way with line
-        ends changes nothing. (Each git that converts is noted: `subprocess.Popen` is watched, not replaced.)"""
+        ends changes nothing. And git's answer counts only if git ended well: one that stops half-way has not said
+        what a checkout writes. (Each git that converts is noted: `subprocess.Popen` is watched, then replaced once
+        by a program that says nothing and fails.)"""
         work, machine = self.alice.work, self.w.root / "gitconfig"
         marks = [self.w.root / name for name in ("CLEANED", "SMUDGED")]
         machine.write_text(f'[filter "x"]\n\tclean = "touch {marks[0]}; cat"\n\tsmudge = "touch {marks[1]}; cat"\n[core]\n\tautocrlf = true\n')
@@ -5964,11 +5966,21 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                              (os.devnull, "1", subprocess.DEVNULL))
             self.assertFalse(Path(folders[0]).exists(), "the repository of the tool's own is gone with the command")
         blob = sh("git", "rev-parse", f"{tip}:lib.c", cwd=work).stdout.strip()
+        true = self.object_bytes(blob)
         self.write_object(blob, "blob", (LIB + "int planted;\n").encode())
         (work / "lib.c").write_bytes((LIB + "int planted;\n").replace("\n", "\r\n").encode())
         self.assertEqual(sh("git", "cat-file", "--filters", "--path=lib.c", blob, cwd=work).stdout.replace("\r\n", "\n"), LIB + "int planted;\n",
                          "asked in the clone, git would answer with the planted object")
         self.assertEqual(self.proof(), self.NOT_THE_TIPS)
+        self.write_object(blob, *true)
+        (work / "lib.c").write_bytes(b"")
+
+        def stops_half_way(command, **options):
+            return real(["false"], **options) if "--filters" in command else real(command, **options)
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=stops_half_way), self.assertRaises(hive.HiveError) as error:
+            self.proof()
+        self.assertEqual(str(error.exception), "git cat-file failed (1)", "what it gave before it failed, here nothing, is not what a checkout writes")
+        self.assertEqual(self.proof(), self.NOT_THE_TIPS, "and a file that holds nothing is not the tip's")
 
     def test_a_link_and_a_sub_module_of_the_tip_pass_and_one_in_the_others_place_stops(self):
         """A project may hold links and sub-modules. A link of the tip is a link in the work tree, whose target
