@@ -735,15 +735,19 @@ class TestNobodyIsRanked(Case):
         lines += [verdict(70 + n, "2026-11-04T09:00:00Z", f"n{n}", 500 + n, "toy-0004", "refused", reason="judge_refused") for n in range(4)]
         lines += [verdict(60 + n, "2026-11-03T09:00:00Z", None, None, "toy-0003", "refused", reason="judge_refused")
                   for n in range(4)]  # lines without an account add no account: « undeclared » has four accounts behind it, not five
+        lines += [verdict(80 + n, "2026-11-05T09:00:00Z", f"p{n}", 600 + n, "toy-0005", "refused", model="model-c", reason="judge_refused")
+                  for n in range(4)]  # four more accounts: with model-b's one, the rows kept back have enough between them
         self.ledger(lines)
         files = self.make()
         data, seen = self.summary(files), self.harmless(files)
         self.assertEqual(data["models"], [
             {"model": "model-a", "judged": 7, "accepted": 3, "acceptance_rate": 0.4286, "too_few_members": False},
             {"model": None, "judged": None, "accepted": 0, "acceptance_rate": None, "too_few_members": True},
-            {"model": "model-b", "judged": None, "accepted": 1, "acceptance_rate": None, "too_few_members": True}])
-        self.assertEqual([seen.row(name) for name in ("model-a", "undeclared", "model-b")],
-                         [["model-a", "7", "3", "43 %"], ["undeclared", page.TOO_FEW, "0", page.TOO_FEW], ["model-b", page.TOO_FEW, "1", page.TOO_FEW]])
+            {"model": "model-b", "judged": None, "accepted": 1, "acceptance_rate": None, "too_few_members": True},
+            {"model": "model-c", "judged": None, "accepted": 0, "acceptance_rate": None, "too_few_members": True}])
+        self.assertEqual([seen.row(name) for name in ("model-a", "undeclared", "model-b", "model-c")],
+                         [["model-a", "7", "3", "43 %"], ["undeclared", page.TOO_FEW, "0", page.TOO_FEW], ["model-b", page.TOO_FEW, "1", page.TOO_FEW],
+                          ["model-c", page.TOO_FEW, "0", page.TOO_FEW]])
         self.assertIn("Declared by each worker: a statistic, not a proof. " + page.MODELS_NOTE, seen.said)
         self.assertIn("at least 5 members", page.MODELS_NOTE)
         own = Seen(files[f"wins/{sha(5010)}.html"]).said
