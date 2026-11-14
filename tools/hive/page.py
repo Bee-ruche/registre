@@ -28,7 +28,9 @@ The rules the page follows, each stated where it is applied:
 
   - Nobody is ranked. Every member with an accepted contribution is listed, by login, with the number of its
     accepted contributions. What was refused is counted for the project, and for a model once MODEL_MEMBERS_MIN
-    accounts stand behind it, never for a person, in any file (collect(), model_rows()).
+    accounts stand behind it; the page adds it up for no person, in any file (collect(), model_rows()). It hides
+    nothing either: the ledger is public and names the member of every answer, and with a handful of members the
+    project's totals say much of each. The page says so.
   - No direction is stated that the judge did not state: a figure and a noise flag that point opposite ways are
     printed without « better » or « worse » (direction()).
   - Each answer of the ledger is read once, and no line dated after the instant the page is made for (once(),
@@ -176,7 +178,7 @@ def direction(gain, sure, worse):
     worse_ is 1, when it is below zero and sure_ is 1, or when both flags are 1: the figure is then printed as the
     judge measured it, with its unit, and no « better », « worse » or « beyond the noise » beside it (reading()), and
     it never leads a card (headline(), read_report())."""
-    if (sure == 1 and worse == 1) or (gain > 0 and worse == 1) or (gain < 0 and sure == 1):
+    if ODD in (sure, worse) or (sure == 1 and worse == 1) or (gain > 0 and worse == 1) or (gain < 0 and sure == 1):
         return None
     return "better" if gain > 0 else "worse" if gain < 0 else ""
 
@@ -193,12 +195,11 @@ def headline(report):
     for key, value in report.items():
         if not isinstance(key, str) or not key.startswith("gain_") or not matching(key[5:], METRIC):
             continue
-        sure = report.get("sure_" + key[5:])
-        if type(value) not in (int, float) or type(sure) not in (int, float) or sure != 1:
+        if type(value) not in (int, float) or flag(report, "sure_" + key[5:]) != 1:
             continue
         if type(value) is float and not math.isfinite(value):
             continue
-        if not 0 < value <= GAIN_MAX or direction(value, 1, flag(report.get("worse_" + key[5:]))) != "better":
+        if not 0 < value <= GAIN_MAX or direction(value, 1, flag(report, "worse_" + key[5:])) != "better":
             continue
         gain = round(float(value), 6)
         if round(100 * gain, 1) <= 0:
@@ -218,9 +219,16 @@ def whole(value):
     return value if type(value) is int and 0 <= value <= COUNT_MAX else None
 
 
-def flag(value):
-    """A report's yes or no: 1 or 0 when the value is that number (not a boolean, not a string), else None."""
-    return int(value) if type(value) in (int, float) and value in (0, 1) else None
+ODD = "odd"  # a flag the report holds whose value is neither the number 0 nor the number 1 (a boolean, a string…)
+
+
+def flag(report, key):
+    """A report's yes or no: 1 or 0 when the value is that number, None when the report has no such key, and ODD when
+    it has one whose value is anything else: the page then says nothing of that figure's direction (direction())."""
+    if key not in report:
+        return None
+    value = report[key]
+    return int(value) if type(value) in (int, float) and value in (0, 1) else ODD
 
 
 def read_report(report, goal=None):
@@ -245,8 +253,8 @@ def read_report(report, goal=None):
             continue
         if type(value) not in (int, float) or (type(value) is float and not math.isfinite(value)) or not -GAIN_MAX <= value <= GAIN_MAX:
             continue
-        rows.append({"metric": key[5:], "gain": round(float(value), 6), "sure": flag(report.get("sure_" + key[5:])),
-                     "worse": flag(report.get("worse_" + key[5:])), "goal": goal is not None and key[5:] == goal})
+        rows.append({"metric": key[5:], "gain": round(float(value), 6), "sure": flag(report, "sure_" + key[5:]),
+                     "worse": flag(report, "worse_" + key[5:]), "goal": goal is not None and key[5:] == goal})
     rows.sort(key=lambda row: (not row["goal"], row["sure"] != 1 and row["worse"] != 1, -row["gain"], row["metric"]))
     asked = rows[0] if rows and rows[0]["goal"] else None
     if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" \
@@ -460,8 +468,8 @@ def collect(state, now, tasks=None):
 
     Nobody is ranked. The members are every account with an accepted contribution, in the alphabetical order of their
     logins (case ignored; then the accounts without a login, by number), each with the number of its accepted
-    contributions and nothing else: what was refused is counted for the project and for a model (model_rows), never
-    for a person, here or in any file."""
+    contributions and nothing else: what was refused is counted for the project and for a model (model_rows), and
+    added up for no person, here or in any file (the public ledger still names the member of every answer)."""
     goals = read_goals(tasks) if tasks is not None else {}
     objects, skipped = read_ledger(state)
     usable = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
@@ -886,9 +894,10 @@ def render_html(data, title, repo_url, join):
         members = [table([("Member", False), ("Accepted contributions", True), ("To show", False)], rows,
                          ids=[f"member-{m['id']}" for m in data["members"]]),
                    el("p", f"{count} member{' has' if count == 1 else 's have'} a contribution the judge accepted. They are listed in the "
-                           "alphabetical order of their logins: nobody is ranked, and what was refused is counted for the project, never for a "
-                           "member. A member is a GitHub account, counted by its numeric id and shown under its latest login; a name appears "
-                           "here only with work the judge accepted.", class_="note"),
+                           "alphabetical order of their logins: nobody is ranked, and this page adds up what was refused for the project, "
+                           "not for a member. It hides nothing: the hive's ledger is public and records every answer, refused ones included, "
+                           "under its member's login. A member is a GitHub account, counted by its numeric id and shown under its latest "
+                           "login; a name appears here only with work the judge accepted.", class_="note"),
                    el("p", "Each has a card at members/<account id>.svg and a badge at members/<account id>-badge.svg. They name no login, so "
                            "they stay right when an account is renamed.", class_="note")]
     else:
@@ -1255,6 +1264,7 @@ def figure_words(figure):
 
 
 NO_READING = "no reading: the figure and its noise flag point opposite ways"
+ODD_READING = "no reading: the noise flag the ledger holds for this figure is neither a yes nor a no"
 
 
 def reading(row):
@@ -1263,7 +1273,9 @@ def reading(row):
     neither « better » nor « worse » of it. « Worse » comes first otherwise: a project may accept a small loss on
     one figure (miniz allows 1 % on an instruction count), and the page must not print it as a gain."""
     lost = round(100 * row["gain"], 1) < 0
-    if direction(row["gain"], row["sure"], row["worse"]) is None:
+    if ODD in (row["sure"], row["worse"]):
+        noise = ODD_READING
+    elif direction(row["gain"], row["sure"], row["worse"]) is None:
         noise = NO_READING
     elif row["worse"] == 1:
         noise = "worse, beyond the noise"
@@ -1485,7 +1497,11 @@ def write(out, files):
                 with contextlib.suppress(FileExistsError):
                     os.mkdir(folder, dir_fd=folders[""])
                 folders[folder] = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=folders[""])
-            descriptor = os.open(temporary_name(leaf), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o666, dir_fd=folders[folder])
+            # Whatever stands at the temporary name is removed, not opened: a file with another name elsewhere would
+            # be emptied through this one, and a pipe would make the run wait. The file written is always a new one.
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temporary_name(leaf), dir_fd=folders[folder])
+            descriptor = os.open(temporary_name(leaf), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=folders[folder])
             with open(descriptor, "w", encoding="utf-8", newline="\n") as f:
                 f.write(files[name])
             os.replace(temporary_name(leaf), leaf, src_dir_fd=folders[folder], dst_dir_fd=folders[folder])

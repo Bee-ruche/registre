@@ -512,16 +512,25 @@ class TestFolder(Case):
     def test_no_link_is_followed_while_writing_either(self):
         """The plan's check comes first; with it taken away, the writing itself follows no link."""
         files = page.render(page.collect(self.state, page.instant_of(NOW)))
-        for place, target in (("members", self.outside), (f"wins/.{sha(5001)}.html.tmp", self.victim), (".index.html.tmp", self.victim)):
-            with self.subTest(place=place):
-                link = self.out / place
-                link.parent.mkdir(exist_ok=True)
-                os.symlink(target, link)
-                with mock.patch.object(page, "check_plan", lambda out, names: None), self.assertRaises(page.PageError) as stopped:
-                    page.write(self.out, files)
-                self.assertRegex(str(stopped.exception), r"\A--out: [A-Za-z0-9./-]+ could not be written \([A-Za-z ]+\): the site is not whole\Z")
-                self.assertEqual((self.victim.read_text(), sorted(path.name for path in self.outside.iterdir())), ("precious\n", ["victim.txt"]))
-                link.unlink()
+        link = self.out / "members"
+        os.symlink(self.outside, link)  # a folder of the site that is a link: not entered
+        with mock.patch.object(page, "check_plan", lambda out, names: None), self.assertRaises(page.PageError) as stopped:
+            page.write(self.out, files)
+        self.assertRegex(str(stopped.exception), r"\A--out: [A-Za-z0-9./-]+ could not be written \([A-Za-z ]+\): the site is not whole\Z")
+        self.assertEqual((self.victim.read_text(), sorted(path.name for path in self.outside.iterdir())), ("precious\n", ["victim.txt"]))
+        link.unlink()
+        # Whatever stands at a file's temporary name is removed, never opened: a link, a second name of a file elsewhere
+        # (it would be emptied through this one), a pipe (the run would wait for ever). The file written is a new one.
+        for plant in (lambda path: os.symlink(self.victim, path), lambda path: os.link(self.victim, path), lambda path: os.mkfifo(path)):
+            for place in (f"wins/.{sha(5001)}.html.tmp", ".index.html.tmp"):
+                with self.subTest(place=place):
+                    (self.out / place).parent.mkdir(exist_ok=True)
+                    plant(self.out / place)
+                    with mock.patch.object(page, "check_plan", lambda out, names: None):
+                        page.write(self.out, files)
+                    self.assertEqual((self.victim.read_text(), sorted(path.name for path in self.outside.iterdir())), ("precious\n", ["victim.txt"]))
+                    self.assertFalse(os.path.lexists(self.out / place), "and nothing is left at the temporary name")
+                    self.assertEqual((self.out / "index.html").read_text(encoding="utf-8"), files["index.html"])
         # A link under a file's own name is replaced, not followed.
         (self.out / "index.html").unlink()
         os.symlink(self.victim, self.out / "index.html")
@@ -1087,9 +1096,9 @@ class TestWins(Case):
                 self.assertIn("The ledger keeps no measured gain for this contribution.", seen.said)
                 self.assertNotRegex(seen.said, r"[0-9] %|A gain is", name)
         # A row of « what the judge measured » is made of a number under an identifier, and of nothing else: the four
-        # reports whose gain is a real number and whose flag is not one have that gain, read as having no flag.
-        self.assertEqual(rows, {**{f"wins/{sha(5000 + n)}.html": [["a", "50.0 %", "no noise flag in the ledger"]] for n in (2, 4, 16)},
-                                f"wins/{sha(5027)}.html": [["e", "50.0 %", "no noise flag in the ledger"]]})
+        # reports whose gain is a real number and whose flag is not one have that gain, and no word on its direction.
+        self.assertEqual(rows, {**{f"wins/{sha(5000 + n)}.html": [["a", "50.0 %", page.ODD_READING]] for n in (2, 4, 16)},
+                                f"wins/{sha(5027)}.html": [["e", "50.0 %", page.ODD_READING]]})
 
     def test_a_gain_of_a_thousand_percent_is_the_last_one_shown(self):
         figure, card = self.headline_of({"gain_a": 10, "sure_a": 1})
@@ -1561,7 +1570,7 @@ class TestGoal(Case):
         self.assertEqual([(row["metric"], row["gain"], row["sure"], row["worse"], row["goal"]) for row in kept["measures"]], [
             ("instructions_n6", 0.043, None, None, True),
             ("compression_throughput_n9", 0.052, 1, 0, False), ("compression_throughput_n6", 0.037, 1, 0, False), ("lost", -0.03, 0, 1, False),
-            ("odd", 0.2, None, None, False), ("instructions_n9", 0.061, None, None, False), ("ratio_n6", 0.001, 0, 0, False),
+            ("odd", 0.2, page.ODD, page.ODD, False), ("instructions_n9", 0.061, None, None, False), ("ratio_n6", 0.001, 0, 0, False),
             ("flagless", -0.002, None, None, False)])
         self.assertEqual((kept["outputs"], kept["suspects"], kept["measures_left_out"]), (9289, 0, 0))
         for report in ("<script>", ["gain_a", 1], None, 5, True, {}):
@@ -1797,6 +1806,20 @@ class TestWinPage(Case):
         self.assertEqual([page.gain_text(value) for value in (0.043, 10, 0, -0.0004, 0.0004, -0.03, -1.5, 0.0005)],
                          ["4.3 %", "1000.0 %", "0.0 %", "0.0 %", "0.0 %", "−3.0 %", "−150.0 %", "0.1 %"], "a loss wears a real minus sign")
 
+    def test_a_flag_that_is_neither_a_yes_nor_a_no_gives_no_direction(self):
+        """The hive's own judge writes 0 or 1. A flag that is there with any other value (a boolean, a text, nothing) is
+        not read as absent: a figure flagged « worse » in another spelling would otherwise read « better »."""
+        for odd in (True, False, "1", "0", [1], 2, 0.5, None, -1):
+            with self.subTest(flag=odd):
+                for report in ({"gain_x": 0.5, "sure_x": 1, "worse_x": odd}, {"gain_x": 0.5, "sure_x": odd}, {"gain_x": -0.5, "worse_x": odd}):
+                    self.assertIsNone(page.headline(report), "no figure leads a card")
+                    row, = page.read_report(report)["measures"]
+                    self.assertIsNone(page.direction(row["gain"], row["sure"], row["worse"]))
+                    self.assertEqual(page.reading(row), page.ODD_READING)
+        self.assertEqual(page.headline({"gain_x": 0.5, "sure_x": 1})["metric"], "x", "a flag that is not there is no flag")
+        self.assertEqual(page.headline({"gain_x": 0.5, "sure_x": 1, "worse_x": 0})["metric"], "x")
+        self.assertEqual(page.reading(page.read_report({"gain_x": 0.5})["measures"][0]), "no noise flag in the ledger")
+
     def test_no_direction_is_stated_when_the_judge_s_figure_and_its_noise_flag_disagree(self):
         """The registry's judge compares medians for the figure and paired runs for the flags: nine runs of ten faster
         and a slower median give sure_ 1 with a gain below zero. The page prints the figure and states no direction."""
@@ -1850,8 +1873,9 @@ class TestWinPage(Case):
         self.assertEqual(sorted(name for name in files if name.endswith(".html")),
                          ["index.html", *(f"wins/{sha(5000 + n)}.html" for n in (1, 2, 5, 6, 7))], "a commit id with a line feed is not one: no page")
         first = Seen(files[f"wins/{sha(5001)}.html"])
-        self.assertEqual(first.rows[1:], [["d", "50.0 %", "beyond the noise"], ["c", "25.0 %", "no noise flag in the ledger"]],
-                         "the two gains that are numbers under identifiers, each read from the flags that are numbers")
+        self.assertEqual(first.rows[1:], [["d", "50.0 %", page.ODD_READING], ["c", "25.0 %", page.ODD_READING]],
+                         "the two gains that are numbers under identifiers; a flag that is there and is neither 0 nor 1 gives no "
+                         "reading, whatever the other flag says")
         self.assertNotRegex(first.said, r"outputs compared|Suspect constructs|Changed")
         for n in (2, 5, 7):
             seen = Seen(files[f"wins/{sha(5000 + n)}.html"])
