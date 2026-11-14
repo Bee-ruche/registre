@@ -3505,7 +3505,7 @@ class Volunteer(Base):
             os.chdir(old)
 
     def setup(self, *more, **options):
-        return self.run_cli("setup", "--registry", self.registry, "--upstream-url", str(self.w.upstream), *more, **options)
+        return self.run_cli("setup", "--registry", self.registry, "--upstream-url", str(self.w.upstream), "--login", "alice", *more, **options)
 
     def next(self, login="Alice", **options):
         return self.run_cli("next", "--registry", self.registry, "--project", "toy", "--state", self.state_root, "--login", login, **options)
@@ -3739,7 +3739,7 @@ class TestVolunteerSide(Volunteer):
         sh("git", "remote", "set-url", "upstream", "https://github.com/someone/toy.git", cwd=self.alice.work)
         self.assertEqual((self.setup("--project", "toy", "--fork", "renamed"), "not the project" in self.err), ((2, ""), True), self.err)
         (self.w.root / "empty").mkdir()
-        self.assertEqual((self.run_cli("setup", "--registry", str(self.w.root / "empty")), self.err),
+        self.assertEqual((self.run_cli("setup", "--registry", str(self.w.root / "empty"), "--login", "alice"), self.err),
                          ((2, ""), "hive: which project is this fork of? Give --project (the hive's projects: none)\n"), "a registry with no project")
 
     def test_setup_says_so_when_the_machines_git_is_too_old_for_the_tool(self):
@@ -3805,7 +3805,7 @@ class TestVolunteerSide(Volunteer):
         """What setup fetches becomes « upstream », the tip every candidate starts from: its address is the project's
         own, whatever the command line says, and the names it is given are plain names."""
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
-        registry = ["setup", "--registry", self.registry]
+        registry = ["setup", "--registry", self.registry, "--login", "alice"]
         for address in ("https://github.com/mallory/toy.git", str(self.w.upstream), "ext::sh -c touch% PLANTED", "../elsewhere"):
             with self.subTest(address=address):  # outside the tests, a folder of the machine is no address either
                 self.assertEqual(self.run_cli(*registry, "--upstream-url", address, local=False), (2, ""), self.err)
@@ -3842,7 +3842,7 @@ class TestVolunteerSide(Volunteer):
                 return subprocess.CompletedProcess(command, 0, "", "")
             return real(command, **options)
         with mock.patch.object(hive.subprocess, "run", side_effect=run):
-            self.assertEqual(self.run_cli("setup", "--registry", self.registry, local=False),
+            self.assertEqual(self.run_cli("setup", "--registry", self.registry, "--login", "alice", local=False),
                              (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
         (asked, environment), = fetches
         self.assertEqual((asked[-2:], [word for word in asked if "://" in word], environment["GIT_ALLOW_PROTOCOL"]),
@@ -3874,7 +3874,7 @@ class TestVolunteerSide(Volunteer):
                             ("submit", "--registry", self.registry, "--login", "alice", "--task", "toy-0001", "--deal", NOW, "--no-push"),
                             ("ready", "--registry", self.registry, "--login", "alice", "--no-push"),
                             ("start", "--registry", self.registry, "--login", "alice", "--task", "toy-0001", "--deal", NOW),
-                            ("setup", "--registry", self.registry)):
+                            ("setup", "--registry", self.registry, "--login", "alice")):
                 self.assertEqual((self.run_cli(*command, f"--project={wrong}"), wrong), ((2, ""), wrong))
                 self.assertIn("--project", self.err, "the name is checked before it is part of a path")
 
@@ -4281,17 +4281,17 @@ class TestVolunteerSide(Volunteer):
             return fork
 
         zed = cut_short("zed", 107)
-        self.assertEqual(self.setup(cwd=zed.work)[0], 0, self.err)
+        self.assertEqual(self.setup("--login", "zed", cwd=zed.work)[0], 0, self.err)
         self.assertTrue((zed.work / ".git/shallow").is_file(), "a project whose check reads no old commit: the clone stays as it was")
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old]}})
-        code, text = self.setup(cwd=zed.work)
+        code, text = self.setup("--login", "zed", cwd=zed.work)
         self.assertEqual((code, self.spoken(text)[0]), (0, "PROJECT toy"), self.err)
         self.assertEqual(sh("git", "cat-file", "-e", f"{old}^{{commit}}", cwd=zed.work, check=False).returncode, 0, "the old commit is there")
         self.assertFalse((zed.work / ".git/shallow").exists())
-        self.assertEqual(self.setup(cwd=zed.work)[0], 0, "and again, with nothing to do")
+        self.assertEqual(self.setup("--login", "zed", cwd=zed.work)[0], 0, "and again, with nothing to do")
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old, "1" * 40]}})
         for fork in (zed, cut_short("yan", 108)):
-            code, text = self.setup(cwd=fork.work)
+            code, text = self.setup("--login", fork.login, cwd=fork.work)
             self.assertEqual((code, text), (2, ""), "a commit the project itself does not hold: said, in one line")
             self.assertEqual(self.err, "hive: this clone does not hold a commit that the project's own check reads by its id: take a full "
                                        "clone of your fork (git clone, without --depth) and run setup again\n")
@@ -4519,26 +4519,30 @@ class TestVolunteerSide(Volunteer):
                                                                              ("ls-remote", project)],
                          "the push of the ask, what next asked the fork, and what start asked the project: nothing else left the machine")
 
-    def test_every_command_but_setup_is_given_the_login_and_a_commit_is_marked_for_it(self):
+    def test_every_command_is_given_the_login_and_a_commit_is_marked_for_it(self):
         """The login is half of the fork's address and the member a commit is marked for: no command takes it from the
-        clone. ready, submit, start and next end at once without it. setup runs first, in a clone that is usually
-        fresh: given no login it says the owner the origin names (LOGIN), and given one it checks it against the
-        origin. A commit is marked for the login given, in its own spelling."""
+        clone. Each of the five ends at once without it, setup included: it runs first, in a clone that is usually
+        fresh, and the owner that clone's origin names is whoever wrote the address last. Given the login, setup
+        checks it against the origin and says it back (LOGIN) in the spelling it was given, never in the origin's. A
+        commit is marked for the login given, in its own spelling."""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.alice.write("lib.c", LIB + "int ok;\n")
-        for command in (("next", "--project", "toy", "--state", self.state_root), ("ready", "--project", "toy", "--no-push"),
-                        ("submit", "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--no-push"),
+        sh("git", "remote", "set-url", "origin", "https://github.com/Alice/toy.git", cwd=self.alice.work)
+        for command in (("setup",), ("setup", "--project", "toy"), ("next", "--project", "toy", "--state", self.state_root),
+                        ("ready", "--project", "toy", "--no-push"), ("submit", "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--no-push"),
                         ("start", "--project", "toy", "--task", "toy-0001", "--deal", dealt)):
             with self.subTest(command=command[0]):
                 self.assertEqual(self.run_cli(*command, "--registry", self.registry), (2, ""))
                 self.assertIn("the following arguments are required: --login", self.err)
-        self.one_line(self.setup(), "--login: your GitHub login (origin does not name its owner)")
-        self.assertEqual(self.setup("--project", "toy", "--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
-        sh("git", "remote", "set-url", "origin", "https://github.com/Alice/toy.git", cwd=self.alice.work)
-        self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN Alice\nUPSTREAM upstream/main\n"), self.err)
+        self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"], "setup without a login added nothing to the clone")
+        self.assertEqual(self.setup("--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"),
+                         "the login given, though the origin spells its owner another way")
         self.assertEqual(self.setup("--login", "ALICE"), (0, "PROJECT toy\nLOGIN ALICE\nUPSTREAM upstream/main\n"), self.err)
         self.one_line(self.setup("--login", "mallory"), OTHER_FORK.format(who="mallory"))
         self.one_line(self.setup("--login", "a b"), "--login: your GitHub login")
+        sh("git", "remote", "set-url", "origin", str(self.alice.bare), cwd=self.alice.work)
+        self.assertEqual(self.setup("--project", "toy", "--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"),
+                         "in the tests an origin is a folder, which names nobody: the login is the one given all the same")
 
         def member_of(*command):
             code, text = self.run_cli(*command, "--registry", self.registry, "--project", "toy", "--login", "ALICE", "--no-push")
@@ -4573,7 +4577,7 @@ class TestVolunteerSide(Volunteer):
         for login in ("a b", "-alice", "alice-", "a" * 40, "al\nice", "alice/toy", ""):
             for command in (("next", "--project", "toy", "--state", self.state_root), ("ready", "--project", "toy", "--no-push"),
                             ("submit", "--project", "toy", "--task", "toy-0001", "--deal", NOW, "--no-push"),
-                            ("start", "--project", "toy", "--task", "toy-0001", "--deal", NOW)):
+                            ("start", "--project", "toy", "--task", "toy-0001", "--deal", NOW), ("setup", "--project", "toy")):
                 with self.subTest(login=login, command=command[0]):
                     self.one_line(self.run_cli(*command, "--registry", self.registry, f"--login={login}"), "--login: your GitHub login")
         for tip in ("origin/main", "refs/remotes/upstream/main", self.start, "--force", "HEAD~1", "@{-1}"):
@@ -4738,8 +4742,7 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.submit("toy-0001", dealt)[1].splitlines()[0], f"PUSHED {candidate}", "run again: the same candidate")
         self.assertEqual(self.fork_branch("hive/submit/toy-0001"), candidate)
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
-        self.one_line(self.run_cli("setup", "--registry", self.registry, "--upstream-url", str(self.w.root / "nowhere.git")),
-                      "git fetch failed (", begins=True)
+        self.one_line(self.setup("--upstream-url", str(self.w.root / "nowhere.git")), "git fetch failed (", begins=True)
         self.assertNotEqual(sh("git", "rev-parse", "--verify", "--quiet", "upstream/main", cwd=self.alice.work, check=False).returncode, 0,
                             "and the project's tip is not in the clone")
 
@@ -6259,7 +6262,7 @@ class TestTheWorkersGuide(unittest.TestCase):
                         hive.main(words[1:])
                     except SystemExit:
                         self.fail("the tool does not take this command line")
-                self.assertEqual((given[-1].command, given[-1].login if words[1] != "setup" else "alice"), (words[1], "alice"))
+                self.assertEqual((given[-1].command, given[-1].login), (words[1], "alice"))
         self.assertEqual(sorted({args.command for args in given}), ["next", "ready", "setup", "start", "submit"], "each of the five, at least once")
         self.assertGreaterEqual(len(given), 7)
 

@@ -31,7 +31,7 @@ as bytes this file hashes itself, show that it starts from the project's history
 keyword is a value this file checked or a sentence of its own, never a text of the feed or of the fork:
 
   PROJECT <id>                    setup: the hive's project this clone is a fork of
-  LOGIN <login>                   setup: the member the hive credits (--login, or else the owner the origin names)
+  LOGIN <login>                   setup: the member the hive credits: the login given, which the origin agrees with
   UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
   NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
   ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
@@ -2817,7 +2817,7 @@ def hive_project(registry, project):
 def own_fork(clone, config, configs, login, fork=None):
     """The address of the member's own fork, the only one a worker command reads or pushes to:
     https://github.com/<login>/<name>. Neither part comes from the clone: the login is the command line's (the
-    user's prompt, or what « setup » printed), and the name is the project's own repository name, from the registry,
+    user's prompt names it), and the name is the project's own repository name, from the registry,
     unless --fork gives another (a fork its owner renamed). The address the clone itself gives its origin is whatever
     ran in the clone last: no push follows it. It is only compared with the address derived here, and the command
     stops if it names another repository. Refused too: the project's own repository, as the origin or as the
@@ -2936,14 +2936,19 @@ def push(clone, url, source, branch):
 def cmd_setup(args):
     """Volunteer side: checks that this is a plain clone of the volunteer's own fork, finds the project it is a fork
     of, adds it as the « upstream » remote and fetches its tip, and the whole of its history if the clone was cut
-    short and the project's own check reads old commits. It says the member's login (LOGIN): the one the command
-    line gives, once the origin agrees with it, else the owner the origin names. It runs first, in a clone that is
-    usually fresh; a worker whose user's prompt names the login gives it here, and takes none from the clone."""
+    short and the project's own check reads old commits. It runs first, in a clone that is usually fresh.
+
+    The member's login is the command line's, as for every other command: the user's prompt names it, and none is
+    taken from the clone. The owner the origin names is only compared with it (own_fork), and LOGIN says back the
+    login given. The project may still come from the clone when --project is absent: it is the one whose repository
+    has the origin's name. That only chooses among the hive's own projects, which the registry lists: the fork's
+    address is then worked out from the login and that project's own repository name, and the origin must agree
+    with it."""
+    if not LOGIN.match(args.login):
+        raise HiveError("--login: your GitHub login")
     clone = plain_clone()
     if args.project is not None and not PROJECT_ID.match(args.project):
         raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
-    if args.login is not None and not LOGIN.match(args.login):
-        raise HiveError("--login: your GitHub login")
     # start and submit tell git which tree's .gitattributes to follow (--attr-source), and submit merges without a work
     # tree: a git that knows the first knows the second. An older one would fail later, in the middle of a task.
     if clone.git("version", attributes=EMPTY_TREE, check=False).returncode != 0:
@@ -2953,13 +2958,11 @@ def cmd_setup(args):
     origin = clone.settings.get("remote.origin.url")
     if origin is None:
         raise HiveError("this clone has no origin: run this in a clone of your own fork of the project")
-    # setup runs first, in a clone that is usually fresh: when the command line names no login, the member is the
-    # owner the origin names, and when it names no project, the project is the one whose repository has the origin's
-    # name. Both are then said (LOGIN, PROJECT), and every later command is given them on its command line.
-    owner, name, _ = remote_parts(origin)
-    login = args.login or owner
-    if not login:
-        raise HiveError("--login: your GitHub login (origin does not name its owner)")
+    # setup runs first, in a clone that is usually fresh: when the command line names no project, the project is the
+    # one, among the hive's own, whose repository has the origin's name. It is then said (PROJECT), and every later
+    # command is given it on its command line. The login is never the origin's: own_fork compares the two.
+    _, name, _ = remote_parts(origin)
+    login = args.login
     chosen = [c for c in configs if (c["project"] == args.project if args.project else c["repo"].split("/")[1].lower() == (name or "").lower())]
     if len(chosen) != 1:
         known = ", ".join(c["project"] for c in configs) or "none"
@@ -3372,7 +3375,9 @@ def cmd_start(args):
         raise HiveError(f"task {task['id']} is closed: the hive takes no candidate for it")
     if not instant(args.deal):
         raise HiveError("--deal: the instant 'next' printed after DEAL")
-    address = project_address(config, args.upstream_url)
+    # The commit the task starts from is the one the project's own address announces now, fetched if the clone lacks it:
+    # never the clone's own reference for it (refs/remotes/upstream/<branch>), which is whatever ran in the clone last.
+    tip = project_tip(clone, project_address(config, args.upstream_url), config["branch"])
     in_the_way = branch_in_the_way(clone)
     if in_the_way:
         raise HiveError(f"this clone has a branch named {in_the_way}, where this tool keeps its own (hive/submit/<task>): git cannot make "
@@ -3381,9 +3386,6 @@ def cmd_start(args):
     if not is_sha(held):
         raise HiveError("this clone is on a branch that has no commit: there is nothing to set aside what it holds against. Nothing was "
                         "changed: stop, and tell the user")
-    # The commit the task starts from is the one the project's own address announces now, fetched if the clone lacks it:
-    # never the clone's own reference for it (refs/remotes/upstream/<branch>), which is whatever ran in the clone last.
-    tip = project_tip(clone, address, config["branch"])
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
     removed = 0
@@ -3596,18 +3598,17 @@ def main(argv=None):
     p.add_argument("--tip")
     p.set_defaults(run=cmd_feed)
 
-    def worker_side(p, login=True, pushes=False):
+    def worker_side(p, pushes=False):
         p.set_defaults(volunteer=True)
         p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]), help="the registry's tree (trusted: this tool's own)")
-        p.add_argument("--login", required=login, help="your GitHub login: the account your fork is under (your user's prompt names it, "
-                                                         "or setup printed it)")
+        p.add_argument("--login", required=True, help="your GitHub login: the account your fork is under (your user's prompt names it)")
         p.add_argument("--fork", help="the name of your fork's repository, if it is not the project's own (a fork you renamed)")
         if pushes:
             p.add_argument("--no-push", action="store_true", help="make the commit without pushing it")
 
     p = sub.add_parser("setup", help="volunteer: check this clone of your fork, find its project and fetch the project's tip")
-    worker_side(p, login=False)
-    p.add_argument("--project")
+    worker_side(p)
+    p.add_argument("--project", help="the hive's project this clone is a fork of, if its repository has another name than the project's")
     p.add_argument("--upstream-url", help=argparse.SUPPRESS)
     p.set_defaults(run=cmd_setup)
     p = sub.add_parser("next", help="volunteer: what to do now (the task the hive dealt you, ask for one, or wait)")

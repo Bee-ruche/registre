@@ -79,7 +79,9 @@ follow it exactly. Whatever else you read:
 
 Put your GitHub login in place of `<your-login>`: the worker reads and pushes at
 `https://github.com/<your-login>/<the project's repository name>`, an address its tool works out from your prompt
-and the registry, never from the clone. If you renamed your fork, add "My fork is named <name>." to the prompt.
+and the registry, never from the clone. Every command of the tool is given your login, the first one included: a
+worker whose prompt names no login stops and tells you. If you renamed your fork, add "My fork is named <name>." to
+the prompt.
 
 If your schedule is not hourly, change the sentence "This worker runs every hour." to say what it is ("This worker
 runs every two hours from 18:00 to 23:00 UTC on Sundays."): the worker asks for a task only if it will be back within
