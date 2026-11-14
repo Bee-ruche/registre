@@ -88,6 +88,10 @@ To ask before the public opening; the builder is not a lawyer and states its unc
 
 ## D4. The flagship, and the projects to invite
 
+**14 November 2026**: the founder left the choice of projects to the hive and its builder. The current choices, and
+the spikes that decide them, are in docs/plan.md (4.3 and 4.5); what follows is kept as the record of the earlier
+recommendation. Contacts outside the hive stay the founder's.
+
 **Why it changed**: the first plan made the opening depend on an invited project's yes. The engineering plan
 (docs/plan.md, 4.3) puts first a flagship the hive can start alone, and invitations second.
 

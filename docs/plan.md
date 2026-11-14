@@ -101,7 +101,8 @@ The power pointed at the hive is wasted in four places. In the order they bite:
 
 A hive with a thousand workers and two hundred tasks wastes four fifths of them. **Tasks are generated, never
 written one by one.** Each project has a splitter, written once by its maintainers, that turns the project's own
-data into small tasks with a goal a machine can check. Three kinds cover what the hive can judge:
+data into small tasks with a goal a machine can check. Three kinds cover what the collector can judge today
+(the other kinds of work the hive is for, and how each opens, are in 4.5):
 
 | Kind | A task is | The judge accepts when | Splitter reads |
 | --- | --- | --- | --- |
@@ -210,8 +211,12 @@ human.
 ### 4.2 What a hosted project must have
 
 1. **Real demand**: people who want the result, not only its builders.
-2. **An objective judge**: a machine can say whether a contribution is right.
-3. **Splittable work**: hundreds of small tasks on separate files.
+2. **A judge that has been attacked.** Where a machine can say whether a contribution is right, a machine does
+   (the three kinds of 3.1). Where none can, the hive's own forms of judgment do (4.5). In both cases no judge
+   decides real work before it has held on a school project with known answers (the founder's decision of
+   31 October 2026; docs/vision.md, "a kind of work opens only once its judge has been attacked").
+3. **Splittable work**: many small tasks, independent enough to be dealt to different members; for code, on
+   separate files.
 4. **Legal safety**, stated in the project's file: licences compatible; no copyrighted asset, ROM or key hosted or
    needed; no work that breaks a protection.
 5. **Nobody else's permission needed to start** (new): a hosted project is one the hive may fork or write under its
@@ -221,7 +226,26 @@ human.
 
 1. **miniz: the proving ground, first in service** (phase 1). Optimise tasks, the existing judge, a profiler as
    splitter. It proves the whole chain with three volunteers. It will not draw a crowd, and is not asked to.
-2. **The flagship: PCRE2 in safe Rust, proven case by case against the original** (phase 2 decides). PCRE2 is the
+2. **The first building project: two candidates, and a spike decides** (chosen by the builder on 14 November 2026,
+   by the founder's delegation). The hive does not open on a promise: neither is "chosen" before its spike.
+
+   **First candidate: a memory-safe packet decoder with tcpdump's exact output.** A new work in a repository of the
+   hive's own, written from tcpdump's printers, pinned to one release. Read on upstream's sources at the tag
+   `tcpdump-4.99.7` (commit 1c950db, 21 September 2026), on 14 November 2026:
+   - **It splits**: 158 printer files, one protocol each, some 300 tasks once the larger ones are cut. This is what
+     the hive lacks most: miniz's eleven tasks sit on three files, so three members at most hold one at a time.
+   - **A judge exists**: upstream's own tests, 606 test lines and 653 expected outputs on 724 captures; the candidate
+     prints what the pinned original prints, on those and on captures the judge alters; it never panics.
+   - **It needs nobody's yes**, and its category exists (parsing and serialization: the same output as the reference,
+     the same refusals on invalid input).
+   - **Not known, and what the spike must answer**: whether the project's sandbox can carry a Rust toolchain and
+     the pinned original with no network; whether one small printer and one slice of a large one (BGP) reach exact
+     output in a three-hour deal; how many test lines exercise one printer alone, so that each task has tests of its
+     own; and the licence questions of 4.4.
+
+   **Second candidate: PCRE2 in safe Rust**, the earlier flagship. It has the wider reach, and it splits less well:
+   one compiler and one matcher, a long serial start, and a C interface to keep.
+   PCRE2 is the
    regular-expression library behind a large number of programs **(unverified list: git, grep, PHP, nginx)**. A
    memory-safe, compatible engine is wanted: a search of GitHub on 12 November 2026 found one project that plans
    it and has not started, one that states it is not a drop-in replacement, and no complete port (a search, not a
@@ -236,7 +260,7 @@ human.
    - whether a regex engine's skeleton can be cut into several hundred leaves on separate files;
    - what a judgement costs in minutes.
 
-   If the spike fails, the flagship is chosen again with the same criteria; the hive does not open on a promise.
+   If both spikes fail, the first building project is chosen again with the same criteria.
 3. **libyaml: put to sleep.** It has no outside judge. Nothing is deleted; it comes back as tasks if someone ports
    its judge.
 4. **Checking the AI-written ports that already exist** (the founder's decision, D9). At least one public effort
@@ -246,6 +270,12 @@ human.
    founder decides. The hive does **not** port again what they ported: that would be the duplication the hive
    exists to end.
 5. **Gaming: set aside** by the founder on 12 November 2026.
+6. **Mathematics: a trial before any opening** (4.5). Two public projects already take donated assistant quota for
+   Lean proofs (reported by a research pass of 14 November 2026, not yet read at the source): the hive does not
+   double a living effort, and opens this kind only if a trial on vetted statements clears a rate set in advance.
+7. **A large free program built piece by piece** (the founder's example: an image editor): the one first step a
+   machine can judge today is a library of pixel operations compared with a reference. To study after the first
+   building project.
 
 ### 4.4 How each stays legal
 
@@ -253,12 +283,54 @@ human.
 | --- | --- | --- |
 | miniz (hosted) | MIT (read in the fork's `LICENSE`) | A fork under its licence; contributions under the same; no asset, no protection involved |
 | PCRE2 in Rust (hosted, if phase 2 says yes) | BSD-3-Clause WITH PCRE2-exception; its `LICENCE.md` says of the test data that it "is not copyrighted and is in the public domain" (read on 12 November 2026) | A port is a derived work under the same licence, notices kept; the judge uses the public-domain test data; no asset, no protection involved |
+| Packet decoder (hosted, if its spike says yes) | tcpdump's `LICENSE` is a three-clause BSD licence; each printer carries its own notice (read at the tag `tcpdump-4.99.7` on 14 November 2026): 76 of the 158 add an advertising clause, three offer "the BSD-style license that accompanies tcpdump" or the GNU GPL (`print-beep.c`, `print-dccp.c`, `print-smb.c`: the hive takes the BSD one), and three carry no licence wording at all (`print-arista.c`, `print-ipnet.c`, `print-ppi.c`) | A port is a derived work of each file it is written from: each ported file keeps that file's notice, and the three files without a notice are not ported until their licence is known. **Open before any opening**: the `tests/` folder states no licence of its own for the captures and the expected outputs; until that is settled the hive hosts no copy of them, and its judge reads them from upstream at the pinned commit. No asset, no protection involved |
 | libyaml (asleep) | MIT (read in the fork's `License`) | As miniz |
+| Mathematics (a trial only) | Lean 4 and mathlib: Apache-2.0; statements from a public repository of formal statements, software Apache-2.0 and other material CC BY 4.0, with CC BY-SA 4.0 for what comes from three named sites (reported by a research pass of 14 November 2026; **to read at the source before the trial**) | The hive depends on the statements at a pinned commit and copies none; a proof is the hive's own work |
 | Invited projects | theirs | Only with the maintainers' written agreement; contributions under the project's licence |
 | Your own | the volunteer's concern | The hive hosts nothing, judges nothing and distributes nothing of it; the volunteer's choice of project and their AI provider's rules are theirs to answer for |
 
 Whatever the project, the hive itself never hosts or distributes copyrighted game assets, ROMs or keys, and never
 helps break a protection.
+
+### 4.5 The other kinds of work, and how each opens
+
+miniz is the first example, not the hive's purpose. docs/vision.md names four kinds of work, set apart by **what
+judges a contribution**: optimizing (a machine: identical outputs and a measure), building (tests written before
+the code by others, a specification, a reference), proving (the kernel of a proof assistant), and deciding without
+an oracle (competing proposals, votes, juries, decisions revised by their measured consequences). The founder said
+it again on 14 November 2026: in time the hive works on less concrete things and goals, and it is for the hive and
+its builder to choose the projects and to put in place what each needs. Sections 3.1 and 4.2 of this plan had
+narrowed the hive to what a machine judges; they are corrected.
+
+**How a kind opens** (the same ladder for each, from the registry's own rules):
+
+1. **Its judge is written down** in docs/judges.md (task ruche-0004): what is judged, how one could cheat, what
+   blocks it, and which seeded errors the judge must catch.
+2. **A school project** calibrates it: small, written by the hive, with no upstream and no outside person, with
+   known answers: seeded cheats, seeded regressions (the founder's decision of 31 October 2026). The cheats that
+   are traps change, and stay out of the public repository.
+3. **The judge is attacked** by a model other than the one that built it, as the collector was.
+4. **Only then a real project**, chosen for demand, splittable work and legal safety (4.2), after a spike.
+
+**The order**, and why:
+
+| Kind | First real project | State |
+| --- | --- | --- |
+| Optimizing | miniz | built, not in service (phase 1) |
+| Building | the packet decoder, then PCRE2 (4.3) | a machine still judges the code; the judgment that is new is of the **tests** others write before the code (seeded mutants they must catch). Next after the pilot |
+| Deciding without an oracle | the hive's own choices first (which tasks, which project next), on a school project | the least concrete kind, and the hive's own. Its form of judgment is to be designed in docs/judges.md and attacked before it decides anything real; a human's word is final until it has held (commandment 11) |
+| Proving | none yet: a trial (4.3) | the strictest judge, and a field where others already work at scale |
+
+**Several members on one task.** Competing approaches followed by a choice are the hive's rule for large decisions
+(docs/vision.md; R11 and ruche-0001 in the older flow). The collector deals one task to one member, which is what
+makes copying worthless while forks are public. So races are tried on the school projects first, and a real
+project keeps one holder per task until a way to keep a rival's work unread has held. Where the work adds up
+(test inputs that each cover something new), every candidate that adds something is kept, and no race is needed.
+
+**What a volunteer may prefer.** The unit exists in the registry: a node of the tree of meaning (docs/tree.md): a
+category, a project, or an area of a project. A volunteer chooses a project by the fork their agent works in, and,
+within it, may name an area. The first version of the preference names a file of the project's tasks; it moves to
+the area with the project types of ruche-0003.
 
 ## 5. The volunteer's experience
 
