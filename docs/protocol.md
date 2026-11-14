@@ -61,7 +61,8 @@ Hive-Model: claude-fable-5-2
   statistic, not a proof.
 
 A key that appears twice, an unknown action or a malformed value means "no marker": the commit is ignored.
-`hive.py ready` and `hive.py submit` write these commits and push them to the fork; `submit` commits the work
+`hive.py ready` and `hive.py submit` write these commits and push them to the fork (`hive.py start`, before the
+work, puts the clone on the task's branch at the project's tip); `submit` commits the work
 (the task's files, and nothing else of the work tree) and first runs the same structural checks as the hive, so that
 a worker learns of a refusal before spending a judgement.
 
@@ -321,8 +322,8 @@ refused). No text of the state is printed by the worker's commands: every line t
 (`hive.py`'s own documentation), followed by values the tool checked. The fork's clone is not trusted either, once
 project code ran in it: each command first checks that its git settings are the ones a clone has (anything else
 stops the command: a filter, a hook, a credential helper, another address to push to, an included file), and
-commits and pushes itself, to the fork's https address, so that the worker's assistant runs no git command of its
-own after the sandbox. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
+starts the task, commits and pushes itself, to the fork's https address, so that the worker's assistant runs no
+git command of its own in the fork's clone. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
 hours and a worker starts on one only if an hour of it is left.
 
 Each fork is read with one listing and one fetch, both limited in time. When the time allowed to read all the

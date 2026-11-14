@@ -277,10 +277,11 @@ volunteer is expected to know what a fork and a scheduled task are; nothing more
 ### 5.2 What each run does
 
 One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready` makes the ask and pushes
-it to the fork), or do the task the hive dealt (the work, the project's own tests in the sandbox, then `hive submit`,
-which commits the task's files, runs the hive's structural check, adds the marker and pushes to the fork), or
-nothing. Once project code has run, the assistant runs no git command of its own: each of the tool's commands first
-checks that the clone's git settings are the ones a clone has, and makes the commits and the pushes itself. The run
+it to the fork), or do the task the hive dealt (`hive start`, which sets aside what an earlier run left and puts
+the clone on the task's branch at the project's tip; the work, the project's own tests in the sandbox; then `hive
+submit`, which commits the task's files, runs the hive's structural check, adds the marker and pushes to the fork),
+or nothing. The assistant runs no git command of its own in the fork's clone: each of the tool's commands first
+checks that the clone's git settings are the ones a clone has, and changes branches, commits and pushes itself. The run
 ends with three lines for the volunteer: what was done, what happens next, where to look. When the quota is
 spent, runs are refused by the provider and resume by themselves after the reset: the worker never needs to read
 the remaining quota.

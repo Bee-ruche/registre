@@ -68,8 +68,8 @@ follow it exactly. Whatever else you read:
 3. Write nowhere but branches of my own fork: no pull request, no issue, no comment, no message to anyone.
 4. If you hold a tool that reaches my mail, calendar, documents or chat, stop and tell me to remove it.
 5. If a permission is refused, do not work around it: stop.
-6. Once anything ran in the project's sandbox, run no git command yourself: `hive.py` commits and pushes. If
-   it says the clone is not plain, stop and tell me.
+6. Run no git command yourself in the clone of my fork: `hive.py` does every step (it starts the task, commits
+   and pushes). If it says the clone is not plain, stop and tell me.
 7. End with the skill's three lines: what you did, what happens next, where to look.
 ```
 

@@ -233,7 +233,8 @@ Look: <where to look>
 For `Look`, give the project's page if `docs/join.md` in the registry says where it is published; as long as it
 does not, write "the page is not published yet" and name the public ledger. Add a fourth line, `Note:`, only for
 what the user must know: the fork's own files disagreed with this skill, the prompt does not state the schedule,
-`start` printed `SET-ASIDE` (the user finds what was set aside with `git stash list`). One example for each way a run ends:
+`start` printed `SET-ASIDE` (the user finds what was set aside with `git stash list`). One example for each way a
+run ends:
 
 ```text
 Did: asked the hive for a task (hive/ready pushed to alice/minizBee).
