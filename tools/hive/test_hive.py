@@ -3857,6 +3857,45 @@ class TestVolunteerSide(Volunteer):
         with mock.patch.object(hive, "STATE_BYTES", 100):
             self.assertEqual(self.next(), (0, NOT_READ), "a feed larger than the tool reads")
 
+    def test_a_file_of_the_state_is_read_up_to_a_size_and_not_at_all_beyond(self):
+        """What a worker reads of the hive's state has a bound: a file of exactly that size is read, and one byte more
+        makes it a file the tool does not read, whatever its first bytes say: a feed is never read in part."""
+        self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        feed = (self.w.state / "feed.json").read_bytes()
+        with mock.patch.object(hive, "STATE_BYTES", len(feed) + 10):
+            (self.w.state / "feed.json").write_bytes(feed + b" " * 10)
+            self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "exactly the size the tool reads")
+            (self.w.state / "feed.json").write_bytes(feed + b" " * 11)
+            self.assertEqual(self.next(), (0, NOT_READ), "one byte more, though the bytes read are a whole feed")
+
+    def test_next_gives_the_feeds_counts_for_its_own_task_each_within_its_bounds(self):
+        """The feed says how hard a task has proved: how many candidates the judge refused, for which of the tool's
+        own reasons, and the hint. Next gives the numbers of the task it deals, wherever that task stands in the
+        feed's list and whatever else the list holds; a number is given up to its bound and left out beyond it."""
+        self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        feed, million = self.w.feed_file(), 10 ** 6
+
+        def counts(*tasks):
+            (self.w.state / "feed.json").write_text(json.dumps({**feed, "tasks": list(tasks)}))
+            code, text = self.next()
+            self.assertEqual((code, text.startswith("TASK toy-0001\n")), (0, True), text + self.err)
+            return [line for line in self.spoken(text) if re.match(r'\| \{"(refusals|refused_for|hint)"', line)]
+
+        mine = {"id": "toy-0001", "refusals": 3, "hint": 2, "refused_for": {"judge_refused": 2, "goal_not_met": 1}}
+        said = ['| {"refusals": 3}', '| {"refused_for": {"goal_not_met": 1, "judge_refused": 2}}', '| {"hint": 2}']
+        self.assertEqual(counts(mine), said)
+        self.assertEqual(counts("x", 7, None, ["toy-0001"], {"id": "toy-0002", "refusals": 9, "hint": 3}, mine, {"id": "toy-0001", "refusals": 8}),
+                         said, "the first entry that names the task, past what names another or is no entry at all")
+        self.assertEqual(counts({"id": "toy-0002", "refusals": 9, "hint": 3, "refused_for": {"empty": 1}}), [], "another task's numbers are not this one's")
+        self.assertEqual(counts({"id": "toy-0001", "refusals": million, "hint": 3, "refused_for": {"empty": million, "conflict": 0}}),
+                         [f'| {{"refusals": {million}}}', f'| {{"refused_for": {{"conflict": 0, "empty": {million}}}}}', '| {"hint": 3}'])
+        self.assertEqual(counts({"id": "toy-0001", "refusals": 0, "hint": 1, "refused_for": {"empty": million + 1, "conflict": -1, "binary": 1}}),
+                         ['| {"refusals": 0}', '| {"refused_for": {"binary": 1}}', '| {"hint": 1}'])
+        self.assertEqual(counts({"id": "toy-0001", "refusals": million + 1, "hint": 4, "refused_for": {"empty": million + 1}}), [])
+        self.assertEqual(counts({"id": "toy-0001", "refusals": -1, "hint": 0, "refused_for": {"empty": -1}}), [])
+
     def test_the_hours_a_worker_must_come_back_within_are_the_projects(self):
         """A deal lasts deal_hours, and a worker starts on one only with an hour left: it must run at least every
         deal_hours - 1 hours. The number is derived, in every sentence that gives it."""
