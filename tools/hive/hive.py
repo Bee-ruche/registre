@@ -160,8 +160,11 @@ ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
             "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true", "-c", "merge.renames=false",
             "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
-# Settings git would take from the environment: never, on the hive's side (two steps must derive the same commit).
-GIT_SETTINGS_OF_THE_ENVIRONMENT = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG", "GIT_TEMPLATE_DIR")
+# Settings and places git would take from the environment: never, on the hive's side (two steps must derive the same
+# commit, from the repository each command names and from no other).
+GIT_SETTINGS_OF_THE_ENVIRONMENT = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG", "GIT_TEMPLATE_DIR", "GIT_DIR", "GIT_WORK_TREE",
+                                   "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                                   "GIT_NAMESPACE", "GIT_REPLACE_REF_BASE", "GIT_ATTR_SOURCE", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE")
 GIT_ISOLATED = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0",
                 "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1"}
 
@@ -1269,27 +1272,24 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     # failed on (one that breaks the judging delays the others once).
     queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
+    carried, within = 0, []
     for candidate in queue:
         # Its commits that are not the project's, counted no further than the limit: one with too many is refused
         # without its history being carried to the other steps.
         count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}")
         candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
-        # And what they weigh, as git stores them: one too heavy is refused the same way, without being carried.
-        # (A history that is too long is not walked to be weighed: it is refused already.)
-        weight = 0 if candidate["long"] else int(git(repo, "rev-list", "--objects", "--disk-usage", candidate["sha"],
-                                                     f"^{need_sha(tip)}").stdout.strip())
+        # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
+        # without being carried. A history that is too long is not packed to be weighed: it is refused already.
+        weight = 0 if candidate["long"] else packed_weight(repo, candidate["sha"], tip, config["limits"]["history_bytes"])
         candidate["heavy"] = weight > config["limits"]["history_bytes"]
-        candidate["weight"] = 0 if candidate["heavy"] else weight
-    # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for the
-    # next run, where the oldest deal is first again. The first one is always carried.
-    carried, within = 0, []
-    for candidate in queue:
-        if within and carried + candidate["weight"] > BUNDLE_BYTES:
+        # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for
+        # the next run, where the oldest deal is first again (they are not weighed in this one). The first one is
+        # always carried.
+        weight = 0 if candidate["heavy"] else weight
+        if within and carried + weight > BUNDLE_BYTES:
             break
-        carried += candidate.pop("weight")
+        carried += weight
         within.append(candidate)
-    for candidate in queue[len(within):]:
-        del candidate["weight"]
     if len(within) < len(queue):
         log(f"the candidates' file is full: {len(queue) - len(within)} candidate(s) wait for the next run")
     queue = within
@@ -1340,7 +1340,42 @@ def member_mark(login):
     return hashlib.sha256(f"hive-member:{login.lower()}".encode()).hexdigest()[:16]
 
 
-BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, as git stores them)
+BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, each as it packs alone)
+PACK_SECONDS = 300  # how long git may take to pack one candidate's commits before they count as too heavy
+
+
+def packed_weight(repo, sha, tip, most):
+    """What a candidate's own commits weigh in the file the plan hands over: the size of the pack git writes for them
+    on the project's tip, with the very options the bundle uses, so that only the project's own objects serve as
+    bases. How git happens to store them in this clone says nothing of it: fetched beside another branch of the
+    same fork, they may sit there as small differences from objects the bundle will not hold. The pack is read no
+    further than `most` + 1 bytes and never kept. Returns `most` + 1 for one that is heavier, that git cannot pack,
+    or that takes it longer than PACK_SECONDS: such a candidate is not carried."""
+    command = ["git", *GIT_BASE, "-C", str(repo), "pack-objects", "--stdout", "--thin", "--delta-base-offset", "--revs", "-q"]
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment())
+    alarm = threading.Timer(PACK_SECONDS, process.kill)
+    alarm.start()
+    weight = 0
+    try:
+        try:
+            process.stdin.write(f"{need_sha(sha)}\n^{need_sha(tip)}\n".encode())
+            process.stdin.close()
+        except OSError:
+            pass  # git ended before reading: its exit code says so below
+        while weight <= most:
+            block = process.stdout.read(1 << 16)
+            if not block:
+                break
+            weight += len(block)
+        if weight > most:
+            process.kill()
+        process.stdout.close()
+        if process.wait() != 0 and weight <= most:
+            log(f"{sha[:12]}: git could not pack this candidate's commits, or not in time: it is not carried")
+            return most + 1
+    finally:
+        alarm.cancel()
+    return min(weight, most + 1)
 
 
 def carried(plan_):

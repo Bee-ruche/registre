@@ -23846,7 +23846,10 @@ class TestHiveWorkflow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text = (ROOT / ".github/workflows/hive.yml").read_text(encoding="utf-8")
-        cls.stream = yaml.safe_load(cls.text)
+
+        # A key written twice is read once by the usual parser, the last one: what a reader sees would not be what runs.
+        cls.stream = yaml.load(cls.text, Loader=cls.once_loader())
+        assert cls.stream == yaml.safe_load(cls.text)
         cls.jobs = cls.stream["jobs"]
         document = (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8")
         assert "```yaml" not in document and "runs-on:" not in document, "the file is the run's only text: the document does not repeat it"
@@ -23939,6 +23942,32 @@ class TestHiveWorkflow(unittest.TestCase):
                 upload("verdicts", "verdicts.json", **{"if": "always()"})]})
         self.assertEqual(self.stream[True], {"schedule": [{"cron": "17 * * * *"}], "workflow_dispatch": None}, "once an hour, or by hand")
         self.assertEqual(self.stream["name"], "Hive")
+
+    def test_no_other_workflow_names_the_hives_environments_or_keys(self):
+        """An environment gives its keys to any job that names it, in any workflow of a branch it accepts: the two
+        environments accept `main` only (a setting), and on `main` this file alone names them."""
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            if path.name == "hive.yml":
+                continue
+            with self.subTest(workflow=path.name):
+                text = path.read_text(encoding="utf-8")
+                for word in ("hive-state", "hive-apply", "HIVESTATESECRET", "HIVEAPPLYSECRET", "create-github-app-token"):
+                    self.assertNotIn(word.lower(), text.lower())
+                for name, job in yaml.safe_load(text)["jobs"].items():
+                    environment = job.get("environment")
+                    named = environment.get("name") if isinstance(environment, dict) else environment
+                    self.assertIn(named, (None, "github-pages"), f"{name}: an environment this test does not know")
+        with self.assertRaisesRegex(AssertionError, "a key twice"):  # (the parser of setUpClass does refuse a key written twice)
+            yaml.load("a:\n  b: 1\n  b: 2\n", Loader=type(self).once_loader())
+
+    @staticmethod
+    def once_loader():
+        class Once(yaml.SafeLoader):
+            def construct_mapping(self, node, deep=False):
+                keys = [self.construct_object(key, deep=deep) for key, _ in node.value]
+                assert len(keys) == len(set(map(repr, keys))), f"a key twice in one mapping: {keys}"
+                return super().construct_mapping(node, deep)
+        return Once
 
     def test_nothing_is_set_for_a_whole_job_or_for_the_whole_run(self):
         """A key, a token or a variable reaches a step through that step's own lines, where the test above reads it: the run, a

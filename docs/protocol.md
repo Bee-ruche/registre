@@ -133,7 +133,7 @@ it**: exactly what would land.
 
 | Reason code | Refused when |
 | --- | --- |
-| `unrelated`, `too_many_commits`, `history_too_big`, `conflict`, `empty` | the branch does not come from the project, is too long, holds commits that together weigh more than the project allows (32 MiB as git stores them, unless the project says otherwise: whatever a commit added on the way counts, even removed since), does not merge on the tip, or changes nothing |
+| `unrelated`, `too_many_commits`, `history_too_big`, `conflict`, `empty` | the branch does not come from the project, is too long, holds commits that together weigh more than the project allows (32 MiB, unless the project says otherwise, as git packs them on the project's tip, which is how the hive carries them: whatever a commit added on the way counts, even removed since), does not merge on the tip, or changes nothing |
 | `path_outside_task` | a changed path is not one of the task's files (a hard rule, not a warning) |
 | `protected_path` | a changed path is protected, **at any depth of the tree**: CI and editor automation (`.github/`, `.vscode/`, `.devcontainer/`…), what steers git (`.gitattributes`, `.gitmodules`), **agent instruction files and folders** (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/`, `.cursor/`…), the hive's files (`hive/` at the root), and what the project adds (its tests, its judge) |
 | `special_file`, `mode_change` | a symbolic link or submodule, an empty folder or a folder that is not, byte for byte, the one git writes for its entries (written by hand: an entry twice, entries out of order), a changed file mode |

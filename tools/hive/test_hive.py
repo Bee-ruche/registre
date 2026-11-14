@@ -794,7 +794,53 @@ class TestStructure(Base):
         self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {long: "too_many_commits", fine: "accepted"})
 
     def weight(self, sha):
-        return int(sh("git", "rev-list", "--objects", "--disk-usage", sha, f"^{self.w.tip()}", cwd=self.w.harvest).stdout)
+        return hive.packed_weight(self.w.harvest, sha, self.w.tip(), 1 << 30)
+
+    def test_a_candidate_is_weighed_as_it_will_be_carried_not_as_this_clone_happens_to_store_it(self):
+        """A fork's server may send a candidate's files as small differences from another branch of the same fork, which
+        the hive fetches beside it and ignores. Stored so, they weigh almost nothing in the plan's clone; the file the
+        plan hands over holds them whole. The plan weighs what that file will hold."""
+        blobs = [os.urandom(200_000) for _ in range(3)]
+        self.alice.fresh("beside")  # a branch without a marker: fetched with the rest, never a candidate
+        for number, blob in enumerate(blobs):
+            self.alice.write(f"bulk/{number}.bin", blob)
+        for number in range(120):  # enough objects for the fetch to keep its pack as it came
+            self.alice.write(f"pad/{number}.txt", f"pad {number}\n")
+        self.alice.commit("beside").push()
+        self.alice.fresh("hive/submit/x")
+        for number, blob in enumerate(blobs):
+            self.alice.write(f"bulk/{number}.bin", blob[:-64])  # nearly the same bytes, on the way
+        self.alice.commit("bulk")
+        sh("git", "rm", "-rq", "bulk", cwd=self.alice.work)
+        self.alice.commit("and gone")
+        heavy = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
+        sh("git", "repack", "-adf", "--window=50", cwd=self.alice.bare)  # the fork stores the candidate's files as differences
+        fine = self.w.fork("bob", 102).submit("toy-0001")
+        self.w.set_config({"limits": {"history_bytes": 100_000}})
+        made = self.w.plan()
+        stored = int(sh("git", "rev-list", "--objects", "--disk-usage", heavy, f"^{self.w.tip()}", cwd=self.w.harvest).stdout)
+        self.assertLess(stored, 100_000, "as this clone stores them, the candidate's commits are light: the case this test is about")
+        self.assertGreater(self.weight(heavy), 500_000, "as the plan's file would hold them, they are not")
+        self.assertEqual({c["sha"]: c["heavy"] for c in made["queue"]}, {heavy: True, fine: False})
+        self.assertLess(self.w.bundle.stat().st_size, 20_000, "and the file holds the light candidate only")
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {heavy: "history_too_big", fine: "accepted"})
+
+    def test_a_candidate_git_cannot_pack_or_packs_too_slowly_is_not_carried_and_stops_nobody_else(self):
+        slow = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
+        fine = self.w.fork("bob", 102).submit("toy-0001")
+        self.w.plan()
+        most = self.weight(slow)
+        self.assertEqual(hive.packed_weight(self.w.harvest, slow, self.w.tip(), most), most, "read to its end when it fits")
+        self.assertEqual(hive.packed_weight(self.w.harvest, slow, self.w.tip(), most - 1), most, "and no further than one byte beyond the limit")
+        self.assertEqual(hive.packed_weight(self.w.harvest, "1" * 40, self.w.tip(), 1000), 1001, "commits git cannot pack are too heavy to carry")
+        with mock.patch.object(hive, "PACK_SECONDS", 0):  # git is stopped at once: as if it took too long
+            self.assertEqual({hive.packed_weight(self.w.harvest, sha, self.w.tip(), 1 << 20) for sha in (slow, fine)}, {(1 << 20) + 1})
+            real = hive.packed_weight
+            with mock.patch.object(hive, "packed_weight", side_effect=lambda repo, sha, tip, most: real(repo, sha, tip, most) if sha == slow else 1):
+                made = self.w.plan()
+        self.assertEqual({c["sha"]: c["heavy"] for c in made["queue"]}, {slow: True, fine: False}, "the plan goes on with the others")
 
     def test_a_candidate_whose_commits_weigh_too_much_is_not_carried_to_the_other_steps(self):
         """What a candidate changes in the end may be one line, and its commits carry anything on the way: a file added
@@ -1494,6 +1540,9 @@ class TestApply(Base):
                                                                          "GIT_CONFIG_VALUE_0": "ISO-8859-1"}),
                                   ("a setting given as a parameter", {"GIT_CONFIG_PARAMETERS": "'i18n.commitEncoding=ISO-8859-1'"}),
                                   ("another time zone, another language", {"TZ": "Asia/Tokyo", "LANG": "fr_FR.UTF-8"}),
+                                  ("another repository named in the environment", {"GIT_DIR": str(self.w.seed / ".git"), "GIT_NAMESPACE": "x",
+                                                                                   "GIT_OBJECT_DIRECTORY": str(self.w.seed / ".git/objects"),
+                                                                                   "GIT_INDEX_FILE": str(self.w.root / "no-index")}),
                                   ("another identity", {"GIT_AUTHOR_NAME": "x", "GIT_COMMITTER_EMAIL": "x@example.invalid", "EMAIL": "y@example.invalid"})):
             with self.subTest(name), mock.patch.dict(os.environ, environment):
                 self.assertEqual(built(), plain)
