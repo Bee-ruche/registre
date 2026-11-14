@@ -3642,6 +3642,27 @@ class TestVolunteerSide(Volunteer):
         self.w.set_config({})
         self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
 
+    def test_setup_given_no_address_asks_git_for_the_projects_own_on_github_and_no_other(self):
+        """As a volunteer runs it, setup is given no address: it fetches the project's branch from the project's own
+        repository on GitHub, over https, and that address becomes the clone's « upstream ». (Nothing leaves this
+        machine: `subprocess.run` is replaced for the fetch alone, which is recorded and not run.)"""
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        real, fetches = subprocess.run, []
+
+        def run(command, **options):
+            if "fetch" in command:
+                fetches.append((command[command.index("fetch"):], options["env"]))
+                return subprocess.CompletedProcess(command, 0, "", "")
+            return real(command, **options)
+        with mock.patch.object(hive.subprocess, "run", side_effect=run):
+            self.assertEqual(self.run_cli("setup", "--registry", self.registry, local=False),
+                             (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
+        (asked, environment), = fetches
+        self.assertEqual((asked[-2:], [word for word in asked if "://" in word], environment["GIT_ALLOW_PROTOCOL"]),
+                         (["https://github.com/Bee-ruche/toy.git", "+refs/heads/main:refs/remotes/upstream/main"],
+                          ["https://github.com/Bee-ruche/toy.git"], "https"))
+        self.assertEqual(sh("git", "remote", "get-url", "upstream", cwd=self.alice.work).stdout.strip(), "https://github.com/Bee-ruche/toy.git")
+
     def test_every_command_pushes_only_to_the_fork_of_the_login_it_is_given(self):
         self.w.run()
         self.alice.write("lib.c", LIB + "int ok;\n")
