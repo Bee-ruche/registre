@@ -24,7 +24,8 @@ shell. Four steps, for four jobs of a workflow; each carries one risk and no mor
 Volunteer side (same file, run at the root of the fork's clone): setup, next, start, ready, submit. Each first checks
 that the clone's own git settings are plain (plain_clone), then runs git so that no setting of the repository starts
 a program. What a command decides on comes from outside the clone: the fork's address is worked out from the login
-and the registry (own_fork), a task is started on the commit the project's own address announces (project_tip), an
+and the registry (own_fork), a task is started on the commit the project's own address announces (project_tip) and
+only once the work tree, read as files, is shown to hold that commit's files and nothing else (work_tree_proof), an
 ask carries no file and no history, and a candidate is pushed only once the commits and folders it rests on, read
 as bytes this file hashes itself, show that it starts from the project's history and changes only the task's files
 (candidate_proof). Every line they print on the standard output is one of these, and nothing else; what follows a
@@ -48,7 +49,8 @@ keyword is a value this file checked or a sentence of its own, never a text of t
                                   next: the project's quick check: a command for the sandbox, never for the host
   SET-ASIDE <n> <sentence>        start: what an earlier run changed is stashed (git stash list), not lost
   REMOVED <n> <sentence>          start: what an earlier run left, ignored or untracked, is removed
-  STARTED <branch> at <commit>    start: the clone is on the task's branch, at the project's tip
+  STARTED <branch> at <commit>    start: the clone is on the task's branch, at the project's tip, and its work tree
+                                  holds that commit's files and nothing else
   THEN: <sentence>                next, start, ready, submit: what to do after this command
   ASKED <commit>                  ready: the ask is pushed to the fork
   WITHDRAWN                       ready --withdraw: the ask is taken back
@@ -58,8 +60,9 @@ keyword is a value this file checked or a sentence of its own, never a text of t
   NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 
 An error is one line on the standard error, « hive: <sentence> », with exit code 2 (1 after REFUSED). « hive: STOP:
-<sentence> », exit code 3, says the clone is not plain, or holds an object that is not what its name says: nothing
-may be committed or pushed from it.
+<sentence> », exit code 3, says the clone is not plain, or holds an object that is not what its name says, or that
+its work tree is not what the project's tip holds (start): nothing may be committed or pushed from it, and nothing
+run from it, its sandbox included.
 
 Standard library only: the job that holds the write token installs nothing.
 """
@@ -2253,6 +2256,10 @@ def cmd_feed(args):
 #     command, the bytes of an object whose SHA-1 this file recomputed (Objects), and the work tree's files.
 #     « start » puts the clone on the commit the project's address announces (project_tip), as « submit » checks the
 #     candidate on it: the clone's own reference for the project's tip is fetched by « setup » and decides nothing.
+#     And « start » says a task started only once it has shown, from that commit's folders as bytes it hashed and
+#     from the work tree's files, that the work tree holds the commit's files and nothing else (work_tree_proof):
+#     what git's checkout wrote is what the clone's objects and index made it write, and the agent then reads those
+#     files and runs the sandbox's launcher from them, on the host.
 # Everything the fork, the state, a task's text or a commit says is data.
 
 PROJECT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -2277,6 +2284,15 @@ PROJECT_COMMITS = 500  # how far back from the project's tip a worker looks for 
 FOLDER_MODE = 0o40000  # the mode of an entry that is a folder
 SANDBOX = "bee/sandbox/sans-docker.sh"  # the hive's projects keep their sandbox there, protected from contributions
 TOOL_FILES = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json", ".cursor")  # what a coding tool runs
+# What else is run or obeyed on the host, outside the sandbox, at the root of a project: the CI's files and an agent's
+# settings and instructions. With TOOL_FILES and the folder of the sandbox's launcher, these are the paths that the
+# projects' own sandbox shows read-only to the code it runs (on_the_host).
+HOST_FILES = (".github", ".claude", "AGENTS.md", "CLAUDE.md")
+ON_THE_HOST = tuple(name.lower().encode() for name in (os.path.dirname(SANDBOX), *TOOL_FILES, *HOST_FILES))
+SUBMODULE_MODE = 0o160000  # the mode of an entry that is a sub-module: a commit of another repository
+TIP_ENTRIES = 200_000  # a project whose tip holds more files and folders than this is larger than « start » reads
+PROOF_SECONDS = 240  # how long « start » may take to show that the work tree holds the tip's files (less than OBJECTS_SECONDS)
+PIECE_BYTES = 1 << 20  # a file of the work tree is read, hashed and compared this many bytes at a time
 # Where git would look instead of the folders a worker command names: never taken from the environment.
 GIT_PLACES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
               "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_CONFIG")
@@ -2332,7 +2348,9 @@ PLAIN_CONFIG = tuple((re.compile(key + r"\Z"), re.compile(value + r"\Z")) for ke
 
 
 class NotPlain(HiveError):
-    """The clone's own git settings are not the ones a clone has: nothing is committed or pushed from it."""
+    """The clone is not one a worker works in (exit code 3, « hive: STOP: … »): its own git settings are not the ones a
+    clone has, an object of it is not what its name says, or its work tree is not what the project's tip holds.
+    Nothing is committed or pushed from it, and nothing is run from it."""
 
 
 def not_plain(found):
@@ -2447,10 +2465,21 @@ NOT_HELD = ("this clone does not hold an object that the work rests on: run hive
 NOT_GITS = "this clone holds a commit or a folder that is not written as git writes them: tell the user"
 NO_START = ("the work does not start from the project's recent history (the last commits of its branch, as the project's own address gives "
             "them): nothing was pushed. Run hive.py setup, then start the task again (hive.py start)")
+NOT_THE_TIPS = ("STOP: the work tree of this clone is not what the project's tip holds: a file of the tip is missing or holds other bytes, "
+                "or the work tree holds something more. Run nothing from this clone, not even its sandbox, and do not commit or push from "
+                "it: tell the user to take a fresh clone of the fork")
+CONVERTED_ON_THE_HOST = ("STOP: the project's own rules convert (line ends, an encoding) a file that is run or obeyed on the host: its "
+                         "sandbox's launcher, a coding tool's settings, an agent's instructions. This tool takes such a file only as the "
+                         "very bytes the project's tip holds. Run nothing from this clone, not even its sandbox: tell the user")
+TIP_TOO_LARGE = "the project is larger than this tool reads ({found}). The task is not started: stop, and tell the user"
+
+
+class TooLarge(HiveError):
+    """An object of the clone is larger than this tool reads (OBJECT_BYTES)."""
 
 
 class Objects:
-    """Commits and folders of the clone, as their own bytes, each believed only once this tool has hashed it. An
+    """Commits, folders and files of the clone, as their own bytes, each believed only once this tool has hashed it. An
     object's id is the SHA-1 of its kind, its size and its bytes: bytes that hash to the id asked for ARE that
     object, whatever a file of the clone says of it (a reference, a commit-graph, a replacement, an object file that
     holds other bytes under that name). So what is read here does not depend on anything an earlier run of project
@@ -2458,8 +2487,9 @@ class Objects:
     what it is sent.
 
     One git process hands the objects over (« cat-file --batch »), for as many as a command reads, for a bounded
-    time; an object whose declared size is beyond OBJECT_BYTES is not read. SHA-1 repositories only: a clone of
-    another object format says so in a setting that PLAIN_CONFIG does not hold, and plain_clone refuses it."""
+    time; an object whose declared size is beyond OBJECT_BYTES is not read (TooLarge: git has begun to hand it over,
+    so nothing more is asked of that process). SHA-1 repositories only: a clone of another object format says so in a
+    setting that PLAIN_CONFIG does not hold, and plain_clone refuses it."""
 
     def __init__(self, clone):
         try:
@@ -2484,10 +2514,10 @@ class Objects:
         self.process.wait()
 
     def read(self, kind, sha):
-        """The bytes of the commit or the folder (kind: "commit", "tree") that `sha` names, or None if the clone does
-        not hold that object (a clone cut short holds no commit older than its cut). Raises NotPlain (exit code 3) if
-        what the clone holds under that id is anything else: bytes that do not hash to it, or an object of another
-        kind."""
+        """The bytes of the commit, the folder or the file (kind: "commit", "tree", "blob") that `sha` names, or None if
+        the clone does not hold that object (a clone cut short holds no commit older than its cut). Raises NotPlain
+        (exit code 3) if what the clone holds under that id is anything else: bytes that do not hash to it, or an
+        object of another kind."""
         try:
             self.process.stdin.write(need_sha(sha).encode() + b"\n")
             self.process.stdin.flush()
@@ -2501,7 +2531,7 @@ class Objects:
             raise HiveError("git cat-file gave no answer (it was stopped, or took too long)")
         size = int(found.group(1))
         if size > OBJECT_BYTES:
-            raise HiveError("this clone holds a commit or a folder larger than this tool reads: tell the user")
+            raise TooLarge(f"this clone holds {'a file' if kind == 'blob' else 'a commit or a folder'} larger than this tool reads: tell the user")
         data = self.process.stdout.read(size + 1)  # git ends each object with a new line of its own
         if len(data) != size + 1:
             raise HiveError("git cat-file gave no answer (it was stopped, or took too long)")
@@ -2914,6 +2944,274 @@ def candidate_proof(clone, tip, candidate, task, limits):
             commit = parents[0]
     if outside:
         raise Refusal("path_outside_task", {"paths": [safe_text(path, 200) for path in sorted(outside)[:10]], "files": len(outside)})
+
+
+def in_time(deadline):
+    """Ends the command once « start » has spent PROOF_SECONDS on its proof: what it reads is bounded in time too."""
+    if time.monotonic() >= deadline:
+        raise HiveError(TIP_TOO_LARGE.format(found=f"showing that the work tree holds its tip's files took more than {PROOF_SECONDS} seconds"))
+
+
+def tip_entries(objects, tip, deadline):
+    """(entries, folders) of the project's tip, from its own bytes: the commit, then every folder of its tree, each
+    read through Objects and so hashed. entries: path (bytes) -> (kind, mode, id) for each entry that is not a
+    folder, its kind being a file's (stat.S_IFREG), a link's (stat.S_IFLNK) or a sub-module's (SUBMODULE_MODE), as
+    git itself reads a mode; folders: the paths of the folders above them. TIP_ENTRIES entries at most, folders
+    included: beyond, the project is larger than this tool reads.
+
+    A name that is « . », « .. » or « .git » in any case stops the command: git writes no such entry in a work tree,
+    and a path this tool builds from the tip's names never leaves the folder it is joined to. (folder_listing has
+    refused an empty name, and one that holds a « / ».)"""
+    entries, folders, listed, waiting = {}, set(), 0, [(b"", commit_header(objects.held("commit", tip))[0])]
+    while waiting:
+        in_time(deadline)
+        prefix, tree = waiting.pop()
+        folder = folder_listing(objects.held("tree", tree))
+        listed += len(folder)
+        if listed > TIP_ENTRIES:
+            raise HiveError(TIP_TOO_LARGE.format(found=f"its tip holds more than {TIP_ENTRIES} files and folders"))
+        for name, (mode, sha) in folder.items():
+            if name in (b".", b"..") or name.lower() == b".git":
+                raise NotPlain(NOT_THE_TIPS)
+            kind = stat.S_IFMT(mode)
+            if kind == stat.S_IFDIR:
+                waiting.append((prefix + name + b"/", sha))
+            elif kind in (stat.S_IFREG, stat.S_IFLNK, SUBMODULE_MODE):
+                entries[prefix + name] = (kind, mode, sha)
+            else:
+                raise HiveError(NOT_GITS)
+    for path in entries:
+        parts = path.split(b"/")[:-1]
+        folders.update(b"/".join(parts[:end]) for end in range(1, len(parts) + 1))
+    return entries, folders
+
+
+def blob_id(data):
+    """The id git gives these bytes as a file's: the SHA-1 of « blob <size> », a NUL and the bytes."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def file_blob_id(path, deadline):
+    """The id git gives the bytes of a plain file of the work tree (blob_id), computed here, or None if `path` is not
+    a plain file (a link is not followed), cannot be read, or does not give as many bytes as its size said. The file
+    is read in pieces and never held whole; its size is taken once, on the open file, since it is hashed first."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return None
+    try:
+        entry = os.fstat(descriptor)
+        if not stat.S_ISREG(entry.st_mode):
+            return None
+        hashed, left = hashlib.sha1(b"blob %d\0" % entry.st_size), entry.st_size
+        while left >= 0:
+            in_time(deadline)
+            piece = os.read(descriptor, PIECE_BYTES)
+            if not piece:
+                break
+            hashed.update(piece)
+            left -= len(piece)
+        return hashed.hexdigest() if left == 0 else None
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+
+
+def same_bytes(stream, path, deadline):
+    """True if the plain file at `path` (a link is not followed) holds the very bytes `stream` gives, no more and no
+    fewer: the two are read side by side, in pieces."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return False
+    with os.fdopen(descriptor, "rb") as file:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return False
+        while True:
+            in_time(deadline)
+            piece = stream.read(PIECE_BYTES)
+            if file.read(max(len(piece), 1)) != piece:
+                return False
+            if not piece:
+                return True
+
+
+def on_the_host(path):
+    """True if a path of the project (bytes) is one that is run or obeyed on the host, outside the sandbox: what lies
+    in the folder of the sandbox's launcher, which the agent runs to build the sandbox, and what a coding tool reads
+    at the root as its settings and its instructions (TOOL_FILES, HOST_FILES). Compared without case, as some file
+    systems do."""
+    low = path.lower()
+    return any(low == name or low.startswith(name + b"/") for name in ON_THE_HOST)
+
+
+def holds_nothing(path):
+    """True if the folder at `path` holds no entry at all."""
+    with os.scandir(path) as listed:
+        return next(listed, None) is None
+
+
+class TipRules:
+    """What a checkout of the tip writes for one of its files, under the project's own rules: the tip's .gitattributes
+    files, which may have git convert line ends or an encoding, or write a text of its own into a file ($Id$). Those
+    rules are git's to read, and git is asked: but in a repository of this tool's own, made in an empty folder
+    outside the clone, which holds what this tool wrote there from bytes it hashed itself (Objects) and nothing
+    else: the tip's .gitattributes entries, as a tree, and the blob of the file asked about. git reads the rules
+    there as « start » had it read them for the checkout (--attr-source), so it converts as it did then; and it reads
+    no object, no index and no setting of the clone, so that nothing an earlier run of project code wrote reaches the
+    answer. That answer is compared byte for byte with the file of the work tree: what passes is what a checkout of
+    the hashed blob writes and nothing else (the other way round, asking what the file's bytes would be stored as,
+    would let pass every text that the rules erase: a line end, what stands between « $Id: » and « $ »).
+
+    The repository is made at the first file that needs it: most projects convert none on this system. A tip that
+    holds no .gitattributes converts nothing, and git is then not asked at all."""
+
+    def __init__(self, objects, rules, deadline):
+        self.objects, self.rules, self.deadline, self.folder, self.scratch, self.tree = objects, rules, deadline, None, None, None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *error):
+        if self.folder is not None:
+            self.folder.cleanup()
+
+    def stored(self, scratch, sha):
+        """Writes a file of the tip into the repository of this tool's own, from its hashed bytes. False if the clone
+        does not hold it, or if it is larger than this tool reads: such a file is not shown to be converted."""
+        try:
+            data = self.objects.read("blob", sha)
+        except TooLarge:
+            return False
+        if data is None:
+            return False
+        if scratch.git("hash-object", "-w", "--stdin", stdin=data, raw=True).stdout.strip().decode("ascii", errors="replace") != sha:
+            raise HiveError("git hash-object names a file otherwise than this tool does: tell the user")
+        return True
+
+    def repository(self):
+        """The repository of this tool's own, made once: (its Clone, the tree that holds the tip's .gitattributes)."""
+        if self.scratch is None:
+            try:
+                self.folder = tempfile.TemporaryDirectory()
+            except OSError as error:
+                raise HiveError(f"a folder of this tool's own could not be made ({type(error).__name__}): tell the user") from None
+            scratch = Clone(Path(self.folder.name).resolve(), {})
+            scratch.git("init", "--quiet", "--template=")
+            records = []
+            for path, (kind, mode, sha) in sorted(self.rules.items()):
+                if not self.stored(scratch, sha):
+                    raise NotPlain(NOT_THE_TIPS)  # the rules themselves cannot be read: nothing can be shown of what they convert
+                written = b"120000" if kind == stat.S_IFLNK else b"100755" if mode & 0o100 else b"100644"
+                records.append(written + b" " + sha.encode() + b"\t" + path + b"\0")
+            scratch.git("update-index", "--add", "-z", "--index-info", stdin=b"".join(records), raw=True)
+            self.tree, self.scratch = scratch.git("write-tree").stdout.strip(), scratch
+        return self.scratch, self.tree
+
+    def writes(self, path, sha, place):
+        """True if the plain file at `place` holds, byte for byte, what a checkout writes for the blob `sha` at the
+        path `path` of the tip, under the tip's own rules."""
+        if not self.rules:
+            return False
+        scratch, tree = self.repository()
+        if not self.stored(scratch, sha):
+            return False
+        try:
+            process = subprocess.Popen(scratch.command("cat-file", "--filters", "--path=" + os.fsdecode(path), sha, attributes=tree),
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=scratch.environment(),
+                                       cwd=scratch.root)
+        except OSError as error:
+            raise HiveError(f"git cat-file: {type(error).__name__}") from None
+        alarm = threading.Timer(max(0.0, self.deadline - time.monotonic()), process.kill)
+        alarm.start()
+        try:
+            same = same_bytes(process.stdout, place, self.deadline)
+            code = process.wait() if same else None
+        finally:
+            alarm.cancel()
+            process.kill()
+            process.stdout.close()
+            process.wait()
+        in_time(self.deadline)
+        if same and code != 0:  # git stopped half-way: what it gave is not what a checkout writes
+            raise HiveError(f"git cat-file failed ({code})")
+        return same
+
+
+def work_tree_proof(clone, tip):
+    """What « start » shows of the work tree before it says STARTED: that it holds the files of the project's tip, each
+    with the bytes a checkout of the tip writes, and nothing else. After « start » the agent reads those files, and
+    runs the sandbox's launcher from them, on the host: the sandbox is worth what that file is. git's own checkout
+    does not show it. git does not hash an object again when it reads one, and its index is a file of .git: what an
+    earlier run of project code left there decides what a checkout writes and what it leaves in place. So the proof
+    rests on the commit the project's own address announced (`tip`), on bytes this tool hashed itself (Objects), and
+    on the work tree's own entries, each looked at without following a link and read as a plain file: never on the
+    index, nor on what git says of the work tree.
+
+      - The tip's entries are listed from its commit and from every folder of its tree (tip_entries).
+      - A file of the tip is a plain file whose bytes hash, as a blob, to the id the tip lists (file_blob_id).
+      - If they do not, the file may be one the project's own rules convert (line ends, an encoding). Then, and only
+        then, it is compared byte for byte with what a checkout of that blob writes under the tip's rules, asked of
+        git on bytes this tool hashed and on nothing of the clone (TipRules).
+      - A file that is run or obeyed on the host (on_the_host: the launcher's folder, a coding tool's settings, an
+        agent's instructions) is given no such second reading: it is the tip's very bytes, or the command stops; if
+        the project's rules do convert it, the command says so.
+      - A link of the tip is a link whose target hashes, as a blob, to its id.
+      - A sub-module of the tip is a folder that holds nothing, or is not there: no worker command checks one out.
+      - Nothing else is in the work tree, the clone's own .git apart: an entry that is neither one of the tip's nor
+        a folder above one stops the command, and so does a file or a link of the tip that is not there.
+
+    What a file says is its bytes: its permission bits are not compared. Raises NotPlain (exit code 3) when the
+    work tree is not the tip's, or cannot be read; HiveError when the project is larger than this tool reads
+    (TIP_ENTRIES entries, PROOF_SECONDS seconds)."""
+    deadline, root = time.monotonic() + PROOF_SECONDS, os.fsencode(clone.root)
+    try:
+        with Objects(clone) as objects:
+            entries, folders = tip_entries(objects, tip, deadline)
+            rules = {path: entry for path, entry in entries.items()
+                     if path.rpartition(b"/")[2] == b".gitattributes" and entry[0] != SUBMODULE_MODE}
+            missing = sum(1 for kind, _, _ in entries.values() if kind != SUBMODULE_MODE)
+            with TipRules(objects, rules, deadline) as converted:
+                waiting = [b""]
+                while waiting:
+                    folder = waiting.pop()  # (a path made of the names the folders above gave: it ends with « / », or is the root)
+                    with os.scandir(os.path.join(root, folder)) as listed:
+                        for item in listed:
+                            in_time(deadline)
+                            path = folder + item.name
+                            if path == b".git":
+                                continue
+                            found, entry = item.stat(follow_symlinks=False).st_mode, entries.get(path)
+                            if entry is None:
+                                if path not in folders or not stat.S_ISDIR(found):
+                                    raise NotPlain(NOT_THE_TIPS)
+                                waiting.append(path + b"/")
+                                continue
+                            kind, _, sha = entry
+                            if kind == SUBMODULE_MODE:
+                                if not stat.S_ISDIR(found) or not holds_nothing(item.path):
+                                    raise NotPlain(NOT_THE_TIPS)
+                                continue
+                            missing -= 1
+                            if kind == stat.S_IFLNK:
+                                if not stat.S_ISLNK(found) or blob_id(os.readlink(item.path)) != sha:
+                                    raise NotPlain(NOT_THE_TIPS)
+                            elif not stat.S_ISREG(found):
+                                raise NotPlain(NOT_THE_TIPS)
+                            elif file_blob_id(item.path, deadline) != sha:
+                                checked_out = converted.writes(path, sha, item.path)
+                                if on_the_host(path):
+                                    raise NotPlain(CONVERTED_ON_THE_HOST if checked_out else NOT_THE_TIPS)
+                                if not checked_out:
+                                    raise NotPlain(NOT_THE_TIPS)
+            if missing:
+                raise NotPlain(NOT_THE_TIPS)
+    except OSError:
+        raise NotPlain(NOT_THE_TIPS) from None  # what cannot be listed or read cannot be shown to be the tip's
+    except NotPlain as error:
+        # An object of the tip that is not what its name says: what git wrote from it is not the tip's either.
+        raise NotPlain(NOT_THE_TIPS if str(error) == NOT_AS_NAMED else str(error)) from None
 
 
 def said_again(args):
@@ -3359,7 +3657,15 @@ def cmd_start(args):
     index is made anew from the tip and every file of the tip is written out again: git writes a file only if its
     index says the file changed, and the index is a file of .git, which may say « do not look » of a file an earlier
     run rewrote. (What such a mark hid is not set aside: git never saw it.) Every step runs through Clone.git: no
-    hook, no filter, no setting of the machine, no network.
+    hook, no filter, no setting of the machine, and no network but to ask the project for its tip.
+
+    None of those steps shows what the work tree then holds: git writes what the clone's objects give it, without
+    hashing them again, and leaves in place what the clone's index keeps from it. The agent is about to read those
+    files, and to run the sandbox's launcher from them on the host. So the last step is this tool's own
+    (work_tree_proof): from the tip's commit and folders, read as bytes it hashes, and from the work tree's entries,
+    read as plain files, it shows that the work tree holds the files of the tip, with the bytes a checkout of the tip
+    writes, and nothing else. STARTED is printed only then. Otherwise the command stops (« hive: STOP: … », exit code
+    3) and nothing is to be run from the clone, not even its sandbox.
 
     Run again, it does the same: it starts the task again from the tip, and sets aside what was done since (the
     work is in « git stash list », not lost). So it runs once per task and per run, before the work."""
@@ -3430,6 +3736,9 @@ def cmd_start(args):
     # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
     clone.git("read-tree", tip)
     clone.git("checkout-index", "--all", "--force", "--index", attributes=tip)
+    # What git wrote is what the clone's objects and index made it write. Nothing is said started until the work tree
+    # itself, read as files, is shown to hold the tip's files and nothing else.
+    work_tree_proof(clone, tip)
     if set_aside:
         print(f"SET-ASIDE {set_aside} change(s) of an earlier run: git stash list shows them")
     if removed:

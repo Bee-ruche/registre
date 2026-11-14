@@ -77,7 +77,8 @@ CHECK (inside the sandbox only): <command>
                                 next: the project's quick check: a command for the sandbox, never for the host
 SET-ASIDE <n> <sentence>        start: what an earlier run changed is stashed (git stash list), not lost
 REMOVED <n> <sentence>          start: what an earlier run left, ignored or untracked, is removed
-STARTED <branch> at <commit>    start: the clone is on the task's branch, at the project's tip
+STARTED <branch> at <commit>    start: the clone is on the task's branch, at the project's tip, and its work tree
+                                holds that commit's files and nothing else
 THEN: <sentence>                next, start, ready, submit: what to do after this command
 ASKED <commit>                  ready: the ask is pushed to the fork
 WITHDRAWN                       ready --withdraw: the ask is taken back
