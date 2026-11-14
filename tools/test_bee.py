@@ -6494,6 +6494,11 @@ class TestAdversarialReview(BaseParallel):
     def calls_of(calls, *command):
         return [a for a in calls if a["args"][:len(command)] == list(command)]
 
+    @staticmethod
+    def ci_calls(calls):
+        """The calls that read a fork's CI: its runs, their artifacts, an archive (the step asks GitHub's API for each)."""
+        return [a for a in calls if a["args"][:1] == ["api"] and len(a["args"]) > 1 and "/actions/" in a["args"][1]]
+
     def reviewed_race(self, parallel_gain=0.03, holder_gain=0.05):
         c1, c2 = self.race_of_two(parallel_gain, holder_gain)  # c1 bruno 14:00, c2 alice 17:00; F = 31 Oct 14:00
         self.review(c1, "chloe", "bidji29")
@@ -6880,7 +6885,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertIn(f"{c1}: PR {PR_MINIZ}99007 was opened by mallory, not by alice; no verdict", output_text)
         self.assertNotIn("verdict", self.rec(c1))
-        self.assertFalse(self.calls_of(calls, "run"), "no CI run is even read")
+        self.assertFalse(self.ci_calls(calls), "no CI run is even read, and no archive asked for")
         states[PR_MINIZ + "99007"]["author"] = "Alice"  # the GitHub login ignores case
         self.step("Fetch the verdicts", states, stream="verdicts.yml")
         rec = self.rec(c1)
@@ -6964,7 +6969,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertFalse([a for a in calls if "https://github.com/Bee-ruche/registre/pull/99" in a["args"]],
                          "no request for a registry PR")
-        self.assertFalse(self.calls_of(calls, "run"))
+        self.assertFalse(self.ci_calls(calls))
 
     def test_credit_theft_neither_merge_nor_record(self):
         self.close_gate()
@@ -17491,7 +17496,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
                 output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
                 self.assertIn(f"PR {PR_MINIZ}99007 was opened by {login}, not by alice; no verdict", output_text)
                 self.assertNotIn("verdict", self.rec(c1))
-                self.assertFalse(self.calls_of(calls, "run"))
+                self.assertFalse(TestAdversarialReview.ci_calls(calls))
         # An unreadable declaration maps no one (fail closed).
         declaration = (self.dir / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
         (self.dir / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
