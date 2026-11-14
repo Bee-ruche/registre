@@ -4301,7 +4301,8 @@ class TestVolunteerSide(Volunteer):
         then is a new candidate, which holds the new work: PUSHED never names a commit that lacks what the work
         tree held."""
         dealt = self.w.deal(self.alice, "toy-0001")
-        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
         code, text = self.submit("toy-0001", dealt)
         first = self.fork_branch("hive/submit/toy-0001")
         self.assertEqual((code, text.splitlines()[0]), (0, f"PUSHED {first}"), self.err)
@@ -4342,7 +4343,8 @@ class TestVolunteerSide(Volunteer):
         with the git command that failed. The failures here are real ones: a lock another git left in the clone, a
         fork that cannot be reached, a project's address that leads nowhere."""
         dealt = self.w.deal(self.alice, "toy-0001")
-        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
         before, lock = self.head(), self.alice.work / ".git/index.lock"
         lock.write_text("")
         self.one_line(self.submit("toy-0001", dealt), "git add failed (", begins=True)
@@ -4552,6 +4554,27 @@ class TestVolunteerSide(Volunteer):
                                                              f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
         self.assertEqual(self.only_files(self.work_tree()), self.tip_files(), "no .git is left below the root")
         self.assertEqual(sh("git", "show", "stash@{0}^3:.gitmodules", cwd=self.alice.work).stdout.count("submodule"), 1, "set aside")
+
+    def test_what_an_earlier_run_wrote_in_a_sub_modules_folder_is_removed(self):
+        """A project may hold a sub-module: a folder that stands for a commit of another repository, which no worker
+        command checks out, so it stays empty. git lists nothing inside it, and « clean » removes nothing there: what
+        an earlier run wrote in it is removed by start itself, and the folder stays, empty, as a checkout leaves it."""
+        sh("git", "update-index", "--add", "--cacheinfo", f"160000,{self.start},vendor", cwd=self.alice.work)
+        sh("git", "commit", "--quiet", "-m", "a sub-module", cwd=self.alice.work)
+        tip = self.head()
+        (self.alice.work / "vendor").mkdir(exist_ok=True)
+        self.alice.write("vendor/junk.o", b"\0").write("vendor/deep/more", "x\n")
+        self.assertEqual(sh("git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--ignore-submodules=all",
+                            cwd=self.alice.work).stdout, "", "git lists none of it")
+        code, text = self.begin("toy-0001", NOW, "--upstream", tip)
+        self.assertEqual((code, self.spoken(text)[:2]), (0, ["REMOVED 2 leftover file(s) or folder(s) of an earlier run",
+                                                             f"STARTED hive/submit/toy-0001 at {tip}"]), self.err)
+        self.assertEqual(os.listdir(self.alice.work / "vendor"), [])
+        os.rmdir(self.alice.work / "vendor")
+        self.alice.write("vendor", "a file in its place\n")
+        self.assertEqual(self.begin("toy-0001", NOW, "--upstream", tip)[1].splitlines()[0],
+                         "REMOVED 1 leftover file(s) or folder(s) of an earlier run", self.err)
+        self.assertEqual(((self.alice.work / "vendor").is_dir(), os.listdir(self.alice.work / "vendor")), (True, []))
 
     def test_what_git_cannot_see_in_the_work_tree_is_removed(self):
         """A pipe or a socket in the work tree is no file git can hold, list or remove: it would be there at every
@@ -4918,10 +4941,10 @@ class TestTheWorkersClone(Volunteer):
         self.assertTrue(pwned.exists(), "git itself runs it: the test plants what it means to")
 
     def test_start_runs_no_filter_and_no_hook_that_the_machines_settings_define(self):
-        """The two git commands the worker's guide used to give, run with plain git, read the machine's settings: a
-        filter they define (git-lfs is a common one) ran on files and on a .gitattributes an earlier run left in the
-        work tree, and so did a hook of theirs. start runs the same steps through Clone.git, which reads no setting of
-        the machine: the control below, on a copy of the same clone, shows that plain git runs all three."""
+        """start reads no setting of the machine, so a filter those settings define (git-lfs is a common one) runs
+        neither on the files nor because of a .gitattributes an earlier run left in the work tree, and no hook of
+        theirs runs either. The control, on a copy of the same clone, runs the same two steps with plain git, which
+        reads the machine's settings: it runs the filter both ways, and the hook."""
         root = self.w.root
         hooks, machine = root / "machine-hooks", root / "gitconfig"
         hooks.mkdir()

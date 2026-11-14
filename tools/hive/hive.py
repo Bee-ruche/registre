@@ -2895,6 +2895,29 @@ def remove_unseen(root):
     return removed
 
 
+def empty_submodules(clone):
+    """Empties the folders that the index holds as a sub-module (a commit of another repository, which no worker
+    command checks out): git lists nothing inside one, so what an earlier run wrote there would stay. The folder
+    itself stays, empty, as a checkout leaves it; anything else in its place is replaced by one. Returns how many
+    entries were removed."""
+    removed, root = 0, os.fsencode(clone.root)
+    for record in clone.git("ls-files", "-s", "-z", raw=True).stdout.split(b"\0"):
+        if not record.startswith(b"160000 "):
+            continue
+        path = os.path.join(root, record.partition(b"\t")[2])
+        if not os.path.lexists(path):
+            continue
+        if stat.S_ISDIR(os.lstat(path).st_mode):
+            for name in os.listdir(path):
+                remove_entry(os.path.join(path, name))
+                removed += 1
+        else:
+            remove_entry(path)
+            os.mkdir(path)
+            removed += 1
+    return removed
+
+
 def remove_entry(path):
     """Removes one entry of the work tree: a folder with all it holds (shutil.rmtree removes a link it meets and
     never enters it), and anything else by its own name, a link included."""
@@ -2924,10 +2947,11 @@ def cmd_start(args):
     shows them; nothing of them is lost). Then every file and folder that remains untracked, ignored ones included,
     is removed, a repository of its own too (« git clean -ffdx »): what a build left under an ignored name would
     otherwise be there again when the next task's code runs in the sandbox, where « submit » never sees it. So is
-    what git cannot see: a .git below the root, a pipe, a socket. A link is removed, never followed; a link that
-    stands where the project has a folder is removed first, since git refuses to read past it. A read-only folder is
-    opened to its owner first. These three steps git cannot take are this function's own, in Python, and each looks
-    at an entry with lstat before it acts: none goes through a link or enters the clone's own .git. Nothing outside the work tree is touched, and
+    what git cannot see: a .git below the root, a pipe, a socket, what lies in a sub-module's folder. A link is
+    removed, never followed; a link that stands where the project has a folder is removed first, since git refuses
+    to read past it. A read-only folder is opened to its owner first. These steps git cannot take are this
+    function's own, in Python, and each looks at an entry with lstat before it acts: none goes through a link or
+    enters the clone's own .git. Nothing outside the work tree is touched, and
     .git itself is not cleaned (git never cleans it): plain_clone checks it first, and a refusal touches nothing.
 
     Then the branch is made, or reset, at the tip, and HEAD names it (checkout -B, given the tip's commit id: so the
@@ -2974,7 +2998,7 @@ def cmd_start(args):
     removed += len(untracked(clone))
     clone.git("clean", "-ffdx", "--quiet")
     try:
-        removed += remove_unseen(clone.root)
+        removed += remove_unseen(clone.root) + empty_submodules(clone)
     except OSError:
         raise HiveError("a file an earlier run left in the work tree could not be removed: tell the user") from None
     if untracked(clone) or work_tree_changes(clone):
