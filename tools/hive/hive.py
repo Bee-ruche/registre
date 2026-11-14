@@ -2640,7 +2640,7 @@ def packed_references(git_dir):
     except FileNotFoundError:
         return []
     except OSError:
-        raise not_plain(".git/packed-refs is not a plain file") from None
+        raise not_plain("a file inside .git cannot be read") from None
     if not stat.S_ISREG(os.fstat(descriptor).st_mode):
         os.close(descriptor)
         raise not_plain(".git/packed-refs is not a plain file")
@@ -2929,7 +2929,9 @@ def push(clone, url, source, branch):
 def cmd_setup(args):
     """Volunteer side: checks that this is a plain clone of the volunteer's own fork, finds the project it is a fork
     of, adds it as the « upstream » remote and fetches its tip, and the whole of its history if the clone was cut
-    short and the project's own check reads old commits."""
+    short and the project's own check reads old commits. It says the member's login (LOGIN): the one the command
+    line gives, once the origin agrees with it, else the owner the origin names. It runs first, in a clone that is
+    usually fresh; a worker whose user's prompt names the login gives it here, and takes none from the clone."""
     clone = plain_clone()
     if args.project is not None and not PROJECT_ID.match(args.project):
         raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
@@ -3433,7 +3435,7 @@ def cmd_ready(args):
     if args.withdraw:
         if args.no_push:
             raise HiveError("--withdraw is a push: it does not go with --no-push")
-        if clone.git("ls-remote", fork, f"refs/heads/{READY_BRANCH}", to=fork, timeout=60).stdout.strip():
+        if listed_tip(clone, fork, READY_BRANCH) is not None:
             push(clone, fork, "", READY_BRANCH)
         print("WITHDRAWN")
         return

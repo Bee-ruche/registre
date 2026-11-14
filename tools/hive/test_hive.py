@@ -4586,6 +4586,30 @@ class TestVolunteerSide(Volunteer):
         code, text = self.run_cli(*submit)
         self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), text + self.err)
 
+    def test_a_clone_cut_short_is_one_a_candidate_is_made_in(self):
+        """A session's checkout holds the project's last commit and no older one. The project's history ends there
+        for that clone: submit walks back as far as the clone holds, and work that starts from a commit it does hold
+        is a candidate like any other, on the first run and after the project has moved on."""
+        self.w.upstream_commit("src/a.c", "int a; /* the project's second commit */\n")
+        zed = self.w.fork("zed", 107)
+        shutil.rmtree(zed.work)
+        sh("git", "clone", "--quiet", "--depth", "1", f"file://{zed.bare}", str(zed.work), cwd=self.w.root)
+        sh("git", "remote", "set-url", "origin", "https://github.com/zed/toy.git", cwd=zed.work)
+        self.assertEqual(sh("git", "rev-list", "--count", "HEAD", cwd=zed.work).stdout.strip(), "1", "one commit, and a note of where it was cut")
+        dealt = self.w.deal(zed, "toy-0001")
+        common = ("--registry", self.registry, "--project", "toy", "--login", "zed")
+        submit = ("submit", *common, "--upstream-url", str(self.w.upstream), "--task", "toy-0001", "--deal", dealt, "--no-push")
+        for moved in (False, True):
+            with self.subTest(the_project_moved_on=moved):
+                self.assertEqual(self.run_cli("setup", *common, "--upstream-url", str(self.w.upstream), cwd=zed.work)[0], 0, self.err)
+                self.assertEqual(self.run_cli("start", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)[0], 0, self.err)
+                if moved:
+                    self.w.upstream_commit("src/a.c", "int a; /* the project's later commit */\n")
+                zed.write("lib.c", LIB + f"/* FAST {moved} */\n")
+                code, text = self.run_cli(*submit, cwd=zed.work)
+                self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), text + self.err)
+        self.assertTrue((zed.work / ".git/shallow").is_file(), "still a clone cut short")
+
     def test_the_projects_address_is_asked_before_anything_is_committed(self):
         """submit learns the project's tip from the project's own repository. When that repository cannot be reached,
         or does not list the project's branch, the command ends with one line, before it has staged or committed
@@ -4607,6 +4631,7 @@ class TestVolunteerSide(Volunteer):
                       "the remote 'origin' of this clone is not an https address on GitHub (https://github.com/<owner>/<name>): a worker reads and "
                       "pushes over https only. Clone your fork again by its https address")
         self.assertEqual((self.clone_state(), self.fork_branches()), (before, ["refs/heads/main"]))
+        self.assertEqual(sh("git", "diff", "--cached", "--name-only", cwd=self.alice.work).stdout, "", "nothing was staged either")
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
         with self.no_network({"https://github.com/Bee-ruche/toy.git": {"refs/heads/main": self.start}}) as talked:
             self.one_line(self.run_cli(*submit, "--upstream-url", str(self.w.upstream), local=False), "--upstream-url: the project's own address, and no other")
@@ -5046,6 +5071,25 @@ class TestVolunteerSide(Volunteer):
                                                              f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
         self.assertFalse(lock.exists())
         self.assertEqual(self.only_files(self.work_tree()), self.tip_files())
+        # Only that file, and only a plain file. One that cannot be removed, or a folder of that name, is left as it is,
+        # and the command ends with one line: nothing is started.
+        self.alice.write("lib.c", LIB + "int again;\n")
+        lock.write_text("")
+        real = os.unlink
+
+        def refused(path, *more, **options):
+            if os.fspath(path) == str(lock.resolve()):
+                raise PermissionError(13, "Permission denied", str(path))
+            return real(path, *more, **options)
+        with mock.patch.object(os, "unlink", side_effect=refused):
+            self.one_line(self.begin("toy-0001", NOW), "the lock an earlier git command left on the index (.git/index.lock) could not be removed: "
+                                                      "tell the user")
+        lock.unlink()
+        lock.mkdir()
+        self.one_line(self.begin("toy-0001", NOW), "git stash failed (", begins=True)
+        self.assertTrue(lock.is_dir(), "a folder of that name is not the tool's to remove")
+        lock.rmdir()
+        self.assertEqual((self.alice.work / "lib.c").read_bytes(), (LIB + "int again;\n").encode(), "and the work tree is as it was")
 
     def test_a_branch_that_stands_where_the_tool_keeps_its_own_is_named_and_nothing_is_changed(self):
         """A task's branch is hive/submit/<task>. For git a name is a branch or a folder of branches, never both: a
@@ -5394,6 +5438,9 @@ class TestTheWorkersClone(Volunteer):
             self.refused("a folder that cannot be listed", "a folder inside .git cannot be read")
         with mock.patch.object(os, "lstat", side_effect=denied(os.lstat, git_dir / "logs/HEAD")):
             self.refused("an entry whose kind cannot be asked", "a file inside .git cannot be read")
+        self.assertTrue((git_dir / "packed-refs").is_file())
+        with mock.patch.object(os, "open", side_effect=denied(os.open, git_dir / "packed-refs")):
+            self.refused("the file of packed references, which may hold a reference a clone does not have", "a file inside .git cannot be read")
         self.assertEqual([command()[0] for _, command in self.every_command()[1:]], [0, 0, 0, 0], self.err)
 
     def test_the_settings_are_read_whole_and_measured_to_the_byte(self):
