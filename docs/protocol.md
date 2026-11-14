@@ -300,7 +300,7 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   own, the task a member holds, since when, until when and whether its candidate was seen (`deals`), and until
   when a member is dealt nothing (`wait`). It holds nothing a contributor wrote. The hash keeps sentences a login
   could spell out of the feed; it hides nobody, since the owners of forks are public.
-- `stats.json`: candidates judged and accepted, by account and by declared model.
+- `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is counted for a model, never for a member).
 - `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
   member, an ask that was used, a submit that is not a candidate). Only what is still at a tip of that fork is
   kept: what one fork pushes never costs another its entries.

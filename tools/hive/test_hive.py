@@ -569,8 +569,10 @@ class TestIntegration(Base):
         self.w.fork("bob", 102).submit("toy-0004", content=LIB + "/* REFUSE */\n", model="some-other-model")
         self.w.run()
         stats = hive.build_stats(self.w.load()[2])
-        self.assertEqual(stats["members"], {"101": {"login": "alice", "judged": 1, "accepted": 1},
-                                            "102": {"login": "bob", "judged": 1, "accepted": 0}}, "by account, whatever its login becomes")
+        self.assertEqual(stats["members"], {"101": {"login": "alice", "accepted": 1}},
+                         "by account, with what was accepted and nothing else: a member whose candidate was refused is not named, and "
+                         "nothing says how many of a person's candidates were judged")
+        self.assertNotIn("bob", json.dumps(stats))
         self.assertEqual(stats["models"], {"claude-fable-5-2": {"judged": 1, "accepted": 1}, "undeclared": {"judged": 1, "accepted": 0}},
                          "a model the project does not list is undeclared")
         self.w.set_config({"paused": True})

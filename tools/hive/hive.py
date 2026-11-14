@@ -1958,22 +1958,24 @@ def build_feed(config, tasks, ledger, tip, plan_=None):
 
 
 def build_stats(ledger):
-    """What the ledger says of members and models, for the project's page: candidates judged and accepted. Members
-    are counted by their account's id, shown under the login of their latest answer; the model is what each worker
-    declared: a statistic, not a proof."""
+    """What the ledger says of members and models, for the project's page. A model has its candidates judged and
+    accepted: the model is what each worker declared, a statistic, not a proof. A member has what was accepted, and
+    nothing else: how many of a person's candidates were judged would say how many were refused, and this file names
+    only members with accepted work. Members are counted by their account's id, under the login of their latest
+    accepted answer."""
     members, models = {}, {}
     for event in ledger.events:
         if event.get("type") != "verdict" or not event.get("judged"):
             continue
         accepted = event.get("result") == "accepted"
-        rows = [models.setdefault(event.get("model") if isinstance(event.get("model"), str) and MODEL.match(event["model"])
-                                  else "undeclared", {"judged": 0, "accepted": 0})]
-        if type(event.get("member_id")) is int and isinstance(event.get("member"), str) and LOGIN.match(event["member"]):
-            rows.append(members.setdefault(str(event["member_id"]), {"login": event["member"], "judged": 0, "accepted": 0}))
-            rows[-1]["login"] = event["member"]
-        for row in rows:
-            row["judged"] += 1
-            row["accepted"] += accepted
+        row = models.setdefault(event.get("model") if isinstance(event.get("model"), str) and MODEL.match(event["model"])
+                                else "undeclared", {"judged": 0, "accepted": 0})
+        row["judged"] += 1
+        row["accepted"] += accepted
+        if accepted and type(event.get("member_id")) is int and isinstance(event.get("member"), str) and LOGIN.match(event["member"]):
+            member = members.setdefault(str(event["member_id"]), {"login": event["member"], "accepted": 0})
+            member["login"] = event["member"]
+            member["accepted"] += 1
     return {"protocol": PROTOCOL, "generated_at": iso(now()), "members": members, "models": models}
 
 
