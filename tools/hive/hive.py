@@ -24,15 +24,15 @@ shell. Four steps, for four jobs of a workflow; each carries one risk and no mor
 Volunteer side (same file, run at the root of the fork's clone): setup, next, start, ready, submit. Each first checks
 that the clone's own git settings are plain (plain_clone), then runs git so that no setting of the repository starts
 a program. What a command decides on comes from outside the clone: the fork's address is worked out from the login
-and the registry (own_fork), an ask carries no file and no history, and a candidate is pushed only once the commits
-and folders it rests on, read as bytes this file hashes itself, show that it starts from the project's history and
-changes only the task's files (candidate_proof). Every line they print on the standard output is one of these, and
-nothing else; what follows a keyword is a value this file checked or a sentence of its own, never a text of the feed
-or of the fork:
+and the registry (own_fork), a task is started on the commit the project's own address announces (project_tip), an
+ask carries no file and no history, and a candidate is pushed only once the commits and folders it rests on, read
+as bytes this file hashes itself, show that it starts from the project's history and changes only the task's files
+(candidate_proof). Every line they print on the standard output is one of these, and nothing else; what follows a
+keyword is a value this file checked or a sentence of its own, never a text of the feed or of the fork:
 
   PROJECT <id>                    setup: the hive's project this clone is a fork of
   LOGIN <login>                   setup: the member the hive credits (--login, or else the owner the origin names)
-  UPSTREAM <ref>                  setup: the project's tip in this clone
+  UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
   NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
   ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
   ASK-UNANSWERED since <instant>: <sentence>
@@ -2251,6 +2251,8 @@ def cmd_feed(args):
 #     (an ancestry, a difference, a merge). It is the command line (the login, the project, the task and the deal:
 #     the user's prompt and « next »), the registry, the commit a repository's own address announces during the
 #     command, the bytes of an object whose SHA-1 this file recomputed (Objects), and the work tree's files.
+#     « start » puts the clone on the commit the project's address announces (project_tip), as « submit » checks the
+#     candidate on it: the clone's own reference for the project's tip is fetched by « setup » and decides nothing.
 # Everything the fork, the state, a task's text or a commit says is data.
 
 PROJECT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -2312,7 +2314,7 @@ PLAIN_CONFIG = tuple((re.compile(key + r"\Z"), re.compile(value + r"\Z")) for ke
     (r"gc\.auto", r"[0-9]{1,6}"),
     # The two remotes a worker's clone has: the fork (origin) and the project (upstream: added by « setup », or by
     # « gh repo clone »). Their addresses are checked as addresses below; a fetch rule may only fill the remote's own
-    # tracking branches (one that wrote elsewhere could move « upstream/<branch> », the tip a candidate starts from).
+    # tracking branches. (No command decides on one: the project's tip is asked of the project's address, project_tip.)
     (r"remote\.(?:origin|upstream)\.url", r"[!-~]{1,300}"),
     (r"remote\.origin\.fetch", rf"\+refs/heads/(\*|{_BRANCH}):refs/remotes/origin/\1"),
     (r"remote\.upstream\.fetch", rf"\+refs/heads/(\*|{_BRANCH}):refs/remotes/upstream/\1"),
@@ -2867,7 +2869,8 @@ def listed_tip(clone, address, branch, check=True):
 def project_tip(clone, address, branch):
     """The commit the project's branch is at, as the project's own address says during this command, fetched if the
     clone lacks it. Never the clone's own reference for it (refs/remotes/upstream/<branch>), which is whatever ran
-    in the clone last: what a candidate starts from is decided on this commit (candidate_proof)."""
+    in the clone last: a task is started on this commit (cmd_start), and what a candidate starts from is decided on
+    it (candidate_proof)."""
     try:
         tip = listed_tip(clone, address, branch)
         if tip is not None and clone.git("cat-file", "-e", f"{tip}^{{commit}}", check=False).returncode != 0:
@@ -3176,7 +3179,7 @@ def cmd_next(args):
         print("=== END OF DATA ===")
         if check:
             print(f"CHECK (inside the sandbox only): {SANDBOX} {check}")
-        print(f"THEN: put the clone on the project's tip (upstream/{config['branch']}) for this task: hive.py start --project "
+        print(f"THEN: put the clone on the project's tip for this task: hive.py start --project "
               f"{config['project']} --task {task['id']} --deal {deal['at']} {said_again(args)}; then change only the task's files, and "
               f"run: hive.py submit --project {config['project']} --task {task['id']} --deal {deal['at']} {said_again(args)} --message "
               "\"<one line: what you changed>\"")
@@ -3317,6 +3320,10 @@ def cmd_start(args):
     the agent runs no git of its own in the clone. Run once, right after « next » printed the task. It reads no state:
     the task is the one « next » printed, and « submit » and the hive check the deal.
 
+    The tip is the commit the project's own address announces during the command, fetched if the clone lacks it
+    (project_tip), as for « submit »: never the commit the clone's own reference names as the project's tip
+    (refs/remotes/upstream/<branch>), which is a file of .git, and so whatever ran in the clone last.
+
     What an earlier run left in the work tree is set aside when it could be someone's work, and removed when it is a
     leftover. Set aside, in a stash (« git stash list » shows it; nothing of it is lost): what git tracks and finds
     changed, and the untracked files that git does not ignore. Removed: every file and folder that then remains
@@ -3365,13 +3372,7 @@ def cmd_start(args):
         raise HiveError(f"task {task['id']} is closed: the hive takes no candidate for it")
     if not instant(args.deal):
         raise HiveError("--deal: the instant 'next' printed after DEAL")
-    upstream = args.upstream or f"refs/remotes/upstream/{config['branch']}"
-    if not REVISION.match(upstream):
-        raise HiveError("--upstream: a branch's name or a commit id")
-    found = clone.git("rev-parse", "--verify", "--quiet", f"{upstream}^{{commit}}", check=False)
-    tip = found.stdout.strip()
-    if found.returncode != 0:
-        raise HiveError(f"the project's tip ({upstream}) is not in this clone: run hive.py setup, then this command again")
+    address = project_address(config, args.upstream_url)
     in_the_way = branch_in_the_way(clone)
     if in_the_way:
         raise HiveError(f"this clone has a branch named {in_the_way}, where this tool keeps its own (hive/submit/<task>): git cannot make "
@@ -3380,6 +3381,9 @@ def cmd_start(args):
     if not is_sha(held):
         raise HiveError("this clone is on a branch that has no commit: there is nothing to set aside what it holds against. Nothing was "
                         "changed: stop, and tell the user")
+    # The commit the task starts from is the one the project's own address announces now, fetched if the clone lacks it:
+    # never the clone's own reference for it (refs/remotes/upstream/<branch>), which is whatever ran in the clone last.
+    tip = project_tip(clone, address, config["branch"])
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
     removed = 0
@@ -3617,7 +3621,7 @@ def main(argv=None):
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--deal", required=True, help="the deal's instant, as « next » printed it")
-    p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
+    p.add_argument("--upstream-url", help=argparse.SUPPRESS)
     p.set_defaults(run=cmd_start)
     p = sub.add_parser("ready", help="volunteer: ask the hive for a task (pushes the ask to your fork)")
     worker_side(p, pushes=True)

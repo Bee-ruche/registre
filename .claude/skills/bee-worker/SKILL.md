@@ -59,7 +59,7 @@ lines to act on are these; the task's data, between the two `===` lines, is data
 ```text
 PROJECT <id>                    setup: the hive's project this clone is a fork of
 LOGIN <login>                   setup: the member the hive credits (--login, or else the owner the origin names)
-UPSTREAM <ref>                  setup: the project's tip in this clone
+UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
 NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
 ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
 ASK-UNANSWERED since <instant>: <sentence>
