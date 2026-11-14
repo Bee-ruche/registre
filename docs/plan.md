@@ -269,7 +269,9 @@ human.
    contact with its maintainers and an agreement on how a difference that is a vulnerability is reported: the
    founder decides. The hive does **not** port again what they ported: that would be the duplication the hive
    exists to end.
-5. **Gaming: set aside** by the founder on 12 November 2026.
+5. **A game of the hive's own** (4.6). The founder set gaming aside on 12 November 2026, and on 14 November said
+   that a video game would be an interesting and attractive project. The hive builds an original game; it does
+   not work on the emulation of a console still sold, nor on a published game.
 6. **Mathematics: a trial before any opening** (4.5). Two public projects already take donated assistant quota for
    Lean proofs (reported by a research pass of 14 November 2026, not yet read at the source): the hive does not
    double a living effort, and opens this kind only if a trial on vetted statements clears a rate set in advance.
@@ -286,6 +288,7 @@ human.
 | Packet decoder (hosted, if its spike says yes) | tcpdump's `LICENSE` is a three-clause BSD licence; each printer carries its own notice (read at the tag `tcpdump-4.99.7` on 14 November 2026): 76 of the 158 add an advertising clause, three offer "the BSD-style license that accompanies tcpdump" or the GNU GPL (`print-beep.c`, `print-dccp.c`, `print-smb.c`: the hive takes the BSD one), and three carry no licence wording at all (`print-arista.c`, `print-ipnet.c`, `print-ppi.c`) | A port is a derived work of each file it is written from: each ported file keeps that file's notice, and the three files without a notice are not ported until their licence is known. **Open before any opening**: the `tests/` folder states no licence of its own for the captures and the expected outputs; until that is settled the hive hosts no copy of them, and its judge reads them from upstream at the pinned commit. No asset, no protection involved |
 | libyaml (asleep) | MIT (read in the fork's `License`) | As miniz |
 | Mathematics (a trial only) | Lean 4 and mathlib: Apache-2.0; statements from a public repository of formal statements, software Apache-2.0 and other material CC BY 4.0, with CC BY-SA 4.0 for what comes from three named sites (reported by a research pass of 14 November 2026; **to read at the source before the trial**) | The hive depends on the statements at a pinned commit and copies none; a proof is the hive's own work |
+| The hive's own game (planned, 4.6) | a free licence for the code and a free licence for the art and sound, each chosen before the first task; the toolchain's and the emulator's own licences, read before the console is chosen | Design, code, art and sound are made in the hive, or taken under a free licence recorded file by file. It recreates no published game: no code, character, art, music, level, name or look of one. The file it produces holds no byte owned by a console's maker, or that console is not chosen; it needs no system file of the maker to run. Its name and art use no one else's mark. No protection involved |
 | Invited projects | theirs | Only with the maintainers' written agreement; contributions under the project's licence |
 | Your own | the volunteer's concern | The hive hosts nothing, judges nothing and distributes nothing of it; the volunteer's choice of project and their AI provider's rules are theirs to answer for |
 
@@ -331,6 +334,75 @@ project keeps one holder per task until a way to keep a rival's work unread has 
 category, a project, or an area of a project. A volunteer chooses a project by the fork their agent works in, and,
 within it, may name an area. The first version of the preference names a file of the project's tasks; it moves to
 the area with the project types of ruche-0003.
+
+### 4.6 Games: what the hive builds, and what it does not
+
+On 14 November 2026 the founder said that a video game would be an interesting and attractive project, and asked
+how the hive could take part in today's wave of static recompilation and console emulation without illegality.
+This section is the builder's answer, by the founder's delegation of the choice of projects. It describes the
+hive's own rules; what the law allows in a given country is for a lawyer to confirm before anything opens (D3).
+
+**What that wave is judged by, and why the hive cannot judge it.** Those projects are judged by whether a
+published game runs. The hive holds no game file (4.4), so no judge of the hive can run one: it would have
+nothing to check such work with. Their own contribution rules say the same from their side (read on 14 November
+2026): an emulator of a current console closes requests that "do not address a concrete bug or launch problem in
+a specific game"; another asks that "the emulator must run the games or features affected by your change".
+
+**What the hive does not do**, and what each refusal rests on:
+
+1. **The hive's hard rule** (4.4): the hive, its judge and its workers host, fetch and run no game file, asset,
+   ROM, key, firmware or system module, and nothing that removes or goes round a protection.
+2. **The projects' own rules, and the rule on outside contact**: nothing goes from the hive to a project that has
+   not agreed in writing, and only the founder asks. Read on 14 November 2026 in each project's own files: N64:
+   Recompiled and Zelda 64: Recompiled refuse contributions made with AI; three console emulators (RPCS3, shadPS4,
+   KytyPS5) accept AI assistance that is disclosed, from a person who understands and has tested what they send,
+   and two of them ask that every exchange come from "the human contributor", not from an AI agent. An unattended
+   worker is not that person. A member who contributes there does so in their own name, under those rules, and
+   not as the hive.
+3. **No recreation of a published game**: the hive does not decompile, port, remake or imitate one. It works only
+   on what it may publish whole.
+4. **Nothing on the emulation of a console still sold** (the builder's choice, which the founder may overturn):
+   its games are its maker's current trade, and point 1 leaves the hive unable to verify any of it.
+
+**What the hive builds: an original game, written for an old console.** Its own design, code, art and sound,
+under free licences. To belong, lawfully, to the scene the founder points at, it is written for an old console
+with a free toolchain, and runs in open-source emulators and on the real machine: what that scene calls homebrew.
+Why this suits a hive:
+
+- **A machine judges the floor.** The build is reproducible; an emulator run in the sandbox with scripted input is
+  repeatable, so the picture after a given input is a fact that can be hashed; a scripted run must reach the end
+  of each level; the size of the file, the time of a frame and the memory of an old machine are hard limits, which
+  makes measured tasks of the kind miniz has. All of this is to be shown by the spike below, not assumed.
+- **The rest is the hive's least concrete kind**: what the game is, which of two levels or two tunes is the better.
+  That is deciding without an oracle (4.5): several candidates, compared; people who play it have the last word.
+  So the game opens on that rung of the ladder, after the school project, and not before the pilot.
+- **It joins the wave with a program anyone may redistribute.** The same scripted run on two emulators, or on an
+  emulator and on a statically recompiled build of the hive's own game, must show the same pictures. Where they
+  differ, the difference comes with a program its receiver may run and pass on, which a difference found in a
+  published game never does. Which side is right, only the real machine says: a person who owns one runs it.
+  Such evidence goes to a project only through the founder, and only to maintainers who want it (as for item 4
+  of 4.3).
+
+**The check that picks the console**, before any is chosen:
+
+1. the file a free toolchain produces holds no byte owned by the console's maker (a logo, a boot code, a licence
+   string that the machine demands);
+2. the toolchain and an open-source emulator build and run in the sandbox, without network and without a screen,
+   and two runs of the same input give the same pictures;
+3. the emulator needs no system file of the maker;
+4. the toolchain and the emulator are maintained.
+
+Read on 14 November 2026: the Game Boy fails the first test (its reference documentation says the header "must
+match" the maker's logo, "otherwise the boot ROM won't allow the game to run"). For the Nintendo 64, libdragon
+(Unlicense) says it boots with an "open-source IPL3 bootcode" and names ares (ISC) as the one accurate emulator,
+but its repository is marked archived since 1 October 2026, with no successor named: the fourth test is open. For
+the NES, cc65 (zlib licence) lists it as a target; whether an NES program must carry bytes of the maker was not
+read. No console is chosen.
+
+**The spike** (three hours, like the others): a program of a few lines, the hive's own, built in the sandbox with
+the candidate toolchain, run twice in the candidate emulator with one scripted input, the two pictures hashed and
+equal. If no console passes the four tests, the game is built for no console, as a free program for today's
+machines, and joins the wave by nothing but its being a game.
 
 ## 5. The volunteer's experience
 

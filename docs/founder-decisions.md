@@ -85,6 +85,10 @@ To ask before the public opening; the builder is not a lawyer and states its unc
 4. **The pledge**: whether a rank earned partly by a public post is a "material connection" that the post must
    disclose (US FTC Endorsement Guides; French and EU rules on influence), and how.
 5. **Personal data**: storing a member's GitHub login, X handle and post number; a privacy notice; GDPR basis.
+6. **The hive's own game** (docs/plan.md, 4.6): an original game written for an old console with a free toolchain,
+   whose file holds no byte of the console's maker and which needs no system file of the maker to run. Does naming
+   the console it runs on, in a plain sentence, raise a trademark question in France and in the European Union? And
+   which free licences for art and sound keep every volunteer's contribution reusable by the others?
 
 ## D4. The flagship, and the projects to invite
 
