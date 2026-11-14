@@ -3453,6 +3453,15 @@ class Volunteer(Base):
 
     def setUp(self):
         super().setUp()
+        # No test of a worker command reaches the network, whatever a change to the tool makes it try: a proxy nobody
+        # listens on, and none of this machine's own credentials for GitHub.
+        nowhere = "http://127.0.0.1:9"
+        offline = mock.patch.dict(os.environ, {name: nowhere for name in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY",
+                                                                           "ALL_PROXY")})
+        offline.start()
+        self.addCleanup(offline.stop)
+        for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "no_proxy", "NO_PROXY"):
+            os.environ.pop(name, None)
         self.registry, self.state_root, self.err = str(self.w.registry), str(self.w.state.parent), ""
         self.settings = self.alice.work / ".git/config"
         self.pristine = self.settings.read_text()
@@ -4310,7 +4319,7 @@ class TestVolunteerSide(Volunteer):
 
         with never_answers("push"):
             self.one_line(self.ready(), "the push to your fork did not land (git push: timeout after 300 s). Nothing else was pushed: run the "
-                                        "command again, or stop and tell the user")
+                                        "command again; if it fails again, stop and tell the user to check that this machine may push to the fork")
         with never_answers("ls-remote"):
             self.one_line(self.ready("--withdraw"), "git ls-remote: timeout after 60 s")
         with never_answers("commit-tree"):
