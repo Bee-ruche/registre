@@ -23528,10 +23528,52 @@ class TestHiveWorkflow(unittest.TestCase):
                 {"name": "Push what the judge accepted, and record (the only step that holds the project's token)",
                  "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}", "HIVE_PROJECT_TOKEN": "${{ steps.project.outputs.token }}"},
                  "run": "auth=$(printf 'x-access-token:%s' \"$HIVE_PROJECT_TOKEN\" | base64 -w0)\n"
+                        'echo "::add-mask::$auth"\n'  # the form git sends the token in is kept out of the run's log too
                         'git -C project config http.https://github.com/Bee-ruche/minizBee.extraheader "Authorization: Basic $auth"\n'
                         "python3 registry/tools/hive/hive.py apply --registry registry --project miniz --state state \\\n"
                         '  --repo project --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" \\\n'
                         "  --bundle taken/candidates/candidates.bundle --verdicts taken/verdicts/verdicts.json --commit-state\n"}]})
+
+    def test_the_two_jobs_without_a_key_are_exactly_these(self):
+        """What the write step integrates, and under whose name, is what the plan says: the plan's job is held whole too, and so
+        is the judging job, whose answers the write step uses (where each reads the project from, where the plan's lines go,
+        which folder an archive is unpacked into, which tree the judge's image is built from)."""
+        self.maxDiff = None
+        state = {"uses": self.CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "persist-credentials": False}}
+        project = "git clone --quiet https://github.com/Bee-ruche/minizBee project"
+
+        def upload(name, path, **more):
+            return {"uses": self.UPLOAD, **more, "with": {"name": name, "path": path, "retention-days": 3}}
+
+        self.assertEqual(self.jobs["plan"], {
+            "if": "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 30,
+            "permissions": {"contents": "read"}, "outputs": {"plan_sha256": "${{ steps.plan.outputs.plan_sha256 }}"},
+            "steps": [
+                self.REGISTRY, state,
+                {"name": "The project, in full (its branches under refs/remotes/origin)", "run": project},
+                {"name": "Plan (reads the forks, once; no key, only the read-only token gh needs to list forks)", "id": "plan",
+                 "env": {"GH_TOKEN": "${{ github.token }}"},
+                 "run": "python3 registry/tools/hive/hive.py plan --registry registry --project miniz --state state \\\n"
+                        '  --repo project --out plan.json --bundle candidates.bundle >> "$GITHUB_OUTPUT"\n'
+                        "touch candidates.bundle\n"},
+                upload("plan", "plan.json"), upload("candidates", "candidates.bundle")]})
+        self.assertEqual(self.jobs["judge"], {
+            "needs": ["plan", "record"], "if": "github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 330,
+            "permissions": {"contents": "read"},
+            "steps": [
+                self.REGISTRY, state, {"name": "The project", "run": project},
+                {"uses": self.DOWNLOAD, "with": {"name": "plan", "path": "taken/plan"}},
+                {"uses": self.DOWNLOAD, "with": {"name": "candidates", "path": "taken/candidates"}},
+                {"name": "The judge's image (with network; built from the project's own tree, and no candidate's code runs here)",
+                 "run": "python3 registry/tools/judge/judge.py --tooling project --image-only"},
+                {"name": "Judge the plan's candidates (their code runs only in containers without network)",
+                 "run": "mkdir -p work judge-work\n"
+                        "python3 registry/tools/hive/hive.py judge --registry registry --project miniz --state state \\\n"
+                        "  --repo project --plan taken/plan/plan.json --bundle taken/candidates/candidates.bundle --workdir work \\\n"
+                        "  --judge-workdir judge-work --out verdicts.json\n"},
+                upload("verdicts", "verdicts.json", **{"if": "always()"})]})
+        self.assertEqual(self.stream[True], {"schedule": [{"cron": "17 * * * *"}], "workflow_dispatch": None}, "once an hour, or by hand")
+        self.assertEqual(self.stream["name"], "Hive")
 
     def test_nothing_is_set_for_a_whole_job_or_for_the_whole_run(self):
         """A key, a token or a variable reaches a step through that step's own lines, where the test above reads it: the run, a

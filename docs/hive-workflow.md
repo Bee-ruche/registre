@@ -104,9 +104,13 @@ Notes on the file:
   runs to come: both take effect at once, and neither needs a pull request. A project's `"paused": true` stops
   it too, but only from the day the workflow file names a commit of the registry that holds it: a run reads the
   registry at the commit the file names, not at `main`.
-- The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): which
-  jobs name an environment, where a secret may appear, that no job with an environment uses the common download
-  action, the guards on the ref and on a cancelled run, the pins.
+- The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): the four jobs
+  are held word for word (whoever changes a line of one changes the test in the same commit, in sight of a
+  reviewer), and the rules they obey are stated beside them: which jobs name an environment, where a secret may
+  appear, that no job with an environment uses the common download action, the guards on the ref and on a
+  cancelled run, the pins, the schedule.
+- The project's token reaches git as a header of its requests to the project alone; the form it is sent in is
+  masked in the run's log, like the token itself.
 - The page (`tools/hive/page.py`) is one more job after `apply`, without any right but to publish: it is not in
   this file.
 - A second, lighter workflow that runs `plan` and `record` only, more often, would deal tasks sooner
