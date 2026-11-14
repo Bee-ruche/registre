@@ -3712,6 +3712,38 @@ class TestVolunteerSide(Volunteer):
         config = hive.load_config(Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2]) / "hive/projects/miniz.json")
         self.assertEqual(config["deal_hours"] - hive.WORK_MARGIN_HOURS, 2, "what the worker's guide and the volunteers' page say: two hours")
 
+    def test_setup_completes_a_clone_cut_short_when_the_projects_check_reads_old_commits(self):
+        """A session's checkout holds the last commit only, and a project's own check may read files of an old commit
+        by its id (the commits its file lists for the judge): setup brings the history, from the project."""
+        old = self.start
+        self.w.upstream_commit("lib.c", LIB + "int earlier;\n")
+        self.w.upstream_commit("lib.c", LIB + "int since;\n")
+
+        def cut_short(login, number):
+            fork = self.w.fork(login, number)
+            shutil.rmtree(fork.work)
+            sh("git", "clone", "--quiet", "--depth", "1", f"file://{fork.bare}", str(fork.work), cwd=self.w.root)
+            sh("git", "remote", "set-url", "origin", f"https://github.com/{login}/toy.git", cwd=fork.work)
+            self.assertTrue((fork.work / ".git/shallow").is_file())
+            self.assertNotEqual(sh("git", "cat-file", "-e", f"{old}^{{commit}}", cwd=fork.work, check=False).returncode, 0)
+            return fork
+
+        zed = cut_short("zed", 107)
+        self.assertEqual(self.setup(cwd=zed.work)[0], 0, self.err)
+        self.assertTrue((zed.work / ".git/shallow").is_file(), "a project whose check reads no old commit: the clone stays as it was")
+        self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old]}})
+        code, text = self.setup(cwd=zed.work)
+        self.assertEqual((code, self.spoken(text)[0]), (0, "PROJECT toy"), self.err)
+        self.assertEqual(sh("git", "cat-file", "-e", f"{old}^{{commit}}", cwd=zed.work, check=False).returncode, 0, "the old commit is there")
+        self.assertFalse((zed.work / ".git/shallow").exists())
+        self.assertEqual(self.setup(cwd=zed.work)[0], 0, "and again, with nothing to do")
+        self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old, "1" * 40]}})
+        for fork in (zed, cut_short("yan", 108)):
+            code, text = self.setup(cwd=fork.work)
+            self.assertEqual((code, text), (2, ""), "a commit the project itself does not hold: said, in one line")
+            self.assertEqual(self.err, "hive: this clone does not hold a commit that the project's own check reads by its id: take a full "
+                                       "clone of your fork (git clone, without --depth) and run setup again\n")
+
     def test_submit_commits_the_tasks_files_marks_the_candidate_and_pushes_it(self):
         """After the sandbox the worker runs no git of its own: submit stages, commits, marks and pushes."""
         dealt = self.w.deal(self.alice, "toy-0001")

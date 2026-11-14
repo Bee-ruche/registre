@@ -2509,7 +2509,8 @@ def push(clone, url, source, branch):
 
 def cmd_setup(args):
     """Volunteer side: checks that this is a plain clone of the volunteer's own fork, finds the project it is a fork
-    of, adds it as the « upstream » remote and fetches its tip."""
+    of, adds it as the « upstream » remote and fetches its tip, and the whole of its history if the clone was cut
+    short and the project's own check reads old commits."""
     clone = plain_clone()
     if args.project is not None and not PROJECT_ID.match(args.project):
         raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
@@ -2535,8 +2536,20 @@ def cmd_setup(args):
         clone.git("remote", "add", "upstream", url)
     elif not same_repository(current, url):
         raise HiveError("this clone already has an 'upstream' remote that is not the project: remove it or use a fresh clone")
-    clone.git("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", url, f"+refs/heads/{branch}:refs/remotes/upstream/{branch}",
-              to=url, timeout=900)
+    wanted = ("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", url, f"+refs/heads/{branch}:refs/remotes/upstream/{branch}")
+    clone.git(*wanted, to=url, timeout=900)
+
+    def lacking():
+        return [commit for commit in config["judge"]["history"]
+                if clone.git("cat-file", "-e", f"{need_sha(commit)}^{{commit}}", check=False).returncode != 0]
+
+    # The project's own check may read files of an old commit by its id (the commits its file lists for the judge). A
+    # clone cut short, as a session's checkout is, does not hold them: its history is completed, from the project.
+    if lacking() and (clone.git_dir / "shallow").is_file():
+        clone.git(wanted[0], "--unshallow", *wanted[1:], to=url, timeout=900)
+    if lacking():
+        raise HiveError("this clone does not hold a commit that the project's own check reads by its id: take a full clone of "
+                        "your fork (git clone, without --depth) and run setup again")
     print(f"PROJECT {config['project']}")
     print(f"LOGIN {login}")
     print(f"UPSTREAM upstream/{branch}")
