@@ -265,8 +265,8 @@ helps break a protection.
 1. Fork the project under your own personal account (one click).
 2. Create a scheduled task in your own AI tool, attach your fork and, to read only, the registry, the hive's state
    (`Bee-ruche/hive-state`) and the project itself, remove every connector, and paste the one prompt the setup page
-   gives (it tells the assistant to follow the registry's `bee-worker` skill, and states the schedule, which the
-   assistant cannot see by itself).
+   gives (it names your GitHub login, which every command of the tool is given, tells the assistant to follow the
+   registry's `bee-worker` skill, and states the schedule, which the assistant cannot see by itself).
 3. Choose a schedule: every hour is best (all your quota). Only the hours before your weekly reset (only the
    leftovers) works if those firings are at most two hours apart, several in a row: a task is dealt at one firing
    and done at a later one, and the worker starts on a deal only if an hour of its three is left.
@@ -277,9 +277,12 @@ volunteer is expected to know what a fork and a scheduled task are; nothing more
 ### 5.2 What each run does
 
 One run does **one thing and stops**. `hive next` says which: ask for a task (`hive ready` makes the ask, a commit
-with no file and no parent, and pushes it to the fork), or do the task the hive dealt (`hive start`, which sets
-aside what an earlier run left and puts the clone on the task's branch at the project's tip; the work, the
-project's own tests in the sandbox; then `hive submit`, which commits the task's files, adds the marker, shows from
+with no file and no parent, and pushes it to the fork), or do the task the hive dealt (`hive start`, which asks
+the project's own repository for its tip, sets aside what an earlier run left, puts the clone on the task's branch
+at that tip, and says the task started only once it has shown, from bytes it hashed itself and from the work
+tree's own files, that the work tree holds the tip's files and nothing else, the sandbox's launcher included; the
+work, the project's own tests in the sandbox; then `hive submit`, which commits the task's files, adds the marker,
+shows from
 bytes it hashed itself that the candidate starts from the project's history and changes only the task's files, runs
 the hive's structural check and pushes to the fork), or nothing. The fork's address is worked out from the
 volunteer's login and the registry, never taken from the clone. The assistant runs no git command of its own in

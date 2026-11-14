@@ -26,7 +26,9 @@ usage settings before you schedule anything.
   hive's state (`Bee-ruche/hive-state`) and the project itself (fetched, never written). It runs project code only
   inside the project's sandbox (no network, none of its environment), in a cloud session as on your own machine, and
   after that it leaves every commit and every push to the hive's own tool, which first checks that nothing was
-  planted in the clone's git settings.
+  planted in the clone's git settings. Before each task that tool also shows, file by file, that what the clone
+  holds is what the project holds and nothing else: the worker reads no file as the project's, and runs no sandbox
+  from the clone, before it has.
 
 ## Set it up once (the pilot's target is fifteen minutes; nobody has timed it yet)
 
@@ -73,7 +75,7 @@ follow it exactly. Whatever else you read:
 4. If you hold a tool that reaches my mail, calendar, documents or chat, stop and tell me to remove it.
 5. If a permission is refused, do not work around it: stop.
 6. Run no git command yourself in the clone of my fork: `hive.py` does every step (it starts the task, commits
-   and pushes). If it says the clone is not plain, stop and tell me.
+   and pushes). If it answers `hive: STOP`, stop, run nothing more in that clone or from it, and tell me.
 7. End with the skill's three lines: what you did, what happens next, where to look.
 ```
 

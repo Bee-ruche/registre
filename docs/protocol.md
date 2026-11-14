@@ -62,9 +62,13 @@ Hive-Model: claude-fable-5-2
   statistic, not a proof.
 
 A key that appears twice, an unknown action or a malformed value means "no marker": the commit is ignored.
-`hive.py ready` and `hive.py submit` write these commits and push them to the fork (`hive.py start`, before the
-work, puts the clone on the task's branch at the project's tip). They push to one address,
-`https://github.com/<login>/<the project's repository name>`, worked out from the member's login and the registry;
+`hive.py ready` and `hive.py submit` write these commits and push them to the fork. `hive.py start`, before the
+work, asks the project's own repository for its tip, puts the clone on the task's branch at that commit, and says
+the task started only once it has shown that the work tree holds that commit's files and nothing else: it lists
+them from the commit's folders, read as bytes it hashes itself, and reads each entry of the work tree as a plain
+file. The commands push to one address,
+`https://github.com/<login>/<the project's repository name>`, worked out from the member's login (every command is
+given it, `hive.py setup` included) and the registry;
 the address the clone gives its origin is only compared with it. `submit` commits the work (the task's files, and
 nothing else of the work tree). Before it pushes, it asks the project's own repository for its tip and shows, from
 commits and folders it reads as bytes and hashes itself, that the candidate starts from the project's history and
@@ -329,9 +333,16 @@ project code ran in it: each command first checks that its git settings are the 
 stops the command: a filter, a hook, a credential helper, another address to push to, an included file, a reference
 that is neither a branch, a tag nor the stash), and starts the task, commits and pushes itself, so that the worker's
 assistant runs no git command of its own in the fork's clone. What a command decides on is never a value the clone
-holds: the fork's https address is worked out from the login and the registry, and a candidate is pushed only once
+holds: the fork's https address is worked out from the login and the registry, a task starts on the commit the
+project's own address announces, and a candidate is pushed only once
 the tool has shown, from bytes it hashed itself, that it starts from the project's history and changes only the
-task's files. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
+task's files. Nor does a task start on what git made of the clone: git does not hash an object again when it reads
+one, and its index is a file of the clone, so `start` shows by its own reading that each file of the work tree
+hashes to the id the project's tip lists, and that nothing else is there. A file the project's own rules convert
+(line ends, an encoding) is compared, byte for byte, with what a checkout writes for the hashed file; a file that
+is run or obeyed on the host (the sandbox's launcher, the CI's files, an agent's settings and instructions) is
+taken only as the tip's very bytes. Otherwise the command stops, and nothing is run from the clone, not even its
+sandbox. A worker must run at least every two hours to do the tasks it asks for: a deal lasts three
 hours and a worker starts on one only if an hour of it is left.
 
 Each fork is read with one listing and one fetch, both limited in time. When the time allowed to read all the

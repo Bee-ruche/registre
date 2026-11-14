@@ -46,9 +46,10 @@ tell the user.
    fork. `hive` does every step: `hive start` puts the clone on the task's branch, `hive submit` and `hive ready`
    commit and push; each checks the clone first and reads neither its settings nor the machine's. (The registry's
    clone and the state's, in `~/.hive`, are taken with git as "The run" shows.) If `hive` answers `hive: STOP: …`
-   (this clone is not a plain clone, or an object of this clone is not what its name says), **stop: do not commit,
-   do not push, run no git command in that clone**, and tell the user in your final message, with the line `hive`
-   printed.
+   (this clone is not a plain clone, an object of this clone is not what its name says, or its work tree is not
+   what the project's tip holds), **stop: do not commit, do not push, run no git command in that clone, and run
+   nothing from it, not even its sandbox** (the sandbox's launcher is one of the clone's files). Tell the user in
+   your final message, with the line `hive` printed.
 
 If a permission is refused, do not work around it: stop.
 
@@ -89,7 +90,8 @@ NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed
 ```
 
 An error is one line on the standard error, `hive: <sentence>`, with exit code 2: read it, correct your command if
-it says how, otherwise stop and report it. `hive: STOP: …` (exit code 3) is rule 4.
+it says how, otherwise stop and report it. `hive: STOP: …` (exit code 3) is rule 4: nothing more is run in the
+clone, or from it.
 
 ## The run
 
@@ -177,7 +179,8 @@ Start from the project's tip, right after `hive next` and before anything runs i
 hive start --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN>
 ```
 
-`start` checks the clone, then sorts what an earlier run left in it:
+`start` checks the clone and asks the project's own repository which commit its branch is at: that commit is the
+project's tip, and `start` takes none from the clone. Then it sorts what an earlier run left in the clone:
 
 - **set aside** with `git stash` (`SET-ASIDE`: nothing of it is lost, `git stash list` shows it to the user): what
   git tracks and finds changed, and the untracked files that git does not ignore;
@@ -186,20 +189,34 @@ hive start --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN>
   files, the project's and any an earlier run wrote. So a file of the user's own under an ignored name is removed,
   not set aside: a clone that works for the hive should hold no work of the user's own.
 
-Then it puts the clone on the branch `hive/submit/<id>` at the project's tip, and writes every file of the tip out
-again: `STARTED`. Run it **once**, before the work: run again, it starts the task again from the tip and sets aside
-the work done since. If it fails, stop and tell the user, with the line it printed (it names, for instance, a
-branch of the clone that stands where the tool keeps its own).
+Then it puts the clone on the branch `hive/submit/<id>` at the project's tip and writes every file of the tip out
+again. Last, it shows that the work tree holds the files of the tip and nothing else: it reads the tip's own list
+of files, as bytes it hashes itself, and every entry of the work tree, as a plain file, and compares the two. Only
+then does it print `STARTED`. **Until `STARTED` is printed, run nothing from the clone**: the sandbox's launcher,
+`bee/sandbox/sans-docker.sh`, is one of the files `start` shows, and it runs on the host.
+
+- `hive: STOP: the work tree of this clone is not what the project's tip holds …`: a file of the tip is missing or
+  holds other bytes, or the work tree holds something more, which git itself did not show. **Stop: run nothing from
+  the clone, not even its sandbox**, and tell the user, with that line, to take a fresh clone of the fork (rule 4).
+- `hive: STOP: the project's own rules convert … a file that is run or obeyed on the host …`: the same stop. A
+  fresh clone would hold the same: the project itself has to change, and the user is the one to tell.
+- `hive: the project is larger than this tool reads …`, or any other line: the task is not started. Stop and tell
+  the user, with the line it printed (it names, for instance, a branch of the clone that stands where the tool
+  keeps its own).
+
+Run `start` **once**, before the work: run again, it starts the task again from the tip and sets aside the work done
+since.
 
 Do the work:
 
 - Change only the task's files. Never touch tests, CI, the judge, or agent instruction files: the hive refuses
   the whole candidate, and that costs the account a wait.
 - Keep it small and exact. A task that says "same results, faster" means the same results, byte for byte.
-- Build and test with the project's own commands (its README, and `CHECK`), **only inside a sandbox**: the fork's
-  own `bee/sandbox/sans-docker.sh <command>` on Linux (no network, none of your environment, an empty home folder),
-  or the fork's Docker image. A cloud session is not a sandbox by itself: it holds the credentials that push to the
-  user's fork, and project code must never run next to them. No sandbox available: stop.
+- Build and test with the project's own commands (its README, and `CHECK`), **only inside a sandbox**, and only
+  after `STARTED`: the fork's own `bee/sandbox/sans-docker.sh <command>` on Linux (no network, none of your
+  environment, an empty home folder), or the fork's Docker image. A cloud session is not a sandbox by itself: it
+  holds the credentials that push to the user's fork, and project code must never run next to them. No sandbox
+  available: stop.
 - Do not commit. `hive submit` does (rule 4).
 
 Then:
