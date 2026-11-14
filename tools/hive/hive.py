@@ -2923,16 +2923,17 @@ def cmd_start(args):
     leftover. Changes to tracked files and untracked files that git does not ignore are stashed (« git stash list »
     shows them; nothing of them is lost). Then every file and folder that remains untracked, ignored ones included,
     is removed, a repository of its own too (« git clean -ffdx »): what a build left under an ignored name would
-    otherwise be there again when the next task's code runs in the sandbox, where « submit » never sees it. So are
-    what git cannot see (removed by this function itself): a .git below the root, a pipe, a socket. A link is
-    removed, never followed; a link that stands where the project has a folder is removed first, since git refuses
-    to read past it. A read-only folder is opened to its owner first. Nothing outside the work tree is touched, and
+    otherwise be there again when the next task's code runs in the sandbox, where « submit » never sees it. So is
+    what git cannot see: a .git below the root, a pipe, a socket. A link is removed, never followed; a link that
+    stands where the project has a folder is removed first, since git refuses to read past it. A read-only folder is
+    opened to its owner first. These three steps git cannot take are this function's own, in Python, and each looks
+    at an entry with lstat before it acts: none goes through a link or enters the clone's own .git. Nothing outside the work tree is touched, and
     .git itself is not cleaned (git never cleans it): plain_clone checks it first, and a refusal touches nothing.
 
-    Then the branch is made, or reset, at the tip, and HEAD names it (checkout -B, without following anything): the
-    commits the branch held, a candidate whose push did not land for instance, stay in its log (git reflog), which
-    is written whatever the clone's settings say. Every step runs through Clone.git: no hook, no filter, no
-    setting of the machine, no network.
+    Then the branch is made, or reset, at the tip, and HEAD names it (checkout -B, given the tip's commit id: so the
+    branch follows no other, and no setting is written). The commits the branch held, a candidate whose push did not
+    land for instance, stay in its log (git reflog), which is written whatever the clone's settings say. Every step
+    runs through Clone.git: no hook, no filter, no setting of the machine, no network.
 
     Run again, it does the same: it starts the task again from the tip, and sets aside what was done since (the
     work is in « git stash list », not lost). So it runs once per task and per run, before the work."""
@@ -2978,7 +2979,7 @@ def cmd_start(args):
         raise HiveError("a file an earlier run left in the work tree could not be removed: tell the user") from None
     if untracked(clone) or work_tree_changes(clone):
         raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
-    clone.git("checkout", "--quiet", "--no-track", "-l", "-B", branch, tip, env=who)
+    clone.git("checkout", "--quiet", "-l", "-B", branch, tip, env=who)
     if set_aside:
         print(f"SET-ASIDE {set_aside} change(s) of an earlier run: git stash list shows them")
     if removed:
