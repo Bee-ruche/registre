@@ -51,7 +51,7 @@ a value this file checked or a sentence of its own, never a text of the feed or 
   REFUSED (<reason>): <sentence> <details as JSON>
                                   submit: a structural rule is broken: nothing was committed or pushed
   PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
-  NOT-PUSHED <commit>: <command>  ready, submit with --no-push: the push left to do
+  NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 
 An error is one line on the standard error, « hive: <sentence> », with exit code 2 (1 after REFUSED). « hive: STOP:
 <sentence> », exit code 3, says the clone is not plain: nothing may be committed or pushed from it.
@@ -2410,8 +2410,9 @@ class Clone:
         return who
 
     def commit(self, tree, parent, message, who):
-        """A commit of its own, on no branch: its id."""
-        return self.git("commit-tree", need_sha(tree), "-p", need_sha(parent), stdin=message, env=who).stdout.strip()
+        """A commit of its own, on no branch: its id. parent: None for a commit with no history."""
+        history = () if parent is None else ("-p", need_sha(parent))
+        return self.git("commit-tree", need_sha(tree), *history, stdin=message, env=who).stdout.strip()
 
 
 def first_bytes(path, most):
@@ -3080,8 +3081,10 @@ def cmd_start(args):
 
 def cmd_ready(args):
     """Volunteer side: asks the hive for a task, and pushes the ask itself. A commit of its own, on no branch of this
-    clone: pushed (forced) to the fork's one asking branch, it replaces the previous ask and carries nothing else.
-    It is dated by this tool's own clock: « next » reads that date to say how long an ask has waited."""
+    clone: pushed (forced) to the fork's one asking branch, it replaces the previous ask and carries nothing else:
+    no file (its tree is the empty one) and no history (it has no parent), so that nothing this clone holds goes to
+    the fork with it. The hive reads its message, and « next » its date, which is this tool's own clock: how long the
+    ask has waited."""
     if args.login is not None and not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -3096,17 +3099,13 @@ def cmd_ready(args):
         return
     if args.tier not in (1, 2, 3):
         raise HiveError("--tier: 1, 2 or 3")
-    upstream = args.upstream or "HEAD"
-    if not REVISION.match(upstream):
-        raise HiveError("--upstream: a branch's name or a commit id")
-    parent = clone.git("rev-parse", "--verify", f"{upstream}^{{commit}}").stdout.strip()
-    tree = clone.git("rev-parse", "--verify", f"{parent}^{{tree}}").stdout.strip()
     # The instant makes each ask a new commit: an ask is used once.
     asked = now()
     lines = [f"Hive ready ({iso(asked)})", "", "Hive-Action: ready", f"Hive-Member: {login}", f"Hive-Tier: {args.tier}"]
-    commit = clone.commit(tree, parent, "\n".join(lines) + "\n", clone.identity(login, asked))
+    commit = clone.commit(EMPTY_TREE, None, "\n".join(lines) + "\n", clone.identity(login, asked))
     if args.no_push:
-        print(f"NOT-PUSHED {commit}: git push --force origin {commit}:refs/heads/{READY_BRANCH}")
+        print(f"NOT-PUSHED {commit}: the ask is made and nothing was pushed; run the same command again without --no-push to make "
+              "the ask anew and push it")
         return
     push(clone, origin, commit, READY_BRANCH)
     print(f"ASKED {commit}")
@@ -3178,7 +3177,8 @@ def cmd_submit(args):
         clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
     branch = SUBMIT_BRANCH.format(task=task["id"])
     if args.no_push:
-        print(f"NOT-PUSHED {marker}: git push --force origin {marker}:refs/heads/{branch}")
+        print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without --no-push "
+              "to push it")
         return
     push(clone, origin, marker, branch)
     print(f"PUSHED {marker}")
@@ -3240,8 +3240,7 @@ def main(argv=None):
         p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]), help="the registry's tree (trusted: this tool's own)")
         if pushes:
             p.add_argument("--login", help="your GitHub login, as setup printed it (the owner of this clone's origin)")
-            p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
-            p.add_argument("--no-push", action="store_true", help="make the commit and print the push, without pushing")
+            p.add_argument("--no-push", action="store_true", help="make the commit without pushing it")
 
     p = sub.add_parser("setup", help="volunteer: check this clone of your fork, find its project and fetch the project's tip")
     worker_side(p)
@@ -3274,6 +3273,7 @@ def main(argv=None):
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--deal", required=True, help="the deal's instant, as « next » printed it")
+    p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
     p.add_argument("--message", help="one plain line that says what you changed (the work commit's title)")
     p.add_argument("--model", help="your model's identifier, if the project lists it; leave it out if you are not sure")
     p.set_defaults(run=cmd_submit)

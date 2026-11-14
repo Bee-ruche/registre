@@ -74,7 +74,7 @@ WITHDRAWN                       ready --withdraw: the ask is taken back
 REFUSED (<reason>): <sentence> <details as JSON>
                                 submit: a structural rule is broken: nothing was committed or pushed
 PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
-NOT-PUSHED <commit>: <command>  ready, submit with --no-push: the push left to do
+NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 ```
 
 An error is one line on the standard error, `hive: <sentence>`, with exit code 2: read it, correct your command if
@@ -114,7 +114,7 @@ run, and never a loop that waits and tries again.
 ### `ASK`: you hold no task
 
 ```bash
-hive ready --login <LOGIN> --upstream <UPSTREAM>
+hive ready --login <LOGIN>
 ```
 
 It makes the ask, pushes it to the user's fork itself, and prints `ASKED <commit>`. Then stop. The hive deals you a
@@ -202,9 +202,8 @@ pushes to the user's fork: `PUSHED <commit>`.
   stop.
 
 After `PUSHED`, if this worker runs at least every two hours, ask for your next task now as well
-(`hive ready --login <LOGIN> --upstream <UPSTREAM>`): the hive deals it as soon as this candidate is accepted (if it
-is refused, the ask stays and is served once the wait is over). Then stop. The result appears in the project's
-ledger and on its page.
+(`hive ready --login <LOGIN>`): the hive deals it as soon as this candidate is accepted (if it is refused, the ask
+stays and is served once the wait is over). Then stop. The result appears in the project's ledger and on its page.
 
 ## When to stop without submitting
 

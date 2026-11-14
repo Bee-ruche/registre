@@ -3387,7 +3387,9 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"WITHDRAWN",
     r"REFUSED \([a-z_]+\): [ -~]+ \{.*\}",
     rf"PUSHED {COMMIT}",
-    rf"NOT-PUSHED {COMMIT}: git push --force origin {COMMIT}:refs/heads/hive/(ready|submit/toy-[0-9]{{4}})",
+    rf"NOT-PUSHED {COMMIT}: the ask is made and nothing was pushed; run the same command again without --no-push to make the ask anew "
+    r"and push it",
+    rf"NOT-PUSHED {COMMIT}: the candidate is committed and nothing was pushed; run the same command again without --no-push to push it",
 )]
 ASK = "ASK: you hold no task. If this worker runs at least every 2 hours, ask for one: hive.py ready\n"
 CANDIDATE_WAITS = "WAIT: your candidate is pushed and the hive has not answered it yet\n"
@@ -3500,7 +3502,7 @@ class Volunteer(Base):
         return self.run_cli("next", "--registry", self.registry, "--project", "toy", "--state", self.state_root, "--login", login, **options)
 
     def ready(self, *more, **options):
-        return self.run_cli("ready", "--registry", self.registry, "--login", "alice", "--upstream", "origin/main", *more, **options)
+        return self.run_cli("ready", "--registry", self.registry, "--login", "alice", *more, **options)
 
     def submit(self, task, deal, *more, **options):
         return self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--upstream", "origin/main", "--login", "alice",
@@ -3635,13 +3637,14 @@ class TestVolunteerSide(Volunteer):
         code, text = self.submit("toy-0001", dealt, "--model", "claude-fable-5-2", "--no-push")
         self.assertEqual(code, 0, self.err)
         marker = self.head()
-        self.assertEqual(text, f"NOT-PUSHED {marker}: git push --force origin {marker}:refs/heads/hive/submit/toy-0001\n")
+        self.assertEqual(text, f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
+                               "--no-push to push it\n")
         self.spoken(text)
         self.assertEqual(sh("git", "rev-parse", "HEAD^", cwd=self.alice.work).stdout.strip(), before, "the marker is on the work")
         self.assertEqual(hive.read_marker(sh("git", "show", "-s", "--format=%B", "HEAD", cwd=self.alice.work).stdout),
                          {"task": "toy-0001", "action": "submit", "member": "alice", "model": "claude-fable-5-2", "tier": None, "deal": dealt})
         self.assertEqual(self.fork_branches(), ["refs/heads/main"], "--no-push pushes nothing")
-        sh("git", "push", "--quiet", "--force", "origin", f"{marker}:refs/heads/hive/submit/toy-0001", cwd=self.alice.work)
+        self.assertEqual(self.submit("toy-0001", dealt, "--model", "claude-fable-5-2")[1].splitlines()[0], f"PUSHED {marker}", self.err)
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
     def test_setup_finds_the_project_and_fetches_its_tip(self):
@@ -3773,8 +3776,7 @@ class TestVolunteerSide(Volunteer):
         The tool makes every commit and every push; the worker runs no git of its own."""
         self.w.run()  # the hive's first run: a feed, and nothing in it for alice
         self.assertEqual(self.next(), (0, ASK))
-        for wrong in (("--login", "a b"), ("--tier", "4"), ("--upstream", "nowhere"), ("--upstream", "--force"),
-                      ("--withdraw", "--no-push")):
+        for wrong in (("--login", "a b"), ("--tier", "4"), ("--withdraw", "--no-push")):
             self.assertEqual((self.ready(*wrong), wrong), ((2, ""), wrong), self.err)
         self.assertEqual(self.fork_branches(), ["refs/heads/main"])
         code, text = self.ready("--tier", "2")
@@ -3791,7 +3793,8 @@ class TestVolunteerSide(Volunteer):
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:00:01Z"}):
             code, text = self.ready("--no-push")
             again = text.split()[1][:-1]
-        self.assertEqual((code, text), (0, f"NOT-PUSHED {again}: git push --force origin {again}:refs/heads/hive/ready\n"))
+        self.assertEqual((code, text), (0, f"NOT-PUSHED {again}: the ask is made and nothing was pushed; run the same command again without "
+                                           "--no-push to make the ask anew and push it\n"))
         self.assertNotEqual(again, first, "each ask is a new commit")
         self.assertEqual(self.fork_branch("hive/ready"), first)
         self.w.run()
@@ -3826,6 +3829,54 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((self.next(), self.fork_branch("hive/ready")), ((0, ASK), first), "answered, and its ask was used: ask for the next one")
         self.assertEqual((self.ready("--withdraw"), self.fork_branch("hive/ready")), ((0, "WITHDRAWN\n"), None))
         self.assertEqual(self.ready("--withdraw"), (0, "WITHDRAWN\n"), "nothing to take back is no error")
+
+    def test_an_ask_carries_no_file_and_no_history_and_the_hive_serves_it(self):
+        """An ask says one thing, in its message: deal this member a task. Its commit holds no file (the empty tree)
+        and has no parent, whatever the clone is on and whatever its references name: nothing the clone holds goes to
+        the fork with an ask. The hive reads the message of the branch's tip, and deals."""
+        self.w.run()
+        self.alice.write("planted.yml", "on: push\n").commit("a commit of the clone's own")
+        sh("git", "update-ref", "refs/remotes/upstream/main", self.head(), cwd=self.alice.work)
+        code, text = self.ready()
+        ask = self.fork_branch("hive/ready")
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"ASKED {ask}"), self.err)
+        head, _, message = sh("git", "cat-file", "commit", ask, cwd=self.alice.bare).stdout.partition("\n\n")
+        self.assertEqual([line.split(" ")[0] for line in head.splitlines()], ["tree", "author", "committer"], "no parent")
+        self.assertEqual(head.splitlines()[0], f"tree {hive.EMPTY_TREE}")
+        self.assertEqual(sh("git", "ls-tree", "-r", ask, cwd=self.alice.bare).stdout, "", "no file")
+        self.assertEqual(sh("git", "rev-list", "--count", ask, cwd=self.alice.bare).stdout.strip(), "1", "no history")
+        self.assertEqual(message, f"Hive ready ({NOW})\n\nHive-Action: ready\nHive-Member: alice\nHive-Tier: 3\n")
+        self.w.run()
+        self.assertEqual([login for _, login in self.w.dealt_by_runs()], ["alice"], "the hive deals on it")
+        self.assertTrue(self.next()[1].startswith("TASK toy-"))
+
+    def test_with_no_push_nothing_is_pushed_and_the_same_command_without_it_pushes(self):
+        """--no-push makes the commit and pushes nothing. The line it prints is a sentence of the tool's own, never a
+        git command for the agent to run: the same command without the option does the push. For submit that is the
+        same candidate, which the first run left on the task's branch; for ready, a new ask, dated when it is pushed."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.w.run()
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        code, text = self.submit("toy-0001", dealt, "--no-push", "--message", "The work")
+        candidate = self.head()
+        self.assertEqual((code, self.spoken(text)), (0, [f"NOT-PUSHED {candidate}: the candidate is committed and nothing was pushed; run the "
+                                                          "same command again without --no-push to push it"]), self.err)
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"])
+        code, text = self.submit("toy-0001", dealt, "--message", "The work")
+        self.assertEqual((code, self.spoken(text)[0], self.fork_branch("hive/submit/toy-0001")), (0, f"PUSHED {candidate}", candidate), self.err)
+        code, text = self.ready("--no-push")
+        made = text.split()[1][:-1]
+        self.assertEqual((code, self.spoken(text)), (0, [f"NOT-PUSHED {made}: the ask is made and nothing was pushed; run the same command again "
+                                                          "without --no-push to make the ask anew and push it"]), self.err)
+        self.assertEqual(self.fork_branches(), ["refs/heads/hive/submit/toy-0001", "refs/heads/main"])
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T12:00:07Z"}):
+            code, text = self.ready()
+        ask = self.fork_branch("hive/ready")
+        self.assertEqual((code, self.spoken(text)[0], ask == made), (0, f"ASKED {ask}", False), self.err)
+        self.assertIn("Hive ready (2026-11-12T12:00:07Z)", sh("git", "cat-file", "commit", ask, cwd=self.alice.bare).stdout)
+        for line in ("git ", "push --force", "refs/heads"):
+            self.assertNotIn(line, "".join(pattern.pattern for pattern in WORKER_LINES if pattern.pattern.startswith("NOT-PUSHED")))
 
     def test_an_ask_the_hive_does_not_answer_is_kept_and_after_six_hours_the_user_is_told(self):
         self.w.set_config({"members": {"only": []}})  # by invitation, and alice is not invited: the hive reads no fork of hers
@@ -4280,7 +4331,8 @@ class TestVolunteerSide(Volunteer):
         names none; the login the command line gives is the one written, in its own spelling. (In the tests an
         origin may be a folder, which names nobody: the command line must.)"""
         def member_of(*command):
-            code, text = self.run_cli(*command, "--registry", self.registry, "--upstream", "origin/main", "--no-push")
+            tip = ("--upstream", "origin/main") if command[0] == "submit" else ()
+            code, text = self.run_cli(*command, "--registry", self.registry, *tip, "--no-push")
             self.assertEqual(code, 0, self.err)
             return hive.read_marker(sh("git", "show", "-s", "--format=%B", text.split()[1][:-1], cwd=self.alice.work).stdout)["member"]
 
@@ -4313,7 +4365,6 @@ class TestVolunteerSide(Volunteer):
                     self.one_line(self.run_cli(*command, "--registry", self.registry, f"--login={login}"), "--login: your GitHub login")
         for tip in ("--force", "-h", "origin/main^{tree}", "HEAD~1", "origin/main origin/main", "@{-1}", "x" * 201):
             with self.subTest(tip=tip):
-                self.one_line(self.ready(f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
                 self.one_line(self.submit("toy-0001", NOW, f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
                 self.one_line(self.begin("toy-0001", NOW, f"--upstream={tip}"), "--upstream: a branch's name or a commit id")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
@@ -5187,9 +5238,9 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                     self.assertNotIn(word, text + self.err, "nothing of what git read, nor of what it said about it")
                 self.assertLessEqual(len(self.err.splitlines()), 1)
                 failed[name] = (code, text, self.err)
-        for name in ("ready", "submit"):  # the two that read the history: git stops there, and the command says so in its own words
-            self.assertEqual(failed[name][:2], (2, ""), name)
-            self.assertRegex(failed[name][2], r"\Ahive: git rev-parse failed \([0-9]+\)\n\Z")
+        # submit reads the history: git stops there, and the command says so in its own words
+        self.assertEqual(failed["submit"][:2], (2, ""))
+        self.assertRegex(failed["submit"][2], r"\Ahive: git rev-parse failed \([0-9]+\)\n\Z")
         (self.alice.work / ".git/shallow").unlink()
         dealt = self.w.deal(self.alice, "toy-0001")
         self.alice.write("lib.c", LIB + "int honest;\n")
