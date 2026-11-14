@@ -4593,6 +4593,20 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((code, self.spoken(text)[0], candidate), (0, f"PUSHED {candidate}", self.head()), self.err)
         self.assertEqual(self.next(), (0, CANDIDATE_WAITS), "asked of the fork itself, before the hive has seen it")
         self.assertEqual(sh("git", "for-each-ref", "refs/hive", cwd=self.alice.work).stdout, "", "what was read of the fork leaves no ref")
+        # A new clone, as a session's checkout is: the project's last commit and nothing of the fork's other branches. The
+        # fork says which commit the task's branch is at, and next fetches that commit by its id: the work is not done twice.
+        fresh = self.w.root / "fresh-clone"
+        sh("git", "clone", "--quiet", "--depth", "1", f"file://{self.alice.bare}", str(fresh), cwd=self.w.root)
+        sh("git", "remote", "set-url", "origin", str(self.alice.bare), cwd=fresh)
+        self.assertNotEqual(sh("git", "cat-file", "-e", f"{candidate}^{{commit}}", cwd=fresh, check=False).returncode, 0, "the clone lacks the candidate")
+        real = hive.Clone.git
+
+        def no_fetch(clone, *args, **options):
+            return subprocess.CompletedProcess(args, 128, "" if options.get("raw") is not True else b"", "") if args[0] == "fetch" else real(clone, *args, **options)
+        with mock.patch.object(hive.Clone, "git", no_fetch):
+            self.assertTrue(self.next(cwd=fresh)[1].startswith("TASK "), "a commit the fork names and the clone cannot get is no candidate it knows of")
+        self.assertEqual(self.next(cwd=fresh), (0, CANDIDATE_WAITS), self.err)
+        self.assertEqual(sh("git", "for-each-ref", "refs/hive", "refs/remotes/origin/hive", cwd=fresh).stdout, "", "and reading it wrote no reference")
         self.w.plan()
         self.w.record()
         self.assertIs(self.w.feed_file()["deals"][hive.member_mark("alice")]["candidate"], True)
@@ -6134,6 +6148,24 @@ class TestVolunteerSide(Volunteer):
         code, text = self.begin("toy-0001", NOW)
         self.assertEqual((code, self.spoken(text)[-2]), (0, f"STARTED hive/submit/toy-0001 at {self.start}"), self.err)
         self.assertEqual(self.work_tree(outside), untouched)
+
+    def test_a_place_is_inside_the_work_tree_only_if_folders_lead_to_it(self):
+        """What start empties or removes by a path of the index is a place inside the work tree, reached through
+        folders only: never through a link (which may lead anywhere), nor through a file, and never by a path that
+        climbs, is absolute, or names the clone's own .git."""
+        root, outside = self.alice.work, self.w.root / "elsewhere"
+        (outside / "lib").mkdir(parents=True)
+        os.symlink(outside, root / "out")
+        (root / "plain").write_text("a file\n")
+        self.assertEqual(hive.place_inside(root, b"src/lib"), os.path.join(os.fsencode(root), b"src", b"lib"))
+        self.assertEqual(hive.place_inside(root, b"out"), os.path.join(os.fsencode(root), b"out"), "the link itself is a place: what stands there is not entered")
+        for path in (b"out/lib", b"out/lib/deeper", b"plain/lib", b"missing/lib"):
+            with self.subTest(path=path):
+                self.assertIsNone(hive.place_inside(root, path), "no folder leads there")
+        for path in (os.fsencode(outside), b"../elsewhere", b"src/../../elsewhere", b".", b"src//lib", b".git/hooks", b"src/.GIT/x", b""):
+            with self.subTest(path=path):
+                with self.assertRaises(hive.NotPlain):
+                    hive.place_inside(root, path)
 
     def test_start_reads_no_state(self):
         """start needs no clone of the hive's state: the task is the one next printed, from the registry, and submit
