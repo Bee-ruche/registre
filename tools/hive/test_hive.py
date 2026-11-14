@@ -3510,7 +3510,7 @@ class Volunteer(Base):
         return self.run_cli("ready", "--registry", self.registry, "--project", "toy", "--login", "alice", *more, **options)
 
     def submit(self, task, deal, *more, **options):
-        return self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--upstream", "origin/main", "--login", "alice",
+        return self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--upstream-url", str(self.w.upstream), "--login", "alice",
                             "--task", task, "--deal", deal, *more, **options)
 
     def begin(self, task, deal, *more, **options):
@@ -3663,7 +3663,7 @@ class TestVolunteerSide(Volunteer):
         before = self.head()
         for wrong in (("--deal", "today"), ("--deal", "2026-99-99T99:99:99Z"), ("--task", "toy-9999"), ("--task", "toy-0003"),
                       ("--model", "a b"), ("--login", "a b"), ("--message", "two\nlines"), ("--message", "Hive-Action: ready"),
-                      ("--message", "x" * 201), ("--upstream", "--force"), ("--upstream", "nowhere")):
+                      ("--message", "x" * 201), ("--upstream", "origin/main"), ("--upstream-url", "https://github.com/mallory/toy.git")):
             self.assertEqual((self.submit("toy-0001", dealt, "--no-push", *wrong), wrong), ((2, ""), wrong), self.err)
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]), "no marker and no push when something is wrong")
         code, text = self.submit("toy-0001", dealt, "--model", "claude-fable-5-2", "--no-push")
@@ -4323,7 +4323,7 @@ class TestVolunteerSide(Volunteer):
             self.assertTrue(pwned.exists(), "git itself runs the filter: the test plants what it means to")
             pwned.unlink()
             os.utime(bob.work / "src/a.c", (2, 2))
-            code, text = self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--upstream", "origin/main", "--login", "bob",
+            code, text = self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--upstream-url", str(self.w.upstream), "--login", "bob",
                                       "--task", "toy-0001", "--deal", dealt, cwd=bob.work)
             self.assertEqual((code, text.splitlines()[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001', bob)}"), self.err)
             self.assertEqual(self.run_cli("next", "--registry", self.registry, "--project", "toy", "--state", self.state_root, "--login", "bob",
@@ -4340,7 +4340,7 @@ class TestVolunteerSide(Volunteer):
         def of_project(project="toy"):
             """The two commands that are given a project, each as a call that pushes nothing."""
             return (lambda: self.run_cli("next", "--registry", self.registry, "--project", project, "--state", self.state_root, "--login", "alice"),
-                    lambda: self.run_cli("submit", "--registry", self.registry, "--project", project, "--upstream", "origin/main",
+                    lambda: self.run_cli("submit", "--registry", self.registry, "--project", project, "--upstream-url", str(self.w.upstream),
                                          "--login", "alice", "--task", "toy-0001", "--deal", NOW, "--no-push"))
 
         for command in of_project("other"):
@@ -4375,7 +4375,7 @@ class TestVolunteerSide(Volunteer):
         common = ("--registry", self.registry, "--project", "toy", "--login", "alice")
         return (("setup", ("setup", *common)), ("next", ("next", *common, "--state", self.state_root)), ("ready", ("ready", *common)),
                 ("ready --withdraw", ("ready", *common, "--withdraw")),
-                ("submit", ("submit", *common, "--upstream", "origin/main", "--task", "toy-0001", "--deal", dealt)),
+                ("submit", ("submit", *common, "--task", "toy-0001", "--deal", dealt)),
                 ("start", ("start", *common, "--upstream", "origin/main", "--task", "toy-0001", "--deal", dealt)))
 
     def test_a_worker_reads_and_pushes_at_the_address_the_tool_works_out_whatever_the_clone_says(self):
@@ -4392,6 +4392,7 @@ class TestVolunteerSide(Volunteer):
                                          "http://local_proxy@127.0.0.1:38219/git/alice/toy")):
             with self.subTest(origin=origin):
                 sh("git", "remote", "set-url", "origin", origin, cwd=self.alice.work)
+                self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
                 self.alice.write("lib.c", LIB + f"/* FAST {number} */\n")
                 with self.no_network({project: {"refs/heads/main": self.start}}) as talked:
                     results = [self.run_cli(*commands[name], local=False) for name in ("ready", "next", "submit", "next", "ready --withdraw")]
@@ -4479,7 +4480,8 @@ class TestVolunteerSide(Volunteer):
             code, text = self.run_cli(*command, "--registry", self.registry, "--project", "toy", "--login", "ALICE", "--no-push")
             self.assertEqual(code, 0, self.err)
             return hive.read_marker(sh("git", "show", "-s", "--format=%B", text.split()[1][:-1], cwd=self.alice.work).stdout)["member"]
-        self.assertEqual([member_of("ready"), member_of("submit", "--upstream", "origin/main", "--task", "toy-0001", "--deal", dealt)], ["ALICE"] * 2)
+        self.assertEqual([member_of("ready"), member_of("submit", "--upstream-url", str(self.w.upstream), "--task", "toy-0001", "--deal", dealt)],
+                         ["ALICE"] * 2)
 
     def test_a_folder_of_the_machine_is_an_address_in_the_tests_only(self):
         """The tests' forks are folders of this machine, and a command of the tests takes the folder for the fork's
@@ -4510,31 +4512,72 @@ class TestVolunteerSide(Volunteer):
                     self.one_line(self.run_cli(*command, "--registry", self.registry, f"--login={login}"), "--login: your GitHub login")
         for tip in ("--force", "-h", "origin/main^{tree}", "HEAD~1", "origin/main origin/main", "@{-1}", "x" * 201):
             with self.subTest(tip=tip):
-                self.one_line(self.submit("toy-0001", NOW, f"--upstream={tip}", "--no-push"), "--upstream: a branch's name or a commit id")
                 self.one_line(self.begin("toy-0001", NOW, f"--upstream={tip}"), "--upstream: a branch's name or a commit id")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
-    def test_without_a_tip_given_submit_checks_the_candidate_on_the_tip_setup_fetched(self):
-        """The worker's guide gives start and submit no --upstream. The task is then started from, and the candidate
-        checked on, the project's tip that setup fetched (upstream/<the project's branch>), which may be ahead of the
-        fork's own copy of that branch."""
+    def test_submit_checks_the_candidate_on_the_tip_the_projects_own_address_gives(self):
+        """The hive merges a candidate on the project's tip of the moment. submit asks the project's own address for
+        that tip during the command, and fetches it if the clone lacks it: not the clone's own word for it (its
+        upstream branch, which is as old as the last setup, and which whatever ran in the clone may have moved). Work
+        that no longer merges is refused here, before it costs a judgement; started again from the tip setup
+        fetched, as the guide's start does, it is a candidate on that tip."""
         dealt = self.w.deal(self.alice, "toy-0001")
-        self.w.upstream_commit("lib.c", LIB.replace("return 0;", "return 10;"))
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
         self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
-        submit = ("submit", "--registry", self.registry, "--project", "toy", "--login", "alice", "--task", "toy-0001", "--deal", dealt, "--no-push")
+        self.w.upstream_commit("lib.c", LIB.replace("return 0;", "return 10;"))  # the project moves on after setup
+        moved = self.w.tip()
+        self.assertNotEqual(sh("git", "cat-file", "-e", moved, cwd=self.alice.work, check=False).returncode, 0, "the clone does not hold it yet")
+        submit = ("submit", "--registry", self.registry, "--project", "toy", "--login", "alice", "--upstream-url", str(self.w.upstream),
+                  "--task", "toy-0001", "--deal", dealt, "--no-push")
         self.alice.write("lib.c", LIB.replace("return 0;", "return 20;"))
+        references = sh("git", "for-each-ref", cwd=self.alice.work).stdout
         code, text = self.run_cli(*submit)
         self.assertEqual((code, text.startswith("REFUSED (conflict): the candidate does not merge on the project's tip: start again from it ")),
                          (1, True), text + self.err)
         self.spoken(text)
+        self.assertEqual(sh("git", "cat-file", "-t", moved, cwd=self.alice.work).stdout, "commit\n", "fetched, from the project")
+        self.assertEqual(sh("git", "for-each-ref", cwd=self.alice.work).stdout, references, "and no reference of the clone was written for it")
+        self.assertEqual(self.setup()[0], 0, self.err)
         code, text = self.run_cli("start", "--registry", self.registry, "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--login", "alice")
         self.assertEqual((code, self.spoken(text)[:2]), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
-                                                             f"STARTED hive/submit/toy-0001 at {self.w.tip()}"]), self.err)
+                                                             f"STARTED hive/submit/toy-0001 at {moved}"]), self.err)
         self.alice.write("lib.c", LIB.replace("return 0;", "return 10; /* FAST */"))
         code, text = self.run_cli(*submit)
         self.assertEqual((code, self.spoken(text)[0].split()[0], self.fork_branches()), (0, "NOT-PUSHED", ["refs/heads/main"]), text + self.err)
-        self.assertEqual(sh("git", "rev-parse", "HEAD~2", cwd=self.alice.work).stdout.strip(), self.w.tip(), "the work and its marker, on the tip")
+        self.assertEqual(sh("git", "rev-parse", "HEAD~2", cwd=self.alice.work).stdout.strip(), moved, "the work and its marker, on the tip")
+        # Work that starts from an older commit of the project and still merges is a candidate too.
+        self.w.upstream_commit("src/a.c", "int a; /* the project moves again */\n")
+        self.alice.write("lib.c", LIB.replace("return 0;", "return 10; /* FASTER */"))
+        code, text = self.run_cli(*submit)
+        self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), text + self.err)
+
+    def test_the_projects_address_is_asked_before_anything_is_committed(self):
+        """submit learns the project's tip from the project's own repository. When that repository cannot be reached,
+        or does not list the project's branch, the command ends with one line, before it has staged or committed
+        anything; no address but the project's own is taken for it."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        before = self.clone_state()
+        submit = ("submit", "--registry", self.registry, "--project", "toy", "--login", "alice", "--task", "toy-0001", "--deal", dealt)
+        self.one_line(self.run_cli(*submit, "--upstream-url", str(self.w.root / "nowhere.git")),
+                      "the project's repository could not be asked for its tip (git ls-remote failed (128)). Nothing was committed or pushed: run "
+                      "the command again; if it fails again, stop and tell the user")
+        self.w.set_config({"branch": "release"})
+        self.one_line(self.run_cli(*submit, "--upstream-url", str(self.w.upstream)), "the project's repository does not list the project's branch: "
+                      "update your clone of the registry; if this happens again, stop and tell the user")
+        self.w.set_config({})
+        for address in ("https://github.com/mallory/toy.git", "ext::sh -c touch% PLANTED", "../elsewhere"):
+            self.one_line(self.run_cli(*submit, "--upstream-url", address), "--upstream-url: the project's own address, and no other")
+        self.one_line(self.run_cli(*submit, "--upstream-url", str(self.w.upstream), local=False),
+                      "the remote 'origin' of this clone is not an https address on GitHub (https://github.com/<owner>/<name>): a worker reads and "
+                      "pushes over https only. Clone your fork again by its https address")
+        self.assertEqual((self.clone_state(), self.fork_branches()), (before, ["refs/heads/main"]))
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        with self.no_network({"https://github.com/Bee-ruche/toy.git": {"refs/heads/main": self.start}}) as talked:
+            self.one_line(self.run_cli(*submit, "--upstream-url", str(self.w.upstream), local=False), "--upstream-url: the project's own address, and no other")
+            self.assertEqual(self.run_cli(*submit, "--no-push", local=False)[0], 0, self.err)
+        self.assertEqual(talked, [("ls-remote", "https://github.com/Bee-ruche/toy.git", "refs/heads/main", "https")],
+                         "as a volunteer runs it: the project's own repository on GitHub, over https")
 
     def test_work_added_after_a_candidate_makes_a_new_candidate_that_holds_it(self):
         """A worker that changes one more thing after submit runs submit again, in the same words. What is pushed
@@ -5013,7 +5056,8 @@ class TestVolunteerSide(Volunteer):
         """The project's own .gitattributes may ask for an encoding. A file an earlier run left with bytes that are not
         in that encoding cannot be converted, and git stops on it: start then sets everything aside byte for byte,
         under no rule at all, and the tip's files come back as a fresh clone has them. (What is counted as set aside
-        then includes the files whose line ends the project's rule converts.)"""
+        may then include the files whose line ends the project's rule converts: git looks at them again or not, by
+        their dates.)"""
         self.alice.write(".gitattributes", "*.c text eol=crlf\n*.txt working-tree-encoding=UTF-16\n").write("notes.txt", "a note\n".encode("utf-16"))
         self.alice.commit("the project asks for an encoding")
         tip = self.head()
@@ -5023,8 +5067,9 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(fresh["notes.txt"][1].decode("utf-16"), "a note\n", "git writes it in the encoding the rule names")
         self.alice.write("notes.txt", b"\xff\xfe\x00not UTF-16")
         code, text = self.begin("toy-0001", NOW, "--upstream", tip)
-        self.assertEqual((code, self.spoken(text)[:2]), (0, ["SET-ASIDE 4 change(s) of an earlier run: git stash list shows them",
-                                                             f"STARTED hive/submit/toy-0001 at {tip}"]), self.err)
+        lines = self.spoken(text)
+        self.assertEqual((code, lines[1]), (0, f"STARTED hive/submit/toy-0001 at {tip}"), self.err)
+        self.assertRegex(lines[0], r"\ASET-ASIDE [1-4] change\(s\) of an earlier run: git stash list shows them\Z")
         self.assertEqual(self.only_files(self.work_tree()), fresh)
         kept = subprocess.run(["git", "cat-file", "blob", "stash@{0}:notes.txt"], cwd=self.alice.work, capture_output=True, check=True).stdout
         self.assertEqual(kept, b"\xff\xfe\x00not UTF-16")

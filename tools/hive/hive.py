@@ -2260,6 +2260,10 @@ ASK_PATIENCE_HOURS = 6  # an ask the hive has not answered for this long is the 
 STATE_BYTES = 16 << 20  # a file of the hive's state larger than this is not read
 CONFIG_BYTES = 64 << 10  # nor a clone's .git/config larger than this
 PACKED_LINE_BYTES = 1024  # a line of its .git/packed-refs is read this many bytes at a time (a commit id and a reference's name)
+OBJECT_BYTES = 64 << 20  # a commit or a folder of the clone larger than this is not read (the hive's own bound on a folder's listing)
+OBJECTS_SECONDS = 300  # how long git may take to hand over the objects one command reads as bytes
+PROJECT_COMMITS = 500  # how far back from the project's tip a worker looks for the commit a candidate starts from
+FOLDER_MODE = 0o40000  # the mode of an entry that is a folder
 SANDBOX = "bee/sandbox/sans-docker.sh"  # the hive's projects keep their sandbox there, protected from contributions
 TOOL_FILES = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json", ".cursor")  # what a coding tool runs
 # Where git would look instead of the folders a worker command names: never taken from the environment.
@@ -2362,17 +2366,14 @@ class Clone:
     def __init__(self, root, settings):
         self.root, self.git_dir, self.settings = root, root / ".git", settings
 
-    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True, attributes=None):
-        """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
-        turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read:
-        a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
-        because for these commands no filter is defined anywhere (the clone's own settings define none:
-        plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings ARE
-        read: the volunteer's credentials and proxy live there, and a fetch or a push converts no file. raw: the
-        input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
-        whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
-        reading takes for a file of that name, and then removes nothing). attributes: the commit or the tree whose
-        .gitattributes files the command follows, in place of those that lie in the work tree."""
+    def command(self, *args, literal=True, attributes=None):
+        """The words of a git command on this clone, whichever way it is then run (git, Objects)."""
+        worker = GIT_WORKER if literal else tuple(option for option in GIT_WORKER if option != "--literal-pathspecs")
+        source = () if attributes is None else (f"--attr-source={need_sha(attributes)}",)
+        return ["git", *GIT_BASE, *worker, *source, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
+
+    def environment(self, to=None, env=None):
+        """The environment of a git command on this clone: see git."""
         environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
                             "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
@@ -2384,12 +2385,22 @@ class Clone:
                 raise HiveError("not an address a worker talks to")
             environment["GIT_ALLOW_PROTOCOL"] = parts[2]
         environment.update(env or {})
-        worker = GIT_WORKER if literal else tuple(option for option in GIT_WORKER if option != "--literal-pathspecs")
-        source = () if attributes is None else (f"--attr-source={need_sha(attributes)}",)
-        command = ["git", *GIT_BASE, *worker, *source, f"--git-dir={self.git_dir}", f"--work-tree={self.root}", *args]
+        return environment
+
+    def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True, attributes=None):
+        """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
+        turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read:
+        a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
+        because for these commands no filter is defined anywhere (the clone's own settings define none:
+        plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings ARE
+        read: the volunteer's credentials and proxy live there, and a fetch or a push converts no file. raw: the
+        input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
+        whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
+        reading takes for a file of that name, and then removes nothing). attributes: the commit or the tree whose
+        .gitattributes files the command follows, in place of those that lie in the work tree."""
         try:
-            result = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout, env=environment, cwd=self.root,
-                                    **({} if raw else {"text": True, "errors": "replace"}))
+            result = subprocess.run(self.command(*args, literal=literal, attributes=attributes), input=stdin, capture_output=True, timeout=timeout,
+                                    env=self.environment(to, env), cwd=self.root, **({} if raw else {"text": True, "errors": "replace"}))
         except subprocess.TimeoutExpired as e:
             raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
         if check and result.returncode != 0:
@@ -2416,6 +2427,178 @@ class Clone:
         """A commit of its own, on no branch: its id. parent: None for a commit with no history."""
         history = () if parent is None else ("-p", need_sha(parent))
         return self.git("commit-tree", need_sha(tree), *history, stdin=message, env=who).stdout.strip()
+
+
+NOT_AS_NAMED = ("STOP: an object of this clone is not what its name says: its bytes do not hash to its id. Do not commit or push from "
+                "this clone, and run no git command in it: tell the user to take a fresh clone of the fork")
+NOT_HELD = ("this clone does not hold an object that the work rests on: run hive.py setup, then start the task again (hive.py start); "
+            "if this happens again, tell the user")
+NOT_GITS = "this clone holds a commit or a folder that is not written as git writes them: tell the user"
+NO_START = ("the work does not start from the project's recent history (the last commits of its branch, as the project's own address gives "
+            "them): nothing was pushed. Run hive.py setup, then start the task again (hive.py start)")
+
+
+class Objects:
+    """Commits and folders of the clone, as their own bytes, each believed only once this tool has hashed it. An
+    object's id is the SHA-1 of its kind, its size and its bytes: bytes that hash to the id asked for ARE that
+    object, whatever a file of the clone says of it (a reference, a commit-graph, a replacement, an object file that
+    holds other bytes under that name). So what is read here does not depend on anything an earlier run of project
+    code could have written, and what the fork receives under an id is what was read here: the fork's side hashes
+    what it is sent.
+
+    One git process hands the objects over (« cat-file --batch »), for as many as a command reads, for a bounded
+    time; an object whose declared size is beyond OBJECT_BYTES is not read. SHA-1 repositories only: a clone of
+    another object format says so in a setting that PLAIN_CONFIG does not hold, and plain_clone refuses it."""
+
+    def __init__(self, clone):
+        try:
+            self.process = subprocess.Popen(clone.command("cat-file", "--batch"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root)
+        except OSError as error:
+            raise HiveError(f"git cat-file: {type(error).__name__}") from None
+        self.alarm = threading.Timer(OBJECTS_SECONDS, self.process.kill)
+        self.alarm.start()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *error):
+        self.alarm.cancel()
+        self.process.kill()
+        for pipe in (self.process.stdin, self.process.stdout):
+            try:
+                pipe.close()
+            except OSError:
+                pass  # git ended first
+        self.process.wait()
+
+    def read(self, kind, sha):
+        """The bytes of the commit or the folder (kind: "commit", "tree") that `sha` names, or None if the clone does
+        not hold that object (a clone cut short holds no commit older than its cut). Raises NotPlain (exit code 3) if
+        what the clone holds under that id is anything else: bytes that do not hash to it, or an object of another
+        kind."""
+        try:
+            self.process.stdin.write(need_sha(sha).encode() + b"\n")
+            self.process.stdin.flush()
+            answer = self.process.stdout.readline(100)
+        except OSError:
+            answer = b""
+        if answer == f"{sha} missing\n".encode():
+            return None
+        found = re.fullmatch(rb"[0-9a-f]{40} [a-z]{1,10} ([0-9]{1,18})\n", answer)
+        if not found:
+            raise HiveError("git cat-file gave no answer (it was stopped, or took too long)")
+        size = int(found.group(1))
+        if size > OBJECT_BYTES:
+            raise HiveError("this clone holds a commit or a folder larger than this tool reads: tell the user")
+        data = self.process.stdout.read(size + 1)  # git ends each object with a new line of its own
+        if len(data) != size + 1:
+            raise HiveError("git cat-file gave no answer (it was stopped, or took too long)")
+        if hashlib.sha1(b"%s %d\0" % (kind.encode(), size) + data[:-1]).hexdigest() != sha:
+            raise NotPlain(NOT_AS_NAMED)
+        return data[:-1]
+
+    def held(self, kind, sha):
+        """As read, for an object the command cannot go on without."""
+        data = self.read(kind, sha)
+        if data is None:
+            raise HiveError(NOT_HELD)
+        return data
+
+
+def commit_header(raw):
+    """(tree, parents) of a commit, from its own bytes: its first line names its tree, and the lines that follow
+    name its parents, one each, until the first line that names none (git reads a commit that way: a line that says
+    « parent » further down is no parent)."""
+    lines = raw.split(b"\n\n", 1)[0].split(b"\n")
+    tree = re.fullmatch(rb"tree ([0-9a-f]{40})", lines[0])
+    if not tree:
+        raise HiveError(NOT_GITS)
+    parents = []
+    for line in lines[1:]:
+        parent = re.fullmatch(rb"parent ([0-9a-f]{40})", line)
+        if not parent:
+            break
+        parents.append(parent.group(1).decode())
+    return tree.group(1).decode(), parents
+
+
+def folder_listing(raw):
+    """name (bytes) -> (mode, id) for the entries of one folder, from its own bytes: for each entry its mode in
+    octal digits, a space, its name, a NUL, and the twenty bytes of its id. Anything else is not a folder git
+    writes, and neither is a name given twice (two tools would not agree on what such a folder holds)."""
+    entries, at = {}, 0
+    while at < len(raw):
+        space, nul = raw.find(b" ", at), raw.find(b"\0", at)
+        mode, name = raw[at:space], raw[space + 1:nul]
+        if space < 0 or nul < space or nul + 21 > len(raw) or not re.fullmatch(rb"[0-7]{1,7}", mode) or not name or b"/" in name \
+                or name in entries:
+            raise HiveError(NOT_GITS)
+        entries[name] = (int(mode, 8), raw[nul + 1:nul + 21].hex())
+        at = nul + 21
+    return entries
+
+
+def project_history(objects, tip):
+    """The ids of the project's last commits: the commit its own address announced, then back through every parent,
+    the nearest first, PROJECT_COMMITS commits read at most. Each is read as its own bytes and hashed, so each id in
+    the set is one the project's history names, by the project's own word and by nothing the clone says. A commit
+    the clone does not hold ends the walk on that side (a clone cut short); its id is the project's all the same."""
+    known, waiting, read = {tip}, [tip], 0
+    while waiting and read < PROJECT_COMMITS:
+        raw = objects.read("commit", waiting.pop(0))
+        if raw is None:
+            continue
+        read += 1
+        for parent in commit_header(raw)[1]:
+            if parent not in known:
+                known.add(parent)
+                waiting.append(parent)
+    return known
+
+
+def start_of_candidate(objects, candidate, history, most):
+    """(the commit of the project's history that a candidate starts from, how many commits of its own lead to it).
+    Walked back from the candidate's tip, each commit read as its own bytes and hashed, through commits that have one
+    parent each, as those this tool makes have (the task's branch as « start » put it, then the work and its marker),
+    `most` of them at most. The commit is None if no such line leads to the project: a commit the clone does not
+    hold, one with no parent, or one with several (a merge brings a history of its own)."""
+    commit, own = candidate, 0
+    while commit not in history:
+        raw = objects.read("commit", commit) if own < most else None
+        own += 1
+        if raw is None:
+            return None, own
+        parents = commit_header(raw)[1]
+        if len(parents) != 1:
+            return None, own
+        commit = parents[0]
+    return commit, own
+
+
+def changed_outside(objects, old_tree, new_tree, files):
+    """The paths at which two trees differ outside the task's files, as text; a folder that differs and holds none of
+    the task's files is one such path, and is not read. Each folder is read as its own bytes and hashed, its entries
+    taken from those bytes (mode, name, id) and compared here: an entry that is added, removed, of another id or of
+    another mode differs. An entry that is the same in both trees is not read further: an id is the hash of what it
+    names, so what lies below it is the same. This is the worker's own reading, beside the hive's (check_structure):
+    it asks git for bytes and for nothing git worked out."""
+    found, waiting = [], [(b"", old_tree, new_tree)]
+    while waiting:
+        prefix, old, new = waiting.pop()
+        before = folder_listing(objects.held("tree", old)) if old else {}
+        after = folder_listing(objects.held("tree", new)) if new else {}
+        for name in sorted(set(before) | set(after)):
+            one, other = before.get(name), after.get(name)
+            path = (prefix + name).decode("utf-8", errors="surrogateescape")
+            if one == other or in_task_files(path, files):
+                continue
+            folders = all(entry is None or entry[0] == FOLDER_MODE for entry in (one, other))
+            if folders and any(file.startswith(path + "/") for file in files):
+                waiting.append((prefix + name + b"/", one and one[1], other and other[1]))
+            else:
+                found.append(path)
+    return sorted(found)
 
 
 def first_bytes(path, most):
@@ -2655,6 +2838,68 @@ def own_fork(clone, config, configs, login, fork=None):
     return address
 
 
+def project_address(config, given=None):
+    """The project's own address: https://github.com/<its repository>.git, by the registry. (The tests give another,
+    --upstream-url, which may only be a folder of the machine and only while LOCAL_REMOTES is set.)"""
+    address = f"https://github.com/{config['repo']}.git"
+    if given and given != address and remote_parts(given) != (None, None, "file"):
+        raise HiveError("--upstream-url: the project's own address, and no other")
+    return given or address
+
+
+def listed_tip(clone, address, branch, check=True):
+    """The commit a branch is at, as the repository at `address` says it now, or None if it lists no such branch. git
+    lists a remote's references by the end of their names: the branch is the one of exactly that name."""
+    listed = clone.git("ls-remote", address, f"refs/heads/{branch}", to=address, check=check, timeout=60)
+    tips = [line.split("\t")[0] for line in listed.stdout.splitlines() if line.split("\t")[1:] == [f"refs/heads/{branch}"]]
+    return tips[0] if listed.returncode == 0 and len(tips) == 1 and is_sha(tips[0]) else None
+
+
+def project_tip(clone, address, branch):
+    """The commit the project's branch is at, as the project's own address says during this command, fetched if the
+    clone lacks it. Never the clone's own reference for it (refs/remotes/upstream/<branch>), which is whatever ran
+    in the clone last: what a candidate starts from is decided on this commit (candidate_proof)."""
+    try:
+        tip = listed_tip(clone, address, branch)
+        if tip is not None and clone.git("cat-file", "-e", f"{tip}^{{commit}}", check=False).returncode != 0:
+            clone.git("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", address, f"refs/heads/{branch}",
+                      to=address, timeout=900)
+    except HiveError as error:
+        raise HiveError(f"the project's repository could not be asked for its tip ({error}). Nothing was committed or pushed: run the "
+                        "command again; if it fails again, stop and tell the user") from None
+    if tip is None:
+        raise HiveError("the project's repository does not list the project's branch: update your clone of the registry; if this happens "
+                        "again, stop and tell the user")
+    return tip
+
+
+def candidate_proof(clone, tip, candidate, task, limits):
+    """What « submit » shows of a candidate before it moves a branch or pushes. It rests on the commit the project's
+    own address announced (`tip`), on the task's files as the registry gives them, and on bytes this tool hashed
+    itself (Objects): never on a reference of the clone, nor on anything git worked out of the clone's objects (an
+    ancestry, a difference, a merge), which are what an earlier run of project code may have arranged.
+
+      - The candidate starts from the project's history: its own commits, one parent each and no more of them than a
+        candidate may have, lead back to a commit of the project's last PROJECT_COMMITS.
+      - It changes only the task's files: between the tree of that commit and the candidate's own, every entry that
+        differs is one of the task's files.
+
+    Raises Refusal as the hive would refuse (too_many_commits, path_outside_task), HiveError when the work does not
+    start from the project's history, NotPlain when an object is not what its name says."""
+    with Objects(clone) as objects:
+        if objects.read("commit", tip) is None:
+            raise HiveError(NOT_HELD)
+        start, own = start_of_candidate(objects, candidate, project_history(objects, tip), limits["commits"])
+        if own > limits["commits"]:
+            raise Refusal("too_many_commits", {"commits": own})
+        if start is None:
+            raise HiveError(NO_START)
+        old, new = (commit_header(objects.held("commit", commit))[0] for commit in (start, candidate))
+        outside = changed_outside(objects, old, new, task["files"])
+    if outside:
+        raise Refusal("path_outside_task", {"paths": [safe_text(path, 200) for path in outside[:10]], "files": len(outside)})
+
+
 def said_again(args):
     """What every later command of the run is given again, as this one was: the login, and the fork's name if the
     command line gave one. (Both were checked: own_fork.)"""
@@ -2701,12 +2946,10 @@ def cmd_setup(args):
     if clone.git("remote", "get-url", "--push", "origin", to=origin).stdout.strip() != clone.git("remote", "get-url", "origin", to=origin).stdout.strip():
         raise HiveError("a push to origin would not go to the address it is fetched from (a pushInsteadOf rule of your git settings): "
                         "a worker pushes only to the address it checked. Remove the rule, or use a machine without it")
-    branch, project_url = config["branch"], f"https://github.com/{config['repo']}.git"
+    branch = config["branch"]
     if not (isinstance(branch, str) and REVISION.match(branch) and ".." not in branch):
         raise HiveError("the project's branch is not a plain branch name")
-    url = args.upstream_url or project_url
-    if url != project_url and not (LOCAL_REMOTES and remote_parts(url)):
-        raise HiveError("--upstream-url: the project's own address, and no other")
+    url = project_address(config, args.upstream_url)
     current = clone.settings.get("remote.upstream.url")
     if current is None:
         clone.git("remote", "add", "upstream", url)
@@ -2796,19 +3039,19 @@ def fork_tip(clone, url, branch):
     """(commit id, message, date in seconds) of the tip of a branch of the member's own fork: asked of the fork
     itself, not of this clone, which may be a new one. None if the fork has no such branch or cannot be reached.
     The fork says which commit the branch is at, and the commit is then fetched if the clone lacks it, and read by
-    that id: no reference of the clone is read, and none is written. What the commit holds is data."""
-    listed = clone.git("ls-remote", url, f"refs/heads/{branch}", to=url, check=False, timeout=60)
-    tips = [line.split("\t")[0] for line in listed.stdout.splitlines() if line.split("\t")[1:] == [f"refs/heads/{branch}"]]
-    if listed.returncode != 0 or len(tips) != 1 or not is_sha(tips[0]):
+    that id, as bytes this tool hashes (Objects): no reference of the clone is read, and none is written. What the
+    commit holds is data."""
+    sha = listed_tip(clone, url, branch, check=False)
+    if sha is None:
         return None
-    sha = tips[0]
     if clone.git("cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode != 0:
         clone.git("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", url, f"refs/heads/{branch}", to=url,
                   check=False, timeout=300)
-    raw = clone.git("cat-file", "commit", sha, check=False).stdout
-    if not raw:
+    with Objects(clone) as objects:
+        raw = objects.read("commit", sha)
+    if raw is None:
         return None
-    head, _, message = raw.partition("\n\n")
+    head, _, message = raw.decode("utf-8", errors="replace").partition("\n\n")
     dated = re.search(r"^committer [^\n]*> ([0-9]{1,10}) [+-][0-9]{4}$", head, re.M)
     return sha, message, int(dated.group(1)) if dated else None
 
@@ -3076,7 +3319,8 @@ def cmd_start(args):
 
     The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
     encoding), not under a .gitattributes of the work tree, which is one of the files to set aside; if those rules
-    cannot convert a file's bytes, everything is set aside byte for byte.
+    cannot convert a file's bytes, everything is set aside byte for byte (a file whose line ends the project's rules
+    convert may then count as set aside, though nobody changed it).
 
     Then the branch is made, or reset, at the tip, and HEAD names it (checkout -B, given the tip's commit id: so the
     branch follows no other, and no setting is written). The commits the branch held, a candidate whose push did not
@@ -3204,8 +3448,11 @@ def cmd_submit(args):
     """Volunteer side: makes the candidate of a deal out of the work tree, and pushes it. The agent runs no git of its
     own in the clone: this command stages what changed inside the task's files (a tracked file changed
     outside them is refused, an untracked one is left where it is: a build's leftovers are not the work), commits
-    it, checks the result as the hive will, and only then moves the branch, adds the marker and pushes to the
-    member's own fork. A refusal leaves every branch where it was."""
+    it and adds the marker, as commits on no branch yet. Then it shows, by its own reading, that the candidate starts
+    from the project's history and changes only the task's files (candidate_proof), checks it as the hive will, on
+    the tip the project's own address gives during the command (check_structure), and only then moves the branch
+    and pushes to the member's own fork. A refusal leaves every branch where it was, and pushes nothing; so does
+    --no-push, once every check has passed."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -3223,12 +3470,9 @@ def cmd_submit(args):
     title = args.message or f"Work on {task['id']}"
     if not ONE_LINE.match(title) or MARKER_LINE.match(title):
         raise HiveError("--message: one plain line (200 characters at most) that says what you changed")
-    upstream = args.upstream or f"refs/remotes/upstream/{config['branch']}"
-    if not REVISION.match(upstream):
-        raise HiveError("--upstream: a branch's name or a commit id")
+    address = project_address(config, args.upstream_url)
     root = str(clone.root)
     head = clone.git("rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
-    tip = clone.git("rev-parse", "--verify", f"{upstream}^{{commit}}").stdout.strip()
     inside, outside = [], []
     for path, tracked in work_tree_changes(clone):
         if in_task_files(path.decode("utf-8", errors="surrogateescape"), task["files"]):
@@ -3239,23 +3483,26 @@ def cmd_submit(args):
         detail = {"paths": [safe_text(path, 200) for path in sorted(outside)[:10]], "files": len(outside)}
         print(f"REFUSED (path_outside_task): {REASONS['path_outside_task']} {json.dumps(detail)}")
         sys.exit(1)
+    tip = project_tip(clone, address, config["branch"])
     if inside:
         clone.git("add", "--all", "--pathspec-from-file=-", "--pathspec-file-nul", stdin=b"\0".join(inside), raw=True)
     tree = clone.git("write-tree").stdout.strip()
     who = clone.identity(login)
     work = head if tree == tree_of(root, head) else clone.commit(tree, head, title + "\n", who)
+    lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
+             f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
+    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal}
+    # Run again after a push that did not land, or after --no-push: the same candidate. Else the marker is a new
+    # commit, on no branch until every check below has passed.
+    again = work == head and read_marker(commit_message(root, head)) == wanted
+    marker = head if again else clone.commit(tree, work, "\n".join(lines) + "\n", who)
     try:
+        candidate_proof(clone, tip, marker, task, config["limits"])
         figures = check_structure(root, tree_of(root, tip), merge_tree(root, tip, work, config["limits"]), task, config)
     except Refusal as refusal:
         print(f"REFUSED ({refusal.reason}): {REASONS[refusal.reason]} {json.dumps(refusal.detail)}")
         sys.exit(1)
-    lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
-             f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
-    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal}
-    if work == head and read_marker(commit_message(root, head)) == wanted:
-        marker = head  # run again after a push that did not land: the same candidate
-    else:
-        marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
+    if not again:
         # The branch HEAD names is moved by its own name, and HEAD itself when it names a commit: never a reference
         # that another one would lead to. (The branch's log names who moved it.)
         named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
@@ -3268,9 +3515,9 @@ def cmd_submit(args):
         return
     push(clone, fork, marker, branch)
     print(f"PUSHED {marker}")
-    again = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
+    hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
-          f"every {again} hours (hourly is best), ask for its next task now (hive.py ready): the hive deals it as soon as this "
+          f"every {hours} hours (hourly is best), ask for its next task now (hive.py ready): the hive deals it as soon as this "
           "candidate is accepted; if it is refused, the ask stays and is served once the wait is over. If it does not run that "
           "often, do not ask: a task dealt and left costs a wait.")
 
@@ -3360,7 +3607,7 @@ def main(argv=None):
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
     p.add_argument("--deal", required=True, help="the deal's instant, as « next » printed it")
-    p.add_argument("--upstream", help="the project's tip in your clone (default: upstream/<the project's branch>)")
+    p.add_argument("--upstream-url", help=argparse.SUPPRESS)
     p.add_argument("--message", help="one plain line that says what you changed (the work commit's title)")
     p.add_argument("--model", help="your model's identifier, if the project lists it; leave it out if you are not sure")
     p.set_defaults(run=cmd_submit)
