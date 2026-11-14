@@ -28,12 +28,14 @@ Standard library only. The figures come from the ledger; stats.json is only comp
 """
 
 import argparse
+import contextlib
 import datetime as dt
 import html
 import json
 import math
 import os
 import re
+import stat
 import sys
 import unicodedata
 import urllib.parse
@@ -1377,20 +1379,75 @@ def render(data, title="", repo_url=None, join=None, site_url=None):
     return files
 
 
+def found_at(path):
+    """What stands at a path, the path itself and not what a link there leads to: None (nothing), "a link",
+    "a folder", "a file" or "neither a file nor a folder" (a pipe, a device)."""
+    try:
+        mode = os.lstat(path).st_mode
+    except FileNotFoundError:
+        return None
+    return "a link" if stat.S_ISLNK(mode) else "a folder" if stat.S_ISDIR(mode) else "a file" if stat.S_ISREG(mode) else "neither a file nor a folder"
+
+
+def temporary_name(leaf):
+    """The name a file is written under before it takes its own, in the same folder."""
+    return f".{leaf}.tmp"
+
+
+def check_plan(out, names):
+    """The whole plan against the folder as it stands, before anything is written or created: raises PageError, in one
+    line that names the place, unless `out` and each folder the names need under it are real folders or absent, and
+    each file's name and temporary name are plain files or absent. A link is refused wherever it stands (it could
+    lead out of `out`), and so is a folder where a file goes: the run stops before the site is half rewritten."""
+    out = Path(out)
+
+    def need(path, shown, wanted):
+        found = found_at(path)
+        if found not in (None, wanted):
+            raise PageError(f"--out: {shown} is {found}, where this tool writes {wanted}: nothing is written")
+    need(out, "the folder itself", "a folder")
+    for folder in sorted({name.rpartition("/")[0] for name in names} - {""}):
+        need(out / folder, folder, "a folder")
+    for name in sorted(names):
+        folder, _, leaf = name.rpartition("/")
+        need(out / name, name, "a file")
+        need(out / folder / temporary_name(leaf), f"{folder}/{temporary_name(leaf)}".lstrip("/"), "a file")
+
+
 def write(out, files):
     """Writes each file whole or not at all, under `out` and nowhere else: a name is one of the three constants,
     members/<digits>.svg, members/<digits>-badge.svg, wins/<40 hex>.svg or wins/<40 hex>.html, whatever asked for
-    it. Nothing is ever deleted: a file of an earlier run that this run does not write stays as it was."""
-    out = Path(out)
+    it. Nothing is ever deleted: a file of an earlier run that this run does not write stays as it was.
+
+    Nothing is written or created, `out` included, before the names and then the whole plan are checked
+    (check_plan): a link or a folder in the way stops the run with one line, and the site as it was. Then no link is
+    followed while writing either, should one appear in between: `out` and each folder under it are opened as
+    folders without following a link (O_NOFOLLOW), each file is written through its folder's descriptor under a
+    temporary name opened the same way, and moved over its own name, which replaces what stands there and follows
+    nothing."""
     if any(name not in FIXED_NAMES and not any(pattern.match(name) for pattern in NAMES) for name in files):
         raise PageError("a file name this tool does not write")
-    for name in sorted(files):
-        target = out / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(f".{target.name}.tmp")
-        with open(temporary, "w", encoding="utf-8", newline="\n") as f:
-            f.write(files[name])
-        os.replace(temporary, target)
+    check_plan(out, files)
+    folders, place = {}, "the folder itself"
+    try:
+        os.makedirs(out, exist_ok=True)
+        folders[""] = os.open(out, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for name in sorted(files):
+            place = name
+            folder, _, leaf = name.rpartition("/")
+            if folder not in folders:
+                with contextlib.suppress(FileExistsError):
+                    os.mkdir(folder, dir_fd=folders[""])
+                folders[folder] = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=folders[""])
+            descriptor = os.open(temporary_name(leaf), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o666, dir_fd=folders[folder])
+            with open(descriptor, "w", encoding="utf-8", newline="\n") as f:
+                f.write(files[name])
+            os.replace(temporary_name(leaf), leaf, src_dir_fd=folders[folder], dst_dir_fd=folders[folder])
+    except OSError as error:
+        raise PageError(f"--out: {place} could not be written ({error.strerror or type(error).__name__}): the site is not whole") from None
+    finally:
+        for descriptor in folders.values():
+            os.close(descriptor)
 
 
 def main(argv=None):

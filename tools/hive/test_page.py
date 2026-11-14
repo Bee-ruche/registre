@@ -411,6 +411,110 @@ class TestFigures(Case):
         self.assertIn(other, self.harmless(self.make("--join-url", other), join=other).hrefs)
 
 
+class TestFolder(Case):
+    """The tool writes under --out and nowhere else, whatever already stands there, and it checks its whole plan
+    against the folder before it writes anything."""
+
+    def setUp(self):
+        super().setUp()
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001")])
+        self.outside = self.root / "outside"
+        self.outside.mkdir()
+        self.victim = self.outside / "victim.txt"
+        self.victim.write_text("precious\n")
+        self.out.mkdir()
+        (self.out / "index.html").write_text("the site as it was")
+        self.own = f"wins/{sha(5001)}.html"
+
+    def refused(self, where):
+        """The run stops with status 2 and one line that names the place; nothing is written, created or removed."""
+        before = tree(self.root)
+        self.make(code=2)
+        self.assertEqual(tree(self.root), before, "nothing is written, anywhere: the site is as it was")
+        self.assertRegex(self.errors, rf"\Apage: --out: {re.escape(where)} is [a-z ]+, where this tool writes a (file|folder): nothing is written\n\Z")
+        self.assertEqual(self.victim.read_text(), "precious\n")
+
+    def test_a_link_in_the_way_of_a_folder_or_a_file_stops_the_run_before_anything_is_written(self):
+        for place, target in (("members", self.outside), ("wins", self.outside), (f"wins/.{sha(5001)}.html.tmp", self.victim), (self.own, self.victim),
+                              ("index.html", self.victim), (".index.html.tmp", self.victim), ("members/102.svg", self.victim),
+                              ("badge.svg", self.root / "nowhere")):  # a link that leads nowhere is a link
+            with self.subTest(place=place):
+                link, aside = self.out / place, self.root / "aside"
+                made = [folder for folder in (link.parent,) if not folder.exists()]
+                for folder in made:
+                    folder.mkdir()
+                if link.exists():
+                    link.rename(aside)  # the link takes the place of the file that was there
+                os.symlink(target, link)
+                self.refused(place)
+                link.unlink()
+                if aside.exists():
+                    aside.rename(link)
+                for folder in made:
+                    folder.rmdir()
+        self.assertEqual(sorted(path.name for path in self.outside.iterdir()), ["victim.txt"])
+
+    def test_the_output_folder_itself_is_a_real_folder(self):
+        (self.out / "index.html").unlink()
+        self.out.rmdir()
+        os.symlink(self.outside, self.out)
+        self.refused("the folder itself")
+        self.out.unlink()
+        self.out.write_text("a file")
+        self.refused("the folder itself")
+
+    def test_a_folder_or_a_pipe_where_a_file_goes_stops_the_run_with_one_line_and_the_site_as_it_was(self):
+        (self.out / self.own).mkdir(parents=True)
+        self.refused(self.own)
+        self.assertEqual((self.out / "index.html").read_text(), "the site as it was")
+        (self.out / self.own).rmdir()
+        (self.out / "wins" / f".{sha(5001)}.svg.tmp").mkdir()
+        self.refused(f"wins/.{sha(5001)}.svg.tmp")
+        (self.out / "wins" / f".{sha(5001)}.svg.tmp").rmdir()
+        (self.out / "members").write_text("a file where a folder goes")
+        self.refused("members")
+        (self.out / "members").unlink()
+        os.mkfifo(self.out / "summary.json")
+        self.refused("summary.json")
+
+    def test_a_temporary_file_left_by_a_run_that_stopped_is_written_over(self):
+        (self.out / "wins").mkdir()
+        for name in (".index.html.tmp", f"wins/.{sha(5001)}.html.tmp"):
+            (self.out / name).write_text("left by a run that stopped")
+        files = self.make()
+        self.assertEqual(sorted(files), sorted(["index.html", "badge.svg", "summary.json", "members/102.svg", "members/102-badge.svg",
+                                                self.own, f"wins/{sha(5001)}.svg"]), "the site is whole, and no temporary file is left")
+        self.assertIn("Latest accepted contribution", files["index.html"])
+
+    def test_no_link_is_followed_while_writing_either(self):
+        """The plan's check comes first; with it taken away, the writing itself follows no link."""
+        files = page.render(page.collect(self.state, page.instant_of(NOW)))
+        for place, target in (("members", self.outside), (f"wins/.{sha(5001)}.html.tmp", self.victim), (".index.html.tmp", self.victim)):
+            with self.subTest(place=place):
+                link = self.out / place
+                link.parent.mkdir(exist_ok=True)
+                os.symlink(target, link)
+                with mock.patch.object(page, "check_plan", lambda out, names: None), self.assertRaises(page.PageError) as stopped:
+                    page.write(self.out, files)
+                self.assertRegex(str(stopped.exception), r"\A--out: [A-Za-z0-9./-]+ could not be written \([A-Za-z ]+\): the site is not whole\Z")
+                self.assertEqual((self.victim.read_text(), sorted(path.name for path in self.outside.iterdir())), ("precious\n", ["victim.txt"]))
+                link.unlink()
+        # A link under a file's own name is replaced, not followed.
+        (self.out / "index.html").unlink()
+        os.symlink(self.victim, self.out / "index.html")
+        with mock.patch.object(page, "check_plan", lambda out, names: None):
+            page.write(self.out, files)
+        self.assertEqual(self.victim.read_text(), "precious\n")
+        self.assertFalse((self.out / "index.html").is_symlink())
+        self.assertEqual((self.out / "index.html").read_text(encoding="utf-8"), files["index.html"])
+        # The folder itself, given as a link: not opened.
+        linked = self.root / "linked"
+        os.symlink(self.outside, linked)
+        with mock.patch.object(page, "check_plan", lambda out, names: None), self.assertRaises(page.PageError):
+            page.write(linked, files)
+        self.assertEqual(sorted(path.name for path in self.outside.iterdir()), ["victim.txt"])
+
+
 class TestJudgeRuns(Case):
     """« Judge runs per integration » counts every run of the judge the ledger holds a line for (page.judge_runs)."""
 
