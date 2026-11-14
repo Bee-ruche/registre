@@ -3424,6 +3424,7 @@ PLANTED = {
     "a diff program": "[diff]\n\texternal = PLANTED\n",
     "a merge program": '[merge "x"]\n\tdriver = PLANTED\n',
     "a later format": "[core]\n\trepositoryformatversion = 1\n",
+    "another way of naming objects": "[extensions]\n\tobjectFormat = sha256\n",
     "an extension": "[extensions]\n\tworktreeConfig = true\n",
     "a partial clone": '[remote "origin"]\n\tpromisor = true\n\tpartialclonefilter = blob:none\n',
     "a fetch rule that writes the project's tip": '[remote "origin"]\n\tfetch = +refs/heads/PLANTED:refs/remotes/upstream/main\n',
@@ -3455,7 +3456,8 @@ STOPS_ON = {
                  "a work tree elsewhere", "an attributes file"),
         "filter": ("a filter",), "credential": ("a credential helper", "a credential helper for one address"),
         "url": ("a rewritten address", "a rewritten address for pushes"), "alias": ("an alias",), "gpg": ("a signing program",),
-        "commit": ("signed commits",), "diff": ("a diff program",), "merge": ("a merge program",), "extensions": ("an extension",),
+        "commit": ("signed commits",), "diff": ("a diff program",), "merge": ("a merge program",),
+        "extensions": ("an extension", "another way of naming objects"),
         "remote": ("a partial clone", "a third remote"), "http": ("a proxy", "a header for another host"),
         "submodule": ("a sub-module",), "branch": ("a branch's setting that ends like a push address",)}.items()},
     **{f"its .git/config holds a setting of the section '{section}' with a value a clone does not have": names for section, names in {
@@ -3623,6 +3625,39 @@ class Volunteer(Base):
             return subprocess.CompletedProcess(command, 0, listed, "")
         with mock.patch.object(hive.subprocess, "run", side_effect=run):
             yield talked
+
+    def planted_commit(self, parents, files, tree_of=None, message="a commit of the clone's own"):
+        """A commit made in the clone, on no branch, as whatever may write into .git could make one: the tree of its
+        first parent (or of `tree_of`), changed by `files` ({path: its text, or (mode, text), or None to remove it}),
+        with these parents. Made with an index of its own: the work tree and the clone's index are not touched."""
+        environment = {**os.environ, "GIT_INDEX_FILE": str(self.w.root / "planted.index")}
+
+        def git(*command, stdin=None):
+            return subprocess.run(["git", *command], cwd=self.alice.work, env=environment, check=True, capture_output=True, text=True,
+                                  input=stdin).stdout.strip()
+        git("read-tree", tree_of or parents[0])
+        for path, content in files.items():
+            if content is None:
+                git("update-index", "--force-remove", path)
+            else:
+                mode, text = content if isinstance(content, tuple) else ("100644", content)
+                git("update-index", "--add", "--cacheinfo", f"{mode},{git('hash-object', '-w', '--stdin', stdin=text)},{path}")
+        return git("commit-tree", git("write-tree"), *[word for parent in parents for word in ("-p", parent)], "-m", message)
+
+    def object_bytes(self, sha):
+        """(kind, bytes) of an object of the clone."""
+        kind = sh("git", "cat-file", "-t", sha, cwd=self.alice.work).stdout.strip()
+        return kind, subprocess.run(["git", "cat-file", kind, sha], cwd=self.alice.work, capture_output=True, check=True).stdout
+
+    def write_object(self, sha, kind, data):
+        """Puts, in the clone's own store, a file under the name `sha` that holds these bytes, whatever they hash to:
+        as whatever may write into .git could. (The tests' repositories share their object files: the file is
+        replaced, never written into.)"""
+        self.assertEqual(list((self.alice.work / ".git/objects/pack").glob("*.pack")), [], "each object of the clone is a file of its own")
+        path = self.alice.work / ".git/objects" / sha[:2] / sha[2:]
+        path.unlink(missing_ok=True)
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(zlib.compress(b"%s %d\0" % (kind.encode(), len(data)) + data))
 
     def commit_graph(self, parents=None, trees=None):
         """Writes, in the clone, the file in which git keeps what it once worked out of the commits (each one's tree
@@ -5544,10 +5579,289 @@ class TestTheWorkersClone(Volunteer):
 
 
 class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
-    """What a worker command prints is read by an agent, and what it moves is a branch of the clone: neither is chosen
-    by a file of the clone that passes for plain."""
+    """What a worker command prints is read by an agent, what it moves is a branch of the clone, and what it pushes goes
+    to the volunteer's fork: none of the three is chosen by a file of the clone that passes for plain."""
 
     refused = TestTheWorkersClone.refused
+    NO_START = ("the work does not start from the project's recent history (the last commits of its branch, as the project's own address "
+                "gives them): nothing was pushed. Run hive.py setup, then start the task again (hive.py start)")
+    NOT_AS_NAMED = ("hive: STOP: an object of this clone is not what its name says: its bytes do not hash to its id. Do not commit or push "
+                    "from this clone, and run no git command in it: tell the user to take a fresh clone of the fork\n")
+
+    def start_where_the_clone_says(self, dealt):
+        """« start » as the guide gives it, with no tip named: on the commit the clone's own reference names as the
+        project's tip. The commit it started the task on."""
+        code, text = self.run_cli("start", "--registry", self.registry, "--project", "toy", "--login", "alice", "--task", "toy-0001", "--deal", dealt)
+        self.assertEqual(code, 0, self.err)
+        return next(line for line in self.spoken(text) if line.startswith("STARTED ")).split()[-1]
+
+    def test_submit_refuses_work_that_does_not_start_from_the_projects_history(self):
+        """start puts the clone on the commit that the clone's own reference names as the project's tip, and that
+        reference is a file of .git: whatever ran in the clone may have made it name a commit of its own. submit does
+        not ask the clone where the work started. It asks the project's own address for its tip and walks back from
+        the candidate, through commits it hashes itself: work whose commits do not lead to the project's history in a
+        single line (a commit with no parent, a merge that brings a history of its own, a parent the clone does not
+        hold) ends the command with one line. No branch moves and nothing is pushed."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        tree = sh("git", "rev-parse", f"{self.start}^{{tree}}", cwd=work).stdout.strip()
+        alone = self.planted_commit([], {"planted.c": "int planted;\n"}, tree_of=self.start)
+        cut = f"tree {tree}\nparent {'1' * 40}\nauthor t <t@example.invalid> 1 +0000\ncommitter t <t@example.invalid> 1 +0000\n\ncut\n".encode()
+        lost = hashlib.sha1(b"commit %d\0" % len(cut) + cut).hexdigest()
+        self.write_object(lost, "commit", cut)
+        for why, planted in (("a commit with no parent", alone),
+                             ("a merge of the project's commit and of a history of the clone's own", self.planted_commit([self.start, alone], {})),
+                             ("a commit whose parent the clone does not hold", lost)):
+            with self.subTest(planted=why):
+                sh("git", "update-ref", "refs/remotes/upstream/main", planted, cwd=work)
+                self.assertEqual(self.start_where_the_clone_says(dealt), planted, "start believes the clone's reference")
+                self.alice.write("lib.c", LIB + "/* FAST */\n")
+                self.one_line(self.submit("toy-0001", dealt), self.NO_START)
+                self.assertEqual((self.head(), self.fork_branches()), (planted, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+        sh("git", "update-ref", "refs/remotes/upstream/main", self.start, cwd=work)
+        self.assertEqual(self.start_where_the_clone_says(dealt), self.start)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        self.assertEqual(self.submit("toy-0001", dealt)[1].split()[0], "PUSHED", self.err)
+
+    def test_a_candidate_has_no_more_commits_of_its_own_than_the_project_allows(self):
+        """The hive refuses a candidate with more commits of its own than the project allows, and submit walks back no
+        further than that many: each submit of new work adds two (the work, its marker), so a third on the same
+        branch, here, is refused as the hive would refuse it, before the branch moves."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.assertEqual((self.begin("toy-0001", dealt)[0], self.w.load()[0]["limits"]["commits"]), (0, 5), self.err)
+        for number in (1, 2):
+            self.alice.write("lib.c", LIB + f"/* FAST {number} */\n")
+            self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "/* FAST 3 */\n")
+        before = self.head()
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)), (1, ['REFUSED (too_many_commits): too many commits since the project\'s history {"commits": 6}']),
+                         self.err)
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
+
+    def test_submit_reads_the_candidates_own_tree_whatever_git_works_out_of_the_clone(self):
+        """submit also checks a candidate with the hive's own functions, which ask git what the candidate would change
+        once merged on the project's tip. git answers from the clone, and believes the files in which it keeps what it
+        once worked out: here a commit-graph, written by hand, that gives the project's first commit a parent of the
+        clone's own, a commit that adds a workflow file. For git the project then « removed » that file since, the
+        merge brings the task's file alone, and the hive's own check passes. The candidate's own tree holds the
+        workflow file all the same, and the candidate is what is pushed, to the volunteer's fork. submit's own
+        reading, of bytes it hashed and from the tip the project gave, finds the path and refuses."""
+        dealt, work, first = self.w.deal(self.alice, "toy-0001"), self.alice.work, self.start
+        self.w.upstream_commit("src/a.c", "int a; /* the project's second commit */\n")
+        tip = self.w.tip()
+        sh("git", "fetch", "--quiet", str(self.w.upstream), "main", cwd=work)
+        planted = self.planted_commit([tip], {".github/workflows/planted.yml": "on: push\n"})
+        sh("git", "update-ref", "refs/remotes/upstream/main", planted, cwd=work)
+        self.assertEqual(self.start_where_the_clone_says(dealt), planted)
+        self.commit_graph(parents={planted: None, first: planted, tip: first})
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        sh("git", "commit", "--quiet", "--all", "-m", "the work", cwd=work)
+        candidate = self.head()
+        config, tasks, _ = hive.hive_project(self.registry, "toy")
+        self.assertEqual(hive.check_structure(work, hive.tree_of(work, tip), hive.merge_tree(work, tip, candidate, config["limits"]), tasks["toy-0001"],
+                                              config), {"files": 1, "lines": 1}, "what git works out: the task's file, and nothing else")
+        self.assertIn(".github/workflows/planted.yml", sh("git", "ls-tree", "-r", "--name-only", candidate, cwd=work).stdout.split(),
+                      "what would be pushed")
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": [".github"], "files": 1}\n'),
+                         self.err)
+        self.spoken(text)
+        self.assertEqual((self.head(), self.fork_branches()), (candidate, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+
+    def test_an_object_whose_bytes_are_not_what_its_name_says_stops_the_command(self):
+        """An object's name is the hash of its bytes, and git does not hash an object again each time it reads one: a
+        file that holds other bytes under a name is read as that object. Whatever ran in the clone may have written
+        one. Here, under the name of the project's tree, the tree of a commit of the clone's own, which adds a
+        workflow file: git, comparing the two, then finds no difference. submit hashes every commit and every folder
+        it decides on. The command stops as it does on a clone that is not plain: exit code 3, one line, no branch
+        moved, nothing pushed. So does next, on the commit the fork says its branch is at."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        self.w.run()
+        planted = self.planted_commit([self.start], {".github/workflows/planted.yml": "on: push\n"})
+        sh("git", "checkout", "--quiet", "-B", "hive/submit/toy-0001", planted, cwd=work)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        sh("git", "commit", "--quiet", "--all", "-m", "the work", cwd=work)
+        before = self.head()
+        ours, theirs = (sh("git", "rev-parse", f"{commit}^{{tree}}", cwd=work).stdout.strip() for commit in (self.start, planted))
+        true = {name: self.object_bytes(name) for name in (ours, planted)}
+        self.write_object(ours, "tree", self.object_bytes(theirs)[1])
+        self.assertEqual(sh("git", "diff-tree", "-r", "--name-only", ours, theirs, cwd=work).stdout, "", "git itself reads the file as the project's tree")
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), self.NOT_AS_NAMED), "a folder")
+        self.write_object(ours, *true[ours])
+        self.write_object(planted, "commit", true[planted][1].replace(b"a commit of the clone's own", b"other words under the same name"))
+        self.assertEqual(sh("git", "log", "-1", "--format=%s", "HEAD^", cwd=work).stdout, "other words under the same name\n", "git itself reads it")
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), self.NOT_AS_NAMED), "a commit")
+        self.write_object(planted, "commit", self.object_bytes(self.start)[1])
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), self.NOT_AS_NAMED), "a commit that is another's, byte for byte")
+        self.write_object(planted, *true[planted])
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+        clone = hive.Clone(work.resolve(), {})
+        with hive.Objects(clone) as objects:
+            self.assertEqual(objects.read("commit", planted), true[planted][1], "an object that is what its name says is read")
+            self.assertIsNone(objects.read("commit", "1" * 40), "one the clone does not hold is no object at all")
+            with self.assertRaises(hive.NotPlain, msg="a folder asked for by a commit's name: not that kind of object"):
+                objects.read("tree", planted)
+        pushed = self.alice.ready(branch="hive/submit/toy-0001")  # what the fork holds on the task's branch: no candidate
+        self.assertTrue(self.next()[1].startswith("TASK toy-0001\n"), "read as the fork holds it: the task is still to do")
+        self.write_object(pushed, "commit", true[planted][1])
+        self.assertEqual((self.next(), self.err), ((3, ""), self.NOT_AS_NAMED), "next reads the fork's tip the same way")
+
+    def test_what_differs_between_two_trees_is_read_from_their_own_bytes(self):
+        """What a candidate changes is the entries that differ between the tree it starts from and its own: one added,
+        removed, of another id or of another mode. Each must be one of the task's files, or lie below a folder of the
+        task. A folder that differs and holds none of the task's files is itself the path that differs: it is not
+        read, so that what is read stays on the way to the task's files, whatever a tree holds elsewhere."""
+        work = self.alice.work
+        clone = hive.Clone(work.resolve(), {})
+        old = sh("git", "rev-parse", f"{self.start}^{{tree}}", cwd=work).stdout.strip()
+
+        def outside(files, task, seen=None):
+            new = sh("git", "rev-parse", f"{self.planted_commit([self.start], files)}^{{tree}}", cwd=work).stdout.strip()
+            with hive.Objects(clone) as objects:
+                read = objects.read
+                objects.read = lambda kind, sha: (seen.append(sha) if seen is not None else None, read(kind, sha))[1]
+                return hive.changed_outside(objects, old, new, task)
+
+        for files, task, found in (
+                ({}, ["lib.c"], []),
+                ({"lib.c": "changed\n"}, ["lib.c"], []),
+                ({"lib.c": "changed\n"}, ["src/"], ["lib.c"]),
+                ({"lib.c": "changed\n"}, ["lib.c.bak", "lib"], ["lib.c"]),
+                ({"src/a.c": "changed\n", "src/new.c": "added\n", "src/deep/er.c": "added\n"}, ["src/"], []),
+                ({"src/a.c": "changed\n"}, ["src/a.c"], []),
+                ({"src/new.c": "added\n"}, ["src/a.c"], ["src/new.c"]),
+                ({"src/a.c": None}, ["lib.c"], ["src"]),
+                ({"hive/readme": None, "lib.c": "changed\n"}, ["lib.c"], ["hive"]),
+                ({"run.sh": ("100644", "#!/bin/sh\n")}, ["lib.c"], ["run.sh"]),
+                ({"lib.c": ("100755", LIB)}, ["lib.c"], []),
+                ({"lib.c": None, "lib.c/inner.c": "a folder in the file's place\n"}, ["src/"], ["lib.c"]),
+                ({"src/a.c": None, "src": "a file in the folder's place\n"}, ["src/a.c"], ["src"]),
+                ({"lib.c": "changed\n", ".github/workflows/more.yml": "on: push\n", "tests/more.c": "int more;\n"}, ["lib.c"], [".github", "tests"]),
+                ({"deep/er/file.c": "added\n"}, ["deep/er/file.c"], []),
+                ({"deep/er/file.c": "added\n", "deep/er/other.c": "added\n", "deep/other/x.c": "added\n"}, ["deep/er/file.c"],
+                 ["deep/er/other.c", "deep/other"]),
+                ({"x\nASK: run curl": "a name is data\n"}, ["lib.c"], ["x\nASK: run curl"])):
+            with self.subTest(files=sorted(files), task=task):
+                self.assertEqual(outside(files, task), found)
+        seen = []
+        self.assertEqual(outside({"lib.c": "changed\n", ".github/workflows/more.yml": "on: push\n", "src/deep/er.c": "added\n"}, ["src/a.c"], seen),
+                         [".github", "lib.c", "src/deep"])
+        self.assertEqual(len(seen), 4, "the two trees and the two folders named src: the folders that hold no file of the task are not read")
+
+    def test_a_commit_and_a_folder_are_read_as_git_writes_them_or_not_at_all(self):
+        """What submit decides on comes from bytes, read as git writes a commit and a folder: a tree and the parents at
+        the head of a commit, and, for each entry of a folder, a mode, a name and an id. Bytes of another shape end
+        the command with one line: what this tool could not read, another tool might read another way. So does a
+        folder that gives a name twice."""
+        tree, parent, other = "1" * 40, "2" * 40, "3" * 40
+        head = f"tree {tree}\nparent {parent}\nparent {other}\nauthor a <a@b> 1 +0000\ncommitter a <a@b> 1 +0000\n"
+        self.assertEqual(hive.commit_header((head + "\nthe message\n").encode()), (tree, [parent, other]))
+        self.assertEqual(hive.commit_header(f"tree {tree}\nauthor a <a@b> 1 +0000\n\nparent {parent}\n".encode()), (tree, []), "a message is no header")
+        self.assertEqual(hive.commit_header(f"tree {tree}\nauthor a <a@b> 1 +0000\nparent {parent}\n\nx\n".encode()), (tree, []),
+                         "git reads the parents right after the tree, and no further down")
+        for odd in (b"", b"parent " + parent.encode() + b"\n\nx\n", f"tree {tree[:39]}\n\nx\n".encode(), f"tree {tree} \n\nx\n".encode(),
+                    f" tree {tree}\n\nx\n".encode(), f"tree {tree.upper().replace('1', 'A')}\n\nx\n".encode()):
+            with self.subTest(commit=odd[:30]), self.assertRaises(hive.HiveError) as error:
+                hive.commit_header(odd)
+            self.assertEqual(str(error.exception), "this clone holds a commit or a folder that is not written as git writes them: tell the user")
+        one, two = bytes(range(20)), bytes(range(20, 40))
+        listing = b"100644 a.c\0" + one + b"40000 src\0" + two + b"100755 run it.sh\0" + one
+        self.assertEqual(hive.folder_listing(listing), {b"a.c": (0o100644, one.hex()), b"src": (0o40000, two.hex()), b"run it.sh": (0o100755, one.hex())})
+        self.assertEqual(hive.folder_listing(b""), {}, "the empty folder")
+        self.assertEqual(hive.folder_listing(b"040000 src\0" + two), {b"src": (0o40000, two.hex())}, "a mode spelt with a zero is the same mode")
+        for odd in (listing[:-1], listing + b"x", b"100644 a.c" + one, b"100644a.c\0" + one, b"100644 \0" + one, b" a.c\0" + one, b"10x644 a.c\0" + one,
+                    b"100644 a/c\0" + one, b"100644 a.c\0" + one + b"100644 a.c\0" + two, b"\0" + one, b"100644 a.c\0" + one[:19],
+                    b"100644 " + b"a" * 13, b"100644 " + b"a" * 40, b"1234", b"1234\0"):
+            with self.subTest(folder=odd[:30]), self.assertRaises(hive.HiveError) as error:
+                hive.folder_listing(odd)
+            self.assertEqual(str(error.exception), "this clone holds a commit or a folder that is not written as git writes them: tell the user")
+
+    def test_the_walks_read_a_bounded_number_of_commits(self):
+        """What submit reads does not grow with what a clone holds. The project's history is walked back from its tip,
+        the nearest commits first and through every parent, for a set number of commits; a candidate's own, for as
+        many as a candidate may have. A commit the clone does not hold ends the walk on its side. (The commits here
+        are given by a table, and each reading is counted.)"""
+        class Held:
+            def __init__(self, parents):
+                self.parents, self.asked = parents, []
+
+            def read(self, kind, sha):
+                self.asked.append((kind, sha))
+                lines = [f"parent {parent}\n" for parent in self.parents[sha]] if sha in self.parents else None
+                return None if lines is None else (f"tree {'0' * 40}\n" + "".join(lines) + "author a <a@b> 1 +0000\n\nx\n").encode()
+
+        name = [f"{number:040x}" for number in range(40)]
+        line = Held({name[number]: [name[number + 1]] for number in range(30)})
+        with mock.patch.object(hive, "PROJECT_COMMITS", 5):
+            self.assertEqual(hive.project_history(line, name[0]), set(name[:6]), "five commits read; the fifth names its parent, which is the project's too")
+            self.assertEqual(line.asked, [("commit", sha) for sha in name[:5]])
+            merged = Held({name[0]: [name[1], name[2]], name[1]: [name[3]], name[2]: [name[3], name[4]], name[3]: [name[5]], name[5]: [name[6]]})
+            self.assertEqual(hive.project_history(merged, name[0]), set(name[:7]), "through every parent; the commit the clone does not hold ends its side")
+            self.assertEqual([sha for _, sha in merged.asked], [name[0], name[1], name[2], name[3], name[4], name[5]], "the nearest first")
+        history = {name[10], name[11]}
+        for most, found in ((10, (name[10], 10)), (11, (name[10], 10)), (9, (None, 10)), (1, (None, 2))):
+            own = Held(line.parents)
+            self.assertEqual((hive.start_of_candidate(own, name[0], history, most), len(own.asked)), (found, min(most, 10)), most)
+        self.assertEqual(hive.start_of_candidate(Held({}), name[10], history, 5), (name[10], 0), "a commit of the project is its own start")
+        for why, parents in (("no parent", {name[0]: []}), ("two parents", {name[0]: [name[10], name[11]]}), ("not held", {}),
+                             ("a parent that is not held", {name[0]: [name[1]]})):
+            self.assertEqual(hive.start_of_candidate(Held(parents), name[0], history, 5)[0], None, why)
+        # And as a command: work that starts from a commit older than the project's last ones does not start from them.
+        dealt = self.w.deal(self.alice, "toy-0001")
+        for number in (1, 2):
+            self.w.upstream_commit("src/a.c", f"int a{number};\n")
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        with mock.patch.object(hive, "PROJECT_COMMITS", 1):
+            self.one_line(self.submit("toy-0001", dealt, "--no-push"), self.NO_START)
+        with mock.patch.object(hive, "PROJECT_COMMITS", 2):
+            self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)
+
+    def test_what_git_cannot_hand_over_ends_the_command_with_one_line(self):
+        """submit reads objects through one git process, which may fail it: an object larger than the tool reads
+        (its size is read first, and the object is then not read at all), a git that stops or is not there, a folder
+        the clone does not hold. Each ends the command with one line of the tool's own; no branch moves and nothing
+        is pushed."""
+        dealt = self.w.deal(self.alice, "toy-0002")
+        self.alice.write("src/n.c", "int n;\n")
+        before = self.head()
+        with mock.patch.object(hive, "OBJECT_BYTES", 150):
+            self.one_line(self.submit("toy-0002", dealt), "this clone holds a commit or a folder larger than this tool reads: tell the user")
+        real = subprocess.Popen
+
+        def ends_at_once(command, **options):
+            return real(["true"], **options) if "--batch" in command else real(command, **options)
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=ends_at_once):
+            self.one_line(self.submit("toy-0002", dealt), "git cat-file gave no answer (it was stopped, or took too long)")
+
+        def never_answers(command, **options):
+            return real(["sleep", "30"], **options) if "--batch" in command else real(command, **options)
+        began = hive.time.monotonic()
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=never_answers), mock.patch.object(hive, "OBJECTS_SECONDS", 0.2):
+            self.one_line(self.submit("toy-0002", dealt), "git cat-file gave no answer (it was stopped, or took too long)")
+        self.assertLess(hive.time.monotonic() - began, 15, "it is stopped once its time is up")
+
+        def not_there(command, **options):
+            if "--batch" in command:
+                raise FileNotFoundError(2, "No such file or directory", "git")
+            return real(command, **options)
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=not_there):
+            self.one_line(self.submit("toy-0002", dealt), "git cat-file: FileNotFoundError")
+        self.alice.commit("the work")  # (so that the tree the work started from is one git itself no longer reads here)
+        before = self.head()
+        folder = sh("git", "rev-parse", f"{self.start}^{{tree}}", cwd=self.alice.work).stdout.strip()
+        kept = self.object_bytes(folder)
+        (self.alice.work / ".git/objects" / folder[:2] / folder[2:]).unlink()
+        not_held = "this clone does not hold an object that the work rests on: run hive.py setup, then start the task again (hive.py start); " \
+                   "if this happens again, tell the user"
+        self.one_line(self.submit("toy-0002", dealt), not_held)
+        self.write_object(folder, *kept)
+        clone = hive.Clone(self.alice.work.resolve(), {})
+        config, tasks, _ = hive.hive_project(self.registry, "toy")
+        with self.assertRaises(hive.HiveError) as error:
+            hive.candidate_proof(clone, "1" * 40, before, tasks["toy-0002"], config["limits"])
+        self.assertEqual(str(error.exception), not_held, "the project's tip itself, if the clone does not hold it")
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
+        self.assertEqual(self.submit("toy-0002", dealt)[1].split()[0], "PUSHED", self.err)
 
     def test_gits_own_words_are_never_repeated(self):
         """git quotes the files it cannot read (a line of .git/shallow, a reference's name): an error of a worker command

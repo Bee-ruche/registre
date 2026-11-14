@@ -2531,8 +2531,7 @@ def folder_listing(raw):
     while at < len(raw):
         space, nul = raw.find(b" ", at), raw.find(b"\0", at)
         mode, name = raw[at:space], raw[space + 1:nul]
-        if space < 0 or nul < space or nul + 21 > len(raw) or not re.fullmatch(rb"[0-7]{1,7}", mode) or not name or b"/" in name \
-                or name in entries:
+        if nul < space or nul + 21 > len(raw) or not re.fullmatch(rb"[0-7]{1,7}", mode) or not name or b"/" in name or name in entries:
             raise HiveError(NOT_GITS)
         entries[name] = (int(mode, 8), raw[nul + 1:nul + 21].hex())
         at = nul + 21
@@ -2663,7 +2662,8 @@ def plain_clone():
     is a link, or neither a file nor a folder, or (outside the objects) a file with a second name; a reference that
     names another reference, or a HEAD that names neither a branch nor a commit; a reference that is neither a branch,
     a remote's branch, a tag nor the stash, as a file of .git/refs or as a line of .git/packed-refs (kept_reference);
-    any setting
+    a clone whose objects are not named by SHA-1 (it says so in a setting, which is one of those refused next); any
+    setting
     outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a sample;
     .git/info/attributes. A .gitattributes in the work tree needs no
     refusal: it can only select a filter, a diff or a merge program that some setting defines, and none does once
