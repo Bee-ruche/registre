@@ -3684,6 +3684,7 @@ class Volunteer(Base):
             dated = struct.unpack(">Q", data[at + 28:at + 36])[0] & ((1 << 34) - 1)
             data[at + 20:at + 36] = struct.pack(">IIQ", place, nobody, levels[commit] << 34 | dated)
         data[-20:] = hashlib.sha1(bytes(data[:-20])).digest()
+        path.unlink()  # git writes that file read-only: it is replaced, not written into
         path.write_bytes(bytes(data))
 
 
@@ -5150,7 +5151,7 @@ class TestVolunteerSide(Volunteer):
         self.alice.write("src/.gitattributes", "*.c text working-tree-encoding=UTF-16\n").write("src/a.c", b"\xff\xfe\x00not UTF-16")
         self.alice.write(".gitattributes", "*.c -text\n").write("lib.c", LIB + "int changed;\n")
         plain = subprocess.run(["git", "stash", "push", "--include-untracked"], cwd=self.alice.work, env=dict(os.environ), capture_output=True, text=True)
-        self.assertEqual((plain.returncode, "failed to encode 'src/a.c' from UTF-16 to UTF-8" in plain.stderr), (1, True), "git itself stops")
+        self.assertEqual((plain.returncode != 0, "failed to encode 'src/a.c' from UTF-16 to UTF-8" in plain.stderr), (True, True), "git itself stops")
         code, text = self.begin("toy-0001", NOW)
         self.assertEqual((code, self.spoken(text)[:2]), (0, ["SET-ASIDE 4 change(s) of an earlier run: git stash list shows them",
                                                              f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
@@ -6031,12 +6032,13 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         before = self.head()
         self.commit_graph(parents={self.start: 12345})
         said = sh("git", "rev-list", "--count", "HEAD", cwd=self.alice.work, check=False)
-        self.assertEqual((said.returncode, said.stderr), (128, "fatal: invalid parent position 12345\n"), "what git itself answers")
-        self.one_line(self.submit("toy-0001", dealt), "git rev-list failed (128)")
+        words = said.stderr.strip()  # (a version of git words it in its own way: « fatal: invalid parent position 12345 »)
+        self.assertTrue(said.returncode != 0 and "12345" in words, f"git itself stops on the planted file, with words of its own: {said}")
+        self.one_line(self.submit("toy-0001", dealt), f"git rev-list failed ({said.returncode})")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
         with self.assertRaises(hive.HiveError) as hive_side:
             hive.merge_tree(self.alice.work, self.start, before, hive.DEFAULTS["limits"])
-        self.assertEqual(str(hive_side.exception), "git rev-list failed (128): fatal: invalid parent position 12345")
+        self.assertEqual(str(hive_side.exception), f"git rev-list failed ({said.returncode}): {words}")
 
     def test_whichever_git_fails_and_whatever_it_says_none_of_it_is_printed(self):
         """Every git command a worker command runs, by whichever function, is made to fail in its turn, with words on
