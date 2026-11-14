@@ -48,7 +48,8 @@ TASK_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")
 MARK = re.compile(r"[0-9a-f]{16}\Z")  # a hash of a login, in the feed's deals; never shown
 SHA = re.compile(r"[0-9a-f]{40}\Z")
-ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
+RUN = re.compile(r"[0-9a-f]{32}\Z")  # a run's key, in the ledger's lines; never shown
+ISO =re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 REPO_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 JOIN_URL = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:/[A-Za-z0-9._-]{1,100}){1,12}\Z")
@@ -288,9 +289,13 @@ def clean_event(raw, goals=None):
     kind, at = raw.get("type"), instant_of(raw.get("at"))
     if not isinstance(kind, str) or at is None:
         return None
-    event = {"type": kind, "at": at, "member_id": account_id(raw.get("member_id")), "login": matching(raw.get("member"), LOGIN)}
+    # « marks »: what makes this line the same line as another (once()); the candidate is the ledger's « sha ».
+    event = {"type": kind, "at": at, "member_id": account_id(raw.get("member_id")), "login": matching(raw.get("member"), LOGIN), "marks": []}
+    candidate, run = matching(raw.get("sha"), SHA), matching(raw.get("run"), RUN)
     if kind == "error":
         event["judge"] = raw.get("kind", "judge") == "judge"  # as the hive reads it: no kind means the judge failed
+        if candidate is not None and run is not None and isinstance(raw.get("kind", "judge"), str):
+            event["marks"] = [("error", candidate, run, raw.get("kind", "judge"))]
     elif kind == "verdict":
         result = raw.get("result")
         if not isinstance(result, str) or result not in ("accepted", "refused"):
@@ -299,9 +304,29 @@ def clean_event(raw, goals=None):
         event.update(accepted=result == "accepted", judged=raw.get("judged") is True, task=task, model=matching(raw.get("model"), MODEL),
                      commit=matching(raw.get("commit"), SHA), headline=None,
                      reason=reason if isinstance(reason, str) and reason in hive.REASONS else None)
+        if candidate is not None:
+            event["marks"].append(("candidate", candidate))
         if result == "accepted":
             event.update(read_report(raw.get("report"), (goals or {}).get(task)), changed=read_changed(raw.get("figures")))
+            if event["commit"] is not None:
+                event["marks"].append(("commit", event["commit"]))
     return event
+
+
+def once(events):
+    """(the lines that count, in order; how many were left out as repeats). The hive records an answer once
+    (hive.Ledger.mark): one verdict for a candidate, one error for a candidate, a run and a kind. A ledger that holds
+    a line twice (merged twice, a line replayed) is read here as the hive reads its own: the first line stands and the
+    others count for nothing, in any figure, card or badge. An accepted verdict whose integrated commit an earlier
+    accepted verdict already holds is a repeat too: one commit is one integration, one card, one page. Only whole
+    ids are compared (a 40-hex candidate or commit, a run's key): a line without them counts for itself."""
+    kept, known = [], set()
+    for event in events:
+        if any(mark in known for mark in event["marks"]):
+            continue
+        known.update(event["marks"])
+        kept.append(event)
+    return kept, len(events) - len(kept)
 
 
 def read_feed(folder):
@@ -361,7 +386,15 @@ def collect(state, now, tasks=None):
     for a person, here or in any file."""
     goals = read_goals(tasks) if tasks is not None else {}
     objects, skipped = read_ledger(state)
-    events = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
+    usable = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
+    # A line dated after `now` says nothing yet: the page is made for that instant, and its latest contribution is never
+    # one from the future. Then each answer is read once (once()). Both are said on the standard error and in the files.
+    dated = [event for event in usable if event["at"] <= now]
+    events, repeated = once(dated)
+    after = len(usable) - len(dated)
+    for count, what in ((after, f"dated after {iso(now)}, the instant the page is made for"), (repeated, "that repeat an answer the ledger already holds")):
+        if count:
+            print(hive.safe_text(f"page: {count} ledger line(s) {what}: left out"), file=sys.stderr)
     verdicts = [event for event in events if event["type"] == "verdict"]
     project, tasks, titles = read_feed(state)
     project = project or matching(Path(state).resolve().name, PROJECT, PROJECT_MAX)
@@ -384,7 +417,7 @@ def collect(state, now, tasks=None):
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
         accepted, judged, member_id = event["accepted"], event["judged"], event["member_id"]
-        in_week = since < event["at"] <= now
+        in_week = since < event["at"]  # and no line is dated after `now`: see above
         totals["verdicts"] += 1
         totals["judged"] += judged
         totals["accepted"] += accepted and judged
@@ -427,12 +460,10 @@ def collect(state, now, tasks=None):
         account the ledger does not number)."""
         return firsts.get(event["member_id"]) is event
 
-    wins, written = [], set()
-    for at, _, event in recent:  # every integration, the latest first; a commit has one card, and its latest line speaks
-        name = win_name(event["commit"])
-        if name is None or name in written:
+    wins = []
+    for at, _, event in recent:  # every integration, the latest first; a commit has one line (once()), so one card
+        if win_name(event["commit"]) is None:
             continue
-        written.add(name)
         wins.append({"commit": event["commit"], "at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""),
                      "member_id": event["member_id"], "login": login_of(event["member_id"]), "model": event["model"],
                      "first": first(event), "judged": event["judged"], "changed": event["changed"],
@@ -462,7 +493,8 @@ def collect(state, now, tasks=None):
             "judge_runs_per_integration": round((totals["judged"] + totals["judge_failures"]) / integrations, 2) if integrations else None,
             "waiting": read_waiting(state, now),
         },
-        "ledger": {"lines": len(objects) + skipped, "unreadable_lines": skipped, "events_left_out": len(objects) - len(events)},
+        "ledger": {"lines": len(objects) + skipped, "unreadable_lines": skipped, "events_left_out": len(objects) - len(usable),
+                   "lines_after_now": after, "repeated_lines": repeated},
     }
     data["stats_json"] = compare_stats(read_json(state, "stats.json"), models)
     data["_wins"] = wins  # for the cards; not part of summary.json
@@ -816,6 +848,9 @@ def render_html(data, title, repo_url, join):
     sections.append(join_block(join))
 
     left_out = data["ledger"]["unreadable_lines"] + data["ledger"]["events_left_out"]
+    odd = "".join(f" {words}: {data['ledger'][key]}." for key, words in (
+        ("lines_after_now", "Ledger lines dated after that instant, left out until then"),
+        ("repeated_lines", "Ledger lines that repeat an answer already recorded, counted once")) if data["ledger"][key])
     head = el("head", el("meta", charset="utf-8"), el("meta", name="viewport", content="width=device-width, initial-scale=1"),
               el("meta", http_equiv="Content-Security-Policy", content=CSP), el("meta", name="referrer", content="no-referrer"),
               el("title", f"{project} · La Ruche"), el("style", CSS))
@@ -838,7 +873,7 @@ def render_html(data, title, repo_url, join):
                  el("p", WHAT, class_="what"), opening, el("p", el("a", "How to take part", href=Link("#join"), class_="go"), class_="steps")),
               el("main", sections),
               el("footer", el("p", f"Made from the project's public ledger, as of {data['generated_at']}. No script, no tracker, nothing loaded from elsewhere."
-                              + (f" Ledger lines that could not be read and are left out: {left_out}." if left_out else ""))))
+                              + (f" Ledger lines that could not be read and are left out: {left_out}." if left_out else "") + odd)))
     return "<!DOCTYPE html>\n" + el("html", head, body, lang="en") + "\n"
 
 

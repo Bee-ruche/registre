@@ -182,6 +182,7 @@ class Case(unittest.TestCase):
                 with self.assertRaises(SystemExit) as stopped:
                     page.main(["--state", str(self.state), "--out", str(out), *options])
                 self.assertEqual(stopped.exception.code, code, errors.getvalue())
+        self.errors = errors.getvalue()  # what the run said on its standard error
         return {str(path.relative_to(out)): path.read_text(encoding="utf-8") for path in sorted(Path(out).rglob("*")) if path.is_file()} \
             if Path(out).exists() else {}
 
@@ -850,7 +851,7 @@ class TestWins(Case):
                      '"judged":true,"commit":"' + sha(5027) + '","report":{"gain_a":NaN,"sure_a":1,"gain_b":Infinity,"sure_b":1,"gain_c":-Infinity,'
                      '"sure_c":1,"gain_d":1e999,"sure_d":1,"gain_e":0.5,"sure_e":NaN}}')
         self.ledger(lines)
-        files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
+        files = self.make("--repo-url", "https://github.com/Bee-ruche/toy", "--now", "2026-11-30T00:00:00Z")  # after the last of these lines
         self.harmless(files)
         data = self.summary(files)
         self.assertEqual(len(data["recent"]), len(reports) + 1)
@@ -1039,11 +1040,98 @@ class TestWins(Case):
         self.assertEqual(sorted(name for name in later if name.startswith("members/")),
                          ["members/101-badge.svg", "members/101.svg", "members/102-badge.svg", "members/102.svg"])
 
-    def test_a_commit_integrated_twice_has_one_card_and_the_same_one_is_rewritten(self):
+    def test_a_commit_recorded_twice_is_one_integration_and_its_first_line_speaks(self):
         self.ledger([report_verdict(1, {}), {**report_verdict(2, {"gain_a": 0.1, "sure_a": 1}), "commit": sha(5001)}])
         files = self.make()
         self.assertEqual(sorted(self.wins(files)), [f"wins/{sha(5001)}.svg"])
-        self.assertIn("10.0 % better", files[f"wins/{sha(5001)}.svg"], "the latest integration speaks")
+        self.assertNotIn("10.0 %", files[f"wins/{sha(5001)}.svg"], "the first line speaks, as the hive reads its own ledger")
+        self.assertIn("first integration · 1 Nov 2026", files[f"wins/{sha(5001)}.svg"])
+        self.assertEqual((self.summary(files)["totals"]["integrations"], len(self.summary(files)["recent"])), (1, 1), "and it is counted once")
+
+
+class TestOnce(Case):
+    """One accepted contribution is counted once, wherever it is counted, and the latest one is never from the future."""
+
+    def counts(self, files):
+        """Every place that counts integrations: the totals, the members, the badges, the table, the cards, the pages."""
+        data = self.summary(files)
+        return {"totals": data["totals"]["integrations"], "members": sum(m["integrations"] for m in data["members"]),
+                "badge": int(re.search(r">([0-9]+) verified contribution", files["badge.svg"]).group(1)),
+                "member badges": sum(int(re.search(r">([0-9,]+) accepted by the judge<", text).group(1))
+                                     for name, text in files.items() if name.endswith("-badge.svg")),
+                "member cards": sum(int(re.search(r"· ([0-9,]+) contributions? accepted by the judge ·", text).group(1))
+                                    for name, text in files.items() if re.fullmatch(r"members/[0-9]+\.svg", name)),
+                "recent": len(data["recent"]), "week": data["week"]["integrations"],
+                "cards": sum(1 for name in files if re.fullmatch(r"wins/[0-9a-f]{40}\.svg", name)),
+                "pages": sum(1 for name in files if re.fullmatch(r"wins/[0-9a-f]{40}\.html", name))}
+
+    def test_a_line_the_ledger_holds_twice_counts_once_everywhere(self):
+        first = verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001", report={"gain_a": 0.1, "sure_a": 1})
+        refused = verdict(2, "2026-11-10T10:00:00Z", "bob", 102, "toy-0002", "refused", reason="judge_refused")
+        error = {**failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "run": "a" * 32}
+        self.ledger([first, refused, error, first, refused, error, first])
+        files = self.make()
+        self.harmless(files)
+        self.assertEqual(self.counts(files), dict.fromkeys(("totals", "members", "badge", "member badges", "member cards", "recent", "week", "cards", "pages"), 1))
+        data = self.summary(files)
+        self.assertEqual(data["totals"], {**data["totals"], "verdicts": 2, "judged": 2, "accepted": 1, "integrations": 1, "refused": 1, "judge_failures": 1})
+        self.assertEqual(data["ledger"], {"lines": 7, "unreadable_lines": 0, "events_left_out": 0, "lines_after_now": 0, "repeated_lines": 4})
+        self.assertIn("page: 4 ledger line(s) that repeat an answer the ledger already holds: left out\n", self.errors)
+        self.assertIn("Ledger lines that repeat an answer already recorded, counted once: 4.", files["index.html"])
+
+    def test_one_candidate_is_answered_once_and_one_commit_is_integrated_once(self):
+        self.ledger([
+            verdict(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"),
+            {**verdict(1, "2026-11-02T09:00:00Z", "bob", 102, "toy-0002"), "commit": sha(6000)},  # the candidate of the first line, answered again
+            {**verdict(3, "2026-11-03T09:00:00Z", "carol", 103, "toy-0003"), "commit": sha(5001)},  # the commit of the first line, under another candidate
+            {**verdict(1, "2026-11-04T09:00:00Z", "dave", 104, "toy-0004", "refused", reason="conflict")},  # the same candidate, refused after it was accepted
+            verdict(5, "2026-11-05T09:00:00Z", "erin", 105, "toy-0005", "refused", reason="conflict"),
+            {**verdict(6, "2026-11-06T09:00:00Z", "erin", 105, "toy-0005"), "sha": sha(5)},  # refused first: the first answer stands
+            {**failure(7, "2026-11-07T09:00:00Z", "erin", 105, "judge"), "run": "a" * 32},
+            {**failure(7, "2026-11-07T10:00:00Z", "erin", 105, "judge"), "run": "b" * 32},  # another run on the same candidate: another line
+            {**failure(7, "2026-11-07T11:00:00Z", "erin", 105, "none"), "run": "b" * 32},  # another kind in the same run: another line
+        ])
+        files = self.make()
+        data = self.summary(files)
+        self.assertEqual(self.counts(files), {**dict.fromkeys(("totals", "members", "badge", "member badges", "member cards", "recent", "week", "cards", "pages"), 1),
+                                              "week": 0})
+        self.assertEqual([(m["login"], m["integrations"]) for m in data["members"]], [("alice", 1)], "the first line speaks: its member, its date")
+        self.assertEqual((data["recent"][0]["at"], data["recent"][0]["commit"]), ("2026-11-01T09:00:00Z", sha(5001)))
+        self.assertEqual((data["totals"]["verdicts"], data["totals"]["refused"], data["totals"]["judge_failures"]), (2, 1, 2))
+        self.assertEqual(data["ledger"]["repeated_lines"], 4)
+        for login in ("bob", "carol", "dave", "erin"):
+            self.assertNotIn(login, "".join(files.values()), "a line that repeats an answer names nobody")
+
+    def test_a_line_without_a_whole_id_counts_for_itself(self):
+        bare = {"type": "verdict", "at": "2026-11-10T09:00:00Z", "result": "accepted", "member": "alice", "member_id": 101, "judged": True}
+        self.ledger([bare, bare, {**bare, "sha": "abc", "commit": "abc"}, {**bare, "sha": ["x"], "commit": sha(5001)[:-1]},
+                     {**failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "run": "not a key"}, {**failure(3, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "run": "not a key"},
+                     {**failure(4, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "sha": "x"}, {**failure(4, "2026-11-10T11:00:00Z", "bob", 102, "judge"), "sha": "x"}])
+        data = self.summary(self.make())
+        self.assertEqual((data["totals"]["integrations"], data["totals"]["judge_failures"], data["ledger"]["repeated_lines"]), (4, 4, 0),
+                         "only whole ids are compared: nothing is merged on a guess")
+
+    def test_a_line_dated_after_the_instant_of_the_page_is_left_out_until_then(self):
+        self.ledger([verdict(1, "2026-11-11T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, NOW, "carol", 103, "toy-0002"),
+                     verdict(3, "2026-11-12T12:00:01Z", "bob", 102, "toy-0003"),  # one second after the instant
+                     verdict(4, "2999-12-31T23:59:59Z", "bob", 102, "toy-0004"),
+                     verdict(5, "2026-11-20T09:00:00Z", "dave", 104, "toy-0005", "refused", reason="judge_refused"),
+                     failure(6, "2026-11-20T10:00:00Z", "dave", 104, "judge")])
+        files = self.make()
+        data, seen = self.summary(files), self.harmless(files)
+        self.assertEqual((data["recent"][0]["login"], data["recent"][0]["at"]), ("carol", NOW), "the latest is the latest at that instant, not after it")
+        self.assertIn("Latest accepted contributionAccepted by the judgetoy-0002 by carol · 12 Nov 2026", seen.said)
+        self.assertEqual(self.counts(files), dict.fromkeys(("totals", "members", "badge", "member badges", "member cards", "recent", "week", "cards", "pages"), 2))
+        self.assertEqual(data["totals"], {**data["totals"], "verdicts": 2, "refused": 0, "judge_failures": 0})
+        self.assertNotIn("bob", "".join(files.values()))
+        self.assertEqual(data["ledger"], {"lines": 6, "unreadable_lines": 0, "events_left_out": 0, "lines_after_now": 4, "repeated_lines": 0})
+        self.assertIn(f"page: 4 ledger line(s) dated after {NOW}, the instant the page is made for: left out\n", self.errors)
+        self.assertIn("Ledger lines dated after that instant, left out until then: 4.", files["index.html"])
+        later = self.make("--now", "2026-11-20T09:30:00Z")
+        self.assertEqual((self.summary(later)["recent"][0]["login"], self.summary(later)["totals"]["refused"], self.summary(later)["ledger"]["lines_after_now"]),
+                         ("bob", 1, 2), "at a later instant, the lines dated before it are read")
+        self.assertEqual(self.make("--now", "2026-11-11T08:59:59Z")["index.html"].count("Nothing has been integrated yet."), 2)
+        self.assertEqual(self.errors.count("\n"), 1, "one line on the standard error says how many lines were left out")
 
 
 def task(identifier, goal=None, **more):
@@ -1448,7 +1536,7 @@ class TestEmpty(Case):
         files = self.make()
         self.assertIn("Nothing has been integrated yet.", files["index.html"])
         self.assertEqual(self.summary(files)["totals"]["refused"], 1)
-        self.assertEqual(self.summary(files)["ledger"], {"lines": 2, "unreadable_lines": 1, "events_left_out": 0})
+        self.assertEqual(self.summary(files)["ledger"], {"lines": 2, "unreadable_lines": 1, "events_left_out": 0, "lines_after_now": 0, "repeated_lines": 0})
         self.assertIn("Ledger lines that could not be read and are left out: 1.", files["index.html"])
 
     def test_a_state_folder_that_is_not_there_or_a_ledger_that_cannot_be_read_stops_the_tool(self):
@@ -1531,6 +1619,7 @@ class TestPatterns(unittest.TestCase):
     def test_the_patterns_written_again_here_are_the_hives(self):
         for name in ("LOGIN", "TASK_ID", "MODEL", "SHA", "ISO"):
             self.assertEqual(getattr(page, name).pattern, getattr(hive, name).pattern, name)
+        self.assertEqual(page.RUN.pattern, hive.RUN_KEY.pattern)
 
     def test_every_reason_of_the_hive_has_a_text_the_page_can_show(self):
         self.assertTrue(all(isinstance(text, str) and text for text in hive.REASONS.values()))
