@@ -224,11 +224,20 @@ def log(message):
 
 def isolated_environment():
     """The environment of a git command of the hive's side: the machine's own settings are not read, and none comes
-    from the environment either."""
+    from the environment either. Nor does git read one object in place of another (refs/replace): an object is the
+    one its id names, whatever the repository that holds it says to read instead."""
     environment = {name: value for name, value in os.environ.items()
                    if name not in GIT_SETTINGS_OF_THE_ENVIRONMENT and not name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))}
     environment.update(GIT_ISOLATED)
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
     return environment
+
+
+# True while a volunteer-side command runs (main sets it, for each of them): what such a command prints is read by an
+# agent, and git quotes the files it reads (a reference's name, a line of a file of .git). git() then keeps what git
+# wrote on its standard error to itself: its error names the git command and its exit code, and the result it hands
+# back holds none of git's words, so that no function that calls it can repeat them either.
+VOLUNTEER_SIDE = False
 
 
 def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True, attributes=True):
@@ -244,6 +253,10 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
                                 timeout=timeout, env=environment, errors="replace")
     except subprocess.TimeoutExpired as e:
         raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
+    if VOLUNTEER_SIDE:
+        result.stderr = ""
+        if check and result.returncode != 0:
+            raise HiveError(f"git {args[0]} failed ({result.returncode})")
     if check and result.returncode != 0:
         raise HiveError(f"git {args[0]} failed ({result.returncode}): {safe_text(result.stderr.strip(), 300)}")
     return result
@@ -2245,17 +2258,23 @@ WORK_MARGIN_HOURS = 1  # a worker starts on a deal only if it has this long left
 ASK_PATIENCE_HOURS = 6  # an ask the hive has not answered for this long is the user's to look at
 STATE_BYTES = 16 << 20  # a file of the hive's state larger than this is not read
 CONFIG_BYTES = 64 << 10  # nor a clone's .git/config larger than this
+PACKED_LINE_BYTES = 1024  # a line of its .git/packed-refs is read this many bytes at a time (a commit id and a reference's name)
 SANDBOX = "bee/sandbox/sans-docker.sh"  # the hive's projects keep their sandbox there, protected from contributions
 TOOL_FILES = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json", ".cursor")  # what a coding tool runs
 # Where git would look instead of the folders a worker command names: never taken from the environment.
 GIT_PLACES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
               "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_CONFIG")
 # Beyond GIT_BASE (no hook, no file-system monitor), for the fork's clone: no attributes file of the machine, no
-# pager, no editor, no signing program, nothing in a sub-module, no cache of the folder's listing.
+# pager, no editor, no signing program, nothing in a sub-module, no cache of the folder's listing. And none of the
+# files in which git keeps, beside the objects, what it worked out from them once (a commit's parents and tree in a
+# commit-graph, which objects a pack reaches in a bitmap, where each one lies in a multi-pack index or a reverse
+# index): git believes such a file without reading the objects again, and it is a file of .git like any other. They
+# are not refused: a clone whose owner ran « git gc » holds some, and git works without reading them.
 GIT_WORKER = ("-c", f"core.attributesFile={os.devnull}", "-c", "core.pager=cat", "-c", "core.editor=true",
               "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "submodule.recurse=false",
               "-c", "fetch.recurseSubmodules=false", "-c", "push.recurseSubmodules=no", "-c", "push.followTags=false",
-              "-c", "core.untrackedCache=false", "--no-pager", "--literal-pathspecs")
+              "-c", "core.untrackedCache=false", "-c", "core.commitGraph=false", "-c", "core.multiPackIndex=false",
+              "-c", "pack.useBitmaps=false", "-c", "pack.readReverseIndex=false", "--no-pager", "--literal-pathspecs")
 # The sections of git's own settings a refusal may name (setting_name): what a planted setting usually is.
 GIT_SECTIONS = frozenset(("alias", "branch", "commit", "core", "credential", "diff", "extensions", "fetch", "filter", "gc", "gpg", "http",
                           "merge", "pager", "push", "remote", "submodule", "url", "user"))
@@ -2303,6 +2322,10 @@ class NotPlain(HiveError):
 def not_plain(found):
     return NotPlain(f"STOP: this clone is not a plain clone: {found}. Do not commit or push from it, and run no git "
                     "command in it: tell the user")
+
+
+OTHER_REFERENCE = ("it holds a reference that is neither a branch, a remote's branch, a tag nor the stash (in .git/refs or in "
+                   ".git/packed-refs), which git may read in place of an object or beside one")
 
 
 def setting_name(key):
@@ -2405,6 +2428,40 @@ def first_bytes(path, most):
         os.close(descriptor)
 
 
+def kept_reference(name):
+    """True if a reference is one a worker's clone holds: a branch, a remote's branch, a tag, or the stash (which
+    « start » writes). git reads the others without being asked: refs/replace gives one object for another, refs/notes
+    adds text to a commit's; a clone holds none of them."""
+    return name == "refs/stash" or name.startswith(("refs/heads/", "refs/remotes/", "refs/tags/"))
+
+
+def packed_references(git_dir):
+    """The names of the references the clone keeps as lines of .git/packed-refs (git moves them there from files of
+    their own when it packs them), each line read as git writes it: a comment, a reference (its commit id, a space,
+    its name), or the commit a tag leads to. Raises NotPlain on any other line: what this function cannot read, git
+    might. (A line longer than a commit id and a name is read in pieces, and each piece must be such a line.)"""
+    try:
+        descriptor = os.open(git_dir / "packed-refs", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except FileNotFoundError:
+        return []
+    except OSError:
+        raise not_plain(".git/packed-refs is not a plain file") from None
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise not_plain(".git/packed-refs is not a plain file")
+    names = []
+    with os.fdopen(descriptor, "rb") as lines:
+        while True:
+            line = lines.readline(PACKED_LINE_BYTES)
+            if not line:
+                return names
+            found = re.fullmatch(rb"[0-9a-f]{40} (refs/[!-~]+)\n?", line)
+            if found:
+                names.append(found.group(1).decode("ascii"))
+            elif not (line.startswith(b"#") or re.fullmatch(rb"\^[0-9a-f]{40}\n?", line)):
+                raise not_plain("its .git/packed-refs holds a line that git does not write")
+
+
 def plain_clone():
     """The clone this command runs in (the current folder: its root), once its own git settings are known to be the
     ones a clone has. Project code that ran here, even in the sandbox, may have written into .git: a setting that
@@ -2417,7 +2474,9 @@ def plain_clone():
     Refused: a .git that is not a folder, or that borrows another repository's settings (commondir), objects
     (alternates) or history (grafts), or adds a second file of settings (config.worktree); anything inside .git that
     is a link, or neither a file nor a folder, or (outside the objects) a file with a second name; a reference that
-    names another reference, or a HEAD that names neither a branch nor a commit; any setting
+    names another reference, or a HEAD that names neither a branch nor a commit; a reference that is neither a branch,
+    a remote's branch, a tag nor the stash, as a file of .git/refs or as a line of .git/packed-refs (kept_reference);
+    any setting
     outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a sample;
     .git/info/attributes. A .gitattributes in the work tree needs no
     refusal: it can only select a filter, a diff or a merge program that some setting defines, and none does once
@@ -2455,6 +2514,11 @@ def plain_clone():
                     and re.fullmatch(rf"ref: refs/remotes/{re.escape(where[2])}/[A-Za-z0-9][A-Za-z0-9._/-]{{0,199}}\n?", said)
                 if said.startswith("ref:") and not usual:
                     raise not_plain("it holds a reference that names another reference, which git would write in its place")
+                # (A name that ends in « .lock » is no reference for git: what a git that was stopped may leave.)
+                if not name.endswith(".lock") and not kept_reference("/".join((*where, name))):
+                    raise not_plain(OTHER_REFERENCE)
+    if any(not kept_reference(name) for name in packed_references(git_dir)):
+        raise not_plain(OTHER_REFERENCE)
     # HEAD names a branch of this clone, or a commit: what a command moves is that branch, and nothing HEAD could name.
     head = first_bytes(git_dir / "HEAD", 300).decode("ascii", errors="replace")
     if not (re.fullmatch(r"ref: refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\n?", head) and ".." not in head) and not re.fullmatch(r"[0-9a-f]{40}\n?", head):
@@ -2698,17 +2762,17 @@ def feed_counts(feed, task_id):
 def fork_tip(clone, url, branch):
     """(commit id, message, date in seconds) of the tip of a branch of the member's own fork: asked of the fork
     itself, not of this clone, which may be a new one. None if the fork has no such branch or cannot be reached.
-    What it holds is data."""
-    scratch = "refs/hive/mine"
-    fetched = clone.git("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", url, f"+refs/heads/{branch}:{scratch}", to=url,
-                        check=False, timeout=300)
-    if fetched.returncode != 0:
+    The fork says which commit the branch is at, and the commit is then fetched if the clone lacks it, and read by
+    that id: no reference of the clone is read, and none is written. What the commit holds is data."""
+    listed = clone.git("ls-remote", url, f"refs/heads/{branch}", to=url, check=False, timeout=60)
+    tips = [line.split("\t")[0] for line in listed.stdout.splitlines() if line.split("\t")[1:] == [f"refs/heads/{branch}"]]
+    if listed.returncode != 0 or len(tips) != 1 or not is_sha(tips[0]):
         return None
-    try:
-        sha = clone.git("rev-parse", "--verify", f"{scratch}^{{commit}}", check=False).stdout.strip()
-        raw = clone.git("cat-file", "commit", sha, check=False).stdout if is_sha(sha) else ""
-    finally:
-        clone.git("update-ref", "--no-deref", "-d", scratch, check=False)
+    sha = tips[0]
+    if clone.git("cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode != 0:
+        clone.git("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", url, f"refs/heads/{branch}", to=url,
+                  check=False, timeout=300)
+    raw = clone.git("cat-file", "commit", sha, check=False).stdout
     if not raw:
         return None
     head, _, message = raw.partition("\n\n")
@@ -3172,6 +3236,7 @@ def main(argv=None):
     p.set_defaults(run=cmd_feed)
 
     def worker_side(p, pushes=False):
+        p.set_defaults(volunteer=True)
         p.add_argument("--registry", default=str(Path(__file__).resolve().parents[2]), help="the registry's tree (trusted: this tool's own)")
         if pushes:
             p.add_argument("--login", help="your GitHub login, as setup printed it (the owner of this clone's origin)")
@@ -3213,11 +3278,16 @@ def main(argv=None):
     p.add_argument("--model", help="your model's identifier, if the project lists it; leave it out if you are not sure")
     p.set_defaults(run=cmd_submit)
     args = parser.parse_args(argv)
+    # A volunteer-side command, whichever function runs git for it, repeats nothing git said (VOLUNTEER_SIDE).
+    global VOLUNTEER_SIDE
+    before, VOLUNTEER_SIDE = VOLUNTEER_SIDE, getattr(args, "volunteer", False)
     try:
         args.run(args)
     except HiveError as error:
         print(f"hive: {safe_text(error, 400)}", file=sys.stderr)
         sys.exit(3 if isinstance(error, NotPlain) else 2)
+    finally:
+        VOLUNTEER_SIDE = before
 
 
 if __name__ == "__main__":
