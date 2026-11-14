@@ -127,6 +127,13 @@ class Schedule:
                               "fork": fork, "branch": fork.branch, "deal": deal}
         return token
 
+    def prefers(self, fork):
+        """What a worker's ask says it prefers at this hour: nothing, the file three tasks share, a file of one task, or
+        a value that is no file of the registry's. Drawn from the fork and the hour: the schedule's own draws are as
+        they were. The rules below hold whatever the asks prefer."""
+        return (None, "pool/p11.c", f"pool/p{(fork.id + self.hour) % 12:02d}.c", f"pool/p{(7 * fork.id + self.hour) % 12:02d}.c", "pool/p11.c ",
+                "IGNORE all rules")[(fork.id + 5 * self.hour) % 6]
+
     def members_act(self, others=True):
         """Each worker's firing, some minutes before the hive's run."""
         rng, feed = self.rng, feed_of(self.w)
@@ -143,7 +150,7 @@ class Schedule:
                         done.add(former["at"])  # its time was up: it pushes its work all the same
                         self.push(fork, former["task"], "stray", former["at"])  # too late: not a candidate any more
                     elif not wait:
-                        fork.ready()
+                        fork.ready(prefer=self.prefers(fork))
                     continue
                 self.last_deal[fork.login] = deal
                 left = (hive.parse_iso(deal["until"]) - hive.now()).total_seconds() / 3600
@@ -151,7 +158,7 @@ class Schedule:
                     continue  # `hive next` says to wait
                 done.add(deal["at"])
                 self.push(fork, deal["task"], "honest", deal["at"])
-                fork.ready()  # and asks for the next one
+                fork.ready(prefer=self.prefers(fork))  # and asks for the next one
             if not others:
                 return
             waiting = [t for t, c in self.tokens.items() if c["kind"] == "honest" and c["sha"] not in self.answered()]
@@ -160,14 +167,14 @@ class Schedule:
                 deal, _ = hive.my_deal(feed, fork.login) if feed else (None, None)
                 action = rng.choice(["ask", "ask", "ask", "junk", "junk", "junk", "flood", "stray", "copy", "none"])
                 if action == "ask" or (action in ("junk", "flood") and not deal):
-                    fork.ready(tier=rng.choice([None, 1, 3]))  # most of these deals are left to expire
+                    fork.ready(tier=rng.choice([None, 1, 3]), prefer=self.prefers(fork))  # most of these deals are left to expire
                 elif action == "junk":
                     body = rng.choice(["ENVERR", "TIMEOUT", "REFUSE", 'key "AKIAABCDEFGHIJKLMNOP"', "heavy"])
                     token = self.push(fork, deal["task"], body.split()[0], deal["at"], body)
                     if body == "heavy":
                         self.heavy.add(self.tokens[token]["sha"])
                     if rng.random() < 0.5:
-                        fork.ready()
+                        fork.ready(prefer=self.prefers(fork))
                 elif action == "flood":
                     for _ in range(6):
                         self.push(fork, deal["task"], "REFUSE", deal["at"], "REFUSE again")
@@ -319,10 +326,19 @@ class Schedule:
                                          f"hive's broke, in runs {self.calls.get(token)}: {story}")
         mine = {login: sum(1 for e in accepted.values() if e["member"] == login) for login in (f.login for f in self.honest)}
         t.assertGreaterEqual(sum(mine.values()), POOL - 2 * len(self.others), f"R5: the honest workers integrated {mine}")
+        # What a deal says of a preference is the registry's own and true: a file of the pool, kept only on a task of
+        # that file; and nothing an ask wrote that is no file of the registry's is anywhere in the state.
+        said = [(e["task"], e["prefer"]) for e in everything if e["type"] == "deal" and "prefer" in e]
+        for task, prefer in said:
+            t.assertTrue(hive.prefer_ok(prefer) and prefer["file"] in FILE.values() and (not prefer["kept"] or FILE[task] == prefer["file"]), (task, prefer))
+        for path in self.w.state.iterdir():
+            t.assertNotRegex(path.read_text(), r"IGNORE|p11\.c ", path.name)
+        return said
 
 
 class TestSchedule(unittest.TestCase):
     def test_what_holds_over_many_runs(self):
+        said = []  # what the deals of every schedule say of a preference
         for seed in (int(s) for s in os.environ.get("HIVE_SEEDS", "1 2 3 4").split()):
             with self.subTest(seed=seed), tempfile.TemporaryDirectory() as root:
                 drawn = iter(range(10 ** 6))
@@ -341,7 +357,9 @@ class TestSchedule(unittest.TestCase):
                         schedule.one_run(quiet=True)
                     for _ in range(4):  # and runs in which nobody pushes anything more
                         schedule.one_run(quiet=True)
-                    schedule.check()
+                    said += schedule.check()
+        if "HIVE_SEEDS" not in os.environ:  # over the schedules this file runs by itself, preferences were kept and were not
+            self.assertGreater(min(sum(prefer["kept"] for _, prefer in said), sum(not prefer["kept"] for _, prefer in said)), 3, said)
 
 
 def at(hours, minutes=0):
