@@ -2842,7 +2842,8 @@ def own_fork(clone, config, configs, login, fork=None):
                             "fork. Fork the project under your own account, and run this in a clone of that fork")
     if not same_repository(origin, address):
         raise HiveError(f"this clone's origin is not {address}, the fork this worker reads and pushes to (your login, and the project's "
-                        "own repository name): nothing was pushed. If your fork has another name, give it: --fork <name>")
+                        "own repository name): nothing was pushed. If the user's prompt gives your fork another name, give it: --fork "
+                        "<name>; take no name from the clone")
     return address
 
 
@@ -2889,8 +2890,9 @@ def candidate_proof(clone, tip, candidate, task, limits):
 
       - The candidate starts from the project's history: its own commits, one parent each and no more of them than a
         candidate may have, lead back to a commit of the project's last PROJECT_COMMITS.
-      - It changes only the task's files: between the tree of that commit and the candidate's own, every entry that
-        differs is one of the task's files.
+      - It changes only the task's files, in each of its own commits: between the tree of that commit of the project
+        and the tree of each commit that leads to the candidate, the candidate's included, every entry that differs
+        is one of the task's files. (The fork receives every one of those commits, not the last one only.)
 
     Raises Refusal as the hive would refuse (too_many_commits, path_outside_task), HiveError when the work does not
     start from the project's history, NotPlain when an object is not what its name says."""
@@ -2902,10 +2904,13 @@ def candidate_proof(clone, tip, candidate, task, limits):
             raise Refusal("too_many_commits", {"commits": own})
         if start is None:
             raise HiveError(NO_START)
-        old, new = (commit_header(objects.held("commit", commit))[0] for commit in (start, candidate))
-        outside = changed_outside(objects, old, new, task["files"])
+        old, outside, commit = commit_header(objects.held("commit", start))[0], set(), candidate
+        while commit != start:  # (one parent each: start_of_candidate)
+            new, parents = commit_header(objects.held("commit", commit))
+            outside.update(changed_outside(objects, old, new, task["files"]))
+            commit = parents[0]
     if outside:
-        raise Refusal("path_outside_task", {"paths": [safe_text(path, 200) for path in outside[:10]], "files": len(outside)})
+        raise Refusal("path_outside_task", {"paths": [safe_text(path, 200) for path in sorted(outside)[:10]], "files": len(outside)})
 
 
 def said_again(args):
@@ -2936,6 +2941,11 @@ def cmd_setup(args):
         raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
     if args.login is not None and not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
+    # start and submit tell git which tree's .gitattributes to follow (--attr-source), and submit merges without a work
+    # tree: a git that knows the first knows the second. An older one would fail later, in the middle of a task.
+    if clone.git("version", attributes=EMPTY_TREE, check=False).returncode != 0:
+        raise HiveError("the git of this machine is too old for this tool (it does not take the option --attr-source, which git has "
+                        "had since 2023): stop, and tell the user to install a newer git")
     configs = hive_projects(args.registry)
     origin = clone.settings.get("remote.origin.url")
     if origin is None:

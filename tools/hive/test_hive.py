@@ -3397,7 +3397,8 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
 ASK = "ASK: you hold no task. If this worker runs at least every 2 hours, ask for one: hive.py ready\n"
 # What a command stops on when the clone's origin is not the fork the tool derives from the login and the registry.
 OTHER_FORK = ("this clone's origin is not https://github.com/{who}/toy, the fork this worker reads and pushes to (your login, and the project's "
-              "own repository name): nothing was pushed. If your fork has another name, give it: --fork <name>")
+              "own repository name): nothing was pushed. If the user's prompt gives your fork another name, give it: --fork <name>; take no name "
+              "from the clone")
 CANDIDATE_WAITS = "WAIT: your candidate is pushed and the hive has not answered it yet\n"
 NOT_READ = "WAIT: the hive's feed is not one this tool reads: update your clone of the registry\n"
 # What project code that ran in the clone could have written into .git/config: each is a way to run a program, to send
@@ -3734,6 +3735,26 @@ class TestVolunteerSide(Volunteer):
         (self.w.root / "empty").mkdir()
         self.assertEqual((self.run_cli("setup", "--registry", str(self.w.root / "empty")), self.err),
                          ((2, ""), "hive: which project is this fork of? Give --project (the hive's projects: none)\n"), "a registry with no project")
+
+    def test_setup_says_so_when_the_machines_git_is_too_old_for_the_tool(self):
+        """start and submit give git an option that an old git does not take (--attr-source): setup, which runs
+        first, asks git whether it takes it, and says in one line what the user is to do; it adds no remote and
+        fetches nothing. A git that takes it is asked nothing more."""
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        self.pristine = self.settings.read_text()
+        real, asked = hive.Clone.git, []
+
+        def old_git(clone, *args, **options):
+            asked.append((args, options.get("attributes")))
+            if options.get("attributes") is not None:
+                return subprocess.CompletedProcess(args, 129, "", "")  # « unknown option », as git answers it
+            return real(clone, *args, **options)
+        with mock.patch.object(hive.Clone, "git", old_git):
+            self.one_line(self.setup(), "the git of this machine is too old for this tool (it does not take the option --attr-source, which "
+                                        "git has had since 2023): stop, and tell the user to install a newer git")
+        self.assertEqual(asked, [(("version",), hive.EMPTY_TREE)], "asked once, before anything else is run")
+        self.assertEqual(self.settings.read_text(), self.pristine, "no remote was added")
+        self.assertEqual(self.setup()[0], 0, self.err)
 
     def test_setup_notes_the_settings_a_coding_tool_may_have_run(self):
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
@@ -5722,6 +5743,31 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                          self.err)
         self.spoken(text)
         self.assertEqual((self.head(), self.fork_branches()), (candidate, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+
+    def test_every_commit_a_candidate_brings_changes_only_the_tasks_files_not_its_last_one_only(self):
+        """The fork receives every commit that leads to the candidate, not the last one only. Here the clone's branch
+        was moved, by whatever may write into .git, to two commits of the clone's own on top of the project's tip: the
+        first adds a workflow file, the second removes it. The work then changes the task's file alone, and the
+        candidate's own tree differs from the project's in that file and in nothing else; pushed, the fork would hold
+        the commit that adds the workflow all the same. submit compares the tree of each of the candidate's commits
+        with the project's: it names the path and refuses. No branch moves and nothing is pushed."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        tip = self.head()
+        adds = self.planted_commit([tip], {".github/workflows/planted.yml": "on: push\n"})
+        removes = self.planted_commit([adds], {".github/workflows/planted.yml": None})
+        self.assertEqual(*(sh("git", "rev-parse", f"{commit}^{{tree}}", cwd=work).stdout for commit in (tip, removes)))
+        sh("git", "update-ref", "HEAD", removes, cwd=work)
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": [".github"], "files": 1}\n'),
+                         self.err)
+        self.spoken(text)
+        self.assertEqual((self.head(), self.fork_branches()), (removes, ["refs/heads/main"]), "no branch moved, nothing was pushed")
+        # The same history without the commit that adds the file: a candidate like any other.
+        sh("git", "update-ref", "HEAD", self.planted_commit([tip], {}), cwd=work)
+        self.assertEqual(self.submit("toy-0001", dealt)[0], 0, self.err)
+        self.assertEqual(self.fork_branches(), ["refs/heads/hive/submit/toy-0001", "refs/heads/main"])
 
     def test_an_object_whose_bytes_are_not_what_its_name_says_stops_the_command(self):
         """An object's name is the hash of its bytes, and git does not hash an object again each time it reads one: a
