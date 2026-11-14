@@ -1,10 +1,12 @@
-# The hive's hourly run: the workflow, before it exists
+# The hive's hourly run
 
-*A draft for phase 1 (docs/plan.md, 7.2). It is a document on purpose, not a file under `.github/workflows/`: the
-run it describes holds the right to write to a project, so it enters the repository only once the founder has made
-the settings below, another model than the one that wrote it has reviewed it, and `tools/test_bee.py` lists its
-permissions (`test_the_workflows_security_is_unchanged`). Nothing here has run: what could not be tried is listed
-at the end.*
+*The workflow of phase 1 (docs/plan.md, 7.2): [`.github/workflows/hive.yml`](../.github/workflows/hive.yml). The run
+holds the right to write to a project, so it entered the repository only after another model than the one that
+wrote it had reviewed it, with `tools/test_bee.py` listing its permissions
+(`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has never run.** On
+`main` it starts every hour and all four jobs are skipped, as long as the repository variable `HIVE_PROJECTS` is
+empty; and the commit of the registry it would check out is forty zeros until a pull request of the founder names
+one (setting 7 below). What could not be tried is listed at the end.*
 
 ## What it must guarantee
 
@@ -54,7 +56,7 @@ Five things carry it:
    The workflow asks GitHub, at each run, for a token of an hour for one repository
    (`actions/create-github-app-token`, pinned to a commit). The Apps exist since 13 November 2026: the state App
    (client id `Iv23liBJswEbZCt56yvz`) and the project App (client id `Iv23liKHEG0w2XgtSc9m`); a client id is not a
-   secret, so the draft names them directly. It needs, in the registry's settings, their private keys:
+   secret, so the file names them directly. It needs, in the registry's settings, their private keys:
 
    | Name | Kind | Where | Holds |
    | --- | --- | --- | --- |
@@ -77,180 +79,17 @@ Five things carry it:
 6. **Actions settings**: workflows may not approve pull requests; artifacts kept a few days.
 7. **Which version of the hive a run uses: one commit, named in the workflow file** (decided 13 November 2026).
    Every job checks out the registry at that commit and at no other: the hive's code, its settings and its tasks
-   change when a pull request that a person reviewed changes that line, and at no other time. The draft holds forty
+   change when a pull request that a person reviewed changes that line, and at no other time. The file holds forty
    zeros in its place, which no checkout can find: the line is set, by a pull request of its own, to the commit of
    `main` that the founder accepted, after this file is on `main`. A new batch of tasks is such a pull request too.
 
-## The draft
+## The file
 
-One project per workflow file: `miniz` is written in full where a name is needed. `HIVE_PROJECTS` is a switch, not a list the
-run reads: the run does nothing while it is empty.
+[`.github/workflows/hive.yml`](../.github/workflows/hive.yml) is the run, and the only text of it: this document
+explains it and does not repeat it. One project per workflow file: `miniz` is written in full where a name is
+needed. `HIVE_PROJECTS` is a switch, not a list the run reads: the run does nothing while it is empty.
 
-```yaml
-name: Hive
-on:
-  schedule:
-    - cron: "17 * * * *"          # hourly, away from the hour
-  workflow_dispatch:
-permissions: {}                    # each job asks for what it needs
-concurrency:
-  group: hive-miniz
-  cancel-in-progress: false
-
-jobs:
-  plan:
-    if: vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    outputs:
-      plan_sha256: ${{ steps.plan.outputs.plan_sha256 }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
-      - name: The project, in full (its branches under refs/remotes/origin)
-        run: git clone --quiet https://github.com/Bee-ruche/minizBee project
-      - name: Plan (reads the forks, once; no key, only the read-only token gh needs to list forks)
-        id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 registry/tools/hive/hive.py plan --registry registry --project miniz --state state \
-            --repo project --out plan.json --bundle candidates.bundle >> "$GITHUB_OUTPUT"
-          touch candidates.bundle
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with: { name: plan, path: plan.json, retention-days: 3 }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with: { name: candidates, path: candidates.bundle, retention-days: 3 }
-
-  record:
-    needs: plan
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    environment: hive-state          # the state App's key, and no other
-    permissions:
-      contents: read
-      actions: read                  # to read this run's own artifacts
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
-      - name: Take the plan (one named file, before this job holds any key)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir taken
-          python3 registry/tools/hive/artifact.py take --name plan --member plan.json:67108864 --into taken/plan
-      - name: A token of an hour for the state repository, and nothing else
-        id: state
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: Iv23liBJswEbZCt56yvz   # the state App
-          private-key: ${{ secrets.HIVESTATESECRET }}
-          owner: Bee-ruche
-          repositories: hive-state
-          permission-contents: write
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ steps.state.outputs.token }}" }
-      - name: Record the deals and publish the feed
-        env:
-          PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
-        run: |
-          python3 registry/tools/hive/hive.py record --registry registry --project miniz --state state \
-            --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" --commit-state
-
-  judge:
-    needs: [plan, record]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 330             # the time allowed for judging (4 h), one last check of the machine (1 h), the setup
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
-      - name: The project
-        run: git clone --quiet https://github.com/Bee-ruche/minizBee project
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with: { name: plan, path: taken/plan }
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with: { name: candidates, path: taken/candidates }
-      - name: The judge's image (with network; built from the project's own tree, and no candidate's code runs here)
-        run: python3 registry/tools/judge/judge.py --tooling project --image-only
-      - name: Judge the plan's candidates (their code runs only in containers without network)
-        run: |
-          mkdir -p work judge-work
-          python3 registry/tools/hive/hive.py judge --registry registry --project miniz --state state \
-            --repo project --plan taken/plan/plan.json --bundle taken/candidates/candidates.bundle --workdir work \
-            --judge-workdir judge-work --out verdicts.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
-        with: { name: verdicts, path: verdicts.json, retention-days: 3 }
-
-  apply:
-    needs: [plan, record, judge]
-    # Even when the judging failed (what it left is used); never when a person cancelled the run.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: hive-apply          # the only place the project App's key can be read (it also holds the state's)
-    permissions:
-      contents: read
-      actions: read                  # to read this run's own artifacts
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "0000000000000000000000000000000000000000", persist-credentials: false }
-      - name: Take the plan, the candidates and the judge's answers (named files, before this job holds any key)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir taken
-          python3 registry/tools/hive/artifact.py take --name plan --member plan.json:67108864 --into taken/plan
-          python3 registry/tools/hive/artifact.py take --name candidates --member candidates.bundle:2147483648 \
-            --into taken/candidates
-          # No answers at all is a case the write step knows: an archive that is missing, or refused, is that case.
-          python3 registry/tools/hive/artifact.py take --name verdicts --member verdicts.json:16777216 \
-            --into taken/verdicts || { mkdir -p taken/verdicts && echo '{}' > taken/verdicts/verdicts.json; }
-      - name: A token of an hour for the state repository
-        id: state
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: Iv23liBJswEbZCt56yvz   # the state App
-          private-key: ${{ secrets.HIVESTATESECRET }}
-          owner: Bee-ruche
-          repositories: hive-state
-          permission-contents: write
-      - name: A token of an hour for the project, and nothing else
-        id: project
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: Iv23liKHEG0w2XgtSc9m   # the project App
-          private-key: ${{ secrets.HIVEAPPLYSECRET }}
-          owner: Bee-ruche
-          repositories: minizBee
-          permission-contents: write
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { repository: Bee-ruche/hive-state, path: state, token: "${{ steps.state.outputs.token }}" }
-      - name: The project
-        run: git clone --quiet https://github.com/Bee-ruche/minizBee project
-      - name: Push what the judge accepted, and record (the only step that holds the project's token)
-        env:
-          PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
-          HIVE_PROJECT_TOKEN: ${{ steps.project.outputs.token }}
-        run: |
-          auth=$(printf 'x-access-token:%s' "$HIVE_PROJECT_TOKEN" | base64 -w0)
-          git -C project config http.https://github.com/Bee-ruche/minizBee.extraheader "Authorization: Basic $auth"
-          python3 registry/tools/hive/hive.py apply --registry registry --project miniz --state state \
-            --repo project --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" \
-            --bundle taken/candidates/candidates.bundle --verdicts taken/verdicts/verdicts.json --commit-state
-```
-
-Notes on the draft:
+Notes on the file:
 
 - **No expression appears in a `run:` line** (the registry's rule: a text never becomes code); expressions are
   passed through `env:`.
@@ -261,13 +100,15 @@ Notes on the draft:
   to write to the registry.
 - `judge` holds no key, so it may unpack the plan's archives with the common action; `record` and `apply` use
   `tools/hive/artifact.py` (tests: `tools/hive/test_artifact.py`), with the run's own read-only token.
-- **To stop the hive**: cancel the run in flight (its `apply` then does not run), and empty `HIVE_PROJECTS` or set
-  the project's `"paused": true` for the runs to come. A run reads the registry at the commit it started on.
-- The rules above are held by a test of this very draft (`tools/test_bee.py`, `TestHiveWorkflowDraft`): which
+- **To stop the hive**: cancel the run in flight (its `apply` then does not run), and empty `HIVE_PROJECTS` for the
+  runs to come: both take effect at once, and neither needs a pull request. A project's `"paused": true` stops
+  it too, but only from the day the workflow file names a commit of the registry that holds it: a run reads the
+  registry at the commit the file names, not at `main`.
+- The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): which
   jobs name an environment, where a secret may appear, that no job with an environment uses the common download
   action, the guards on the ref and on a cancelled run, the pins.
 - The page (`tools/hive/page.py`) is one more job after `apply`, without any right but to publish: it is not in
-  this draft.
+  this file.
 - A second, lighter workflow that runs `plan` and `record` only, more often, would deal tasks sooner
   (docs/plan.md, 3.2). It is not designed: GitHub keeps one waiting run per concurrency group, so two workflows
   sharing the group would replace each other's waiting runs.

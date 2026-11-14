@@ -991,7 +991,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
                        "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
                        "suite.yml": {"contents": "read"},  # ruche-0132 (the switch's own check, ruche-0143, went with the switch: November 2026)
-                       "hive-tests.yml": {"contents": "read"}}  # the hive protocol's tests (docs/protocol.md)
+                       "hive-tests.yml": {"contents": "read"},  # the hive protocol's tests (docs/protocol.md)
+                       "hive.yml": {}}  # the hive's hourly run: nothing for the run, each job asks for what it needs (TestHiveWorkflow)
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
         for name, expected_ones in permissions.items():
             with self.subTest(stream=name):
@@ -1001,7 +1002,10 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 jobs = {"site.yml": {"pause": {}, "reach": {"contents": "read", "actions": "write"}},  # ruche-0133: the push's dispatches
                         "validation.yml": {"dispatch": {"actions": "write"}},
                         "verdicts.yml": {"pause": {}}, "auto-integration.yml": {"pause": {}},  # ruche-0122: verdicts, integration
-                        "auto-merge.yml": {"verify": {"contents": "read", "pull-requests": "read", "actions": "read"}}}.get(name, {})  # ruche-0120
+                        "auto-merge.yml": {"verify": {"contents": "read", "pull-requests": "read", "actions": "read"}},  # ruche-0120
+                        "hive.yml": {"plan": {"contents": "read"}, "judge": {"contents": "read"},  # no job writes to the registry
+                                     "record": {"contents": "read", "actions": "read"},  # the two that take the run's artifacts themselves
+                                     "apply": {"contents": "read", "actions": "read"}}}.get(name, {})
                 self.assertEqual({n: j["permissions"] for n, j in stream["jobs"].items() if "permissions" in j}, jobs)
                 for step in self.steps(name):
                     self.assertNotIn("${{", step.get("run", ""), step.get("name"))
@@ -23450,9 +23454,9 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         self.assertEqual(report.DATE_D, bee.DATE_D)
 
 
-class TestHiveWorkflowDraft(unittest.TestCase):
-    """The hive's hourly run (docs/hive-workflow.md), while it is a draft in a document: the rules that keep its four jobs apart,
-    read on the draft itself. The day the draft becomes a file under .github/workflows/, this class reads that file.
+class TestHiveWorkflow(unittest.TestCase):
+    """The hive's hourly run (.github/workflows/hive.yml; docs/hive-workflow.md explains it): the rules that keep its four jobs
+    apart, read on the file itself.
 
     The two jobs that hold a key are held whole, word for word (test_the_two_jobs_that_hold_a_key_are_exactly_these): a rule
     on their shape would leave room beside it, and whoever changes one of them changes this test in the same commit, in sight
@@ -23470,16 +23474,17 @@ class TestHiveWorkflowDraft(unittest.TestCase):
 
     @staticmethod
     def app_token(name, id, client, key, repository):
-        return {"name": name, "id": id, "uses": TestHiveWorkflowDraft.APP_TOKEN,
+        return {"name": name, "id": id, "uses": TestHiveWorkflow.APP_TOKEN,
                 "with": {"client-id": client, "private-key": "${{ secrets.%s }}" % key, "owner": "Bee-ruche", "repositories": repository,
                          "permission-contents": "write"}}
 
     @classmethod
     def setUpClass(cls):
-        blocks = re.findall(r"^```yaml\n(.*?)^```$", (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8"), re.S | re.M)
-        assert len(blocks) == 1, "one draft, in one block"
-        cls.text, cls.stream = blocks[0], yaml.safe_load(blocks[0])
+        cls.text = (ROOT / ".github/workflows/hive.yml").read_text(encoding="utf-8")
+        cls.stream = yaml.safe_load(cls.text)
         cls.jobs = cls.stream["jobs"]
+        document = (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8")
+        assert "```yaml" not in document and "runs-on:" not in document, "the file is the run's only text: the document does not repeat it"
 
     def uses(self, job):
         return [step.get("uses", "") for step in self.jobs[job]["steps"]]

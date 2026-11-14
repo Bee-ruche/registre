@@ -88,7 +88,7 @@ The full specification is [docs/protocol.md](protocol.md).
 | The common judge | **built**, in service for the old flow | `tools/judge/` |
 | The collector (plan, record, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**. Rebuilt around dealing after seven reviews of the earlier design by another model; the new one is under review, and there is not yet a review that finds nothing serious | `tools/hive/` |
 | The worker's guide | **built** | `.claude/skills/bee-worker/` |
-| The hourly workflow (four jobs), the state repository, the integration identity | **drafted, not run** (phase 1); needs the founder's settings (section 7.1) and a review | `docs/hive-workflow.md` |
+| The hourly workflow (four jobs), the state repository, the integration identity | **written and reviewed, never run** (phase 1): on `main` it starts every hour and skips its four jobs while the variable `HIVE_PROJECTS` is empty; needs the founder's settings (section 7.1), the commit of the registry it is to use, and a dry run | `.github/workflows/hive.yml`, `docs/hive-workflow.md` |
 | A project's configuration, tasks and splitter | **planned** for miniz (phase 1) | `hive/projects/`, `hive/tasks/` |
 | The project page (progress, members, models) and the member's card | **built** (the generator and its tests); where it is published is phase 1 | `tools/hive/page.py` |
 | The volunteers' page | **built**, as a draft for the pilot | `docs/join.md` |
@@ -432,8 +432,8 @@ volunteer-computing projects have done for decades).
    the hive's integration identity and the maintainers, force pushes blocked.
 3. **An integration identity**: a GitHub App (preferred) or a fine-grained token that can write to the hosted
    projects' branches and nothing else, stored as a secret that only the `apply` job can read; and the state's own
-   repository, `Bee-ruche/hive-state` (empty, public). The draft of the hourly workflow, with the exact settings it needs, is
-   [docs/hive-workflow.md](hive-workflow.md).
+   repository, `Bee-ruche/hive-state` (public). The hourly workflow is `.github/workflows/hive.yml`; the exact settings
+   it needs are in [docs/hive-workflow.md](hive-workflow.md).
 4. **Access to the two forks** for the builder, or the founder applies the forks' changes: the builder's pushes to
    them are refused, and it does not work around a refusal.
 5. **The decisions** D1 to D10 (docs/founder-decisions.md), first of all D1 (ask the providers), D4 (the flagship)
