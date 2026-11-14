@@ -3478,6 +3478,34 @@ class TestVolunteerSide(Volunteer):
         sh("git", "remote", "set-url", "origin", "http://local_proxy@127.0.0.1:38219/git/alice/toy", cwd=self.alice.work)
         self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
 
+    def test_setup_fetches_the_project_from_its_own_address_and_branch_and_no_other(self):
+        """What setup fetches becomes « upstream », the tip every candidate starts from: its address is the project's
+        own, whatever the command line says, and the names it is given are plain names."""
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        registry = ["setup", "--registry", self.registry]
+        for address in ("https://github.com/mallory/toy.git", str(self.w.upstream), "ext::sh -c touch% PLANTED", "../elsewhere"):
+            with self.subTest(address=address):  # outside the tests, a folder of the machine is no address either
+                self.assertEqual(self.run_cli(*registry, "--upstream-url", address, local=False), (2, ""), self.err)
+                self.assertEqual(self.err, "hive: --upstream-url: the project's own address, and no other\n")
+        for address in ("ext::sh -c touch% PLANTED", "../elsewhere", "https://github.com/mallory/toy.git x"):
+            with self.subTest(address=address, tests=True):  # in the tests, a folder of the machine and nothing looser
+                self.assertEqual(self.run_cli(*registry, "--upstream-url", address), (2, ""), self.err)
+                self.assertEqual(self.err, "hive: --upstream-url: the project's own address, and no other\n")
+        self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"], "nothing was added to the clone")
+        self.assertFalse((self.alice.work / "PLANTED").exists())
+        for project in ("../x", "Toy", "toy miniz", "-x", ""):
+            with self.subTest(project=project):
+                self.assertEqual(self.setup(f"--project={project}"), (2, ""), self.err)
+                self.assertEqual(self.err, "hive: --project: a project's identifier (lower-case letters, digits, dashes)\n")
+        for branch in ("main..x", "-main", "main x", 7, None):
+            with self.subTest(branch=branch):
+                self.w.set_config({"branch": branch})
+                self.assertEqual(self.setup(), (2, ""), self.err)
+                self.assertEqual(self.err, "hive: the project's branch is not a plain branch name\n")
+        self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"], "nothing was added to the clone")
+        self.w.set_config({})
+        self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
+
     def test_every_command_pushes_only_to_the_fork_of_the_login_it_is_given(self):
         self.w.run()
         self.alice.write("lib.c", LIB + "int ok;\n")
