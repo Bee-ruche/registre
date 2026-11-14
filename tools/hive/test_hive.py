@@ -4052,6 +4052,38 @@ class TestVolunteerSide(Volunteer):
             self.one_line(self.ready(), "git commit-tree: timeout after 300 s")
         self.assertEqual(self.fork_branches(), ["refs/heads/main"])
 
+    def test_a_commit_names_who_the_environment_names_and_the_member_for_the_rest(self):
+        """A volunteer whose machine names who commits, in the environment, keeps those names in the ask and in the
+        candidate: the author's name and address and the committer's, each of the four. A committer the environment
+        does not name is the author; an author it does not name is the member, at the address GitHub gives every
+        account for that purpose."""
+        def who(commit):
+            return sh("git", "show", "-s", "--format=%an <%ae>|%cn <%ce>", commit, cwd=self.alice.work).stdout.strip()
+
+        def ask(**named):
+            with mock.patch.dict(os.environ, named):
+                for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+                    if name not in named:
+                        del os.environ[name]
+                code, text = self.ready("--no-push")
+            self.assertEqual(code, 0, self.err)
+            return who(text.split()[1][:-1])
+
+        ann, carl = {"GIT_AUTHOR_NAME": "Ann Author", "GIT_AUTHOR_EMAIL": "ann@example.invalid"}, \
+            {"GIT_COMMITTER_NAME": "Carl Committer", "GIT_COMMITTER_EMAIL": "carl@example.invalid"}
+        self.assertEqual(ask(**ann, **carl), "Ann Author <ann@example.invalid>|Carl Committer <carl@example.invalid>")
+        self.assertEqual(ask(**ann), "Ann Author <ann@example.invalid>|Ann Author <ann@example.invalid>")
+        self.assertEqual(ask(**carl), "alice <alice@users.noreply.github.com>|Carl Committer <carl@example.invalid>")
+        self.assertEqual(ask(GIT_AUTHOR_EMAIL="ann@example.invalid", GIT_COMMITTER_NAME="Carl Committer"),
+                         "alice <ann@example.invalid>|Carl Committer <ann@example.invalid>")
+        self.assertEqual(ask(), "alice <alice@users.noreply.github.com>|alice <alice@users.noreply.github.com>")
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.alice.write("lib.c", LIB + "/* FAST */\n")
+        with mock.patch.dict(os.environ, {**ann, **carl}):
+            self.assertEqual(self.submit("toy-0001", dealt, "--no-push")[0], 0, self.err)
+        self.assertEqual([who("HEAD"), who("HEAD^")], ["Ann Author <ann@example.invalid>|Carl Committer <carl@example.invalid>"] * 2,
+                         "the candidate's two commits, the work and its marker")
+
 
 class TestTheWorkersClone(Volunteer):
     """Project code that ran in the fork's clone, even in the sandbox, may have written into .git. Every worker command
