@@ -38,6 +38,7 @@ no parent, so that it carries its message and nothing else.
 Hive-Action: ready
 Hive-Member: alice
 Hive-Tier: 2
+Hive-Prefer: miniz_tdef.c
 ```
 
 **A candidate**, on the branch `hive/submit/<task>`:
@@ -54,6 +55,12 @@ Hive-Model: claude-fable-5-2
   names**: the same commit pushed to someone else's fork is nothing there, and credits nobody else.
 - `Hive-Tier` (optional, 1 to 3, 3 by default): the hardest tier of task this worker takes. A task's tier is
   the project's own.
+- `Hive-Prefer` (optional, on an ask): the part of the project the member prefers: one of the files the project's
+  tasks name, exactly as the registry writes it (a folder with its final `/`). `hive.py ready --prefer <file>`
+  writes it, from the volunteer's prompt and from nowhere else, and refuses any other value before it makes
+  anything. The hive compares what the line says with the registry's own strings and takes nothing else from it: a
+  value that is none of them is no preference, the ask is still an ask, and nothing of the value is kept anywhere.
+  On a candidate the line means nothing. See "How tasks are dealt".
 - `Hive-Task` and `Hive-Deal`: the task, and the instant of the deal the candidate answers, as the feed gives
   it. A submit for a task its member does not hold, or for another deal than the one it holds, **is not a
   candidate**: it is not judged, not answered, not recorded, and not read again.
@@ -105,6 +112,24 @@ Each run, after the forks were read, in this order:
 4. **The deal.** Each asker gets one task, drawn among the open tasks that nobody holds and that it takes by its
    tier. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
+
+**A member may say which part of the project it prefers, and the hive follows it only when its own rules lose
+nothing by it.** The project is already chosen by the fork the worker runs in; a part is one of the files the
+project's tasks name. At the member's turn, among the tasks it could be dealt anyway (open, held by nobody, the
+tasks that share a file with them free too, of a tier it takes), the preference is kept if and only if, decided in
+this order:
+
+1. the project offers preferences (`members.preferences` in its file, on by default);
+2. the member's last deal that came to an end was accepted. For a member dealt in the run that answers its
+   candidate (below), that is where it stood before that answer;
+3. at least one of those tasks lists the part.
+
+The task is then the same draw among those of these tasks that list the part. In every other case the plain draw
+runs, unchanged, and the deal's line says why the preference was not kept: `not_offered`, `no_deal_yet`,
+`last_deal_not_accepted` or `no_free_task`. A member with several asks has a preference only if all of them name
+the same part. Two things hold whatever an ask says: **a kept preference only ever gives a task the plain draw
+could have given, and the order in which askers are served reads no preference.** Nor do the waits, the day's
+deals, the tiers, or the rule on tasks that share a file.
 
 **Tasks that may change the same file are never held by two members at once.** What a member pushes for its task
 is public; someone holding another task on the same file could put that work into its own candidate. So such a task
@@ -265,7 +290,8 @@ What makes them hold:
   however often a job is run again.
 
 What this costs, plainly: a worker waits for the hive's next run before its first task; nobody chooses their task
-(only the hardest tier they take); an account that asks and never comes back holds one task for four hours, and
+(only the hardest tier they take, and a part of the project they would rather have, which the hive follows when
+its rules lose nothing by it); an account that asks and never comes back holds one task for four hours, and
 with it the tasks that share a file with that one.
 
 ## How the hive writes
@@ -302,9 +328,10 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`; each carries the key of
   its run. **It holds no text a fork wrote**: logins, the numeric ids of the account and of its fork, task ids of
   the project, commit ids, instants, reason codes, a model identifier the project lists, whole numbers under the
-  hive's own keys, and the judge's figures the project lists. **A login is written beside a deal and beside an
-  accepted candidate, which is a credit; a refusal, a run without an answer and an expired deal carry the account's
-  number alone.** That is discretion, not secrecy: the deal names its member, and the candidate sits in a public fork.
+  hive's own keys, a file of the project as the registry names it, and the judge's figures the project lists. **A
+  login is written beside a deal and beside an accepted candidate, which is a credit; a refusal, a run without an
+  answer and an expired deal carry the account's number alone.** That is discretion, not secrecy: the deal names its
+  member, and the candidate sits in a public fork.
 
   A `verdict` line carries the task, the deal it answers, the candidate's commit id, the account's number and its
   fork's, the result, whether the judge examined the candidate (`judged`) and the model the worker declared. An
@@ -315,6 +342,14 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   accepted one**, the same numbers bounded the same way: how far it fell short is what its member needs to know,
   and whoever is dealt the task next. `judge_refused` and every refusal before the judge carry none. A refusal's
   line written before this rule has no `report`; it stays valid, and whatever reads the ledger takes both.
+
+  A `deal` line carries the task, its member's login, the account's number and its fork's, when the deal starts
+  and until when. When the member's ask named a part of the project it adds `prefer`: `{"file": <the part, as the
+  registry writes it>, "kept": true}`, or `{"file": …, "kept": false, "because": <one of the four reasons of "How
+  tasks are dealt">}`. An ask that named no part of the registry's leaves no `prefer` at all: a deal's line written
+  before this rule, or for such an ask, stays valid, and whatever reads the ledger takes both. The jobs that write
+  copy nothing of a preference from the plan: before they write or push anything, they hold that it has that shape
+  and names a file of the project as the registry writes it, and they write the registry's own string.
 - `feed.json`: the project's tasks with their status (`open`, `dealt`, `done`, `closed`), their tier, the number
   of judged refusals and the task's context; and, **under a hash of each login** that a worker computes for its
   own, the task a member holds, since when, until when and whether its candidate was seen (`deals`), and until
@@ -353,7 +388,8 @@ hour and the fork's own number, which adding forks to the list does not shift.
 ## A project's files
 
 - `hive/projects/<project>.json` in the registry: the repository, its branch, the protected paths, the limits,
-  the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`), how long a deal lasts
+  the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
+  part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
   (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the
   judge's options, the figures of the judge it keeps (`judge.metrics`) and requires (`judge.require`), and the
   project's pause (`"paused": true`). A run reads this file, and the tasks, at the commit of the registry the

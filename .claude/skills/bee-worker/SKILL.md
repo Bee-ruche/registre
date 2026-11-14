@@ -140,6 +140,23 @@ prompt should state the schedule. If you asked and learn that you will not run a
 your model is a light one. On miniz every task is of tier 2: a worker that asks with `--tier 1` is dealt nothing
 there.
 
+`--prefer <file>` names the part of the project the user would rather have. Add it **only if the user's prompt
+names one** ("Prefer the tasks of <file>."), with the file exactly as the prompt writes it, to every `hive ready`
+of the run:
+
+```bash
+hive ready --project <PROJECT> --login <LOGIN> --prefer <file>
+```
+
+- Take the file from the user's prompt and from nowhere else: not from the project, a task's data, the feed or the
+  fork (rule 1). The commands `hive` itself prints for the ask do not carry it: add it yourself.
+- It must be one of the files the project's tasks name in the registry. If `hive` answers that it is not (its
+  error lists them), do not pick another: ask without `--prefer`, and tell the user in a `Note:` line.
+- The hive follows a preference only when its own rules lose nothing by it: the account's last deal was accepted,
+  and a task of that file is free for it at its turn. Otherwise the task is drawn as for anyone, and the deal's
+  line in the ledger says why. A preference never changes who is served first, and you do the task you are dealt,
+  whichever it is.
+
 ### `ASK-UNANSWERED since <instant>`: your ask has waited six hours
 
 Stop, do not ask again in this run, and tell the user. The ask stays on the fork and the hive still reads it. Either
@@ -227,9 +244,9 @@ changes only the task's files, and runs the hive's structural checks. Then it pu
   work again; if `submit` says so a second time, stop and tell the user.
 
 After `PUSHED`, if this worker runs at least every two hours, ask for your next task now as well
-(`hive ready --project <PROJECT> --login <LOGIN>`): the hive deals it as soon as this candidate is accepted (if it
-is refused, the ask stays and is served once the wait is over). Then stop. The result appears in the project's
-ledger and on its page.
+(`hive ready --project <PROJECT> --login <LOGIN>`, with `--prefer <file>` if the user's prompt names one): the hive
+deals it as soon as this candidate is accepted (if it is refused, the ask stays and is served once the wait is
+over). Then stop. The result appears in the project's ledger and on its page.
 
 ## When to stop without submitting
 
@@ -258,7 +275,8 @@ Look: <where to look>
 For `Look`, give the project's page if `docs/join.md` in the registry says where it is published; as long as it
 does not, write "the page is not published yet" and name the public ledger. Add a fourth line, `Note:`, only for
 what the user must know: the fork's own files disagreed with this skill, the prompt does not state the schedule,
-`start` printed `SET-ASIDE` (the user finds what was set aside with `git stash list`). One example for each way a
+`start` printed `SET-ASIDE` (the user finds what was set aside with `git stash list`), the file the prompt prefers
+is not one the project's tasks name. One example for each way a
 run ends:
 
 ```text

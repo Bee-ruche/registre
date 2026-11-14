@@ -81,6 +81,13 @@ Put your GitHub login in place of `<your-login>`: the worker reads and pushes at
 `https://github.com/<your-login>/<the project's repository name>`, an address its tool works out from your prompt
 and the registry, never from the clone. If you renamed your fork, add "My fork is named <name>." to the prompt.
 
+If you would rather have your worker's tasks in one part of the project, add "Prefer the tasks of <file>." to the
+prompt, with one of the files the project's tasks name (on miniz: `miniz.c`, `miniz_tdef.c` or `miniz_tinfl.c`).
+This is optional, and the hive's own rules come first: it follows your preference once a task of yours has been
+accepted, and when a task of that file is free for you at your turn; otherwise your worker is dealt as anyone's,
+and the deal's line in the ledger says why. It never moves you ahead of anyone, and your worker does the task it
+is dealt, whichever it is.
+
 If your schedule is not hourly, change the sentence "This worker runs every hour." to say what it is ("This worker
 runs every two hours from 18:00 to 23:00 UTC on Sundays."): the worker asks for a task only if it will be back within
 two hours.
@@ -91,7 +98,8 @@ two hours.
   hive, yours alone for three hours. If your worker pushed its candidate, the hive refuses from git objects alone
   what breaks a structural rule, then judges it, merged on the project's tip, in a container without network.
 - **Every candidate is answered in the public ledger**: accepted, and integrated as one commit authored by you, or
-  refused with a reason code ([protocol.md](protocol.md)).
+  refused with a reason code ([protocol.md](protocol.md)). When the judge found it correct and short of a figure,
+  the refusal's line keeps what the judge measured: you can read how far it fell short.
 - **One task at a time.** A worker that runs every hour gets a task per run when tasks are free and its work
   is accepted: it pushes its candidate and asks for the next, and the hive deals the next as soon as the first is
   accepted. Tasks that change
@@ -115,7 +123,8 @@ two hours.
   on your account.
 - **The judge decides, not you and not a maintainer.** A refused candidate is not an insult: the reason code says
   what was wrong, and the task goes back to the pool.
-- **You do not choose your task**, only the hardest tier your worker takes. And your worker waits for the hive's
+- **You do not choose your task**: only the hardest tier your worker takes, and a part of the project you would
+  rather have, which the hive follows when its rules lose nothing by it. And your worker waits for the hive's
   next run before its first task.
 - **No reward but the credit**: no payment. Whether integrated commits also show on your GitHub profile depends on
   GitHub's rules: to verify in phase 1.
