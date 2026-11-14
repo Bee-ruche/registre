@@ -72,6 +72,12 @@ def failure(number, at, login, member_id, kind="judge"):
     return {**event, **({"kind": kind} if kind else {})}
 
 
+def dealt(number, at, login, member_id, task, prefer=None, **more):
+    """A deal's line as the hive writes it (hive.deal_lines): `prefer` when the ask named a part of the project."""
+    return {"type": "deal", "at": at, "until": at, "run": f"{number:032x}", "task": task, "member": login, "member_id": member_id,
+            "repo_id": 1000 + number, **({"prefer": prefer} if prefer is not None else {}), **more}
+
+
 def mark(number):
     """A member's mark as the feed's deals carry it: 16 lowercase hex characters."""
     return f"{number:016x}"
@@ -427,6 +433,88 @@ class TestFigures(Case):
         self.assertIn("join.html", self.harmless(self.make("--join")).hrefs)
         other = "https://github.com/Bee-ruche/registre/blob/hive/docs/join.md"
         self.assertIn(other, self.harmless(self.make("--join-url", other), join=other).hrefs)
+    # A deal's line says which part of the project its ask preferred, when it named one, and what the hive did. The page
+    # tells each in one sentence built from the line's own fields, with the task and the date, and names no member.
+    PREFER_HEAD = ["Date", "Task dealt", "What the ask preferred, and what the hive did"]
+
+    def prefer_rows(self, seen):
+        return seen.rows[seen.rows.index(self.PREFER_HEAD) + 1:] if self.PREFER_HEAD in seen.rows else None
+
+    def test_a_deal_whose_ask_named_a_part_is_told_in_one_sentence_and_no_member_is_named(self):
+        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": True}),
+                     dealt(2, "2026-11-02T09:00:00Z", "bob", 102, "toy-0002", {"file": "src/", "kept": False, "because": "no_free_task"}),
+                     dealt(3, "2026-11-03T09:00:00Z", "carol", 103, "toy-0001", {"file": "docs/read me.md", "kept": False, "because": "no_deal_yet"}),
+                     dealt(4, "2026-11-04T09:00:00Z", "dave", 104, "toy-0002", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"}),
+                     dealt(5, "2026-11-05T09:00:00Z", "erin", 105, "toy-0001", {"file": "lib.c", "kept": False, "because": "not_offered"}),
+                     dealt(6, "2026-11-06T09:00:00Z", "fred", 106, "toy-0002"),  # its ask named no part
+                     dealt(1, "2026-11-07T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": True}),  # the first line again: once
+                     dealt(7, "2026-11-20T09:00:00Z", "gina", 107, "toy-0001", {"file": "lib.c", "kept": True})])  # after the page's instant
+        self.put("feed.json", feed({"toy-0001": "dealt", "toy-0002": "dealt"}))
+        files = self.make()
+        seen, data = self.harmless(files), self.summary(files)
+        self.assertEqual(self.prefer_rows(seen), [
+            ["2026-11-05", "toy-0001 Title of toy-0001", "The ask named lib.c; the hive did not keep it: the project does not offer preferences."],
+            ["2026-11-04", "toy-0002 Title of toy-0002", "The ask named lib.c; the hive did not keep it: the member's last deal was not accepted."],
+            ["2026-11-03", "toy-0001 Title of toy-0001",
+             "The ask named docs/read me.md; the hive did not keep it: the member had no deal that came to an end yet."],
+            ["2026-11-02", "toy-0002 Title of toy-0002",
+             "The ask named src/; the hive did not keep it: no task of that part was free for the member at its turn."],
+            ["2026-11-01", "toy-0001 Title of toy-0001", "The ask named lib.c, and the hive kept it: the task dealt is one of that part."]])
+        self.assertEqual({key: data["preferences"][key] for key in ("named", "kept", "not_kept")},
+                         {"named": 5, "kept": 1, "not_kept": [{"because": because, "count": 1} for because in hive.PREFER_BECAUSE]})
+        self.assertEqual(data["preferences"]["recent"][-1], {"at": "2026-11-01T09:00:00Z", "task": "toy-0001", "title": "Title of toy-0001",
+                                                             "file": "lib.c", "kept": True, "because": None})
+        self.assertIn("Deals whose ask named a part of the project: 5. Kept: 1. Not kept: the project does not offer preferences (1); the member "
+                      "had no deal that came to an end yet (1); the member's last deal was not accepted (1); no task of that part was free for "
+                      "the member at its turn (1).", seen.said)
+        self.assertEqual(seen.heads[-3:], ["Parts of the project that asks preferred", "Three measures", "How to take part"])
+        self.assertEqual(tuple(page.PREFER_WORDS), hive.PREFER_BECAUSE, "the hive's reasons, each in this file's own words")
+        self.assertEqual(list(people(data["preferences"])), [])
+        for login in ("alice", "bob", "carol", "dave", "erin", "fred", "gina"):
+            self.assertNotIn(login, files["index.html"] + files["summary.json"])
+        self.assertNotRegex(told(files["index.html"]), r"\b10[1-7]\b")
+
+    def test_a_ledger_whose_deals_name_no_part_gives_the_page_it_gave_before(self):
+        lines = [dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001"), verdict(1, "2026-11-02T09:00:00Z", "alice", 101, "toy-0001")]
+        self.ledger(lines)
+        files = self.make()
+        seen, data = self.harmless(files), self.summary(files)
+        self.assertEqual((data["preferences"], self.prefer_rows(seen)), ({"named": 0, "kept": 0, "not_kept": [], "recent": []}, None))
+        self.assertNotIn("preferred", seen.said)
+        self.assertEqual(seen.heads[-3:], ["What was refused, and why", "Three measures", "How to take part"])
+        self.ledger([{**lines[0], "prefer": "lib.c"}, lines[1]])  # a field of another shape says nothing
+        self.assertEqual({name: text for name, text in self.make().items() if name != "summary.json"},
+                         {name: text for name, text in files.items() if name != "summary.json"})
+
+    def test_what_a_deal_says_of_a_preference_is_checked_again_and_escaped(self):
+        hostile = ({"file": 5, "kept": True}, {"file": "lib.c", "kept": "yes"}, {"file": "lib.c", "kept": 1}, {"file": "lib.c", "kept": False},
+                   {"file": "lib.c", "kept": False, "because": "<script>alert(1)</script>"}, {"file": "lib.c", "kept": False, "because": ["no_free_task"]},
+                   {"file": "lib.c", "kept": True, "because": "no_free_task"}, {"file": "x" * 201, "kept": True}, {"file": "a\nb", "kept": True},
+                   {"file": " lib.c", "kept": True}, {"file": "lib.c ", "kept": True}, {"file": "\u00e9.c", "kept": True}, {"file": "", "kept": True},
+                   {"kept": True}, "lib.c", ["lib.c"], 7, True, {"file": ["lib.c"], "kept": True}, {"file": "a\u202eb", "kept": True})
+        self.assertEqual([page.read_prefer(prefer) for prefer in hostile], [None] * len(hostile))
+        self.assertEqual(page.read_prefer({"file": "lib.c", "kept": True, "note": "<script>"}), {"file": "lib.c", "kept": True, "because": None},
+                         "only the three fields are kept")
+        self.ledger([dealt(n, f"2026-11-01T09:00:{n:02d}Z", "alice", 101, "toy-0001", prefer) for n, prefer in enumerate(hostile, 1)]
+                    + [dealt(50, "2026-11-02T09:00:00Z", "<script>alert(1)</script>", 102, "../../etc", {"file": "<b>\"x\"&y</b>", "kept": True}),
+                       dealt(51, "2026-11-03T09:00:00Z", "mallory", "x", "toy-0001<script>", {"file": "x" * 200, "kept": False, "because": "no_free_task"})])
+        files = self.make()
+        seen, data = self.harmless(files), self.summary(files)
+        for name, text in files.items():
+            for needle in NEEDLES:
+                self.assertNotIn(needle, text.lower(), (name, needle))
+        self.assertEqual(self.prefer_rows(seen), [
+            ["2026-11-03", "unknown", "The ask named " + "x" * 200 + "; the hive did not keep it: no task of that part was free for the member at its turn."],
+            ["2026-11-02", "unknown", 'The ask named <b>"x"&y</b>, and the hive kept it: the task dealt is one of that part.']],
+            "a part is shown as text, whatever characters it holds; a task that is no task's identifier is not shown")
+        self.assertNotIn("<b>", files["index.html"])
+        self.assertEqual(data["preferences"]["named"], 2)
+        many = [dealt(n, f"2026-10-{1 + n // 10:02d}T09:00:{n % 60:02d}Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": True}) for n in range(1, 41)]
+        self.ledger(many)
+        files = self.make()
+        self.assertEqual((self.summary(files)["preferences"]["named"], len(self.summary(files)["preferences"]["recent"]), len(self.prefer_rows(Seen(files["index.html"])))),
+                         (40, page.PREFERS_SHOWN, page.PREFERS_SHOWN), "all are counted, the latest are listed")
+
 
 
 class TestFolder(Case):
@@ -624,6 +712,122 @@ class TestRefusals(Case):
         self.assertEqual({r["reason"] for r in data["refusals"]}, {*hive.REASONS, None} - {"not_answered", "task_closed"})
         self.assertEqual({r["reason"] for r in data["ended_by_hive"]}, {"not_answered", "task_closed"})
         self.assertEqual((data["totals"]["refused"], data["totals"]["ended_by_hive"]), (len(hive.REASONS) - 1, 2), "a reason the page does not know is a refusal")
+
+    # A candidate refused for a figure (the judge ran, the candidate is correct, a figure is short) keeps what the judge
+    # measured in its ledger line. The page lists these candidates one by one, with what was asked and what was measured,
+    # read as an accepted line's figures are, and names no member. A refusal whose line keeps no figure is shown as before.
+    SHORT = {"gain_instructions_n6": 0.012, "gain_compression_throughput_n6": 0.004, "sure_compression_throughput_n6": 0,
+             "worse_compression_throughput_n6": 0, "gain_ratio_n6": -0.002, "sure_ratio_n6": 0, "worse_ratio_n6": 1, "gain_x": 0.03, "sure_x": 1,
+             "outputs_compared": 12, "suspects": 0}
+    SHORT_HEAD = ["Date", "Task", "Refused for", "Asked", "Measured"]
+
+    def short_of_a_figure(self, *options, report=SHORT):
+        self.ledger([verdict(1, "2026-11-01T09:00:00Z", "bob", 102, "toy-0001", "refused", reason="goal_not_met", report=report),
+                     verdict(2, "2026-11-02T09:00:00Z", "carol", 103, "toy-0002", "refused", reason="requirement_not_met", report=report),
+                     verdict(3, "2026-11-03T09:00:00Z", "dave", 104, "toy-0003", "refused", reason="goal_not_met"),  # written before the rule
+                     verdict(4, "2026-11-04T09:00:00Z", "erin", 105, "toy-0001", "refused", reason="judge_refused", report=report),
+                     verdict(5, "2026-11-05T09:00:00Z", "fred", 106, "toy-0001", "refused", judged=False, reason="path_outside_task", report=report),
+                     verdict(6, "2026-11-06T09:00:00Z", "gina", 107, "toy-0001", "refused", reason="not_answered", report=report)])
+        self.put("feed.json", feed({"toy-0001": "open", "toy-0002": "open", "toy-0003": "open"}))
+        files = self.make(*options)
+        return self.summary(files), self.harmless(files), files
+
+    def short_rows(self, seen):
+        return seen.rows[seen.rows.index(self.SHORT_HEAD) + 1:] if self.SHORT_HEAD in seen.rows else None
+
+    def test_a_candidate_refused_for_a_figure_is_listed_with_what_was_asked_and_what_the_judge_measured(self):
+        goals = self.tasks([task("toy-0001", gain_goal("gain_instructions_n6")), task("toy-0002", gain_goal("gain_x", max=0.5))])
+        data, seen, files = self.short_of_a_figure("--tasks", goals)
+        self.assertEqual(self.short_rows(seen), [
+            ["2026-11-02", "toy-0002 Title of toy-0002", "requirement_not_met", hive.REASONS["requirement_not_met"],
+             "3.0 % · x: the figure the task asked for · beyond the noise; \u22120.2 % · ratio n6: worse, beyond the noise; "
+             "1.2 % · instructions n6: no noise flag in the ledger; and 1 more in the ledger"],
+            ["2026-11-01", "toy-0001 Title of toy-0001", "goal_not_met", "at least 2.0 % · instructions n6",
+             "1.2 % · instructions n6: the figure the task asked for; 3.0 % · x: beyond the noise; \u22120.2 % · ratio n6: worse, beyond the noise; "
+             "and 1 more in the ledger"]], "the latest first; the task's own figure first; the noise words from the flags alone")
+        self.assertEqual([(item["task"], item["reason"], item["asked"], [row["metric"] for row in item["measures"]]) for item in data["short_of_a_figure"]], [
+            ("toy-0002", "requirement_not_met", None, ["x", "ratio_n6", "instructions_n6", "compression_throughput_n6"]),
+            ("toy-0001", "goal_not_met", {"metric": "instructions_n6", "min": 0.02, "max": None},
+             ["instructions_n6", "x", "ratio_n6", "compression_throughput_n6"])])
+        self.assertEqual(data["short_of_a_figure"][1]["measures"][0], {"metric": "instructions_n6", "gain": 0.012, "sure": None, "worse": None, "goal": True})
+        self.assertEqual(data["refusals"], [{"reason": "goal_not_met", "count": 2}, {"reason": "judge_refused", "count": 1},
+                                            {"reason": "path_outside_task", "count": 1}, {"reason": "requirement_not_met", "count": 1}],
+                         "each is counted as before, the one whose line keeps no figure too")
+        self.assertIn("Correct, and short of a figure: what the judge measured.", seen.said)
+        # No member: neither a login nor an account's number, in the page or in the file for other tools.
+        self.assertEqual(list(people(data["short_of_a_figure"])), [])
+        for login in ("bob", "carol", "dave", "erin", "fred", "gina"):
+            self.assertNotIn(login, files["index.html"] + files["summary.json"])
+        self.assertNotRegex(told(files["index.html"]), r"\b10[2-7]\b")
+        self.assertEqual(sorted(files), ["badge.svg", "index.html", "summary.json"], "a refusal has no page and no card of its own")
+
+    def test_what_was_asked_is_said_only_as_far_as_the_page_knows_it(self):
+        data, seen, _ = self.short_of_a_figure()  # no task file: the page was not told what each task asked
+        self.assertEqual([row[3:] for row in self.short_rows(seen)], [
+            [hive.REASONS["requirement_not_met"], "3.0 % · x: beyond the noise; \u22120.2 % · ratio n6: worse, beyond the noise; "
+                                                  "1.2 % · instructions n6: no noise flag in the ledger; and 1 more in the ledger"],
+            ["the task's goal (its figure is not known to this page)", "3.0 % · x: beyond the noise; \u22120.2 % · ratio n6: worse, beyond the noise; "
+                                                                     "1.2 % · instructions n6: no noise flag in the ledger; and 1 more in the ledger"]])
+        self.assertEqual([item["asked"] for item in data["short_of_a_figure"]], [None, None])
+        for goal, said in ((gain_goal("gain_x", max=0.5), "at least 2.0 % and at most 50.0 % · x"), ({"kind": "metric", "name": "gain_x", "max": 0.1}, "at most 10.0 % · x"),
+                           ({"kind": "metric", "name": "gain_x", "min": -0.01}, "at least \u22121.0 % · x"),
+                           ({"kind": "metric", "name": "gain_x", "min": "0.02"}, "the task's goal (its figure is not known to this page)"),
+                           ({"kind": "metric", "name": "gain_x", "min": True}, "the task's goal (its figure is not known to this page)"),
+                           ({"kind": "metric", "name": "gain_x", "min": 1e300}, "the task's goal (its figure is not known to this page)"),
+                           ({"kind": "metric", "name": "outputs_compared", "min": 13}, "the task's goal (its figure is not known to this page)"),
+                           ({"kind": "correct"}, "the task's goal (its figure is not known to this page)")):
+            with self.subTest(goal=goal):
+                _, seen, _ = self.short_of_a_figure("--tasks", self.tasks([task("toy-0001", goal)]))
+                self.assertEqual(self.short_rows(seen)[1][3], said)
+        self.assertEqual([page.goal_bounds({"goal": goal}) for goal in (gain_goal("gain_x"), {"kind": "metric", "name": "gain_x", "max": 3},
+                                                                        {"kind": "metric", "name": "gain_x", "min": 10.5}, {"kind": "correct"}, None)],
+                         [{"min": 0.02, "max": None}, {"min": None, "max": 3.0}, None, None, None])
+
+    def test_a_refusal_whose_line_keeps_no_figure_is_shown_as_before(self):
+        """A line written before the ledger kept the figures has no report; a report may also hold no gain the page
+        reads. Such a refusal is counted in the table of reasons, as it always was, and nothing more is said of it."""
+        for report in ({}, {"outputs_compared": 12, "suspects": 0}, {"gain": 0.01}, "gain_x", ["gain_x", 0.5], None, 7):
+            with self.subTest(report=report):
+                data, seen, files = self.short_of_a_figure(report=report)
+                self.assertEqual((data["short_of_a_figure"], self.short_rows(seen), data["short_of_a_figure_left_out"]), ([], None, 0))
+                self.assertNotIn("short of a figure", seen.said)
+                self.assertEqual(seen.row("goal_not_met"), ["goal_not_met", "2", hive.REASONS["goal_not_met"]])
+        without = [verdict(n, f"2026-11-0{n}T09:00:00Z", "bob", 102, "toy-0001", "refused", reason="goal_not_met") for n in (1, 2)]
+        self.ledger(without)
+        before = self.make()
+        self.ledger([{**line, "report": {}} for line in without])
+        self.assertEqual({name: text for name, text in self.make().items() if name != "summary.json"},
+                         {name: text for name, text in before.items() if name != "summary.json"}, "the same pages, byte for byte")
+
+    def test_only_a_refusal_for_a_figure_has_its_report_read(self):
+        """judge_refused, a refusal before the judge and what the hive's own side ended keep no figure in the ledger: a
+        line of theirs that held one all the same is read as the others of its reason, and none of it is shown."""
+        self.assertEqual((page.MEASURED, hive.MEASURED_REASONS), (("goal_not_met", "requirement_not_met"),) * 2)
+        data, seen, _ = self.short_of_a_figure()
+        self.assertEqual([item["task"] for item in data["short_of_a_figure"]], ["toy-0002", "toy-0001"])
+        for reason in sorted(set(hive.REASONS) - set(page.MEASURED)):
+            self.ledger([verdict(1, "2026-11-01T09:00:00Z", "bob", 102, "toy-0001", "refused", reason=reason, report=self.SHORT)])
+            self.assertEqual(self.summary(self.make())["short_of_a_figure"], [], reason)
+
+    def test_a_hostile_report_beside_a_refusal_shows_nothing_of_itself_and_the_list_is_bounded(self):
+        report = {"gain_<script>alert(1)</script>": 0.5, "gain_text": "<img src=x onerror=alert(1)>", "gain_b": 0.01, "sure_b": "<script>",
+                  "gain_nan": float("nan"), "gain_huge": 1e300, "gain_c": True, "note": "javascript:alert(1)", **{f"gain_m{n:02d}": n / 1000 for n in range(60)}}
+        lines = [verdict(n, f"2026-10-{n:02d}T09:00:00Z", "<script>alert(1)</script>", 100 + n, "toy-0001", "refused", reason="goal_not_met",
+                         report=report) for n in range(1, 32)]
+        self.ledger(lines)
+        self.put("feed.json", feed({"toy-0001": "open"}))
+        files = self.make()
+        seen, data = self.harmless(files), self.summary(files)
+        for name, text in files.items():
+            for needle in NEEDLES:
+                self.assertNotIn(needle, text.lower(), (name, needle))
+        self.assertEqual((len(data["short_of_a_figure"]), data["short_of_a_figure_left_out"], len(self.short_rows(seen))), (page.SHORT_SHOWN, 1, page.SHORT_SHOWN))
+        self.assertEqual([row[0] for row in self.short_rows(seen)][:2], ["2026-10-31", "2026-10-30"])
+        self.assertEqual(self.short_rows(seen)[0][4], "5.9 % · m59: no noise flag in the ledger; 5.8 % · m58: no noise flag in the ledger; "
+                                               "5.7 % · m57: no noise flag in the ledger; and 58 more in the ledger")
+        self.assertIn("Earlier ones, not listed: 1.", seen.said)
+        self.ledger([verdict(1, "2026-10-01T09:00:00Z", "bob", 102, "toy-0001", "refused", reason="goal_not_met", report={"gain_b": 0.01, "sure_b": "yes"})])
+        self.assertEqual(self.short_rows(self.harmless(self.make()))[0][4], f"1.0 % · b: {page.ODD_READING}")
 
 
 def told(text):
@@ -2008,6 +2212,43 @@ class TestEndToEnd(test_hive.Base):
         self.assertIn(f"wins/{self.w.tip()}.html", seen.hrefs, "the date of the integration links to its page")
         self.assertNotIn("<script", text)
 
+    def test_the_page_of_a_real_run_tells_what_the_judge_measured_of_a_refusal_and_what_became_of_two_preferences(self):
+        """The lines are the hive's own: a candidate refused for the goal of its task, with the judge's figures, and two
+        deals whose asks named a part of the project, one kept and one not."""
+        tasks = [{**t, "goal": {"kind": "metric", "name": "gain_speed", "min": 0.02}} if t["id"] == "toy-0004" else t for t in test_hive.TASKS]
+        (self.w.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(t) + "\n" for t in tasks))
+        self.w.set_config({"judge": {"metrics": ["gain_speed", "sure_speed", "outputs_compared"]}})
+
+        def judge(*a):
+            return {"code": 0, "report": {"gain_speed": 0.012, "sure_speed": 0, "outputs_compared": 12, "note": "x"}}
+
+        bob, carol = self.w.fork("bob", 102), self.w.fork("carol", 103)
+        self.alice.submit("toy-0004")
+        bob.submit("toy-0001", content=test_hive.LIB + "int bob;\n")
+        results = {result["login"]: result for result in self.w.run(judge)}
+        self.assertEqual((results["alice"]["reason"], results["bob"]["result"]), ("goal_not_met", "accepted"))
+        bob.ready(prefer="src/")
+        carol.ready(prefer="lib.c")
+        self.w.run(judge)
+        deals = {e["member"]: e for e in self.w.load()[2].events if e["type"] == "deal" and not e["run"].startswith("test")}
+        self.assertEqual((deals["bob"]["task"], deals["bob"]["prefer"], deals["carol"]["prefer"]),
+                         ("toy-0002", {"file": "src/", "kept": True}, {"file": "lib.c", "kept": False, "because": "no_deal_yet"}))
+        out = self.w.root / "site"
+        with contextlib.redirect_stdout(io.StringIO()):
+            page.main(["--state", str(self.w.state), "--out", str(out), "--tasks", str(self.w.registry / "hive/tasks/toy.jsonl")])
+        text, summary = (out / "index.html").read_text(encoding="utf-8"), (out / "summary.json").read_text()
+        seen, titles = Seen(text), {t["id"]: t["title"] for t in tasks}
+        self.assertEqual([row for row in seen.rows if row[0] == "2026-11-12"], [
+            ["2026-11-12", "toy-0001 Make f0 faster", "no figure", "bob", self.w.tip()[:10]],
+            ["2026-11-12", "toy-0004 Gain of 2 %", "goal_not_met", "at least 2.0 % · speed", "1.2 % · speed: the figure the task asked for · within the noise"],
+            ["2026-11-12", f"{deals['carol']['task']} {titles[deals['carol']['task']]}",
+             "The ask named lib.c; the hive did not keep it: the member had no deal that came to an end yet."],
+            ["2026-11-12", "toy-0002 Work in src", "The ask named src/, and the hive kept it: the task dealt is one of that part."]])
+        self.assertEqual(seen.row("goal_not_met"), ["goal_not_met", "1", hive.REASONS["goal_not_met"]])
+        for login in ("alice", "carol"):
+            self.assertNotIn(login, text + summary, "neither has an accepted contribution: neither is named")
+        self.assertNotIn("<script", text)
+
 
 class TestPatterns(unittest.TestCase):
     def test_the_patterns_written_again_here_are_the_hives(self):
@@ -2017,6 +2258,14 @@ class TestPatterns(unittest.TestCase):
 
     def test_every_reason_of_the_hive_has_a_text_the_page_can_show(self):
         self.assertTrue(all(isinstance(text, str) and text for text in hive.REASONS.values()))
+
+    def test_the_lists_written_again_here_are_the_hives(self):
+        self.assertEqual(page.MEASURED, hive.MEASURED_REASONS)
+        self.assertEqual(tuple(page.PREFER_WORDS), hive.PREFER_BECAUSE)
+        for part in ("lib.c", "src/", "docs/read me.md", "x" * 200, "a"):
+            self.assertTrue(page.PART.match(part) and hive.prefer_ok({"file": part, "kept": True}), part)
+        for part in ("", " a", "a ", "x" * 201, "a\nb", "\u00e9"):
+            self.assertFalse(page.PART.match(part) or hive.prefer_ok({"file": part, "kept": True}), part)
 
 
 if __name__ == "__main__":

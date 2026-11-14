@@ -12,8 +12,9 @@ show. The hive deals each open task to one member at a time; the page shows how 
 accepted, and how many dealt candidates wait for the judge (from the feed's deals):
 
   index.html              one page: what this is, the latest accepted contribution and how to take part; then
-                          progress, this week, the recent integrations, the members, the models, what was refused,
-                          three measures
+                          progress, this week, the recent integrations, the members, the models, what was refused
+                          (and, for the candidates refused for a figure, what the judge measured), the parts of the
+                          project that asks preferred and what the hive did, three measures
   wins/<commit>.svg       a card for every integration, named by the integrated commit's 40-hex id: the task, the
                           member, the date and one figure the judge measured: the one the task asked for when --tasks
                           says which and the report holds it, else the largest gain beyond the noise
@@ -30,7 +31,9 @@ The rules the page follows, each stated where it is applied:
     accepted contributions. What was refused is counted for the project, and for a model once MODEL_MEMBERS_MIN
     accounts stand behind it; the page adds it up for no person, in any file (collect(), model_rows()). It hides
     nothing either: the ledger is public and names the member of every answer, and with a handful of members the
-    project's totals say much of each. The page says so.
+    project's totals say much of each. The page says so. What the judge measured of a candidate refused for a
+    figure, and what the hive did with the part of the project an ask preferred, are listed line by line, with
+    the task and the date and no member: the page has no history of a member's deals, and makes none.
   - No direction is stated that the judge did not state: a figure and a noise flag that point opposite ways are
     printed without « better » or « worse » (direction()).
   - Each answer of the ledger is read once, and no line dated after the instant the page is made for (once(),
@@ -117,6 +120,19 @@ ERROR_KINDS, JUDGE_RAN = ("judge", "push", "hive", "none"), ("judge", "push", "n
 # all »): the task was closed while the candidate waited, or the hive spent its runs without an answer. The ledger
 # records them as refused verdicts; the page does not list them under what was refused of candidates.
 HIVE_SIDE = hive.HIVE_SIDE_REASONS
+# The refusals whose line keeps what the judge measured (hive.MEASURED_REASONS): the judge ran, the candidate is correct,
+# a figure is short. Written again here, as the patterns are; a line written before that rule has no report.
+MEASURED = ("goal_not_met", "requirement_not_met")
+SHORT_SHOWN, SHORT_MEASURES = 30, 3  # the latest such candidates listed on index.html, and the measures given for each
+# What a deal's line says of the part of the project its ask preferred (hive.plan): the part is one of the files the
+# project's tasks name, as the registry writes it; kept or not; and, when not, one of these reasons, in this file's
+# own words. Checked again here: a path of printable ASCII, a yes or a no, a reason of this list.
+PART = re.compile(r"[!-~](?:[ -~]{0,198}[!-~])?\Z")
+PREFER_WORDS = {"not_offered": "the project does not offer preferences",
+                "no_deal_yet": "the member had no deal that came to an end yet",
+                "last_deal_not_accepted": "the member's last deal was not accepted",
+                "no_free_task": "no task of that part was free for the member at its turn"}
+PREFERS_SHOWN = 30  # the latest deals whose ask named a part, listed on index.html
 
 
 class PageError(Exception):
@@ -281,13 +297,28 @@ def goal_metric(task):
     return matching(name[5:], METRIC) if isinstance(name, str) and name.startswith("gain_") else None
 
 
-def read_goals(path):
-    """{task id: metric} from the registry's task file of the project (hive/tasks/<project>.jsonl), for the tasks
-    whose goal is a gain (goal_metric). It is the hive's own file, trusted as the feed is, and read with the same care:
-    a line that is not a task says nothing, a task listed twice is read once, and only an identifier is kept of it.
-    The feed does not carry a task's goal; without this file a card leads with headline()'s figure. Raises PageError
-    when the file cannot be read at all: it was named on the command line."""
-    goals, seen = {}, set()
+def goal_bounds(task):
+    """{"min": fraction or None, "max": fraction or None} that a task's goal sets on its own gain (goal_metric), or None
+    when the goal is on no gain or sets no bound this page can print: a bound is a finite number (never a boolean or
+    a string) between -GAIN_MAX and GAIN_MAX."""
+    if goal_metric(task) is None:
+        return None
+    bounds = {}
+    for key in ("min", "max"):
+        value = task["goal"].get(key)
+        usable = type(value) in (int, float) and (type(value) is int or math.isfinite(value)) and -GAIN_MAX <= value <= GAIN_MAX
+        bounds[key] = round(float(value), 6) if usable else None
+    return bounds if bounds["min"] is not None or bounds["max"] is not None else None
+
+
+def read_tasks(path):
+    """({task id: metric}, {task id: bounds}) from the registry's task file of the project (hive/tasks/<project>.jsonl),
+    for the tasks whose goal is a gain (goal_metric) and for those whose goal bounds it (goal_bounds). It is the hive's
+    own file, trusted as the feed is, and read with the same care: a line that is not a task says nothing, a task
+    listed twice is read once, and only an identifier and two numbers are kept of it. The feed does not carry a task's
+    goal; without this file a card leads with headline()'s figure, and the page cannot say what a task asked. Raises
+    PageError when the file cannot be read at all: it was named on the command line."""
+    goals, asked, seen = {}, {}, set()
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -299,12 +330,32 @@ def read_goals(path):
                 if identifier is None or identifier in seen:
                     continue
                 seen.add(identifier)
-                metric = goal_metric(task)
+                metric, bounds = goal_metric(task), goal_bounds(task)
                 if metric is not None:
                     goals[identifier] = metric
+                if bounds is not None:
+                    asked[identifier] = bounds
     except OSError:
         raise PageError("--tasks: the project's task file in the registry (hive/tasks/<project>.jsonl)") from None
-    return goals
+    return goals, asked
+
+
+def read_goals(path):
+    """{task id: metric}: the first half of read_tasks()."""
+    return read_tasks(path)[0]
+
+
+def read_prefer(prefer):
+    """{"file", "kept", "because"} from what a deal's line says of the part its ask preferred, or None. The hive writes
+    the registry's own string there, never a fork's; this file checks it all the same: the part is a path of printable
+    ASCII (PART), kept is the value true or the value false, and a preference that was not kept gives one of the reasons
+    of PREFER_WORDS (kept: no reason at all). Anything else says nothing."""
+    if not isinstance(prefer, dict) or matching(prefer.get("file"), PART) is None or type(prefer.get("kept")) is not bool:
+        return None
+    because = prefer.get("because")
+    if prefer["kept"]:
+        return {"file": prefer["file"], "kept": True, "because": None} if "because" not in prefer else None
+    return {"file": prefer["file"], "kept": False, "because": because} if isinstance(because, str) and because in PREFER_WORDS else None
 
 
 def read_json(folder, name):
@@ -359,14 +410,23 @@ def clean_event(raw, goals=None):
         event.update(judge=failed == "judge", ran=kind == "unused" or failed in JUDGE_RAN)  # « ran »: a run of the judge (judge_runs())
         if candidate is not None and run is not None and (kind == "unused" or failed is not None):
             event["marks"] = [(kind, candidate, run, failed)]
+    elif kind == "deal":
+        # A deal says which part of the project its ask preferred, when it named one, and what the hive did (read_prefer).
+        event.update(task=matching(raw.get("task"), TASK_ID, TASK_ID_MAX), prefer=read_prefer(raw.get("prefer")))
+        if event["task"] is not None and run is not None:
+            event["marks"] = [("deal", event["task"], run)]
     elif kind == "verdict":
         result = raw.get("result")
         if not isinstance(result, str) or result not in ("accepted", "refused"):
             return None
         reason, task = raw.get("reason"), matching(raw.get("task"), TASK_ID, TASK_ID_MAX)
         event.update(accepted=result == "accepted", judged=raw.get("judged") is True, task=task, model=matching(raw.get("model"), MODEL),
-                     commit=matching(raw.get("commit"), SHA), headline=None,
+                     commit=matching(raw.get("commit"), SHA), headline=None, measured=None,
                      reason=reason if isinstance(reason, str) and reason in hive.REASONS else None)
+        # A candidate refused for a figure keeps what the judge measured: the line's report is read as an accepted
+        # line's is. A line written before that rule has none, and so has any other refusal: nothing is read of them.
+        if result == "refused" and event["reason"] in MEASURED and isinstance(raw.get("report"), dict):
+            event["measured"] = read_report(raw["report"], (goals or {}).get(task))
         if candidate is not None:
             event["marks"].append(("candidate", candidate))
         if result == "accepted":
@@ -401,11 +461,11 @@ def judge_runs(events):
 def once(events):
     """(the lines that count, in order; how many were left out as repeats). The hive records an answer once
     (hive.Ledger.mark): one verdict for a candidate; one error for a candidate, a run and a kind; one unused line for
-    a candidate and a run. A ledger that holds a line twice (merged twice, a line replayed) is read here as the hive
-    reads its own: the first line stands and the others count for nothing, in any figure, card or badge. An accepted
-    verdict whose integrated commit an earlier accepted verdict already holds is a repeat too: one commit is one
-    integration, one card, one page. Only whole ids are compared (a 40-hex candidate or commit, a run's key): a line
-    without them counts for itself."""
+    a candidate and a run; one deal for a task and a run. A ledger that holds a line twice (merged twice, a line
+    replayed) is read here as the hive reads its own: the first line stands and the others count for nothing, in any
+    figure, card or badge. An accepted verdict whose integrated commit an earlier accepted verdict already holds is a
+    repeat too: one commit is one integration, one card, one page. Only whole ids are compared (a 40-hex candidate or
+    commit, a run's key, a task's identifier): a line without them counts for itself."""
     kept, known = [], set()
     for event in events:
         if any(mark in known for mark in event["marks"]):
@@ -470,7 +530,7 @@ def collect(state, now, tasks=None):
     logins (case ignored; then the accounts without a login, by number), each with the number of its accepted
     contributions and nothing else: what was refused is counted for the project and for a model (model_rows), and
     added up for no person, here or in any file (the public ledger still names the member of every answer)."""
-    goals = read_goals(tasks) if tasks is not None else {}
+    goals, asked = read_tasks(tasks) if tasks is not None else ({}, {})
     objects, skipped = read_ledger(state)
     usable = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
     # A line dated after `now` says nothing yet: the page is made for that instant, and its latest contribution is never
@@ -498,7 +558,7 @@ def collect(state, now, tasks=None):
         return login if login is not None and holder[login.lower()][1] == member_id else None
 
     since = now - WEEK
-    members, models, refusals, ended, recent, firsts = {}, {}, {}, {}, [], {}
+    members, models, refusals, ended, recent, firsts, short = {}, {}, {}, {}, [], {}, []
     totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "ended_by_hive", "judge_failures", "judge_runs"), 0)
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
@@ -513,6 +573,8 @@ def collect(state, now, tasks=None):
             mine = event["reason"] in HIVE_SIDE
             totals["ended_by_hive" if mine else "refused"] += 1
             (ended if mine else refusals)[event["reason"]] = (ended if mine else refusals).get(event["reason"], 0) + 1
+            if event["measured"] is not None and event["measured"]["measures"]:
+                short.append((event["at"], position, event))  # refused for a figure, and the ledger keeps what the judge measured
         if judged:
             row = models.setdefault(event["model"], {"judged": 0, "accepted": 0, "ids": set()})
             row["judged"] += 1
@@ -542,7 +604,15 @@ def collect(state, now, tasks=None):
     named = sorted(((member_id, row) for member_id, row in members.items() if row["integrations"]),
                    key=lambda item: (login_of(item[0]) is None, (login_of(item[0]) or "").lower(), item[0]))
     recent.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    short.sort(key=lambda item: (item[0], item[1]), reverse=True)
     integrations = totals["integrations"]
+    # The deals whose ask named a part of the project, the latest first: what each line says, and no member.
+    named_parts = sorted(((event["at"], position, event) for position, event in enumerate(events)
+                          if event["type"] == "deal" and event["prefer"] is not None), key=lambda item: (item[0], item[1]), reverse=True)
+    not_kept = {}
+    for _, _, event in named_parts:
+        if not event["prefer"]["kept"]:
+            not_kept[event["prefer"]["because"]] = not_kept.get(event["prefer"]["because"], 0) + 1
 
     def first(event):
         """True for the first integration of its account in this project, over the whole ledger (never for an
@@ -577,6 +647,18 @@ def collect(state, now, tasks=None):
         "refusals": [{"reason": reason, "count": count}
                      for reason, count in sorted(refusals.items(), key=lambda item: (-item[1], item[0] or "~"))],
         "ended_by_hive": [{"reason": reason, "count": count} for reason, count in sorted(ended.items())],
+        # Line by line and without a member: the candidates refused for a figure whose line keeps what the judge
+        # measured, and the deals whose ask named a part of the project.
+        "short_of_a_figure": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), "reason": event["reason"],
+                               "asked": {"metric": goals[event["task"]], **asked[event["task"]]}
+                               if event["reason"] == "goal_not_met" and event["task"] in asked else None,
+                               "measures": event["measured"]["measures"], "measures_left_out": event["measured"]["measures_left_out"]}
+                              for at, _, event in short[:SHORT_SHOWN]],
+        "short_of_a_figure_left_out": max(0, len(short) - SHORT_SHOWN),
+        "preferences": {"named": len(named_parts), "kept": sum(1 for _, _, event in named_parts if event["prefer"]["kept"]),
+                        "not_kept": [{"because": because, "count": not_kept[because]} for because in PREFER_WORDS if because in not_kept],
+                        "recent": [{"at": iso(at), "task": event["task"], "title": titles.get(event["task"], ""), **event["prefer"]}
+                                   for at, _, event in named_parts[:PREFERS_SHOWN]]},
         "measures": {
             "yield": rate(totals["accepted"], totals["judged"]),
             "time_to_answer_seconds": None,  # the ledger says when a candidate was answered, not when it was pushed
@@ -822,6 +904,42 @@ def member_cell(login, member_id):
     return el("span", "unknown" if member_id is None else f"account {member_id}", class_="soft")
 
 
+def task_cell(item):
+    """A task in a table: its identifier and its title from the feed; « unknown » when the line names none."""
+    return [el("code", item["task"]), " ", el("span", item["title"], class_="soft")] if item["task"] else el("span", "unknown", class_="soft")
+
+
+def asked_words(item):
+    """What a candidate refused for a figure was asked, as far as this page knows it. For the goal of a task whose
+    figure is a gain and whose bound the task file gave: « at least 2.0 % · instructions n6 ». For a goal this page
+    was not told, the words say so; for a figure the project requires of every contribution, the hive's own words
+    for that refusal: the project's file, which sets those figures, is not given to this page."""
+    asked = item["asked"]
+    if asked is None:
+        return "the task's goal (its figure is not known to this page)" if item["reason"] == "goal_not_met" else hive.REASONS[item["reason"]]
+    bound = " and ".join(filter(None, [f"at least {gain_text(asked['min'])}" if asked["min"] is not None else None,
+                                       f"at most {gain_text(asked['max'])}" if asked["max"] is not None else None]))
+    return f"{bound} · {asked['metric'].replace('_', ' ')}"
+
+
+def measured_words(item):
+    """What the judge measured of a candidate refused for a figure: its first SHORT_MEASURES measures in read_report()'s
+    order (the task's own figure first, when the page was told which), each with the reading its own flags give
+    (reading()), and how many more the ledger keeps."""
+    shown = item["measures"][:SHORT_MEASURES]
+    more = len(item["measures"]) - len(shown) + item["measures_left_out"]
+    return "; ".join(f"{gain_text(row['gain'])} · {row['metric'].replace('_', ' ')}: {reading(row)}" for row in shown) \
+        + (f"; and {more:,} more in the ledger" if more else "")
+
+
+def prefer_words(prefer):
+    """One sentence for what a deal's line says of the part its ask preferred, as the children of a cell: this file's
+    words around the part's name, which the ledger holds as the registry writes it (read_prefer)."""
+    if prefer["kept"]:
+        return ["The ask named ", el("code", prefer["file"]), ", and the hive kept it: the task dealt is one of that part."]
+    return ["The ask named ", el("code", prefer["file"]), "; the hive did not keep it: ", PREFER_WORDS[prefer["because"]], "."]
+
+
 def progress_bar(tasks):
     """One thin bar, split into the four states, with the same surface gap between touching parts."""
     total, parts, offset = tasks["total"], [], 0
@@ -932,7 +1050,31 @@ def render_html(data, title, repo_url, join):
         refusals = [refusals, el("p", el("strong", f"{ENDED_BY_HIVE}: {totals['ended_by_hive']}."), " These candidates were not refused: ",
                                  [[el("code", r["reason"]), f" ({r['count']}), {hive.REASONS[r['reason']]}", "." if r is last else "; "]
                                   for r in data["ended_by_hive"]])]
+    if data["short_of_a_figure"]:  # refused for a figure, with what the judge measured: line by line, and no member
+        rows = [[day(item["at"]), task_cell(item), el("code", item["reason"]), asked_words(item), measured_words(item)]
+                for item in data["short_of_a_figure"]]
+        left = data["short_of_a_figure_left_out"]
+        refusals = [refusals, el("p", el("strong", "Correct, and short of a figure: what the judge measured.")),
+                    table([("Date", False), ("Task", False), ("Refused for", False), ("Asked", False), ("Measured", False)], rows),
+                    el("p", "These candidates passed the judge's tests and fell short of a figure: the goal of their task, or one the project "
+                            "requires of every contribution. « Measured » gives figures the ledger keeps for them, the task's own first when this "
+                            "page was told which; « beyond the noise » and « within the noise » are the judge's own flags. A refusal the ledger "
+                            "keeps no figure for is counted above and not listed here. No member is named."
+                            + (f" Earlier ones, not listed: {left:,}." if left else ""), class_="note")]
     sections.append(el("section", el("h2", "What was refused, and why"), refusals))
+
+    preferences = data["preferences"]
+    if preferences["named"]:  # what the hive did with the part of the project an ask preferred: line by line, and no member
+        rows = [[day(item["at"]), task_cell(item), prefer_words(item)] for item in preferences["recent"]]
+        why = "; ".join(f"{PREFER_WORDS[r['because']]} ({r['count']:,})" for r in preferences["not_kept"])
+        sections.append(el("section", el("h2", "Parts of the project that asks preferred"),
+                           el("p", f"Deals whose ask named a part of the project: {preferences['named']:,}. Kept: {preferences['kept']:,}."
+                                   + (f" Not kept: {why}." if why else "")),
+                           table([("Date", False), ("Task dealt", False), ("What the ask preferred, and what the hive did", False)], rows),
+                           el("p", "A member may say which part of the project it prefers: one of the files the project's tasks name. The hive "
+                                   "follows it only when its own rules lose nothing by it: the member's last deal was accepted, and a task of "
+                                   "that part was among those it could be dealt anyway. A preference never changes who is served first. The "
+                                   f"latest {PREFERS_SHOWN} are listed, and no member is named.", class_="note")))
 
     waiting = measures["waiting"]
     runs = measures["judge_runs_per_integration"]
