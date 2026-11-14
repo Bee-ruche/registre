@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -3711,7 +3712,7 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(hive.read_marker(sh("git", "show", "-s", "--format=%B", "HEAD", cwd=self.alice.work).stdout),
                          {"task": "toy-0001", "action": "submit", "member": "alice", "model": "claude-fable-5-2", "tier": None, "deal": dealt})
         self.assertEqual(self.fork_branches(), ["refs/heads/main"], "--no-push pushes nothing")
-        self.assertEqual(self.submit("toy-0001", dealt, "--model", "claude-fable-5-2")[1].splitlines()[0], f"PUSHED {marker}", self.err)
+        self.assertEqual(self.submit("toy-0001", dealt, "--model", CONFIG["models"][0])[1].splitlines()[0], f"PUSHED {marker}", self.err)
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
 
     def test_setup_finds_the_project_and_fetches_its_tip(self):
@@ -6134,6 +6135,38 @@ class TestTheWorkersGuide(unittest.TestCase):
                             f"a line the worker commands print begins with a keyword of the list: {call}")
         for model in json.loads((registry / "hive/projects/miniz.json").read_text())["models"]:
             self.assertIn(f"`{model}`", guide, "the guide lists the model identifiers the pilot's project keeps statistics for")
+
+    def test_the_commands_the_guide_gives_are_ones_the_tool_takes(self):
+        """A worker runs the commands as the guide writes them. Each command line of the guide, with a value in place
+        of each of its placeholders, is one the tool's own reading of a command line accepts, and it names the login
+        wherever the tool needs one. (The commands themselves are not run: each is replaced by a note of what it
+        was given.)"""
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])
+        guide = (registry / ".claude/skills/bee-worker/SKILL.md").read_text(encoding="utf-8")
+        blocks = [line for block in re.findall(r"```bash\n(.*?)```", guide, re.S) for line in block.splitlines()]
+        written = [line.split("  #")[0].strip() for line in blocks if line.startswith("hive ")] \
+            + [line for line in re.findall(r"`(hive (?:setup|next|start|ready|submit) [^`\n]*--[^`\n]*)`", guide)]
+        values = {"<PROJECT>": "toy", "<LOGIN>": "alice", "<id>": "toy-0001", "<DEAL>": NOW, "<identifier>": "a-model",
+                  '"<one line: what you changed>"': "'what changed'"}
+        given = []
+        commands = {name: mock.patch.object(hive, f"cmd_{name}", side_effect=given.append) for name in ("setup", "next", "start", "ready", "submit")}
+        for patch in commands.values():
+            patch.start()
+            self.addCleanup(patch.stop)
+        for line in written:
+            for placeholder, value in values.items():
+                line = line.replace(placeholder, value)
+            with self.subTest(command=line):
+                self.assertNotIn("<", line, "a placeholder this test knows no value for")
+                words = shlex.split(line)
+                with mock.patch("sys.stderr"):
+                    try:
+                        hive.main(words[1:])
+                    except SystemExit:
+                        self.fail("the tool does not take this command line")
+                self.assertEqual((given[-1].command, given[-1].login if words[1] != "setup" else "alice"), (words[1], "alice"))
+        self.assertEqual(sorted({args.command for args in given}), ["next", "ready", "setup", "start", "submit"], "each of the five, at least once")
+        self.assertGreaterEqual(len(given), 7)
 
 
 class TestEveryRefusalIsTested(unittest.TestCase):
