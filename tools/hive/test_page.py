@@ -28,6 +28,8 @@ NOW = "2026-11-12T12:00:00Z"
 JOIN = page.DEFAULT_JOIN_URL
 REPO = "https://github.com/Bee-ruche/toy"
 SITE = "https://bee-ruche.github.io/hive/toy"
+# What every page tells the browser: load nothing, run nothing, but the page's own style; no base address, no form.
+POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
 MEMBER_HREF = re.compile(r"https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 COMMIT_HREF = re.compile(r"https://github\.com/Bee-ruche/toy/commit/[0-9a-f]{40}\Z")
 # Every name the tool may write a file under, spelled here again: the tests do not rely on page.py's own patterns.
@@ -245,6 +247,17 @@ class Case(unittest.TestCase):
                 self.assertTrue(href in (join, "join.html", REPO) or MEMBER_HREF.match(href) or COMMIT_HREF.match(href)
                                 or (LOCAL_HREF.match(href) and href in files), (name, href))
         self.assertEqual(len(seen.ids), len(set(seen.ids)), "an anchor names one place")
+        # The second line of defence, should the builder ever let something through: the browser is told to load and run
+        # nothing, and to send no address of this site along. Spelled here, not read from page.py.
+        self.assertEqual(seen.metas.get("Content-Security-Policy"), POLICY, name)
+        self.assertEqual(seen.metas.get("referrer"), "no-referrer", name)
+        self.assertEqual(text.count("<meta http-equiv="), 1, name)
+        self.assertLess(text.index("Content-Security-Policy"), text.index("<style"), "the policy comes before anything it governs")
+        # A link to a member's profile, to the project's repository or to a commit leads to what a stranger wrote: the
+        # site does not vouch for it, and the page it opens gets no handle on this one.
+        for link in seen.links:
+            if MEMBER_HREF.match(link["href"]) or COMMIT_HREF.match(link["href"]) or link["href"] == REPO:
+                self.assertEqual(link.get("rel"), "nofollow noopener", (name, link["href"]))
         for address in re.findall(r"https?://[^\"<> ]*", text):
             self.assertTrue(address.startswith("https://github.com/") or address == "http://www.w3.org/2000/svg"
                             or (site is not None and under_wins and address.startswith(f"{site}/wins/{name[5:45]}.")), (name, address))
@@ -1321,6 +1334,46 @@ class TestOnce(Case):
         self.assertEqual(self.errors.count("\n"), 1, "one line on the standard error says how many lines were left out")
 
 
+class TestWhatTheBrowserIsTold(Case):
+    """The builder is the first line of defence. The second is what every page tells the browser: load and run
+    nothing, send no address of this site along, and take no link to a stranger's page as the site's word."""
+
+    def setUp(self):
+        super().setUp()
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-11T09:00:00Z", "bob", 102, "toy-0002")])
+        self.files = self.make("--repo-url", REPO, "--site-url", SITE)
+        self.pages = {name: Seen(text) for name, text in self.files.items() if name.endswith(".html")}
+        self.assertEqual(sorted(self.pages), ["index.html", f"wins/{sha(5001)}.html", f"wins/{sha(5002)}.html"])
+
+    def test_every_page_carries_a_policy_that_lets_nothing_load_or_run(self):
+        for name, seen in self.pages.items():
+            self.assertEqual(seen.metas["Content-Security-Policy"],
+                             "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", name)
+            self.assertNotRegex(seen.metas["Content-Security-Policy"], r"script-src|\*|https?:|data:|blob:|unsafe-eval|unsafe-hashes", name)
+            self.assertEqual(self.files[name].count('<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; '), 1, name)
+            head = self.files[name][:self.files[name].index("</head>")]
+            self.assertIn("Content-Security-Policy", head, "the policy is in the head")
+            self.assertLess(head.index("Content-Security-Policy"), head.index("<title>"), "before anything a stranger's text could reach")
+        self.assertEqual(page.CSP, POLICY)
+
+    def test_every_page_asks_that_no_referrer_be_sent(self):
+        for name, seen in self.pages.items():
+            self.assertEqual(seen.metas["referrer"], "no-referrer", name)
+            self.assertEqual(self.files[name].count('<meta name="referrer" content="no-referrer" />'), 1, name)
+
+    def test_a_link_to_a_profile_a_repository_or_a_commit_is_not_vouched_for(self):
+        kinds = {"profile": MEMBER_HREF, "commit": COMMIT_HREF, "repository": re.compile(re.escape(REPO) + r"\Z")}
+        for name, seen in self.pages.items():
+            outside = [link for link in seen.links if any(pattern.match(link["href"]) for pattern in kinds.values())]
+            self.assertEqual({link.get("rel") for link in outside}, {"nofollow noopener"}, name)
+            found = {kind for kind, pattern in kinds.items() for link in outside if pattern.match(link["href"])}
+            self.assertEqual(found, {"profile", "commit"} | ({"repository"} if name != "index.html" else set()), name)
+        index = self.pages["index.html"]
+        self.assertEqual(sum(1 for link in index.links if MEMBER_HREF.match(link["href"])), 5, "the first screen, two integrations, two members")
+        self.assertEqual(sum(1 for link in index.links if COMMIT_HREF.match(link["href"])), 2)
+        self.assertEqual([link.get("rel") for link in index.links if link["href"].startswith("http")].count(None), 1, "the join page is the project's own")
+
+
 class TestLogins(Case):
     """Wherever a login credits someone, it is set in a fixed-width face, where letters that look alike elsewhere
     differ; and the page of a contribution gives the account's number beside the login."""
@@ -1557,6 +1610,17 @@ class TestFirstScreen(Case):
         self.assertEqual(opening, "La Ruchetoy" + page.WHAT + "Latest accepted contribution" "5.2 %better · compression throughput n9"
                          "toy-0002 Title of toy-0002" "by bob · 10 Nov 2026 · what the judge measured" "How to take part")
         self.assertNotRegex(page.WHAT, r"[0-9<>&]")
+
+    def test_of_two_integrations_recorded_at_the_same_instant_the_later_line_is_the_latest(self):
+        """The hive dates every answer of one run with the same instant, and integrates them in the ledger's order."""
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001"), verdict(2, "2026-11-10T09:00:00Z", "bob", 102, "toy-0002"),
+                     verdict(3, "2026-11-09T09:00:00Z", "carol", 103, "toy-0003"), verdict(4, "2026-11-09T09:00:00Z", "dave", 104, "toy-0004")])
+        self.put("feed.json", feed({f"toy-000{n}": "done" for n in (1, 2, 3, 4)}))
+        seen, opening = self.opening()
+        self.assertIn("Latest accepted contributionAccepted by the judgetoy-0002 Title of toy-0002by bob · 10 Nov 2026", opening)
+        self.assertEqual([row[3] for row in seen.rows if row[0].startswith("2026-11-")], ["bob", "alice", "dave", "carol"])
+        self.assertEqual([r["login"] for r in self.summary(self.make())["recent"]], ["bob", "alice", "dave", "carol"],
+                         "the latest instant first; at the same instant, the later line first")
 
     def test_the_opening_says_only_what_the_ledger_holds(self):
         self.ledger([verdict(1, "2026-11-03T09:00:00Z", "alice", 101, "nothing", commit="not one"), verdict(2, "2026-11-02T09:00:00Z", "Alice", 105, "toy-0002")])
