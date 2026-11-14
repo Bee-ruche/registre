@@ -3508,6 +3508,16 @@ class Volunteer(Base):
                 self.assertEqual(len(json.loads(lines[number][2:])), 1)
         return lines
 
+    def one_line(self, result, said, begins=False):
+        """A command that ended on an error: exit code 2, nothing on the standard output, and one line on the
+        standard error: the sentence said. begins: the line begins that way, and the test says nothing of its end."""
+        self.assertEqual(result, (2, ""), self.err)
+        self.assertEqual(len(self.err.splitlines()), 1, self.err)
+        if begins:
+            self.assertTrue(self.err.startswith(f"hive: {said}") and self.err.endswith("\n"), self.err)
+        else:
+            self.assertEqual(self.err, f"hive: {said}\n")
+
     def head(self, cwd=None):
         return sh("git", "rev-parse", "HEAD", cwd=cwd or self.alice.work).stdout.strip()
 
@@ -3989,6 +3999,58 @@ class TestVolunteerSide(Volunteer):
                                           cwd=bob.work)[0], 0)
             self.assertEqual(self.run_cli("ready", "--registry", self.registry, "--login", "bob", cwd=bob.work)[0], 0, self.err)
         self.assertFalse(pwned.exists(), "no worker command ran it")
+
+    def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
+        """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
+        behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
+        with the git command that failed. The failures here are real ones: a lock another git left in the clone, a
+        fork that cannot be reached, a project's address that leads nowhere."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.alice.fresh("hive/submit/toy-0001").write("lib.c", LIB + "/* FAST */\n")
+        before, lock = self.head(), self.alice.work / ".git/index.lock"
+        lock.write_text("")
+        self.one_line(self.submit("toy-0001", dealt), "git add failed (", begins=True)
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]), "nothing was committed, nothing was pushed")
+        lock.unlink()
+        away = self.w.root / "away.git"
+        self.alice.bare.rename(away)
+        pushing = "the push to your fork did not land (git push failed ("
+        self.one_line(self.ready(), pushing, begins=True)
+        self.one_line(self.ready("--withdraw"), "git ls-remote failed (", begins=True)
+        self.one_line(self.submit("toy-0001", dealt), pushing, begins=True)
+        candidate = self.head()
+        self.assertNotEqual(candidate, before, "the candidate is made, and waits in the clone for the push")
+        away.rename(self.alice.bare)
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing reached the fork")
+        self.assertEqual(self.submit("toy-0001", dealt)[1].splitlines()[0], f"PUSHED {candidate}", "run again: the same candidate")
+        self.assertEqual(self.fork_branch("hive/submit/toy-0001"), candidate)
+        sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
+        self.one_line(self.run_cli("setup", "--registry", self.registry, "--upstream-url", str(self.w.root / "nowhere.git")),
+                      "git fetch failed (", begins=True)
+        self.assertNotEqual(sh("git", "rev-parse", "--verify", "--quiet", "upstream/main", cwd=self.alice.work, check=False).returncode, 0,
+                            "and the project's tip is not in the clone")
+
+    def test_a_git_that_does_not_answer_in_time_ends_the_command_with_one_line(self):
+        """Each git command has a time allowed. One that does not answer in it ends the command as a failure does:
+        one line, exit code 2, nothing said done. (No git here is that slow: `subprocess.run` is replaced, for the
+        one git command each case names.)"""
+        real = subprocess.run
+
+        def never_answers(name):
+            def run(command, **options):
+                if name in command:
+                    raise subprocess.TimeoutExpired(command, options["timeout"])
+                return real(command, **options)
+            return mock.patch.object(hive.subprocess, "run", side_effect=run)
+
+        with never_answers("push"):
+            self.one_line(self.ready(), "the push to your fork did not land (git push: timeout after 300 s). Nothing else was pushed: run the "
+                                        "command again, or stop and tell the user")
+        with never_answers("ls-remote"):
+            self.one_line(self.ready("--withdraw"), "git ls-remote: timeout after 60 s")
+        with never_answers("commit-tree"):
+            self.one_line(self.ready(), "git commit-tree: timeout after 300 s")
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"])
 
 
 class TestTheWorkersClone(Volunteer):
