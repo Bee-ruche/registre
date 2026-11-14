@@ -4451,8 +4451,8 @@ class TestVolunteerSide(Volunteer):
         self.w.run()
         self.alice.write("lib.c", LIB + "int ok;\n")
         before = self.head()
-        for origin in ("https://github.com/alice/dotfiles", "https://github.com/alice/toy-old.git", "https://github.com/mallory/toy.git",
-                       "http://local_proxy@127.0.0.1:38219/git/alice/dotfiles"):
+        for origin in ("https://github.com/alice/notes", "https://github.com/alice/toy-old.git", "https://github.com/mallory/toy.git",
+                       "http://local_proxy@127.0.0.1:38219/git/alice/notes"):
             sh("git", "remote", "set-url", "origin", origin, cwd=self.alice.work)
             with self.no_network() as talked:
                 for name, command in self.as_a_volunteer(dealt):
@@ -5110,6 +5110,13 @@ class TestVolunteerSide(Volunteer):
                                   "user to rename or remove that branch")
                     self.assertEqual(self.clone_state(), before)
                     sh("git", "branch", "-D", name, cwd=self.alice.work)
+        head = (self.alice.work / ".git/HEAD").read_text()
+        (self.alice.work / ".git/HEAD").write_text("ref: refs/heads/none-yet\n")  # a branch that has no commit: nothing to set aside against
+        before = self.clone_state()
+        self.one_line(self.begin("toy-0001", NOW), "this clone is on a branch that has no commit: there is nothing to set aside what it holds "
+                                                  "against. Nothing was changed: stop, and tell the user")
+        self.assertEqual(self.clone_state(), before)
+        (self.alice.work / ".git/HEAD").write_text(head)
         sh("git", "branch", "hive/ready", cwd=self.alice.work)  # a branch beside the tool's own is in nobody's way
         self.assertEqual(self.begin("toy-0001", NOW)[0], 0, self.err)
 
@@ -5687,13 +5694,13 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
     def test_submit_reads_the_candidates_own_tree_whatever_git_works_out_of_the_clone(self):
-        """submit also checks a candidate with the hive's own functions, which ask git what the candidate would change
-        once merged on the project's tip. git answers from the clone, and believes the files in which it keeps what it
-        once worked out: here a commit-graph, written by hand, that gives the project's first commit a parent of the
-        clone's own, a commit that adds a workflow file. For git the project then « removed » that file since, the
-        merge brings the task's file alone, and the hive's own check passes. The candidate's own tree holds the
-        workflow file all the same, and the candidate is what is pushed, to the volunteer's fork. submit's own
-        reading, of bytes it hashed and from the tip the project gave, finds the path and refuses."""
+        """What submit shows of a candidate does not depend on what git works out of the clone. git answers a question
+        about history from the files in which it keeps what it once worked out: here a commit-graph, written by hand,
+        that gives the project's first commit a parent of the clone's own, a commit that adds a workflow file. Asked
+        what the work would change once merged on the project's tip, git then names the task's file alone. submit
+        reads the candidate's own tree and the project's from their bytes, which it hashed, starting from the tip
+        the project's address gave: it finds the path the candidate adds outside the task, and refuses. No branch
+        moves and nothing is pushed."""
         dealt, work, first = self.w.deal(self.alice, "toy-0001"), self.alice.work, self.start
         self.w.upstream_commit("src/a.c", "int a; /* the project's second commit */\n")
         tip = self.w.tip()
@@ -5888,6 +5895,11 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             self.one_line(self.submit("toy-0002", dealt), "git cat-file gave no answer (it was stopped, or took too long)")
         self.assertLess(hive.time.monotonic() - began, 15, "it is stopped once its time is up")
 
+        def ends_half_way(command, **options):  # the head of an answer (an id, a kind, a size), and no object after it
+            return real(["printf", f"{self.start} commit 1000\n"], **options) if "--batch" in command else real(command, **options)
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=ends_half_way):
+            self.one_line(self.submit("toy-0002", dealt), "git cat-file gave no answer (it was stopped, or took too long)")
+
         def not_there(command, **options):
             if "--batch" in command:
                 raise FileNotFoundError(2, "No such file or directory", "git")
@@ -5962,12 +5974,12 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         self.assertEqual(str(error.exception), "git rev-parse failed (128)")
 
     def test_a_function_of_the_hives_side_whose_git_fails_in_a_worker_command_repeats_nothing_git_said(self):
-        """submit checks its candidate with the hive's own functions, which run git by the hive's road. Planted here:
-        a commit-graph (the file in which git keeps the parents it once read) that gives the project's commit a parent
-        that is no commit's place. The worker's own git commands do not read that file; the hive's counting of the
-        candidate's commits does, and git stops with words of its own. The command ends with one line that names the
-        git command and its code, has moved no branch and pushed nothing; the same function, outside a worker
-        command, repeats what git said."""
+        """submit checks its candidate with the hive's own functions too, which run git by the hive's road. When a git
+        command of theirs fails, the worker command ends as it does for a git of its own: one line that names the git
+        command and its code, no branch moved, nothing pushed. Planted here, to make one fail: a commit-graph (the
+        file in which git keeps the parents it once read) that gives the project's commit a parent that is no
+        commit's place; git stops on it with words of its own. The same function, outside a worker command, repeats
+        what git said."""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.alice.write("lib.c", LIB + "int honest;\n")
         before = self.head()

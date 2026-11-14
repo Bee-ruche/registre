@@ -2672,11 +2672,10 @@ def plain_clone():
     names another reference, or a HEAD that names neither a branch nor a commit; a reference that is neither a branch,
     a remote's branch, a tag nor the stash, as a file of .git/refs or as a line of .git/packed-refs (kept_reference);
     a clone whose objects are not named by SHA-1 (it says so in a setting, which is one of those refused next); any
-    setting
-    outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a sample;
-    .git/info/attributes. A .gitattributes in the work tree needs no
-    refusal: it can only select a filter, a diff or a merge program that some setting defines, and none does once
-    the clone's own settings are plain and the machine's are not read (Clone.git)."""
+    setting outside PLAIN_CONFIG, any included file, a setting given twice; any file in .git/hooks that is not a
+    sample; .git/info/attributes. A .gitattributes in the work tree needs no refusal: it can only select a filter,
+    a diff or a merge program that some setting defines, and none does once the clone's own settings are plain and
+    the machine's are not read (Clone.git)."""
     root = Path.cwd().resolve()
     git_dir = root / ".git"
     if not os.path.lexists(git_dir):
@@ -3315,18 +3314,19 @@ def cmd_start(args):
     an ignored name would otherwise be there again when the next task's code runs in the sandbox, where « submit »
     never sees it. Which files are ignored is decided by the work tree's own .gitignore files, the project's and any
     an earlier run wrote: so a file of the user's own under an ignored name is removed, not set aside, and a clone
-    that works for the hive should hold no work of the user's own. So is removed
-    what git cannot see: a .git below the root, a pipe, a socket, what lies in a sub-module's folder. A link is
-    removed, never followed; a link that stands where the project has a folder is removed first, since git refuses
-    to read past it. A read-only folder is opened to its owner first. These steps git cannot take are this
-    function's own, in Python, and each looks at an entry with lstat before it acts: none goes through a link or
-    enters the clone's own .git. Nothing outside the work tree is touched, and
-    .git itself is not cleaned (git never cleans it): plain_clone checks it first, and a refusal touches nothing.
+    that works for the hive should hold no work of the user's own. Removed too is what git cannot see: a .git below
+    the root, a pipe, a socket, what lies in a sub-module's folder. A link is removed, never followed; a link that
+    stands where the project has a folder is removed first, since git refuses to read past it. A read-only folder
+    is opened to its owner first. These steps git cannot take are this function's own, in Python, and each looks
+    at an entry with lstat before it acts: none goes through a link or enters the clone's own .git. Nothing outside
+    the work tree is touched, and .git itself is not cleaned (git never cleans it): plain_clone checks it first,
+    and a refusal touches nothing.
 
     Two leftovers inside .git would stop this command at every later run. A lock on the index (.git/index.lock), which
     a git command that was stopped leaves behind, is removed first: no other git runs in the clone while a worker
     command does. A branch named « hive » or « hive/submit » keeps git from making any task's branch: it may be
-    someone's, so the command names it and stops before it changes anything.
+    someone's, so the command names it and stops before it changes anything. So it does when the clone is on a
+    branch that has no commit: git has nothing to set its files aside against.
 
     The files are set aside under the rules of the commit they were written from (its .gitattributes: line ends, an
     encoding), not under a .gitattributes of the work tree, which is one of the files to set aside; if those rules
@@ -3366,6 +3366,10 @@ def cmd_start(args):
     if in_the_way:
         raise HiveError(f"this clone has a branch named {in_the_way}, where this tool keeps its own (hive/submit/<task>): git cannot make "
                         "the task's branch beside it. Nothing was changed: stop, and tell the user to rename or remove that branch")
+    held = clone.git("rev-parse", "--verify", "--quiet", "HEAD^{commit}", check=False).stdout.strip()
+    if not is_sha(held):
+        raise HiveError("this clone is on a branch that has no commit: there is nothing to set aside what it holds against. Nothing was "
+                        "changed: stop, and tell the user")
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
     removed = 0
@@ -3391,9 +3395,8 @@ def cmd_start(args):
     # encoding), never under a .gitattributes of the work tree, which is itself one of the files to set aside. A file
     # whose bytes those rules cannot convert (it is not in the encoding they name) would stop git: everything is then
     # set aside byte for byte, under no rule at all.
-    held = clone.git("rev-parse", "--verify", "--quiet", "HEAD^{commit}", check=False).stdout.strip()
     aside = ("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before")
-    if clone.git(*aside, env=who, literal=False, attributes=held if is_sha(held) else tip, check=False).returncode != 0:
+    if clone.git(*aside, env=who, literal=False, attributes=held, check=False).returncode != 0:
         clone.git(*aside, env=who, literal=False, attributes=EMPTY_TREE)
     after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
     set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
