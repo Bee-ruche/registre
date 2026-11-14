@@ -6341,6 +6341,8 @@ class TestTheWorkersClone(Volunteer):
         with mock.patch.dict(os.environ, {"GIT_DIR": str(other), "GIT_WORK_TREE": str(self.w.seed), "GIT_INDEX_FILE": str(other / "index")}), \
                 mock.patch.object(hive, "LOCAL_REMOTES", True), mock.patch.object(hive.subprocess, "run", side_effect=run):
             clone = hive.plain_clone()
+            self.assertEqual([name for name in hive.GIT_PLACES if name in os.environ], [],
+                             "forgotten for every later git of the command, the hive's own reading of the candidate included")
             self.assertEqual(clone.git("rev-parse", "HEAD").stdout.strip(), mine, "this clone, whatever the environment points at")
             clone.git("ls-remote", str(self.alice.bare), to=str(self.alice.bare))
             with self.assertRaises(hive.HiveError):
@@ -6355,6 +6357,7 @@ class TestTheWorkersClone(Volunteer):
                            "--literal-pathspecs", f"--git-dir={self.alice.work.resolve()}/.git", f"--work-tree={self.alice.work.resolve()}"):
                 self.assertIn(needed, said)
             self.assertEqual(([name for name in hive.GIT_PLACES if name in env], env["GIT_TERMINAL_PROMPT"]), ([], "0"))
+            self.assertEqual((env["GIT_ATTR_NOSYSTEM"], env["GIT_NO_REPLACE_OBJECTS"]), ("1", "1"), "no attributes file of the machine, no object for another")
         self.assertEqual((local_env["GIT_CONFIG_GLOBAL"], local_env["GIT_CONFIG_NOSYSTEM"], "GIT_ALLOW_PROTOCOL" in local_env),
                          (os.devnull, "1", False))
         self.assertEqual(remote_env["GIT_ALLOW_PROTOCOL"], "file")
