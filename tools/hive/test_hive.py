@@ -3566,10 +3566,14 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(sh("git", "rev-parse", "upstream/main", cwd=self.alice.work).stdout.strip(), self.start)
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/renamed.git", cwd=self.alice.work)
         self.assertEqual(self.setup()[0], 2, "a fork under another name: which project is it a fork of?")
+        self.assertEqual(self.err, "hive: which project is this fork of? Give --project (the hive's projects: toy)\n")
         self.assertEqual(self.setup("--project", "toy"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"))
         self.assertEqual(self.setup("--project", "none")[0], 2)
         sh("git", "remote", "set-url", "upstream", "https://github.com/someone/toy.git", cwd=self.alice.work)
         self.assertEqual((self.setup("--project", "toy"), "not the project" in self.err), ((2, ""), True), self.err)
+        (self.w.root / "empty").mkdir()
+        self.assertEqual((self.run_cli("setup", "--registry", str(self.w.root / "empty")), self.err),
+                         ((2, ""), "hive: which project is this fork of? Give --project (the hive's projects: none)\n"), "a registry with no project")
 
     def test_setup_notes_the_settings_a_coding_tool_may_have_run(self):
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
@@ -3745,6 +3749,15 @@ class TestVolunteerSide(Volunteer):
             self.alice.write("lib.c", LIB + "int x;\n").commit("not an ask")
             sh("git", "push", "--quiet", "--force", "origin", "HEAD:refs/heads/hive/ready", cwd=self.alice.work)
             self.assertEqual(self.next(), (0, ASK))
+            self.alice.marker("toy-0001", deal="2026-11-12T11:00:00Z")
+            sh("git", "push", "--quiet", "--force", "origin", "HEAD:refs/heads/hive/ready", cwd=self.alice.work)
+            self.assertEqual(self.next(), (0, ASK), "a candidate's marker, this member's own, is not an ask")
+            tree = sh("git", "rev-parse", "origin/main^{tree}", cwd=self.alice.work).stdout.strip()
+            undated = subprocess.run(["git", "commit-tree", tree, "-p", "origin/main", "-m", "Hive ready\n\nHive-Action: ready\nHive-Member: alice"],
+                                     cwd=self.alice.work, env={**os.environ, **GIT_ENV, "GIT_COMMITTER_DATE": "@99999999999 +0000"},
+                                     check=True, capture_output=True, text=True).stdout.strip()
+            sh("git", "push", "--quiet", "--force", "origin", f"{undated}:refs/heads/hive/ready", cwd=self.alice.work)
+            self.assertEqual(self.next(), (0, ASK), "an ask whose date is more digits than the tool reads as a date")
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T13:00:00Z"}):
             self.ready()
         self.assertEqual(self.next(), (0, ASK), "an ask dated after now says nothing")
@@ -3757,6 +3770,15 @@ class TestVolunteerSide(Volunteer):
                                           "the hive deals you nothing before then\n"))
         with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T14:00:00Z"}):
             self.assertEqual(self.next(), (0, ASK))
+        real, ran = subprocess.run, []
+
+        def run(command, **options):
+            ran.append(command)
+            return real(command, **options)
+        with mock.patch.object(hive.subprocess, "run", side_effect=run):
+            self.assertTrue(self.next()[1].startswith("WAIT until 2026-11-12T14:00:00Z: "))
+        self.assertEqual((len(ran) > 0, [command for command in ran if "fetch" in command]), (True, []),
+                         "the wait is the whole answer: nothing is asked of the fork")
 
     def test_next_waits_when_the_hive_has_published_nothing_or_the_project_is_paused(self):
         self.assertEqual(self.next(), (0, "WAIT: the hive has not published a feed for this project yet\n"), "no state at all")
