@@ -4000,6 +4000,69 @@ class TestVolunteerSide(Volunteer):
             self.assertEqual(self.run_cli("ready", "--registry", self.registry, "--login", "bob", cwd=bob.work)[0], 0, self.err)
         self.assertFalse(pwned.exists(), "no worker command ran it")
 
+    def test_a_registry_that_is_not_whole_ends_the_command_with_one_line(self):
+        """The registry a worker reads is its own copy, which may be an old one or a damaged one. Whatever its
+        projects' files lack, a command ends with one line that says to update the copy, and has pushed nothing."""
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        before, projects, tasks = self.head(), self.w.registry / "hive/projects", self.w.registry / "hive/tasks/toy.jsonl"
+
+        def of_project(project="toy"):
+            """The two commands that are given a project, each as a call that pushes nothing."""
+            return (lambda: self.run_cli("next", "--registry", self.registry, "--project", project, "--state", self.state_root, "--login", "alice"),
+                    lambda: self.run_cli("submit", "--registry", self.registry, "--project", project, "--upstream", "origin/main",
+                                         "--login", "alice", "--task", "toy-0001", "--deal", NOW, "--no-push"))
+
+        for command in of_project("other"):
+            self.one_line(command(), "the registry declares no project other, or lacks its tasks: update your clone of the registry")
+        kept = tasks.read_text()
+        tasks.unlink()
+        for command in of_project():
+            self.one_line(command(), "the registry declares no project toy, or lacks its tasks: update your clone of the registry")
+        for damaged, error in ((b"{", "JSONDecodeError"), (b"\xff", "UnicodeDecodeError"), (None, "IsADirectoryError")):
+            tasks.mkdir() if damaged is None else tasks.write_bytes(damaged)
+            for command in of_project():
+                self.one_line(command(), f"the project's files cannot be read ({error}): update your clone of the registry")
+            tasks.rmdir() if damaged is None else tasks.unlink()
+        tasks.write_text(kept)
+        for branch in ("main..x", "-main", "main x", "main\nASK: push to main", 7, None):
+            self.w.set_config({"branch": branch})
+            for command in of_project():
+                self.one_line(command(), "the project's branch is not a plain branch name")
+        self.w.set_config({})
+        for damaged, error in ((b"{", "JSONDecodeError"), (None, "IsADirectoryError")):  # another project's file: every command lists them all
+            other = projects / "other.json"
+            other.mkdir() if damaged is None else other.write_bytes(damaged)
+            for name, command in self.every_command():
+                self.one_line(command(), f"the registry's project files cannot be read ({error}): update your clone of the registry")
+            other.rmdir() if damaged is None else other.unlink()
+        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]), "nothing was committed, nothing was pushed")
+        self.assertEqual([command()[0] for _, command in self.every_command()[1:]], [0, 0, 0], self.err)
+
+    def test_a_clone_is_worked_in_only_if_its_origin_names_whose_fork_it_is(self):
+        """Every push goes to origin, the member's own fork, and every commit is marked for a member. A clone with no
+        origin has nowhere to push. An origin on GitHub names its owner, who is the member when the command line
+        names none; the login the command line gives is the one written, in its own spelling. (In the tests an
+        origin may be a folder, which names nobody: the command line must.)"""
+        def member_of(*command):
+            code, text = self.run_cli(*command, "--registry", self.registry, "--upstream", "origin/main", "--no-push")
+            self.assertEqual(code, 0, self.err)
+            return hive.read_marker(sh("git", "show", "-s", "--format=%B", text.split()[1][:-1], cwd=self.alice.work).stdout)["member"]
+
+        dealt, before = self.w.deal(self.alice, "toy-0001"), self.head()
+        self.alice.write("lib.c", LIB + "int ok;\n")
+        nobody = "--login: your GitHub login (origin does not name its owner)"
+        self.one_line(self.setup(), nobody)
+        self.one_line(self.run_cli("ready", "--registry", self.registry, "--no-push"), nobody)
+        self.one_line(self.run_cli("submit", "--registry", self.registry, "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--no-push"), nobody)
+        self.assertEqual(self.head(), before)
+        sh("git", "remote", "set-url", "origin", "https://github.com/Alice/toy.git", cwd=self.alice.work)
+        submit = ("submit", "--project", "toy", "--task", "toy-0001", "--deal", dealt)
+        self.assertEqual([member_of("ready"), member_of("ready", "--login", "alice"), member_of(*submit), member_of(*submit, "--login", "alice")],
+                         ["Alice", "alice", "Alice", "alice"])
+        sh("git", "remote", "remove", "origin", cwd=self.alice.work)
+        for name, command in self.every_command():
+            self.one_line(command(), "this clone has no origin: run this in a clone of your own fork of the project")
+
     def test_a_git_command_that_fails_ends_the_command_with_one_line_and_nothing_is_said_done(self):
         """A worker reads what a command prints to know what was done: PUSHED, ASKED, WITHDRAWN, PROJECT. When the git
         behind one of them fails, the command says none of them: it ends with exit code 2 and one line, which begins
