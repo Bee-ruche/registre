@@ -104,7 +104,10 @@ JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the
 MEASURED_REASONS = ("goal_not_met", "requirement_not_met")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
-PREFER_BECAUSE = ("not_offered", "no_deal_yet", "last_deal_not_accepted", "no_free_task")  # why a preference is not kept, in the order plan decides them
+# Why a preference is not kept, in the order plan decides them. One word for a member that never had a deal come to an end and
+# for one whose last deal was not accepted: a deal's line names its member, and the ledger does not say beside a name how a
+# deal of theirs ended.
+PREFER_BECAUSE = ("not_offered", "needs_an_accepted_deal", "no_free_task")
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
 HEADS_PER_FORK_MAX = 2000  # a fork with more branches than this is not read at all
 FOLDER_LISTING_BYTES = 64 << 20  # a folder whose own listing is longer than this is not read
@@ -1287,8 +1290,10 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     decided in this order:
       a. the project offers preferences (members.preferences); otherwise « not_offered »;
       b. the member's last deal that came to an end was accepted: its class is 0, as step 3 computed it, before this
-         run answers anything; otherwise « no_deal_yet » (class 1) or « last_deal_not_accepted » (class 2). For a
-         member dealt conditionally, that is its class before the candidate it holds in this run is answered;
+         run answers anything; otherwise « needs_an_accepted_deal », the same word for a member that never had a deal come to
+         an end (class 1) and for one whose last deal was not accepted (class 2): the deal's line names its member,
+         and the ledger does not say beside a name how a deal of theirs ended. For a member dealt conditionally,
+         that is its class before the candidate it holds in this run is answered;
       c. at least one task of `mine` lists the part; otherwise « no_free_task ».
     The task is then the one the same draw gives among the tasks of `mine` that list the part. In every other case
     the plain draw runs, unchanged. The deal says what happened (« prefer »: the part, kept or not, and why not); a
@@ -1421,8 +1426,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         if member_id in prefers:  # followed only when it costs no rule anything: the project's switch, then the class, then the tasks
             part = prefers[member_id]
             listing = [t for t in mine if part in tasks[t]["files"]]
-            because = ("not_offered" if not offered else "no_deal_yet" if klass == 1 else "last_deal_not_accepted" if klass != 0
-                       else None if listing else "no_free_task")
+            because = "not_offered" if not offered else "needs_an_accepted_deal" if klass != 0 else None if listing else "no_free_task"
             among = mine if because else listing  # a kept preference narrows the draw to tasks of `mine`, and to nothing else
             said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
         task_id = min(among, key=lambda t: draw(key, member_id, t))

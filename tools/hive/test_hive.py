@@ -1995,7 +1995,7 @@ class TestFirstReview(Base):
                  "detail": lambda v: all(k in hive.DETAIL_KEYS and type(n) is int for k, n in v.items()),
                  "figures": lambda v: all(k in ("files", "lines") and type(n) is int for k, n in v.items()),
                  "report": lambda v: v == {"gain": 0.05},
-                 "prefer": lambda v: v == {"file": "lib.c", "kept": False, "because": "no_deal_yet"}}  # a file as the registry names it
+                 "prefer": lambda v: v == {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}}  # a file as the registry names it
         self.assertEqual([e["member"] for e in events if "prefer" in e], ["erin"])
         for event in events:
             for key, value in event.items():
@@ -3158,13 +3158,14 @@ class TestDealing(Base):
 
     def test_a_preference_that_is_not_kept_leaves_the_plain_draw_and_the_deal_says_why(self):
         """The hive's rules come first. A preference is not kept, decided in this order: when the project does not
-        offer preferences; when the member never had a deal that came to an end; when its last deal was not accepted;
-        when no task of the part is free for it at its turn. The plain draw then runs, unchanged."""
+        offer preferences; when the member never had a deal that came to an end, or its last deal was not accepted
+        (one word for both: the deal's line names its member, and does not say how a deal of theirs ended); when no
+        task of the part is free for it at its turn. The plain draw then runs, unchanged."""
         carol, holder = self.w.fork("carol", 103), self.w.fork("holder", 133)
         self.answered(self.alice, "toy-0003")
         self.answered(carol, "toy-0003", "judge_refused", at="2026-11-12T09:00:00Z")  # its wait is over
         self.assertEqual([self.standing(fork)[:2] for fork in (self.alice, self.bob, carol)], [(0, None), (1, None), (2, None)])
-        self.assertEqual(hive.PREFER_BECAUSE, ("not_offered", "no_deal_yet", "last_deal_not_accepted", "no_free_task"))
+        self.assertEqual(hive.PREFER_BECAUSE, ("not_offered", "needs_an_accepted_deal", "no_free_task"))
 
         def said(fork, runs=24):
             fork.ready(prefer="src/")
@@ -3173,16 +3174,16 @@ class TestDealing(Base):
             self.assertEqual({login for login, _, _ in deals}, {fork.login})
             return {task for _, task, _ in deals}, self.told(deals)
 
-        self.assertEqual(said(self.bob), (self.OPEN, {self.not_kept("src/", "no_deal_yet")}))
-        self.assertEqual(said(carol), (self.OPEN, {self.not_kept("src/", "last_deal_not_accepted")}))
+        self.assertEqual(said(self.bob), (self.OPEN, {self.not_kept("src/", "needs_an_accepted_deal")}))
+        self.assertEqual(said(carol), (self.OPEN, {self.not_kept("src/", "needs_an_accepted_deal")}))
         self.w.set_config({"members": {"preferences": False}})
         for fork in (self.alice, self.bob, carol):
             self.assertEqual(said(fork), (self.OPEN, {self.not_kept("src/", "not_offered")}), "the project's switch is decided first")
         self.w.set_config({})
         self.hold(holder, "toy-0002")  # the one task of src/ is held
         self.assertEqual(said(self.alice), ({"toy-0001", "toy-0004", "toy-0005"}, {self.not_kept("src/", "no_free_task")}))
-        self.assertEqual(said(self.bob, 6)[1], {self.not_kept("src/", "no_deal_yet")}, "where the member stands is decided before the tasks")
-        self.assertEqual(said(carol, 6)[1], {self.not_kept("src/", "last_deal_not_accepted")})
+        self.assertEqual(said(self.bob, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")}, "where the member stands is decided before the tasks")
+        self.assertEqual(said(carol, 6)[1], {self.not_kept("src/", "needs_an_accepted_deal")})
         self.w.set_config({"members": {"preferences": False}})
         self.bob.ready(prefer="src/")
         self.w.run()
@@ -3286,20 +3287,20 @@ class TestDealing(Base):
         self.assertNotIn(ask, hive.read_ignored(self.w.state).get("1101", []), "its ask is not used")
         with self.at("14:00:00"):
             self.w.run()
-            self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "run.sh", "kept": False, "because": "last_deal_not_accepted"})
+            self.assertEqual(self.one(self.lines("deal"))["prefer"], {"file": "run.sh", "kept": False, "because": "needs_an_accepted_deal"})
 
     def test_a_conditional_deal_is_decided_on_the_class_the_plan_computed_not_on_this_runs_answer(self):
         """bob never had a deal that came to an end: the candidate of its first deal is in this run. The plan decides
-        on that (no_deal_yet), and the deal recorded after the candidate is accepted says what the plan decided."""
+        on that (needs_an_accepted_deal), and the deal recorded after the candidate is accepted says what the plan decided."""
         dealt = self.hold(self.bob, "toy-0002")[0]
         self.bob.write("src/b.c", "int b;\n").commit().marker("toy-0002", deal=dealt).push()
         self.bob.ready(prefer="run.sh")
         plans = [self.w.plan() for _ in range(24)]
         self.assertEqual({d["task"] for made in plans for d in made["conditional"]}, {"toy-0001", "toy-0004", "toy-0005"}, "the plain draw")
-        self.assertEqual({json.dumps(d["prefer"], sort_keys=True) for made in plans for d in made["conditional"]}, {self.not_kept("run.sh", "no_deal_yet")})
+        self.assertEqual({json.dumps(d["prefer"], sort_keys=True) for made in plans for d in made["conditional"]}, {self.not_kept("run.sh", "needs_an_accepted_deal")})
         self.assertEqual(self.one(self.w.run())["result"], "accepted")
         self.assertEqual((self.standing(self.bob)[0], self.one(self.lines("deal"))["prefer"]),
-                         (0, {"file": "run.sh", "kept": False, "because": "no_deal_yet"}), "its last deal is accepted now; the plan decided before")
+                         (0, {"file": "run.sh", "kept": False, "because": "needs_an_accepted_deal"}), "its last deal is accepted now; the plan decided before")
 
     def test_the_steps_that_write_take_no_preference_that_is_not_the_registrys(self):
         """The plan comes from the step that read the forks. The steps that hold keys copy nothing of a preference:
@@ -3401,7 +3402,7 @@ class TestDealing(Base):
                     self.assertIn(task, mine, (number, prefers, deal))  # the invariant
                     plain = min(mine, key=lambda t: hive.draw(key, member, t))
                     listing = {t for t in mine if part in tasks[t]["files"]}
-                    why = {1: "no_deal_yet", 2: "last_deal_not_accepted"}.get(klass[member]) or (None if listing else "no_free_task")
+                    why = "needs_an_accepted_deal" if klass[member] else None if listing else "no_free_task"
                     if part is None:
                         self.assertEqual((task, "prefer" in deal), (plain, False), (number, prefers, deal))
                     elif why:
@@ -3616,7 +3617,7 @@ class TestLedger(unittest.TestCase):
 
         old = self.answers(lines(None, None, None))
         new = self.answers(lines({"file": "lib.c", "kept": True}, {"file": "src/", "kept": False, "because": "no_free_task"},
-                                 {"file": "lib.c", "kept": False, "because": "no_deal_yet"}))
+                                 {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}))
         self.assertEqual(old, new)
         self.assertEqual(({task: (deal["member_id"], deal["state"]) for task, deal in new["deals"].items()}, new["standing"]),
                          ({t: (2, "closed"), "toy-0002": (1, "live")}, [(0, None, 1), (2, self.at("12:00:00"), 1)]))
@@ -4463,7 +4464,7 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.ready("--prefer", "src/", "--tier", "2")[0], 0, self.err)
         self.w.run()
         deal = next(e for e in self.w.load()[2].events if e["type"] == "deal")
-        self.assertEqual((deal["member"], deal["prefer"]), ("alice", {"file": "src/", "kept": False, "because": "no_deal_yet"}),
+        self.assertEqual((deal["member"], deal["prefer"]), ("alice", {"file": "src/", "kept": False, "because": "needs_an_accepted_deal"}),
                          "the hive read the part, and says what it did with it")
 
     def test_the_files_ready_lists_are_a_bounded_list_and_a_part_is_one_a_markers_line_can_carry(self):

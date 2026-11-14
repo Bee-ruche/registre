@@ -443,8 +443,8 @@ class TestFigures(Case):
     def test_a_deal_whose_ask_named_a_part_is_told_in_one_sentence_and_no_member_is_named(self):
         self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": True}),
                      dealt(2, "2026-11-02T09:00:00Z", "bob", 102, "toy-0002", {"file": "src/", "kept": False, "because": "no_free_task"}),
-                     dealt(3, "2026-11-03T09:00:00Z", "carol", 103, "toy-0001", {"file": "docs/read me.md", "kept": False, "because": "no_deal_yet"}),
-                     dealt(4, "2026-11-04T09:00:00Z", "dave", 104, "toy-0002", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"}),
+                     dealt(3, "2026-11-03T09:00:00Z", "carol", 103, "toy-0001", {"file": "docs/read me.md", "kept": False, "because": "needs_an_accepted_deal"}),
+                     dealt(4, "2026-11-04T09:00:00Z", "dave", 104, "toy-0002", {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}),
                      dealt(5, "2026-11-05T09:00:00Z", "erin", 105, "toy-0001", {"file": "lib.c", "kept": False, "because": "not_offered"}),
                      dealt(6, "2026-11-06T09:00:00Z", "fred", 106, "toy-0002"),  # its ask named no part
                      dealt(1, "2026-11-07T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": True}),  # the first line again: once
@@ -454,20 +454,19 @@ class TestFigures(Case):
         seen, data = self.harmless(files), self.summary(files)
         self.assertEqual(self.prefer_rows(seen), [
             ["2026-11-05", "toy-0001 Title of toy-0001", "The ask named lib.c; the hive did not keep it: the project does not offer preferences."],
-            ["2026-11-03", "toy-0001 Title of toy-0001",
-             "The ask named docs/read me.md; the hive did not keep it: the member had no deal that came to an end yet."],
             ["2026-11-02", "toy-0002 Title of toy-0002",
              "The ask named src/; the hive did not keep it: no task of that part was free for the member at its turn."],
             ["2026-11-01", "toy-0001 Title of toy-0001", "The ask named lib.c, and the hive kept it: the task dealt is one of that part."]])
         self.assertEqual({key: data["preferences"][key] for key in ("named", "kept", "not_kept")},
-                         {"named": 5, "kept": 1, "not_kept": [{"because": because, "count": 1} for because in hive.PREFER_BECAUSE]})
+                         {"named": 5, "kept": 1, "not_kept": [{"because": because, "count": 2 if because == page.UNLISTED else 1}
+                                                              for because in hive.PREFER_BECAUSE]})
         self.assertEqual(data["preferences"]["recent"][-1], {"at": "2026-11-01T09:00:00Z", "task": "toy-0001", "title": "Title of toy-0001",
                                                              "file": "lib.c", "kept": True, "because": None})
-        self.assertEqual([item["because"] for item in data["preferences"]["recent"]], ["not_offered", "no_deal_yet", "no_free_task", None],
-                         "the deal whose member's last deal was not accepted is counted, and not listed with its task")
-        self.assertIn("Deals whose ask named a part of the project: 5. Kept: 1. Not kept: the project does not offer preferences (1); the member "
-                      "had no deal that came to an end yet (1); the member's last deal was not accepted (1); no task of that part was free for "
-                      "the member at its turn (1).", seen.said)
+        self.assertEqual([item["because"] for item in data["preferences"]["recent"]], ["not_offered", "no_free_task", None],
+                         "the deals whose member had no accepted last deal are counted, and not listed with their task")
+        self.assertIn("Deals whose ask named a part of the project: 5. Kept: 1. Not kept: the project does not offer preferences (1); the hive "
+                      "follows a preference once the member's last deal was accepted (2); no task of that part was free for the member at its "
+                      "turn (1).", seen.said)
         self.assertEqual(seen.heads[-3:], ["Parts of the project that asks preferred", "Three measures", "How to take part"])
         self.assertEqual(tuple(page.PREFER_WORDS), hive.PREFER_BECAUSE, "the hive's reasons, each in this file's own words")
         self.assertEqual(list(people(data["preferences"])), [])
@@ -477,10 +476,11 @@ class TestFigures(Case):
 
     def test_no_line_says_beside_a_task_how_a_members_last_deal_ended(self):
         """A task is integrated by the holder of its latest deal, and the page names that member beside the task. A
-        row that gave the task of a deal with « the member's last deal was not accepted » would say it of that member:
-        such a deal is counted, and not listed. Nothing refused is said of a person, by one line or by two."""
-        self.assertEqual(page.UNLISTED, "last_deal_not_accepted")
-        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"}),
+        row that gave the task of a deal whose preference waited for an accepted deal of its member would say, of
+        that member, that no deal of theirs had been accepted yet or that the last one had not: such a deal is
+        counted, and not listed. Nothing refused is said of a person, by one line or by two."""
+        self.assertEqual(page.UNLISTED, "needs_an_accepted_deal")
+        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}),
                      verdict(1, "2026-11-01T12:00:00Z", "alice", 101, "toy-0001"),
                      dealt(2, "2026-11-02T09:00:00Z", "alice", 101, "toy-0002", {"file": "lib.c", "kept": True})])
         self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "dealt"}))
@@ -491,10 +491,10 @@ class TestFigures(Case):
         self.assertEqual(self.prefer_rows(seen), [["2026-11-02", "toy-0002 Title of toy-0002",
                                                    "The ask named lib.c, and the hive kept it: the task dealt is one of that part."]])
         self.assertEqual((data["preferences"]["named"], data["preferences"]["not_kept"], [item["task"] for item in data["preferences"]["recent"]]),
-                         (2, [{"because": "last_deal_not_accepted", "count": 1}], ["toy-0002"]))
-        self.assertEqual(seen.said.count("last deal was not accepted"), 2, "in the count and in the note, never in a row")
-        self.assertIn("Not kept: the member's last deal was not accepted (1).", seen.said)
-        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "last_deal_not_accepted"})])
+                         (2, [{"because": "needs_an_accepted_deal", "count": 1}], ["toy-0002"]))
+        self.assertEqual(seen.said.count("once the member's last deal was accepted"), 1, "in the count, never in a row")
+        self.assertIn("Not kept: the hive follows a preference once the member's last deal was accepted (1).", seen.said)
+        self.ledger([dealt(1, "2026-11-01T09:00:00Z", "alice", 101, "toy-0001", {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"})])
         seen = self.harmless(self.make())
         self.assertEqual(self.prefer_rows(seen), [["none to list", "", ""]], "counted, and the table says there is nothing to list")
 
@@ -2278,7 +2278,7 @@ class TestEndToEnd(test_hive.Base):
         self.w.run(judge)
         deals = {e["member"]: e for e in self.w.load()[2].events if e["type"] == "deal" and not e["run"].startswith("test")}
         self.assertEqual((deals["bob"]["task"], deals["bob"]["prefer"], deals["carol"]["prefer"]),
-                         ("toy-0002", {"file": "src/", "kept": True}, {"file": "lib.c", "kept": False, "because": "no_deal_yet"}))
+                         ("toy-0002", {"file": "src/", "kept": True}, {"file": "lib.c", "kept": False, "because": "needs_an_accepted_deal"}))
         out = self.w.root / "site"
         with contextlib.redirect_stdout(io.StringIO()):
             page.main(["--state", str(self.w.state), "--out", str(out), "--tasks", str(self.w.registry / "hive/tasks/toy.jsonl")])
@@ -2287,8 +2287,6 @@ class TestEndToEnd(test_hive.Base):
         self.assertEqual([row for row in seen.rows if row[0] == "2026-11-12"], [
             ["2026-11-12", "toy-0001 Make f0 faster", "no figure", "bob", self.w.tip()[:10]],
             ["2026-11-12", "toy-0004 Gain of 2 %", "goal_not_met", "at least 2.0 % · speed", "1.2 % · speed: the figure the task asked for · within the noise"],
-            ["2026-11-12", f"{deals['carol']['task']} {titles[deals['carol']['task']]}",
-             "The ask named lib.c; the hive did not keep it: the member had no deal that came to an end yet."],
             ["2026-11-12", "toy-0002 Work in src", "The ask named src/, and the hive kept it: the task dealt is one of that part."]])
         self.assertEqual(seen.row("goal_not_met"), ["goal_not_met", "1", hive.REASONS["goal_not_met"]])
         for login in ("alice", "carol"):

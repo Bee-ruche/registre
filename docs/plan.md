@@ -142,7 +142,9 @@ candidates for different tasks independent of each other.
   within minutes. **Planned** (phase 3).
 
 The price, stated plainly: a worker waits for the hive's next run before its first task, and nobody chooses their
-task, only the hardest tier they take.
+task: only the hardest tier they take, and a part of the project they would rather have, which the hive follows
+when its rules lose nothing by it (the member's last deal was accepted, and a task of that part is among those the
+plain draw could have given it).
 
 ### 3.3 The judge's time: the scarce resource
 

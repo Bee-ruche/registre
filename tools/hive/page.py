@@ -34,8 +34,8 @@ The rules the page follows, each stated where it is applied:
     project's totals say much of each. The page says so. What the judge measured of a candidate refused for a
     figure, and what the hive did with the part of the project an ask preferred, are listed line by line, with
     the task and the date and no member: the page has no history of a member's deals, and makes none. A line that
-    would say, beside a task a member is named for, how that member's last deal ended is counted and not listed
-    (UNLISTED).
+    would say, beside a task a member is named for, where that member stood before its last deal was accepted is
+    counted and not listed (UNLISTED).
   - No direction is stated that the judge did not state: a figure and a noise flag that point opposite ways are
     printed without « better » or « worse » (direction()).
   - Each answer of the ledger is read once, and no line dated after the instant the page is made for (once(),
@@ -128,15 +128,15 @@ MEASURED = ("goal_not_met", "requirement_not_met")
 SHORT_SHOWN, SHORT_MEASURES = 30, 3  # the latest such candidates listed on index.html, and the measures given for each
 GOAL_MORE = 8  # the further conditions of a task's goal that the page counts and names
 # A deal whose preference was not kept for this reason is counted and never listed with its task: the task's latest deal
-# is its integrator's, whom the page names beside the task, and the reason says how that member's last deal ended.
-UNLISTED = "last_deal_not_accepted"
+# is its integrator's, whom the page names beside the task, and the reason says where that member stood: no deal of
+# theirs had come to an end yet, or the last one had not been accepted (the ledger has one word for both).
+UNLISTED = "needs_an_accepted_deal"
 # What a deal's line says of the part of the project its ask preferred (hive.plan): the part is one of the files the
 # project's tasks name, as the registry writes it; kept or not; and, when not, one of these reasons, in this file's
 # own words. Checked again here: a path of printable ASCII, a yes or a no, a reason of this list.
 PART = re.compile(r"[!-~](?:[ -~]{0,198}[!-~])?\Z")
 PREFER_WORDS = {"not_offered": "the project does not offer preferences",
-                "no_deal_yet": "the member had no deal that came to an end yet",
-                "last_deal_not_accepted": "the member's last deal was not accepted",
+                "needs_an_accepted_deal": "the hive follows a preference once the member's last deal was accepted",
                 "no_free_task": "no task of that part was free for the member at its turn"}
 PREFERS_SHOWN = 30  # the latest deals whose ask named a part, listed on index.html
 
@@ -1097,9 +1097,10 @@ def render_html(data, title, repo_url, join):
                            el("p", "A member may say which part of the project it prefers: one of the files the project's tasks name. The hive "
                                    "follows it only when its own rules lose nothing by it: the member's last deal was accepted, and a task of "
                                    "that part was among those it could be dealt anyway. A preference never changes who is served first. The "
-                                   f"latest {PREFERS_SHOWN} are listed, and no member is named. A deal whose preference was not kept because "
-                                   "its member's last deal was not accepted is counted above and not listed: the task of a row may be one a "
-                                   "member is named for elsewhere on this page, which says nothing refused of a person.", class_="note")))
+                                   f"latest {PREFERS_SHOWN} are listed, and no member is named. A deal whose preference waits for its "
+                                   "member's first accepted deal, or for the next one, is counted above and not listed: the task of a row "
+                                   "may be one a member is named for elsewhere on this page, which says nothing refused of a person.",
+                              class_="note")))
 
     waiting = measures["waiting"]
     runs = measures["judge_runs_per_integration"]
