@@ -90,7 +90,7 @@ LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 REPO_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}\Z")
 HEAD_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never a sentence
-MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model|Hive-Tier|Hive-Deal): (.{1,200})\Z")
+MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model|Hive-Tier|Hive-Deal|Hive-Prefer): (.{1,200})\Z")
 METRIC = re.compile(r"[a-z][a-z0-9_]{0,59}\Z")
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 JUDGE_ATTEMPTS = 3  # a deal whose candidates fail the judge, or the hive's own reading, this many times is answered: judge_failed
@@ -104,6 +104,7 @@ JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the
 MEASURED_REASONS = ("goal_not_met", "requirement_not_met")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
+PREFER_BECAUSE = ("not_offered", "no_deal_yet", "last_deal_not_accepted", "no_free_task")  # why a preference is not kept, in the order plan decides them
 FORK_ID = re.compile(r"[0-9]{1,19}\Z")
 HEADS_PER_FORK_MAX = 2000  # a fork with more branches than this is not read at all
 FOLDER_LISTING_BYTES = 64 << 20  # a folder whose own listing is longer than this is not read
@@ -135,7 +136,8 @@ DEFAULTS = {
     "limits": {"changed_lines": 400, "files": 20, "file_bytes": 1_000_000, "line_bytes": 400, "commits": 50, "history_bytes": 32 << 20,
                "heads_per_fork": 30, "judgements_per_sweep": 20, "discovery_seconds": 900, "judging_seconds": 14400, "queue": 500},
     # deals_per_day: the deals an account may be given in a day, not counting those whose candidate was accepted
-    "members": {"min_account_age_days": 90, "deals_per_day": 5, "banned": [], "only": None},
+    # preferences: whether the hive follows, when its rules lose nothing by it, the part of the project an ask prefers
+    "members": {"min_account_age_days": 90, "deals_per_day": 5, "banned": [], "only": None, "preferences": True},
     "models": [],  # the model identifiers the project keeps statistics for; any other is recorded as undeclared
     "judge": {},
     "deal_hours": 3,  # how long a member has, from the moment its deal is published, to push its candidate
@@ -376,6 +378,8 @@ def load_config(path):
             raise HiveError(f"{path}: {key}: a whole number of hours, from {least} to {BACKOFF_MAX_HOURS}")
     if type(config["members"]["deals_per_day"]) is not int or config["members"]["deals_per_day"] < 1:
         raise HiveError(f"{path}: members.deals_per_day: a whole number, 1 at least")
+    if type(config["members"]["preferences"]) is not bool:
+        raise HiveError(f"{path}: members.preferences: true or false")
     config["protected"] = [*ALWAYS_PROTECTED, *config["protected"]]
     if not (isinstance(config["models"], list) and all(isinstance(m, str) and MODEL.match(m) for m in config["models"])):
         raise HiveError(f"{path}: models: a list of model identifiers")
@@ -427,6 +431,40 @@ def load_tasks(path):
                 raise HiveError(f"{path}:{number}: task {task['id']} twice")
             tasks[task["id"]] = task
     return tasks
+
+
+def project_parts(tasks):
+    """The parts of a project a member may say it prefers: every string that a task of the project, open or closed,
+    lists in `files`, as the registry writes it (a folder with its final « / »), sorted. One a marker's line cannot
+    carry (more than 200 characters) is not a part: the worker and the hive read the same list."""
+    return sorted({path for task in tasks.values() for path in task["files"] if len(path) <= 200})
+
+
+def prefer_ok(prefer):
+    """True if a deal's « prefer » has the one shape the hive writes: {"file": a path, "kept": True}, or {"file": a
+    path, "kept": False, "because": one of PREFER_BECAUSE}, and no other key."""
+    return (isinstance(prefer, dict) and isinstance(prefer.get("file"), str) and len(prefer["file"]) <= 200
+            and plain_path(prefer["file"].rstrip("/"))
+            and ((prefer.get("kept") is True and set(prefer) == {"file", "kept"})
+                 or (prefer.get("kept") is False and set(prefer) == {"file", "kept", "because"}
+                     and isinstance(prefer["because"], str) and prefer["because"] in PREFER_BECAUSE)))
+
+
+def deal_prefer(deal, tasks):
+    """What a deal's line says of the part its member prefers, as a step that holds keys writes it: None when the
+    plan's deal names none; else the plan's « prefer » built again, from the registry's own string and this file's own
+    keys, never copied. The plan comes from the step that read the forks: a step that writes holds, by itself, that
+    the preference has the one shape a deal carries (prefer_ok) and names one of the project's parts as the registry
+    writes them (project_parts). Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
+    if "prefer" not in deal:
+        return None
+    prefer = deal["prefer"]
+    part = next((part for part in project_parts(tasks) if part == prefer["file"]), None) if prefer_ok(prefer) else None
+    if part is None:
+        raise HiveError("the plan names a preference that is not one of the project's files as the registry writes them: nothing is written")
+    if prefer["kept"]:
+        return {"file": part, "kept": True}
+    return {"file": part, "kept": False, "because": PREFER_BECAUSE[PREFER_BECAUSE.index(prefer["because"])]}
 
 
 class Ledger:
@@ -691,11 +729,14 @@ class GhApi:
 
 def read_marker(message):
     """The marker of a commit message, or None. Each line alone on its line, each key once.
-      « Hive-Action: ready » + « Hive-Member: <login> » (+ « Hive-Tier: 1|2|3 », the hardest tier the worker takes):
-          deal me a task.
+      « Hive-Action: ready » + « Hive-Member: <login> » (+ « Hive-Tier: 1|2|3 », the hardest tier the worker takes;
+          + « Hive-Prefer: <file> », the part of the project its member prefers): deal me a task.
       « Hive-Action: submit » + « Hive-Task: <id> » + « Hive-Deal: <the deal's instant> » + « Hive-Member: <login> »
           (+ « Hive-Model: <identifier> »): a candidate for the task the hive dealt to this member, in that deal.
-    The member is the account the commit is for: it counts only in that account's own fork."""
+    The member is the account the commit is for: it counts only in that account's own fork.
+    « prefer » is what an ask's line says, as the fork wrote it and unchecked: an ask that names a part nobody knows
+    is still an ask, and the one use of the value is its comparison with the registry's own strings (discover). On
+    a submit the line means nothing: the marker stands as it would without it, and « prefer » is None."""
     found = {}
     for line in message.split("\n"):
         m = MARKER_LINE.match(line.rstrip("\r"))
@@ -712,7 +753,8 @@ def read_marker(message):
         return None
     model = found.get("Hive-Model")
     return {"task": task, "action": action, "member": member, "model": model if model and MODEL.match(model) else None,
-            "tier": int(found.get("Hive-Tier", "3")) if action == "ready" else None, "deal": found.get("Hive-Deal")}
+            "tier": int(found.get("Hive-Tier", "3")) if action == "ready" else None, "deal": found.get("Hive-Deal"),
+            "prefer": found.get("Hive-Prefer") if action == "ready" else None}
 
 
 def commit_message(repo, sha):
@@ -1060,7 +1102,7 @@ def in_upstream(repo, sha):
     return bool(git(repo, "for-each-ref", "--count=1", "--contains", sha, "refs/remotes/origin", "refs/heads").stdout.strip())
 
 
-def discover(repo, config, api, skip, instant, allow_local=False, known=None, accounts=None):
+def discover(repo, config, api, skip, instant, allow_local=False, known=None, accounts=None, parts=()):
     """Lists the project's forks and returns (entries, ignored, reads): one entry per marked commit at the tip of a
     branch of an eligible member's fork, for commits the hive has not answered yet; what need not be read again
     (`known`, the list so far, brought up to date for each fork that was listed: see read_ignored); and, for each
@@ -1070,7 +1112,11 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
     A commit counts only in the fork of the member its marker names: the same commit pushed to someone else's fork
     is nothing there. One fork that fails or stalls never stops the others: each is read with one listing and one
     fetch, both limited in time. A fork is read whole or not at all (heads_per_fork new branch tips at most). When the time allowed for all runs out, what is left waits for the next run, and
-    the forks are read in an order drawn anew each hour, which no fork can shift."""
+    the forks are read in an order drawn anew each hour, which no fork can shift.
+
+    An ask may name the part of the project its member prefers. What the fork wrote there is compared with `parts`
+    (the registry's own strings: project_parts) and goes no further than that comparison: the entry keeps the
+    registry's string, or None for any other value, and nothing of the fork's is logged or handed on."""
     started, limits, entries, slot = time.monotonic(), config["limits"], [], 0
     skip, known, accounts = set(skip), known or {}, {} if accounts is None else accounts
     hour = int(instant.timestamp() // 3600)
@@ -1130,7 +1176,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                 else:
                     found.append({"sha": sha, "repo_id": fork["repo_id"], "login": fork["login"], "member_id": fork["id"],
                                   "task": marker["task"], "action": marker["action"], "model": marker["model"],
-                                  "tier": marker["tier"], "deal": marker["deal"]})
+                                  "tier": marker["tier"], "deal": marker["deal"],
+                                  "prefer": next((part for part in parts if part == marker["prefer"]), None)})
             entries.extend(found)
             reads[fork["id"]] = all(sha in got for sha, _ in missing)
         except HiveError as error:
@@ -1229,13 +1276,33 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        gives it. Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is answered in this run.
-    The draws use a key drawn AFTER the forks were read."""
+    The draws use a key drawn AFTER the forks were read.
+
+    A MEMBER MAY SAY WHICH PART OF THE PROJECT IT PREFERS, and the hive follows it only when that costs its rules
+    nothing. A part is one of the files the project's tasks name (project_parts). The ask names it (« Hive-Prefer »);
+    what the fork wrote is compared with the registry's strings and goes no further (discover): the plan, the ledger
+    and the logs hold the registry's string, and any other value is no preference at all. A member with several asks
+    has a preference only if all of them name the same part. At the member's turn in step 4, with `mine` the tasks
+    it could be dealt anyway (open, free, their rivals free, of its tier), the preference is kept if and only if,
+    decided in this order:
+      a. the project offers preferences (members.preferences); otherwise « not_offered »;
+      b. the member's last deal that came to an end was accepted: its class is 0, as step 3 computed it, before this
+         run answers anything; otherwise « no_deal_yet » (class 1) or « last_deal_not_accepted » (class 2). For a
+         member dealt conditionally, that is its class before the candidate it holds in this run is answered;
+      c. at least one task of `mine` lists the part; otherwise « no_free_task ».
+    The task is then the one the same draw gives among the tasks of `mine` that list the part. In every other case
+    the plain draw runs, unchanged. The deal says what happened (« prefer »: the part, kept or not, and why not); a
+    member whose ask names no part of the registry's has no « prefer » at all.
+    What holds whatever an ask says: a kept preference only ever yields a task that was already in `mine`, so the
+    plain draw could have given it; and nothing else moves. Who is an asker and the order in which askers are served
+    (the classes, then a draw of the member alone) read no preference; the waits, the day's deals, the tiers, the
+    rule on tasks that share a file and the conditional deal are as they are without one."""
     instant, lines, digest = now(), ledger.lines, ledger.digest()
     landed = landings(repo, tip, ledger, instant)
     ledger.append(settle(ledger, instant, landed), write=False)
     accounts = read_accounts(state_folder)
     entries, ignored, reads = discover(repo, config, api, ledger.seen() | upstream_tips(repo), instant, allow_local,
-                                       read_ignored(state_folder), accounts)
+                                       read_ignored(state_folder), accounts, project_parts(tasks))
     key = secrets.token_hex(16)
     deals, done, models, rivals = ledger.deals(), ledger.done(), set(config["models"]), rivals_of(tasks)
 
@@ -1331,6 +1398,13 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         tier = min(e["tier"] for e in asks[member_id])
         askers.append((klass, draw(key, member_id), member_id, tier, conditional))
     askers.sort()
+    # The part each member prefers: the registry's string its asks name, all of them the same one. Kept apart from the
+    # order above, which reads none of it.
+    prefers = {}
+    for member_id, group in asks.items():
+        named = {entry["prefer"] for entry in group}
+        if len(named) == 1 and None not in named:
+            prefers[member_id] = named.pop()
 
     # 4. the deal
     def free(task_id):
@@ -1338,15 +1412,23 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
 
     # A task is dealt only if it is open and free, and so is every task that shares a file with it.
     dealable = {t for t in tasks if is_open(t) and free(t) and all(free(other) for other in rivals[t] if is_open(other))}
-    dealt, conditional_deals = [], []
-    for _, _, member_id, tier, conditional in askers:
+    dealt, conditional_deals, offered = [], [], config["members"]["preferences"]
+    for klass, _, member_id, tier, conditional in askers:
         mine = [t for t in dealable if int(tasks[t].get("tier", 1)) <= tier]
         if not mine:
             continue
-        task_id = min(mine, key=lambda t: draw(key, member_id, t))
+        among, said = mine, {}
+        if member_id in prefers:  # followed only when it costs no rule anything: the project's switch, then the class, then the tasks
+            part = prefers[member_id]
+            listing = [t for t in mine if part in tasks[t]["files"]]
+            because = ("not_offered" if not offered else "no_deal_yet" if klass == 1 else "last_deal_not_accepted" if klass != 0
+                       else None if listing else "no_free_task")
+            among = mine if because else listing  # a kept preference narrows the draw to tasks of `mine`, and to nothing else
+            said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
+        task_id = min(among, key=lambda t: draw(key, member_id, t))
         dealable -= {task_id} | rivals[task_id]
         fork = asks[member_id][0]
-        line = {"task": task_id, "member": fork["login"], "member_id": member_id, "repo_id": fork["repo_id"]}
+        line = {"task": task_id, "member": fork["login"], "member_id": member_id, "repo_id": fork["repo_id"], **said}
         if conditional:
             conditional_deals.append({**line, "after": sorted(c["sha"] for c in queue if c["member_id"] == member_id),
                                       "asks": sorted(e["sha"] for e in asks[member_id])})
@@ -1465,7 +1547,8 @@ def read_plan(plan_, config):
 
     def deal_ok(c):
         return (member_ok(c) and isinstance(c.get("member"), str) and bool(LOGIN.match(c["member"]))
-                and all(c.get(k) is None or (isinstance(c[k], list) and all(is_sha(x) for x in c[k])) for k in ("after", "asks")))
+                and all(c.get(k) is None or (isinstance(c[k], list) and all(is_sha(x) for x in c[k])) for k in ("after", "asks"))
+                and ("prefer" not in c or prefer_ok(c["prefer"])))
 
     def expiry_ok(c):
         return member_ok(c) and stamp(c.get("deal")) and type(c.get("fault")) is bool
@@ -1849,12 +1932,17 @@ def events_of(outcomes, instant, run):
     return events
 
 
-def deal_lines(deals, key, config):
+def deal_lines(deals, key, config, tasks):
     """The ledger lines of deals: their time starts now, when they are written and can be seen, not when they were
-    planned."""
-    at = now()
-    return [{"type": "deal", "at": iso(at), "until": iso(at + dt.timedelta(hours=config["deal_hours"])), "run": key,
-             "task": d["task"], "member": d["member"], "member_id": d["member_id"], "repo_id": d["repo_id"]} for d in deals]
+    planned. A deal whose ask named a part of the project says which, and whether the hive kept it (« prefer », as
+    deal_prefer builds it again from the registry); a deal whose ask named none has no such field."""
+    at, lines = now(), []
+    for d in deals:
+        prefer = deal_prefer(d, tasks)
+        lines.append({"type": "deal", "at": iso(at), "until": iso(at + dt.timedelta(hours=config["deal_hours"])), "run": key,
+                      "task": d["task"], "member": d["member"], "member_id": d["member_id"], "repo_id": d["repo_id"],
+                      **({"prefer": prefer} if prefer else {})})
+    return lines
 
 
 def expired_lines(plan_):
@@ -1872,13 +1960,15 @@ def record(plan_, config, tasks, ledger, state_folder):
     _, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is recorded")
+    for deal in (*plan_["deals"], *plan_["conditional"]):
+        deal_prefer(deal, tasks)  # a preference that is not the registry's stops the step before it writes anything
     key, instant = plan_["key"], now()  # what this step writes is dated now, when it becomes visible
     # First, the pushes earlier runs promised that the plan found IN the project's history: so that the ledger never
     # shows a member with a task it has in fact finished next to the one it is dealt now. A promise the plan did not
     # find there is left open: its push may land after the plan was made, and only the write step, which checks that
     # the project's tip has not moved since, can say that it never did.
     ledger.append(settle(ledger, instant, {commit: True for commit, landed in plan_["landed"].items() if landed}, own=key))
-    ledger.append(expired_lines(plan_) + deal_lines(plan_["deals"], key, config))
+    ledger.append(expired_lines(plan_) + deal_lines(plan_["deals"], key, config, tasks))
     write_ignored(state_folder, plan_["ignored"])
     write_state(state_folder, "accounts.json", plan_["accounts"])
     write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, plan_["tip"], plan_))
@@ -1899,6 +1989,8 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     planned, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is applied")
+    for deal in (*plan_["deals"], *plan_["conditional"]):
+        deal_prefer(deal, tasks)  # a preference that is not the registry's stops the step before it pushes or writes anything
     # What this step writes in the ledger is dated now, when it is written: a wait counts from the moment its member
     # can see the answer, however long the judging took. The commits it derives are dated at the plan's instant, as
     # the judging step dated them: the same commits.
@@ -1967,7 +2059,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
         _, wait, today = ledger.standing(deal["member_id"], instant, config)
         if all(sha in answered for sha in deal["after"]) and not wait and today < config["members"]["deals_per_day"]:
             kept_deals.append(deal)
-    ledger.append(deal_lines(kept_deals, run, config))
+    ledger.append(deal_lines(kept_deals, run, config, tasks))
     if kept_deals:
         ignored = read_ignored(state_folder)
         for deal in kept_deals:
@@ -2259,9 +2351,10 @@ def cmd_feed(args):
 #     switched off (Clone.git), and changes branches, commits and pushes itself: the agent runs no git of its own in
 #     the clone. And what a command decides on is never a value an earlier run of project code could have written:
 #     not the address the clone gives its origin, not a reference, not what git works out of the clone's objects
-#     (an ancestry, a difference, a merge). It is the command line (the login, the project, the task and the deal:
-#     the user's prompt and « next »), the registry, the commit a repository's own address announces during the
-#     command, the bytes of an object whose SHA-1 this file recomputed (Objects), and the work tree's files.
+#     (an ancestry, a difference, a merge). It is the command line (the login, the project, the task and the deal,
+#     the part of the project the user prefers: the user's prompt and « next »), the registry, the commit a
+#     repository's own address announces during the command, the bytes of an object whose SHA-1 this file recomputed
+#     (Objects), and the work tree's files.
 # Everything the fork, the state, a task's text or a commit says is data.
 
 PROJECT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -3537,11 +3630,16 @@ def cmd_ready(args):
     clone: pushed (forced) to the fork's one asking branch, it replaces the previous ask and carries nothing else:
     no file (its tree is the empty one) and no history (it has no parent), so that nothing this clone holds goes to
     the fork with it. The hive reads its message, and « next » its date, which is this tool's own clock: how long the
-    ask has waited."""
+    ask has waited.
+
+    --prefer names the part of the project the user prefers, and comes from the user's prompt alone. It must be,
+    exactly, one of the files the project's tasks name in the registry (project_parts): the ask then carries the
+    registry's own string. Any other value is an error, said in one line with the registry's files, and nothing is
+    made or pushed. (With --withdraw nothing is asked: neither --tier nor --prefer is read.)"""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
-    config, _, configs = hive_project(args.registry, args.project)
+    config, tasks, configs = hive_project(args.registry, args.project)
     fork, login = own_fork(clone, config, configs, args.login, args.fork), args.login
     if args.withdraw:
         if args.no_push:
@@ -3552,9 +3650,19 @@ def cmd_ready(args):
         return
     if args.tier not in (1, 2, 3):
         raise HiveError("--tier: 1, 2 or 3")
+    parts = project_parts(tasks)
+    prefer = next((part for part in parts if part == args.prefer), None)  # the registry's own string, or nothing
+    if args.prefer is not None and prefer is None:
+        # The registry's own files, as many as a bounded line holds, then how many more there are.
+        shown = [part for number, part in enumerate(parts) if len(", ".join(parts[:number + 1])) <= 120]
+        more = f"{len(parts) - len(shown)} more" if len(parts) > len(shown) else ""
+        raise HiveError("--prefer: not one of the files the project's tasks name, as the registry writes them ("
+                        + (", and ".join(filter(None, (", ".join(shown), more))) or "none") + "). Nothing was made or pushed. The file "
+                        "comes from the user's prompt alone: if it is not one of these, ask without --prefer and tell the user")
     # The instant makes each ask a new commit: an ask is used once.
     asked = now()
-    lines = [f"Hive ready ({iso(asked)})", "", "Hive-Action: ready", f"Hive-Member: {login}", f"Hive-Tier: {args.tier}"]
+    lines = [f"Hive ready ({iso(asked)})", "", "Hive-Action: ready", f"Hive-Member: {login}", f"Hive-Tier: {args.tier}"] \
+        + ([f"Hive-Prefer: {prefer}"] if prefer is not None else [])
     commit = clone.commit(EMPTY_TREE, None, "\n".join(lines) + "\n", clone.identity(login, asked))
     if args.no_push:
         print(f"NOT-PUSHED {commit}: the ask is made and nothing was pushed; run the same command again without --no-push to make "
@@ -3618,7 +3726,8 @@ def cmd_submit(args):
     who = clone.identity(login)
     lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
              f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
-    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal}
+    wanted = {"task": args.task, "action": "submit", "member": login, "model": args.model or None, "tier": None, "deal": args.deal,
+              "prefer": None}
     # Run again after a push that did not land, or after --no-push: the same candidate, if HEAD is one this tool made
     # for this member, this task and this deal out of the same files: the marker and, below it, the work, each with
     # the tree the work tree gives now. Else the candidate is made anew on the project's commit: the work, then the
@@ -3735,6 +3844,8 @@ def main(argv=None):
     worker_side(p, pushes=True)
     p.add_argument("--project", required=True)
     p.add_argument("--tier", type=int, default=3, help="the hardest tier this worker takes (1, 2 or 3)")
+    p.add_argument("--prefer", help="the part of the project your user's prompt prefers: one of the files its tasks name, as the registry "
+                                    "writes it (leave it out if the prompt names none)")
     p.add_argument("--withdraw", action="store_true", help="take the ask back instead")
     p.set_defaults(run=cmd_ready)
     p = sub.add_parser("submit", help="volunteer: commit the task's files, check them as the hive will, mark the candidate of your "
