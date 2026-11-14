@@ -1,5 +1,6 @@
 """Tests of the bee tool: python3 -m unittest tools/test_bee.py; in N processes: python3 tools/test_bee.py --processes N"""
 import ast
+import base64
 import collections
 import contextlib
 import hashlib
@@ -12,15 +13,21 @@ import math
 import os
 import pathlib
 import re
+import shlex
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import zlib
 import tempfile
 import time
+import tracemalloc
 import types
 import unicodedata
 import unittest
+import warnings
+import zipfile
 from unittest import mock
 
 import yaml
@@ -990,8 +997,11 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "auto-integration.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
                        "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
-                       "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"}}  # ruche-0132; ruche-0143
-        self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
+                       "suite.yml": {"contents": "read"},  # ruche-0132 (the switch's own check, ruche-0143, went with the switch: November 2026)
+                       "hive-tests.yml": {"contents": "read"},  # the hive protocol's tests (docs/protocol.md)
+                       "hive.yml": {}}  # the hive's hourly run: nothing for the run, each job asks for what it needs (TestHiveWorkflow)
+        # Every entry of the folder, whatever its name ends with: GitHub also runs a workflow written in a .yaml file.
+        self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").iterdir()), sorted(permissions))
         for name, expected_ones in permissions.items():
             with self.subTest(stream=name):
                 stream = self.stream(name)
@@ -1000,7 +1010,10 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 jobs = {"site.yml": {"pause": {}, "reach": {"contents": "read", "actions": "write"}},  # ruche-0133: the push's dispatches
                         "validation.yml": {"dispatch": {"actions": "write"}},
                         "verdicts.yml": {"pause": {}}, "auto-integration.yml": {"pause": {}},  # ruche-0122: verdicts, integration
-                        "auto-merge.yml": {"verify": {"contents": "read", "pull-requests": "read", "actions": "read"}}}.get(name, {})  # ruche-0120
+                        "auto-merge.yml": {"verify": {"contents": "read", "pull-requests": "read", "actions": "read"}},  # ruche-0120
+                        "hive.yml": {"plan": {"contents": "read"}, "judge": {"contents": "read"},  # no job writes to the registry
+                                     "record": {"contents": "read", "actions": "read"},  # the two that take the run's artifacts themselves
+                                     "apply": {"contents": "read", "actions": "read"}}}.get(name, {})
                 self.assertEqual({n: j["permissions"] for n, j in stream["jobs"].items() if "permissions" in j}, jobs)
                 for step in self.steps(name):
                     self.assertNotIn("${{", step.get("run", ""), step.get("name"))
@@ -6139,8 +6152,16 @@ class TestParallelPullRequests(BaseParallel):
 FAKE_GH = r'''
 import json, os, sys
 etat_chemin, log_text, args = os.environ["FAKE_GH_STATE"], os.environ["FAKE_GH_LOG"], sys.argv[1:]
+# Each call also logs what the job's folder ($RUNNER_TEMP) holds when it is made: "runner", {path: bytes}.
+runner, held = os.environ.get("RUNNER_TEMP"), {}
+for folder, _, names in os.walk(runner) if runner else ():
+    for name in names:
+        try:
+            held[os.path.relpath(os.path.join(folder, name), runner)] = os.lstat(os.path.join(folder, name)).st_size
+        except OSError:
+            pass
 with open(log_text, "a", encoding="utf-8") as f:
-    f.write(json.dumps({"args": args, "token": os.environ.get("GH_TOKEN")}) + "\n")
+    f.write(json.dumps({"args": args, "token": os.environ.get("GH_TOKEN"), "runner": held}) + "\n")
 with open(etat_chemin, encoding="utf-8") as f:
     state = json.load(f)
 def sauver():
@@ -6262,17 +6283,62 @@ if args[:1] == ["api"]:
     if answer is not None:
         print(json.dumps(answer))
         sys.exit(0)
-if args[:2] == ["run", "download"]:
-    # verdict.json de la CI du fork : il porte toujours details.base et base_juge (miniz-0032), une base de master, sauf si le
-    # test en donne d'autres (None : clé présente, valeur nulle).
-    pr = next((e for e in state.get("runs", []) if str(e["id"]) == args[2] and e.get("verdict")), None) \
-        or next((p for u, p in prs.items() if u.endswith("/pull/" + args[2]) and p.get("verdict")), None)
-    if pr is None:
+# verdicts.yml: the archive a fork's CI run left, as the API gives it. A run that carries a « verdict » (a PR's, or one of
+# "runs") has one artifact: named verdict, not expired, created at 10:00, numbered after the run (run 99007: 990071). Its
+# "artifacts" lists others in its place ([{...}, ...], each field over that default; None: the API does not answer). An
+# artifact's archive is a zip of one member, verdict.json: the verdict, which always carries details.base and judge_base
+# (miniz-0032), a base of master, unless the test gives others (None: key present, null value). "zip" (the archive's bytes
+# in base64; None: the API does not answer), on the artifact or, for a run's only one, on the run, is served in its place,
+# as it is, after "zip_after" seconds. The API's name filter is ignored here, as if GitHub did not apply it.
+def artifacts_of(number_of, carrier):
+    own = carrier.get("artifacts", [{k: carrier[k] for k in ("zip", "zip_after") if k in carrier}]) or []
+    return [{"id": int(number_of) * 10 + k, "name": "verdict", "expired": False, "created_at": "2026-10-27T10:00:00Z", **a}
+            for k, a in enumerate(own, 1)]
+carriers = {**{u.rsplit("/", 1)[1]: p for u, p in prs.items() if p.get("verdict")},
+            **{str(e["id"]): e for e in state.get("runs", []) if e.get("verdict")}}
+ARTIFACT_FILTER = '[.artifacts[] | select(.name == "verdict" and .expired == false)] | sort_by(.created_at, .id) | last | .id // empty'
+if args[:1] == ["api"] and (m := re.fullmatch(r"repos/[^/]+/[^/]+/actions/runs/([0-9]+)/artifacts", args[1].partition("?")[0])):
+    carrier = carriers.get(m[1])
+    if carrier is None or carrier.get("artifacts", []) is None:
+        print('{"message":"Not Found","status":"404"}')
         sys.exit(1)
-    folder = args[args.index("-D") + 1]
-    os.makedirs(folder, exist_ok=True)
-    with open(os.path.join(folder, "verdict.json"), "w", encoding="utf-8") as f:
-        json.dump({"details": {"base": "ba5e" * 10}, "judge_base": {"base": "ba5e" * 10, "commit": "ba5e" * 10}, **pr["verdict"]}, f)
+    listed = [{k: v for k, v in a.items() if k not in ("zip", "zip_after")} for a in artifacts_of(m[1], carrier)]
+    answer = json.dumps({"total_count": len(listed), "artifacts": listed})
+    if "--jq" not in args:
+        print(answer)
+        sys.exit(0)
+    import shutil, subprocess
+    wanted = args[args.index("--jq") + 1]
+    if shutil.which("jq"):  # the step's own filter, applied as gh applies it
+        r = subprocess.run(["jq", "-r", wanted], input=answer, capture_output=True, text=True)
+        sys.stdout.write(r.stdout)
+        sys.exit(1 if r.returncode else 0)
+    if wanted != ARTIFACT_FILTER:  # without jq on this machine: what the filter known here says, and no other
+        sys.exit(2)
+    kept = sorted((a["created_at"], a["id"]) for a in listed if a["name"] == "verdict" and a["expired"] is False)
+    print(*[i for _, i in kept[-1:]])
+    sys.exit(0)
+if args[:1] == ["api"] and (m := re.fullmatch(r"repos/[^/]+/[^/]+/actions/artifacts/(.+)/zip", args[1])):
+    import base64, io, time, zipfile
+    artifact, carrier = next(((a, c) for n, c in carriers.items() for a in artifacts_of(n, c) if str(a["id"]) == m[1]), (None, None))
+    if artifact is None or artifact.get("zip", "") is None:
+        print('{"message":"Not Found","status":"404"}')
+        sys.exit(1)
+    time.sleep(artifact.get("zip_after", 0))
+    if "zip" in artifact:
+        archive = base64.b64decode(artifact["zip"])
+    else:
+        with zipfile.ZipFile(packed := io.BytesIO(), "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("verdict.json", json.dumps({"details": {"base": "ba5e" * 10}, "judge_base": {"base": "ba5e" * 10, "commit": "ba5e" * 10},
+                                                   **carrier["verdict"]}))
+        archive = packed.getvalue()
+    try:
+        left = memoryview(archive)
+        while left:  # (an output that is not buffered may take less than it is given)
+            left = left[sys.stdout.buffer.write(left):]
+        sys.stdout.buffer.flush()
+    except OSError:  # the file standard output goes to may not grow any further
+        os._exit(1)
     sys.exit(0)
 if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
     owner, repo, _, number_of = args[1].split("/")[1:5]
@@ -6324,6 +6390,38 @@ if args[:1] == ["api"]:
 sys.exit(3)
 '''
 PR_MINIZ = "https://github.com/Bee-ruche/minizBee/pull/"
+
+
+def zip_of(*members):
+    """The bytes of a zip archive that holds these members, in this order (the fake gh serves them as a fork's archive: "zip").
+    A member is (name, what): a text or bytes (a plain file, deflated), None (a folder: its name gets its « / »), or a mapping:
+    "data" (its text or bytes) or "zeros" (that many zero bytes) and, as needed, "method" (zipfile.ZIP_STORED…, in place of
+    deflated), "mode" (its Unix mode, type included: 0o120777 is a symbolic link's, whose data is where it leads; 0: none),
+    "attributes" (its external attributes as they are, in place of the mode's), "flags" (added to its flag bits: 1 says
+    encrypted) and "declares" (written as its size in place of the true one, with the checksum of that many of its bytes: a
+    member that unfolds to more than it says)."""
+    packed, changes = io.BytesIO(), []
+    with warnings.catch_warnings(), zipfile.ZipFile(packed, "w") as archive:
+        warnings.simplefilter("ignore")  # zipfile says when a name comes twice: here it is meant
+        for name, what in members:
+            what, name = ({"mode": 0o040755}, name + "/") if what is None else (what if isinstance(what, dict) else {"data": what}, name)
+            data = bytes(what["zeros"]) if "zeros" in what else what.get("data", b"")
+            data, mode = data.encode("utf-8") if isinstance(data, str) else data, what.get("mode", 0o100644)
+            member = zipfile.ZipInfo(name, (2026, 10, 27, 10, 0, 0))
+            member.external_attr = what.get("attributes", mode << 16 | (0x10 if stat.S_ISDIR(mode) else 0))
+            archive.writestr(member, data, what.get("method", zipfile.ZIP_DEFLATED))
+            changes.append((what.get("flags", 0), what.get("declares"), data))
+    packed = bytearray(packed.getvalue())
+    with zipfile.ZipFile(io.BytesIO(bytes(packed))) as archive:
+        entry = archive.start_dir  # the directory's entries follow one another in the members' order
+        for member, (flags, declares, data) in zip(archive.infolist(), changes):
+            for header, flags_at, checksum_at in ((member.header_offset, 6, 14), (entry, 8, 16)):  # the member's own header, the directory's
+                struct.pack_into("<H", packed, header + flags_at, struct.unpack_from("<H", packed, header + flags_at)[0] | flags)
+                if declares is not None:
+                    struct.pack_into("<L", packed, header + checksum_at, zlib.crc32(data[:declares]))
+                    struct.pack_into("<L", packed, header + checksum_at + 8, declares)  # after the checksum: the packed size, then this one
+            entry += 46 + sum(struct.unpack_from("<3H", packed, entry + 28))  # an entry, then its name, extra field and comment
+    return bytes(packed)
 
 
 class TestAdversarialReview(BaseParallel):
@@ -6396,6 +6494,11 @@ class TestAdversarialReview(BaseParallel):
     @staticmethod
     def calls_of(calls, *command):
         return [a for a in calls if a["args"][:len(command)] == list(command)]
+
+    @staticmethod
+    def ci_calls(calls):
+        """The calls that read a fork's CI: its runs, their artifacts, an archive (the step asks GitHub's API for each)."""
+        return [a for a in calls if a["args"][:1] == ["api"] and len(a["args"]) > 1 and "/actions/" in a["args"][1]]
 
     def reviewed_race(self, parallel_gain=0.03, holder_gain=0.05):
         c1, c2 = self.race_of_two(parallel_gain, holder_gain)  # c1 bruno 14:00, c2 alice 17:00; F = 31 Oct 14:00
@@ -6783,7 +6886,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertIn(f"{c1}: PR {PR_MINIZ}99007 was opened by mallory, not by alice; no verdict", output_text)
         self.assertNotIn("verdict", self.rec(c1))
-        self.assertFalse(self.calls_of(calls, "run"), "no CI run is even read")
+        self.assertFalse(self.ci_calls(calls), "no CI run is even read, and no archive asked for")
         states[PR_MINIZ + "99007"]["author"] = "Alice"  # the GitHub login ignores case
         self.step("Fetch the verdicts", states, stream="verdicts.yml")
         rec = self.rec(c1)
@@ -6867,7 +6970,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertFalse([a for a in calls if "https://github.com/Bee-ruche/registre/pull/99" in a["args"]],
                          "no request for a registry PR")
-        self.assertFalse(self.calls_of(calls, "run"))
+        self.assertFalse(self.ci_calls(calls))
 
     def test_credit_theft_neither_merge_nor_record(self):
         self.close_gate()
@@ -7450,6 +7553,189 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.refusal(output_text, bee.VERDICT_WAIT[code], prs)
         self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": code, "sha": sha})
 
+    # The archive of a fork's CI run (the fake gh's "zip" and "artifacts"), and what the pass makes of it.
+    OWN = {"verdict/verdict.json", "verdict/bases.txt", "verdict/files.txt", "verdict/manifest.yaml"}  # what this step writes itself
+    NOT_WHOLE = "the archive was not downloaded whole (GitHub's answer, more than 1 MiB, or more than two minutes)"
+    NOT_TAKEN = "bee: verdict.json is not taken from the archive: "
+
+    @classmethod
+    def usual(cls, verdict=None):
+        """verdict.json as the fake gh writes it: the verdict (GOOD by default) with the bases its verdicts declare."""
+        return json.dumps({"details": {"base": cls.MASTER}, "judge_base": {"base": cls.MASTER, "commit": cls.MASTER}, **(verdict or cls.GOOD)})
+
+    @classmethod
+    def packed(cls, *members, verdict=None, alone=False):
+        """A fork's archive for the fake gh ("zip"): these members (zip_of), after the usual verdict.json unless one of them
+        takes its name or they are to be `alone`."""
+        first = [] if alone or any(name == "verdict.json" for name, _ in members) else [("verdict.json", cls.usual(verdict))]
+        return base64.b64encode(zip_of(*first, *members)).decode("ascii")
+
+    @staticmethod
+    def asked(calls):
+        """What the pass asked GitHub about archives: (the runs whose artifacts it listed, the artifacts whose archive it took)."""
+        paths = [a["args"][1] for a in calls if a["args"][:1] == ["api"] and a["args"][1:]]
+        return ([m[1] for p in paths if (m := re.search(r"(?s)/actions/runs/(.*)/artifacts", p))],
+                [m[1].removesuffix("/zip") for p in paths if (m := re.search(r"(?s)/actions/artifacts/(.*)", p))])
+
+    def said(self, output_text, reason):
+        self.assertIn(f"  | {self.cid}: {reason}; no verdict is recorded, judged again at the next pass.\n", output_text)
+
+    def only_its_own_files(self, calls):
+        """All the job's folder held at each gh call of the pass (the fake gh logs it): the API's answers, this step's own files
+        and, at the one call that downloads it, the archive, one file; none of more than 1 MiB. After the pass: the answers."""
+        for call in calls:
+            archive = {"fork-archive.zip"} if call["args"][1:] and call["args"][1].endswith("/zip") else set()
+            self.assertLessEqual({p for p in call["runner"] if not p.startswith("api/")}, self.OWN | archive, call["args"])
+            self.assertLessEqual(max(call["runner"].values(), default=0), 1 << 20, call["args"])
+        self.assertEqual([p.name for p in (self.dir.parent / "runner").iterdir()], ["api"], "nothing of any archive stays after the pass")
+
+    def test_one_member_is_taken_from_a_forks_archive_and_nothing_else_of_it_is_ever_written(self):
+        """The archive is the fork's: besides verdict.json it can hold anything, under any name: the names of the files this step
+        writes, folders and links, paths that leave the folder or start at the root, a thousand heavy members. It is never
+        unpacked: the verdict is recorded as usual, the pass goes on (the step ends well: `step` checks it), nothing is written
+        where the archive says, and the archive itself, one file, is gone as soon as its member is taken."""
+        root = self.dir.parent
+        outside = [root / "outside.txt", root / "verdict.json", root / "runner" / "outside.txt", self.dir / "outside.txt"]
+        archives = {"the names this step writes": [("bases.txt", None), ("files.txt", None), ("manifest.yaml", None), ("bases.txt/more", "x"),
+                                                   ("tree", {"data": "/", "mode": 0o120777}), ("verdict.json.d/x", "y")],
+                    "paths that leave the folder": [("../verdict.json", "{}"), ("../outside.txt", "x"), ("../../outside.txt", "x"),
+                                                    (str(outside[0]), "x"), ("verdict/../outside.txt", "x"), ("outside.txt", "x")],
+                    "a thousand heavy members": [(f"heavy-{k}.bin", {"zeros": 512 << 10}) for k in range(1000)]}
+        for name, members in archives.items():
+            with self.subTest(name):
+                output_text, verdict, calls = self.collect({}, zip=self.packed(*members))
+                self.assertEqual((verdict["gain"], verdict["run"]), (0.05, self.RUNS + "99007"), output_text)
+                self.assertNotIn("Is a directory", output_text)
+                self.assertEqual(self.asked(calls), (["99007"], ["990071"]))
+                self.assertIn("verdict/verdict.json", calls[-1]["runner"], "the later calls are logged with what the folder holds")
+                self.only_its_own_files(calls)
+                self.assertFalse([p for p in outside if p.exists()])
+
+    def test_a_forks_archive_too_heavy_for_a_verdict_is_no_verdict_and_nothing_of_any_archive_stays(self):
+        """An archive of more than 1 MiB is not downloaded past it; a verdict.json that declares more than 1 MiB is not read; one
+        that unfolds to more than it declares is read up to what it declares, and is no verdict. The log says which, and at no
+        time does the job's folder hold a file of more than 1 MiB."""
+        stored = lambda n: {"zeros": n, "method": zipfile.ZIP_STORED}  # noqa: E731 - zeros that weigh what they are
+        for name, members, reason in (
+                ("an archive of more than 1 MiB", [("padding.bin", stored(1 << 20))], self.NOT_WHOLE),
+                ("a verdict that declares more than 1 MiB", [("verdict.json", {"zeros": (1 << 20) + 1})],
+                 self.NOT_TAKEN + "that member declares more than 1048576 bytes"),
+                ("a verdict that unfolds to more than it declares", [("verdict.json", {"zeros": 64 << 20, "declares": 1 << 20})], None)):
+            with self.subTest(name):
+                output_text, verdict, calls = self.collect({}, zip=self.packed(*members))
+                self.assertIsNone(verdict, output_text)
+                if reason:
+                    self.said(output_text, reason)
+                else:  # taken as it declares itself: 1 MiB, which bee record-verdict does not read
+                    self.assertIn("more than 64 KiB: verdict refused, not read", output_text)
+                    self.assertEqual(calls[-1]["runner"]["verdict/verdict.json"], 1 << 20)
+                self.only_its_own_files(calls)
+        output_text, verdict, calls = self.collect({}, zip=self.packed(("small.bin", stored(1 << 19))))
+        self.assertEqual(verdict["gain"], 0.05, "what else it holds, when it is not heavy, changes nothing")
+        self.only_its_own_files(calls)
+        # Nothing stays once a pass is over, even of what the folder held when it began, and even if the pass took no archive.
+        runner, elsewhere = self.dir.parent / "runner", self.dir.parent / "elsewhere"
+        (runner / "verdict").mkdir()
+        (runner / "verdict" / "verdict.json").write_text("{}", encoding="utf-8")
+        (runner / "fork-archive.zip").write_bytes(b"left there")
+        output_text, verdict, calls = self.collect({}, verdict=None)
+        self.assertEqual((verdict, self.asked(calls)), (None, ([], [])), output_text)
+        self.assertEqual([p.name for p in runner.iterdir()], ["api"])
+        # The archive is a file of the pass's own making: what was left under its name, were it a link, is removed, never written through.
+        (runner / "fork-archive.zip").symlink_to(elsewhere)
+        output_text, verdict, calls = self.collect({})
+        self.assertEqual((verdict["gain"], elsewhere.exists(), [p.name for p in runner.iterdir()]), (0.05, False, ["api"]), output_text)
+        # On a machine where the limit on a file's size cannot be set (here a function takes ulimit's place), no archive is asked for.
+        with mock.patch.dict(os.environ, {"BASH_FUNC_ulimit%%": "() { return 1; }"}):
+            output_text, verdict, calls = self.collect({})
+        self.assertEqual((verdict, self.asked(calls)), (None, (["99007"], [])), output_text)
+        self.said(output_text, self.NOT_WHOLE)
+
+    def test_a_verdict_that_is_not_a_plain_file_is_no_verdict(self):
+        """In an archive a folder or a link is a member that says it is one, and a link's data is where it leads. Such a
+        verdict.json is refused, never followed nor read, even when its data is a whole verdict."""
+        for label, what, reason in (("a folder", None, "no member has that name"),
+                                    ("a member that says it is a folder", {"data": self.usual(), "mode": 0o040755}, "that member is not a plain file"),
+                                    ("a link", {"data": "/etc/hostname", "mode": 0o120777}, "that member is not a plain file"),
+                                    ("a link whose data is a whole verdict", {"data": self.usual(), "mode": 0o120777}, "that member is not a plain file")):
+            with self.subTest(label):
+                output_text, verdict, calls = self.collect({}, zip=self.packed(("verdict.json", what)))
+                self.assertIsNone(verdict, output_text)
+                self.said(output_text, self.NOT_TAKEN + reason)
+                self.assertNotIn("Is a directory", output_text)
+                self.only_its_own_files(calls)
+
+    def test_an_archive_that_does_not_hold_verdict_json_once_is_no_verdict(self):
+        """Twice under that name (which one would be the verdict?), under no name that is exactly it, or no archive at all: no
+        verdict, and the log says why in bee's own words, whatever the archive says."""
+        good, wrong = ("verdict.json", self.usual()), ("verdict.json", self.usual(self.WRONG))
+        whole = zip_of(good)
+        text = lambda data: base64.b64encode(data).decode("ascii")  # noqa: E731
+        for label, archive, reason in (
+                ("twice", self.packed(good, wrong), "more than one member has that name"),
+                ("twice the same", self.packed(good, ("PIEGE", "x"), good), "more than one member has that name"),
+                ("under other names", self.packed(("verdict.txt", good[1]), ("Verdict.json", good[1]), ("x/verdict.json", good[1]),
+                                                  ("./verdict.json", good[1]), ("verdict.json ", good[1]), alone=True), "no member has that name"),
+                ("an empty archive", self.packed(alone=True), "no member has that name"),
+                ("no archive", text(b"PIEGE\n::error::PIEGE ##[error]PIEGE\n"), "the archive is unreadable (BadZipFile)"),
+                ("nothing", text(b""), "the archive is unreadable (BadZipFile)"),
+                ("an archive cut short", text(whole[:len(whole) // 2]), "the archive is unreadable (BadZipFile)")):
+            with self.subTest(label):
+                output_text, verdict, calls = self.collect({}, zip=archive)
+                self.assertIsNone(verdict, output_text)
+                self.said(output_text, self.NOT_TAKEN + reason)
+                self.assertEqual(self.asked(calls), (["99007"], ["990071"]))
+                self.assertNotIn("PIEGE", output_text)
+                self.assertFalse([l for l in output_text.splitlines() if l and not l.startswith("  | ")], output_text)
+                self.only_its_own_files(calls)
+
+    def test_the_archive_is_the_runs_latest_artifact_named_verdict_and_its_number_is_made_of_digits(self):
+        """A run that was run again has several artifacts of that name: the latest created is taken, then the highest number;
+        never one of another name, nor an expired one. Without one, or when the API does not answer, no archive is asked for
+        and nothing is said (as when the run has left none yet). A number that is not made of digits reaches no command."""
+        good, wrong = self.packed(verdict={**self.GOOD, "gain": 0.04}), self.packed(verdict=self.WRONG)
+        later = {"created_at": "2026-10-27T10:20:00Z"}
+        output_text, verdict, calls = self.collect({}, artifacts=[
+            {"id": 7, "zip": wrong}, {"id": 5, **later, "zip": good}, {"id": 4, **later, "zip": wrong}, {"id": 6, **later, "name": "verdicts", "zip": wrong},
+            {"id": 8, **later, "name": "Verdict", "zip": wrong}, {"id": 9, "created_at": "2026-10-27T10:30:00Z", "expired": True, "zip": wrong}])
+        self.assertEqual((verdict["gain"], self.asked(calls)), (0.04, (["99007"], ["5"])), output_text)
+        self.only_its_own_files(calls)
+        for label, artifacts in (("none of that name", [{"name": "Verdict"}, {"name": "verdict.json"}, {"name": "verdict "}, {"name": "other"}]),
+                                 ("an expired one", [{"expired": True}]), ("one that does not say whether it expired", [{"expired": None}]),
+                                 ("none", []), ("the API does not answer", None)):
+            with self.subTest(label):
+                output_text, verdict, calls = self.collect({}, artifacts=artifacts)
+                self.assertEqual((verdict, output_text.strip(), self.asked(calls)), (None, "", (["99007"], [])))
+        for number in ("12;touch PIEGE", "990071/../990071", "990071 ", "990071\n990071", "-990071", "9" * 21, None):
+            with self.subTest(number=number):
+                output_text, verdict, calls = self.collect({}, artifacts=[{"id": number}])
+                self.assertEqual((verdict, output_text.strip(), self.asked(calls)), (None, "", (["99007"], [])))
+                self.assertFalse(list(self.dir.parent.rglob("PIEGE")))
+        # The archive itself that the API does not give: the log says so, and the pass goes on.
+        output_text, verdict, calls = self.collect({}, zip=None)
+        self.assertEqual((verdict, self.asked(calls)), (None, (["99007"], ["990071"])), output_text)
+        self.said(output_text, self.NOT_WHOLE)
+        self.only_its_own_files(calls)
+
+    def test_an_archive_that_takes_more_than_its_time_is_no_verdict(self):
+        """The download has two minutes. Here a stand-in for `timeout` notes what it is asked and gives one second: an archive
+        that comes after two is no verdict, and the pass goes on; without the stand-in, the same archive is within its time."""
+        root = self.dir.parent
+        (root / "bin").mkdir(exist_ok=True)
+        stand_in, noted = root / "bin" / "timeout", root / "timeout.log"
+        stand_in.write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(noted))}\nshift\nexec {shlex.quote(shutil.which("timeout"))} 1 "$@"\n',
+                            encoding="utf-8")
+        stand_in.chmod(0o755)
+        output_text, verdict, calls = self.collect({}, zip_after=2)
+        self.assertEqual((verdict, self.asked(calls)), (None, (["99007"], ["990071"])), output_text)
+        self.said(output_text, self.NOT_WHOLE)
+        self.assertEqual([l for l in noted.read_text(encoding="utf-8").splitlines() if l.endswith("/zip")],
+                         ["120 gh api repos/Bee-ruche/minizBee/actions/artifacts/990071/zip"])
+        self.only_its_own_files(calls)
+        stand_in.unlink()
+        output_text, verdict, _ = self.collect({}, zip_after=2)
+        self.assertEqual(verdict["gain"], 0.05, output_text)
+
     def test_criterion_1_only_the_run_of_the_recorded_pr_to_the_default_branch_is_kept(self):
         """For the same commit, a run of another event, of another PR, of another base, of another branch, of another
         repository (even one of the same name: C4, by id), or not finished, is never kept, even if more recent than the PR's."""
@@ -7465,13 +7751,16 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                       self.execution_api(99910, self.WRONG, head_repository=self.repo("Bee-ruche/minizBee", 4242))]
         output_text, verdict, calls = self.collect({"runs": foreign})
         self.assertEqual((verdict["gain"], verdict["run"]), (0.05, self.RUNS + "99007"), output_text)
-        self.assertEqual([a["args"][2] for a in self.calls_of(calls, "run", "download")], ["99007"])
+        self.assertEqual(self.asked(calls), (["99007"], ["990071"]), "the archive of that run, and no other")
+        self.assertEqual([a["args"][:3] for a in calls if "/artifacts" in a["args"][1]],
+                         [["api", "repos/Bee-ruche/minizBee/actions/runs/99007/artifacts?name=verdict&per_page=100", "--jq"],
+                          ["api", "repos/Bee-ruche/minizBee/actions/artifacts/990071/zip"]])
         self.assertTrue([a for a in calls if a["args"][1].startswith("repos/Bee-ruche/minizBee/actions/workflows/bee-ci.yml/runs?"
                                                                       "head_sha=abc1234&event=pull_request&status=completed")])
         # Without the PR's run: none is kept, and the log says so (without waiting: it may still come).
         output_text, verdict, calls = self.collect({"runs": foreign}, verdict=None)
         self.assertIsNone(verdict)
-        self.assertFalse(self.calls_of(calls, "run", "download"))
+        self.assertEqual(self.asked(calls), ([], []))
         self.refusal(output_text, "10 run(s) of bee-ci.yml on this commit, none of this PR to master (pull_request event)")
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, verdict=None)
@@ -7560,7 +7849,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 output_text, verdict, calls = self.collect({PR_MINIZ + "99008": {**other, **pr}})
                 self.assertIsNone(verdict)
                 self.waiting(output_text, "pr_open", " (#99008)")
-                self.assertFalse(self.calls_of(calls, "run", "download"))
+                self.assertEqual(self.asked(calls), ([], []))
         closed = {**other, "state": "CLOSED", "branch": "task/99007", "base": "forgee", "opened_at": "2026-10-27T08:30:00Z",
                   "fermee_le": "2026-10-27T09:30:00Z"}
         forged = self.execution_api(99908, self.WRONG, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # rerun
@@ -7585,7 +7874,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 output_text, verdict, calls = self.collect({"runs": [former]}, **events)
                 self.assertIsNone(verdict)
                 self.waiting(output_text, "base_changed")
-                self.assertFalse(self.calls_of(calls, "run", "download"))
+                self.assertEqual(self.asked(calls), ([], []))
         output_text, verdict, _ = self.collect({}, base="task/former")
         self.assertIsNone(verdict)
         self.waiting(output_text, "other_base")
@@ -7752,6 +8041,155 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         # gh api --paginate puts the pages end to end: each is read, the lists unfolded.
         (self.dir.parent / "pages.json").write_text('[{"event": "a"}][{"event": "b"}]\n{"x": 1}\n', encoding="utf-8")
         self.assertEqual(bee.api_answers(self.dir.parent, "pages"), [{"event": "a"}, {"event": "b"}, {"x": 1}])
+
+
+class TestArchiveMember(unittest.TestCase):
+    """bee archive-member, with which verdicts.yml takes verdict.json from the archive a fork's CI left: one member of a zip
+    archive someone else built, by its exact name and up to a size, written to standard output as it is. The archive is never
+    unpacked and no other member of it is read; a refusal is one line of bee's own, whatever the archive says, with code 1."""
+
+    NOT_TAKEN = "bee: verdict.json is not taken from the archive: "
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.dir = pathlib.Path(self.temp.name)
+
+    def archive(self, data):
+        (self.dir / "archive.zip").write_bytes(data)
+        return str(self.dir / "archive.zip")
+
+    def take(self, data, most=1 << 20):
+        """The command itself, run in the archive's folder: (code, standard output as bytes, standard error)."""
+        r = subprocess.run([sys.executable, "-B", str(ROOT / "tools/bee.py"), "archive-member", self.archive(data), "verdict.json", "--most", str(most)],
+                           cwd=self.dir, capture_output=True, stdin=subprocess.DEVNULL)
+        return r.returncode, r.stdout, r.stderr.decode("utf-8")
+
+    def refused(self, data, reason, most=1 << 20):
+        """Refused with exactly this line, and nothing else on either output."""
+        self.assertEqual(launch("archive-member", self.archive(data), "verdict.json", "--most", str(most)), (1, self.NOT_TAKEN + reason + "\n"))
+
+    def test_the_one_member_of_that_name_is_written_as_it_is(self):
+        """Any bytes, stored or deflated, with a plain file's mode or none, up to exactly the size allowed. The members beside it
+        are never read: other names (one byte away, another case, in a folder, cut by a NUL), paths that leave the folder,
+        folders, links, heavy, encrypted or packed otherwise. Nothing is written but standard output."""
+        content = b'{"ci": "green"}\r\n\x00\xff' + bytes(range(256))
+        beside = [("../verdict.json", "PIEGE"), ("/verdict.json", "PIEGE"), ("Verdict.json", "PIEGE"), ("x/verdict.json", "PIEGE"),
+                  ("verdict.jsonZPIEGE", "PIEGE"), ("verdict.json.d", None), ("link", {"data": "/etc/hostname", "mode": 0o120777}),
+                  ("heavy.bin", {"zeros": 8 << 20}), ("sealed", {"data": "PIEGE", "flags": 1}), ("packed", {"data": "PIEGE", "method": zipfile.ZIP_BZIP2})]
+        for method, mode in ((zipfile.ZIP_DEFLATED, 0o100644), (zipfile.ZIP_STORED, 0o100755), (zipfile.ZIP_DEFLATED, 0)):
+            with self.subTest(method=method, mode=mode):
+                data = zip_of(*beside[:5], ("verdict.json", {"data": content, "method": method, "mode": mode}), *beside[5:])
+                data = data.replace(b"verdict.jsonZPIEGE", b"verdict.json\0PIEGE")  # a name that a NUL would cut to verdict.json
+                self.assertEqual(self.take(data), (0, content, ""))
+        self.assertEqual(self.take(zip_of(("verdict.json", content)), most=len(content)), (0, content, ""))
+        self.assertEqual(self.take(zip_of(("verdict.json", b""))), (0, b"", ""))
+        self.assertEqual([p.name for p in self.dir.iterdir()], ["archive.zip"])
+
+    def test_each_refusal_is_one_line_of_bee_s_own_and_nothing_is_written(self):
+        good = ("verdict.json", '{"ci": "green"}')
+        whole = zip_of(good)
+        cut_by_nul = zip_of(("verdict.jsonZx", good[1])).replace(b"verdict.jsonZx", b"verdict.json\0x")
+        refusals = {
+            "no member has that name": [zip_of(), zip_of(("verdict.txt", "PIEGE")), zip_of(("verdict.json", None)), cut_by_nul,
+                                        zip_of(("VERDICT.JSON", "x"), ("x/verdict.json", "x"), ("./verdict.json", "x"), ("verdict.json ", "x"))],
+            "more than one member has that name": [zip_of(good, good), zip_of(good, ("PIEGE", "x"), ("verdict.json", "PIEGE")),
+                                                   zip_of(good, ("verdict.json", None), good)],
+            "that member is not a plain file": [zip_of(("verdict.json", {"data": good[1], "mode": mode}))  # a folder, a link, a pipe, devices, a socket
+                                                for mode in (0o040755, 0o120777, 0o010644, 0o020644, 0o060644, 0o140644)]
+                                               + [zip_of(("verdict.json", {"data": good[1], "attributes": 0x10}))],  # a folder, as MS-DOS says it
+            "that member is encrypted": [zip_of(("verdict.json", {"data": good[1], "flags": flags})) for flags in (0x1, 0x40, 0x41)],
+            "that member is neither stored nor deflated": [zip_of(("verdict.json", {"data": good[1], "method": method}))
+                                                           for method in (zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA)],
+            "that member declares more than 16 bytes": [zip_of(("verdict.json", "x" * 17)), zip_of(("verdict.json", {"zeros": 4 << 20}))]}
+        for reason, archives in refusals.items():
+            for k, data in enumerate(archives):
+                with self.subTest(reason=reason, k=k):
+                    self.refused(data, reason, most=16)
+        self.assertEqual(self.take(zip_of(good), most=16), (0, good[1].encode(), ""), "the same member, alone and plain, is taken")
+        # An archive that cannot be read: the line names the kind of error, never what the error says.
+        swapped = bytearray(whole)
+        swapped[len(good[0]) + 32] ^= 0xFF  # a byte of the member's data
+        unreadable = {"no archive": b"PIEGE\n::error::PIEGE ##[error]PIEGE\n", "nothing": b"", "cut short": whole[:len(whole) // 2],
+                      "its last byte missing": whole[:-1], "data that is not the member's": bytes(swapped),
+                      "a header that names another member": whole.replace(b"verdict.json", b"verdict.PIEG", 1)}
+        for name, data in unreadable.items():
+            with self.subTest(unreadable=name):
+                code, text = launch("archive-member", self.archive(data), "verdict.json", "--most", "16")
+                self.assertEqual(code, 1)
+                self.assertRegex(text, r"\A" + re.escape(self.NOT_TAKEN) + r"the archive is unreadable \([A-Za-z]+\)\n\Z")
+        for name, path in (("no file", self.dir / "absent.zip"), ("a folder", self.dir)):
+            with self.subTest(unreadable=name):
+                self.assertRegex(launch("archive-member", str(path), "verdict.json", "--most", "16")[1], r"the archive is unreadable \([A-Za-z]+Error\)\n\Z")
+        # The command itself: nothing on standard output, the line on standard error.
+        self.assertEqual(self.take(zip_of(good, good)), (1, b"", self.NOT_TAKEN + "more than one member has that name\n"))
+        self.assertEqual(self.take(b"PIEGE"), (1, b"", self.NOT_TAKEN + "the archive is unreadable (BadZipFile)\n"))
+        self.assertEqual([p.name for p in self.dir.iterdir()], ["archive.zip"])
+
+    def test_reading_a_member_costs_the_size_allowed_at_most_whatever_it_unfolds_to(self):
+        """A member that declares more than allowed is not even opened. One that declares a thousand bytes and unfolds to 64 MiB
+        is read as the thousand bytes it declares, in a few MiB of memory. And were a member's reading to give without end, one
+        byte beyond the size allowed would be asked for, never more, and the member refused."""
+        heavy = self.archive(zip_of(("verdict.json", {"zeros": 64 << 20, "declares": 1000})))
+        with mock.patch.object(zipfile.ZipFile, "open", side_effect=AssertionError("opened")):
+            with self.assertRaises(bee.BeeError) as refusal:
+                bee.archive_member(heavy, "verdict.json", 999)
+        self.assertEqual(str(refusal.exception), "verdict.json is not taken from the archive: that member declares more than 999 bytes")
+        traced = tracemalloc.is_tracing()
+        tracemalloc.start()
+        try:
+            tracemalloc.reset_peak()
+            data = bee.archive_member(heavy, "verdict.json", 1 << 20)
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            if not traced:
+                tracemalloc.stop()
+        self.assertEqual(data, bytes(1000))
+        self.assertLess(peak, 16 << 20, "the memory the reading took, in bytes")
+
+        class Endless:
+            """A member's reading that gives as many bytes as it is asked for."""
+            sizes = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *error):
+                return False
+
+            def read(self, size=-1):
+                self.sizes.append(size)
+                if size is None or size < 0:
+                    raise AssertionError("read without a size")
+                return bytes(size)
+
+        small = self.archive(zip_of(("verdict.json", "x")))
+        with mock.patch.object(zipfile.ZipFile, "open", return_value=Endless()):
+            with self.assertRaises(bee.BeeError) as refusal:
+                bee.archive_member(small, "verdict.json", 10)
+        self.assertEqual(str(refusal.exception), "verdict.json is not taken from the archive: that member holds more than 10 bytes")
+        self.assertEqual(Endless.sizes, [11])
+
+    def test_a_member_that_standard_output_does_not_take_whole_is_a_failure_never_a_shorter_member(self):
+        """Standard output is a file that may not grow past 4 KiB, and the member weighs 8: the command fails, whether Python
+        buffers its output or not (unbuffered, a write that takes less than it is given says so without failing)."""
+        import resource
+        path, taken = self.archive(zip_of(("verdict.json", "x" * 8192))), self.dir / "taken"
+        for unbuffered in ("1", ""):
+            with self.subTest(unbuffered=unbuffered), open(taken, "wb") as output:
+                r = subprocess.run([sys.executable, "-B", str(ROOT / "tools/bee.py"), "archive-member", path, "verdict.json", "--most", "8192"],
+                                   stdout=output, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env={**os.environ, "PYTHONUNBUFFERED": unbuffered},
+                                   preexec_fn=lambda: resource.setrlimit(resource.RLIMIT_FSIZE, (4096, 4096)))
+                self.assertNotEqual(r.returncode, 0, r.stderr)
+                self.assertLessEqual(taken.stat().st_size, 4096)
+
+    def test_a_pass_that_does_not_end_is_stopped_within_the_hour(self):
+        """The job that takes the forks' archives has a time limit of its own, well under GitHub's six hours, and well over the
+        two minutes it gives one archive."""
+        job = yaml.safe_load((ROOT / ".github/workflows/verdicts.yml").read_text(encoding="utf-8"))["jobs"]["verdicts"]
+        self.assertIs(type(job["timeout-minutes"]), int)
+        self.assertTrue(15 <= job["timeout-minutes"] <= 60, job["timeout-minutes"])
+        self.assertEqual(re.findall(r"timeout ([0-9]+) gh api \"repos/\$repo/actions/artifacts/", "".join(s.get("run", "") for s in job["steps"])), ["120"])
 
 
 class BaseAgora(BaseTest):
@@ -17059,7 +17497,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
                 output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
                 self.assertIn(f"PR {PR_MINIZ}99007 was opened by {login}, not by alice; no verdict", output_text)
                 self.assertNotIn("verdict", self.rec(c1))
-                self.assertFalse(self.calls_of(calls, "run"))
+                self.assertFalse(TestAdversarialReview.ci_calls(calls))
         # An unreadable declaration maps no one (fail closed).
         declaration = (self.dir / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
         (self.dir / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
@@ -19577,6 +20015,13 @@ class TestGitHelper(unittest.TestCase):
 # it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
 # an empty shard or a failed process fails the run.
 # Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
+# A run starts all its processes at once, and the suite holds tests that start this very file: so a run never starts more
+# than MOST_PROCESSES processes, whatever the number of tests, and this file's own entry (`--processes`) starts no run from
+# inside a process of one (each is told that it is one, by INSIDE in its environment). Either way the run fails and nothing
+# is run. (The tests of the runner itself call run_in_parallel on a stand-in module of five tests, from inside a process.)
+
+MOST_PROCESSES = 64
+INSIDE = "BEE_SUITE_PROCESS"
 
 def test_name(test):
     return f"{type(test).__qualname__}.{test._testMethodName}"
@@ -19621,7 +20066,11 @@ def check_it(tests, slices, reports=None):
 
 
 def run_in_parallel(command, tests, processus):
-    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
+    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once.
+    Asked for more than MOST_PROCESSES, it starts none and fails."""
+    if processus > MOST_PROCESSES:
+        print(f"{len(tests)} tests in {processus} processes: FAILED\nmore than {MOST_PROCESSES} processes: nothing was run")
+        return 1
     slices = split_up(tests, processus)
     errors = check_it(tests, slices) or run_slices(command, tests, slices)
     print(f"{len(tests)} tests in {processus} processes ({os.cpu_count()} CPUs): "
@@ -19641,7 +20090,7 @@ def run_slices(command, tests, slices):
             for i in range(n):
                 with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as log_text:
                     children.append(subprocess.Popen([*command, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=log_text,
-                                                    stderr=subprocess.STDOUT))
+                                                    stderr=subprocess.STDOUT, env={**os.environ, INSIDE: "1"}))
             while len(codes) < n:  # a live log: each shard's journal as soon as it ends
                 for i, e in enumerate(children):
                     if i not in codes and e.poll() is not None:
@@ -19687,6 +20136,9 @@ def principal_tests(module, file, arguments):
     """`python3 <file>`: the suite, serial (unittest.main and its options); `--processes N`: in N processes;
     `--tranche <plan> <i>`: one of them."""
     if len(arguments) == 2 and arguments[0] == "--processes" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
+        if os.environ.get(INSIDE):
+            print("a parallel run is not started from inside one: nothing was run")
+            return 1
         return run_in_parallel([sys.executable, os.path.abspath(file)], test_ids(module), int(arguments[1]))
     if len(arguments) == 3 and arguments[0] == "--tranche":
         return slice_of(module, arguments[1], int(arguments[2]))
@@ -19706,7 +20158,9 @@ class TestParallelSuite(unittest.TestCase):
         self.module = pathlib.Path(self.temp.name) / "attempt.py"
         self.module.write_text(f"import os, sys, time, unittest\nsys.path.insert(0, {str(ROOT / 'tools')!r})\nimport test_bee\n"
                                "ECART = os.environ.get('ECART')\n"
-                               "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
+                               "class A(unittest.TestCase):\n"
+                               "    def test_1(self): self.assertTrue(ECART != 'inside' or os.environ.get(test_bee.INSIDE) == '1')\n"
+                               "    def test_2(self): pass\n"
                                "class B(unittest.TestCase):\n    def test_3(self): pass\n"
                                "    def test_4(self):\n"
                                "        if ECART == 'skip': self.skipTest('a reason')\n"
@@ -19794,16 +20248,41 @@ class TestParallelSuite(unittest.TestCase):
         self.assertLess(output_text.index("=== shard 2/2: 2 tests, exit code 0"), output_text.index("=== shard 1/2: 3 tests, exit code 0"))
 
     def test_the_real_file_exits_with_the_runners_code(self):
-        """The entry line of tools/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step."""
-        r = subprocess.run([sys.executable, str(ROOT / "tools" / "test_bee.py"), "--processes", "1000"], capture_output=True,
-                           text=True, stdin=subprocess.DEVNULL)
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("shard 1000/1000: no test", r.stdout)
-        self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
+        """The entry line of tools/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step.
+        The run asked of the real file here must start nothing, whatever the number of tests the suite holds: it is asked from
+        inside a process of a run, which is refused; were it not, for more processes than a run may start; and were that
+        allowed too, for more processes than the suite has tests."""
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "test_bee.py"), "--processes", "1000000"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL, env={**os.environ, INSIDE: "1"})
+        self.assertEqual((r.returncode, r.stdout), (1, "a parallel run is not started from inside one: nothing was run\n"), r.stderr)
+
+    def test_a_run_never_starts_more_processes_than_it_may_whatever_the_number_of_tests(self):
+        """A run starts all its processes at once: a suite of five thousand tests asked in as many processes, or in one more
+        than a run may start, starts none and fails. (The number CI asks for is well within: suite.yml's own test says so.)"""
+        many = [f"A.test_{k}" for k in range(5000)]
+        for processus in (MOST_PROCESSES + 1, len(many)):
+            with self.subTest(processus=processus), mock.patch("subprocess.Popen", side_effect=AssertionError("a process was started")):
+                code, output_text = self.launch(many, processus)
+                self.assertEqual((code, output_text), (1, f"5000 tests in {processus} processes: FAILED\n"
+                                                         f"more than {MOST_PROCESSES} processes: nothing was run\n"))
+        self.assertLessEqual(MOST_PROCESSES, 64)
+
+    def test_a_run_is_never_started_from_inside_a_process_of_one(self):
+        """The suite holds tests that start the real file: a run started from inside a run would start as many again, each of
+        them as many again. Each process of a run is told that it is one, and the file's own entry then starts no run."""
+        with mock.patch.dict(os.environ, ECART="inside"):  # A.test_1 then passes only in a process told that it is one of a run
+            os.environ.pop(INSIDE, None)
+            code, output_text = self.launch(self.TESTS)
+        self.assertEqual(code, 0, output_text)
+        nothing = types.ModuleType("nothing")  # (were the entry to start a run, this suite of no test would fail it at once)
+        with mock.patch.dict(os.environ, {INSIDE: "1"}), contextlib.redirect_stdout(io.StringIO()) as said:
+            code = principal_tests(nothing, str(self.module), ["--processes", "2"])
+        self.assertEqual((code, said.getvalue()), (1, "a parallel run is not started from inside one: nothing was run\n"))
 
     def test_suite_yml_runs_the_suite_in_processes_inside_its_job(self):
         step = TestCiScope.steps()[1]["tool"]
         self.assertRegex(step["run"], r"^python3 tools/test_bee\.py --processes [1-9][0-9]*\n?$")
+        self.assertLessEqual(int(step["run"].split()[-1]), MOST_PROCESSES)
         self.assertIsInstance(step.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
 
     def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
@@ -23402,6 +23881,299 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         self.assertEqual(report.FRENCH_VALUES, domains)
         self.assertEqual(set(report.ISSUES.values()), set(self.names["domains"]["judge_outcome"].values()))
         self.assertEqual(report.DATE_D, bee.DATE_D)
+
+
+class TestHiveWorkflow(unittest.TestCase):
+    """The hive's hourly run (.github/workflows/hive.yml; docs/hive-workflow.md explains it): the rules that keep its four jobs
+    apart, read on the file itself.
+
+    The two jobs that hold a key are held whole, word for word (test_the_two_jobs_that_hold_a_key_are_exactly_these): a rule
+    on their shape would leave room beside it, and whoever changes one of them changes this test in the same commit, in sight
+    of a reviewer. The other tests say which rules that text obeys, and hold the two jobs that hold no key."""
+
+    STATE, PROJECT = "Iv23liBJswEbZCt56yvz", "Iv23liKHEG0w2XgtSc9m"  # the two Apps' client ids (not secrets)
+    CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"  # v4.2.2
+    UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2: the writer tools/hive/artifact.py reads
+    DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
+    APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
+    PIN = "0" * 40  # the one commit of the registry every job runs: forty zeros until the founder's pull request names it
+    REGISTRY = {"uses": CHECKOUT, "with": {"path": "registry", "ref": PIN, "persist-credentials": False}}
+    STATE_CHECKOUT = {"uses": CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "token": "${{ steps.state.outputs.token }}"}}
+    TAKE = "python3 registry/tools/hive/artifact.py take"
+
+    @staticmethod
+    def app_token(name, id, client, key, repository):
+        return {"name": name, "id": id, "uses": TestHiveWorkflow.APP_TOKEN,
+                "with": {"client-id": client, "private-key": "${{ secrets.%s }}" % key, "owner": "Bee-ruche", "repositories": repository,
+                         "permission-contents": "write"}}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (ROOT / ".github/workflows/hive.yml").read_text(encoding="utf-8")
+
+        # A key written twice is read once by the usual parser, the last one: what a reader sees would not be what runs.
+        cls.stream = yaml.load(cls.text, Loader=cls.once_loader())
+        assert cls.stream == yaml.safe_load(cls.text)
+        cls.jobs = cls.stream["jobs"]
+        document = (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8")
+        assert "```yaml" not in document and "runs-on:" not in document, "the file is the run's only text: the document does not repeat it"
+
+    def uses(self, job):
+        return [step.get("uses", "") for step in self.jobs[job]["steps"]]
+
+    def test_the_two_jobs_that_hold_a_key_are_exactly_these(self):
+        self.maxDiff = None
+        self.assertEqual(self.jobs["record"], {
+            "needs": "plan", "if": "github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 10,
+            "environment": "hive-state", "permissions": {"contents": "read", "actions": "read"},
+            "steps": [
+                self.REGISTRY,
+                {"name": "Take the plan (one named file, before this job holds any key)", "env": {"GH_TOKEN": "${{ github.token }}"},
+                 "run": f"mkdir taken\n{self.TAKE} --name plan --member plan.json:67108864 --into taken/plan\n"},
+                self.app_token("A token of an hour for the state repository, and nothing else", "state", self.STATE,
+                               "HIVESTATESECRET", "hive-state"),
+                self.STATE_CHECKOUT,
+                {"name": "Record the deals and publish the feed", "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}"},
+                 "run": "python3 registry/tools/hive/hive.py record --registry registry --project miniz --state state \\\n"
+                        '  --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" --commit-state\n'}]})
+        self.assertEqual(self.jobs["apply"], {
+            "needs": ["plan", "record", "judge"],
+            "if": "${{ !cancelled() && needs.plan.result == 'success' && github.ref == 'refs/heads/main' }}",
+            "runs-on": "ubuntu-24.04", "timeout-minutes": 30, "environment": "hive-apply",
+            "permissions": {"contents": "read", "actions": "read"},
+            "steps": [
+                self.REGISTRY,
+                {"name": "Take the plan, the candidates and the judge's answers (named files, before this job holds any key)",
+                 "env": {"GH_TOKEN": "${{ github.token }}"},
+                 "run": "mkdir taken\n"
+                        f"{self.TAKE} --name plan --member plan.json:67108864 --into taken/plan\n"
+                        f"{self.TAKE} --name candidates --member candidates.bundle:2147483648 \\\n"
+                        "  --into taken/candidates\n"
+                        "# No answers at all is a case the write step knows: an archive that is missing, or refused, is that case.\n"
+                        f"{self.TAKE} --name verdicts --member verdicts.json:16777216 \\\n"
+                        "  --into taken/verdicts || { mkdir -p taken/verdicts && echo '{}' > taken/verdicts/verdicts.json; }\n"},
+                self.app_token("A token of an hour for the state repository", "state", self.STATE, "HIVESTATESECRET", "hive-state"),
+                self.app_token("A token of an hour for the project, and nothing else", "project", self.PROJECT,
+                               "HIVEAPPLYSECRET", "minizBee"),
+                self.STATE_CHECKOUT,
+                {"name": "The project", "run": "git clone --quiet https://github.com/Bee-ruche/minizBee project"},
+                {"name": "Push what the judge accepted, and record (the only step that holds the project's token)",
+                 "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}", "HIVE_PROJECT_TOKEN": "${{ steps.project.outputs.token }}"},
+                 "run": "auth=$(printf 'x-access-token:%s' \"$HIVE_PROJECT_TOKEN\" | base64 -w0)\n"
+                        'echo "::add-mask::$auth"\n'  # the form git sends the token in is kept out of the run's log too
+                        'git -C project config http.https://github.com/Bee-ruche/minizBee.extraheader "Authorization: Basic $auth"\n'
+                        "python3 registry/tools/hive/hive.py apply --registry registry --project miniz --state state \\\n"
+                        '  --repo project --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" \\\n'
+                        "  --bundle taken/candidates/candidates.bundle --verdicts taken/verdicts/verdicts.json --commit-state\n"}]})
+
+    def test_the_two_jobs_without_a_key_are_exactly_these(self):
+        """What the write step integrates, and under whose name, is what the plan says: the plan's job is held whole too, and so
+        is the judging job, whose answers the write step uses (where each reads the project from, where the plan's lines go,
+        which folder an archive is unpacked into, which tree the judge's image is built from)."""
+        self.maxDiff = None
+        state = {"uses": self.CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "persist-credentials": False}}
+        project = "git clone --quiet https://github.com/Bee-ruche/minizBee project"
+
+        def upload(name, path, **more):
+            return {"uses": self.UPLOAD, **more, "with": {"name": name, "path": path, "retention-days": 3}}
+
+        self.assertEqual(self.jobs["plan"], {
+            "if": "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 30,
+            "permissions": {"contents": "read"}, "outputs": {"plan_sha256": "${{ steps.plan.outputs.plan_sha256 }}"},
+            "steps": [
+                self.REGISTRY, state,
+                {"name": "The project, in full (its branches under refs/remotes/origin)", "run": project},
+                {"name": "Plan (reads the forks, once; no key, only the read-only token gh needs to list forks)", "id": "plan",
+                 "env": {"GH_TOKEN": "${{ github.token }}"},
+                 "run": "python3 registry/tools/hive/hive.py plan --registry registry --project miniz --state state \\\n"
+                        '  --repo project --out plan.json --bundle candidates.bundle >> "$GITHUB_OUTPUT"\n'
+                        "touch candidates.bundle\n"},
+                upload("plan", "plan.json"), upload("candidates", "candidates.bundle")]})
+        self.assertEqual(self.jobs["judge"], {
+            "needs": ["plan", "record"], "if": "github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 330,
+            "permissions": {"contents": "read"},
+            "steps": [
+                self.REGISTRY, state, {"name": "The project", "run": project},
+                {"uses": self.DOWNLOAD, "with": {"name": "plan", "path": "taken/plan"}},
+                {"uses": self.DOWNLOAD, "with": {"name": "candidates", "path": "taken/candidates"}},
+                {"name": "The judge's image (with network; built from the project's own tree, and no candidate's code runs here)",
+                 "run": "python3 registry/tools/judge/judge.py --tooling project --image-only"},
+                {"name": "Judge the plan's candidates (their code runs only in containers without network)",
+                 "run": "mkdir -p work judge-work\n"
+                        "python3 registry/tools/hive/hive.py judge --registry registry --project miniz --state state \\\n"
+                        "  --repo project --plan taken/plan/plan.json --bundle taken/candidates/candidates.bundle --workdir work \\\n"
+                        "  --judge-workdir judge-work --out verdicts.json\n"},
+                upload("verdicts", "verdicts.json", **{"if": "always()"})]})
+        self.assertEqual(self.stream[True], {"schedule": [{"cron": "17 * * * *"}], "workflow_dispatch": None}, "once an hour, or by hand")
+        self.assertEqual(self.stream["name"], "Hive")
+
+    def test_no_other_workflow_names_the_hives_environments_or_keys(self):
+        """An environment gives its keys to any job that names it, in any workflow of a branch it accepts: the two
+        environments accept `main` only (a setting), and on `main` this file alone names them. Every file of the folder
+        is read, whatever its name ends with (the list of them is held by test_the_workflows_security_is_unchanged). And
+        no job of any workflow, this one included, is another repository's workflow: a workflow that is called runs with
+        its caller's rights, and its text is not in this repository for a test or a reviewer to read."""
+        for path in sorted((ROOT / ".github/workflows").iterdir()):
+            with self.subTest(workflow=path.name):
+                text = path.read_text(encoding="utf-8")
+                for name, job in yaml.safe_load(text)["jobs"].items():
+                    if "uses" in job:
+                        self.assertRegex(job["uses"], r"\A\./\.github/workflows/[a-z-]+\.yml\Z", f"{name}: a workflow of this repository")
+                    if path.name == "hive.yml":
+                        continue
+                    environment = job.get("environment")
+                    named = environment.get("name") if isinstance(environment, dict) else environment
+                    self.assertIn(named, (None, "github-pages"), f"{name}: an environment this test does not know")
+                if path.name != "hive.yml":
+                    for word in ("hive-state", "hive-apply", "HIVESTATESECRET", "HIVEAPPLYSECRET", "create-github-app-token"):
+                        self.assertNotIn(word.lower(), text.lower())
+        with self.assertRaisesRegex(AssertionError, "a key twice"):  # (the parser of setUpClass does refuse a key written twice)
+            yaml.load("a:\n  b: 1\n  b: 2\n", Loader=type(self).once_loader())
+
+    @staticmethod
+    def once_loader():
+        class Once(yaml.SafeLoader):
+            def construct_mapping(self, node, deep=False):
+                keys = [self.construct_object(key, deep=deep) for key, _ in node.value]
+                assert len(keys) == len(set(map(repr, keys))), f"a key twice in one mapping: {keys}"
+                return super().construct_mapping(node, deep)
+        return Once
+
+    def test_nothing_is_set_for_a_whole_job_or_for_the_whole_run(self):
+        """A key, a token or a variable reaches a step through that step's own lines, where the test above reads it: the run, a
+        job and a step have the keys listed here and no other (no `env`, `defaults`, `container` or `services` above a step)."""
+        self.assertEqual(set(self.stream), {"name", True, "permissions", "concurrency", "jobs"})  # (« on » is True for YAML)
+        self.assertEqual(set(self.jobs), {"plan", "record", "judge", "apply"})
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertLessEqual(set(job), {"needs", "if", "runs-on", "timeout-minutes", "environment", "permissions", "outputs", "steps"})
+                self.assertEqual(job["runs-on"], "ubuntu-24.04")
+                for step in job["steps"]:
+                    self.assertLessEqual(set(step), {"name", "id", "uses", "with", "env", "run", "if"}, step)
+        self.assertEqual([(name, step["uses"].split("@")[0], step["if"]) for name, job in self.jobs.items() for step in job["steps"] if "if" in step],
+                         [("judge", "actions/upload-artifact", "always()")], "one step has a condition of its own: what the judging left is kept")
+
+    def test_the_triggers_the_permissions_and_one_run_at_a_time(self):
+        self.assertEqual(set(self.stream[True]), {"schedule", "workflow_dispatch"})
+        self.assertNotIn("pull_request", self.text)
+        self.assertEqual(self.stream["permissions"], {})
+        self.assertEqual({name: job["permissions"] for name, job in self.jobs.items()},
+                         {"plan": {"contents": "read"}, "judge": {"contents": "read"},
+                          "record": {"contents": "read", "actions": "read"}, "apply": {"contents": "read", "actions": "read"}},
+                         "no job may write to the registry; the two that take artifacts by themselves may read the run's")
+        self.assertEqual(self.stream["concurrency"], {"group": "hive-miniz", "cancel-in-progress": False})
+
+    def test_no_text_becomes_code_and_every_action_is_pinned(self):
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                with self.subTest(job=name, step=step.get("name") or step.get("uses")):
+                    self.assertNotIn("${{", step.get("run", ""))
+                    self.assertEqual("uses" in step, "run" not in step)
+                    if "uses" in step:
+                        self.assertIn(step["uses"], (self.CHECKOUT, self.UPLOAD, self.DOWNLOAD, self.APP_TOKEN), "these four, at these commits")
+        self.assertEqual({name: sorted(set(self.uses(name)) - {""}) for name in self.jobs},
+                         {"plan": sorted([self.CHECKOUT, self.UPLOAD]), "record": sorted([self.CHECKOUT, self.APP_TOKEN]),
+                          "judge": sorted([self.CHECKOUT, self.DOWNLOAD, self.UPLOAD]), "apply": sorted([self.CHECKOUT, self.APP_TOKEN])})
+
+    def test_every_job_runs_the_registry_at_the_one_commit_the_file_names(self):
+        """The hive's code, settings and tasks: one commit, written in this file, the same for the four jobs, and nothing else of the
+        registry is checked out. Whoever changes it changes this file, in a pull request."""
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertEqual(job["steps"][0], self.REGISTRY, "the first step of every job")
+                registry = [step for step in job["steps"] if step.get("uses") == self.CHECKOUT and "repository" not in step["with"]]
+                self.assertEqual(registry, [self.REGISTRY])
+        self.assertRegex(self.PIN, r"\A[0-9a-f]{40}\Z")
+        self.assertEqual(self.text.count(f'ref: "{self.PIN}"'), 4, "quoted: a commit id made of digits only must stay a text")
+        self.assertEqual(len(re.findall(r"\bref\b\s*:", self.text)), 4, "no other ref: no branch, no tag, no second commit")
+
+    def test_two_jobs_can_read_a_key_and_only_to_ask_for_a_token_of_one_repository(self):
+        self.assertEqual({name: job.get("environment") for name, job in self.jobs.items()},
+                         {"plan": None, "judge": None, "record": "hive-state", "apply": "hive-apply"})
+        asked = []
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                if "secrets" in json.dumps(step):
+                    self.assertEqual(step["uses"], self.APP_TOKEN)
+                    self.assertEqual(sorted(step["with"]), ["client-id", "owner", "permission-contents", "private-key", "repositories"])
+                    self.assertEqual((step["with"]["owner"], step["with"]["permission-contents"]), ("Bee-ruche", "write"))
+                    asked.append((name, step["id"], step["with"]["private-key"], step["with"]["repositories"], step["with"]["client-id"]))
+        self.assertEqual(asked, [("record", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
+                                 ("apply", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
+                                 ("apply", "project", "${{ secrets.HIVEAPPLYSECRET }}", "minizBee", self.PROJECT)])
+        # However an expression spells it (secrets.X, secrets['X'], toJSON(secrets)): the word appears three times, in those inputs.
+        self.assertEqual(len(re.findall(r"(?i)secrets", re.sub(r"(?m)#.*$", "", self.text))), 3, "a key appears nowhere else")
+        self.assertEqual(sum(self.APP_TOKEN in u for job in self.jobs for u in self.uses(job)), 3)
+
+    def test_a_job_that_holds_a_key_unpacks_no_archive_and_takes_its_files_before_the_key(self):
+        taken = {}
+        for name in ("record", "apply"):
+            steps, uses = self.jobs[name]["steps"], self.uses(name)
+            self.assertFalse([u for u in uses if "artifact" in u], "neither the common download nor an upload, in a job with a key")
+            first_key = min(i for i, u in enumerate(uses) if "create-github-app-token" in u)
+            takes = [i for i, step in enumerate(steps) if "artifact.py" in step.get("run", "")]
+            self.assertEqual((takes, first_key), ([1], 2), "the registry, then the files, then the first key")
+            taken[name] = re.findall(r"registry/tools/hive/artifact\.py take --name (\S+) --member (\S+)\s+(?:\\\s+)?--into (\S+)", steps[1]["run"])
+            self.assertEqual(steps[1]["run"].count("artifact.py"), len(taken[name]))
+            later = "\n".join(step.get("run", "") for step in steps[2:])
+            self.assertEqual(re.findall(r"--(plan|bundle|verdicts) (\S+)", later),
+                             [(option, path) for option, path in (("plan", "taken/plan/plan.json"), ("bundle", "taken/candidates/candidates.bundle"),
+                                                                 ("verdicts", "taken/verdicts/verdicts.json")) if f"--{option} " in later],
+                             "what the step with the key reads is what was taken")
+            self.assertIn('--plan-sha256 "$PLAN_SHA256"', steps[-1]["run"], "the plan is checked against what its own job published")
+            self.assertEqual(steps[-1]["env"]["PLAN_SHA256"], "${{ needs.plan.outputs.plan_sha256 }}")
+            for word in ("download", "unzip", "tar ", "curl", "wget", "pip ", "npm "):  # nothing else is brought onto this machine
+                self.assertNotIn(word, "\n".join(step.get("run", "") for step in steps), f"{name}: {word}")
+        self.assertEqual(taken, {"record": [("plan", "plan.json:67108864", "taken/plan")],
+                                 "apply": [("plan", "plan.json:67108864", "taken/plan"),
+                                           ("candidates", "candidates.bundle:2147483648", "taken/candidates"),
+                                           ("verdicts", "verdicts.json:16777216", "taken/verdicts")]})
+        uploads = {step["with"]["name"]: step["with"]["path"] for job in self.jobs.values() for step in job["steps"]
+                   if "upload-artifact" in step.get("uses", "")}
+        self.assertEqual(uploads, {"plan": "plan.json", "candidates": "candidates.bundle", "verdicts": "verdicts.json"},
+                         "one file per artifact, under the name the taker expects")
+        for job in self.jobs.values():
+            for step in job["steps"]:
+                if step.get("uses") == self.UPLOAD:
+                    self.assertLessEqual(set(step["with"]), {"name", "path", "retention-days"}, "the action's default compression: the layout the taker reads")
+        self.assertTrue((ROOT / "tools/hive/artifact.py").is_file())
+
+    def test_the_jobs_run_on_main_only_and_a_cancelled_run_pushes_nothing(self):
+        self.assertEqual({name: (job.get("needs"), job["if"]) for name, job in self.jobs.items()},
+                         {"plan": (None, "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'"),
+                          "record": ("plan", "github.ref == 'refs/heads/main'"),
+                          "judge": (["plan", "record"], "github.ref == 'refs/heads/main'"),
+                          "apply": (["plan", "record", "judge"],
+                                    "${{ !cancelled() && needs.plan.result == 'success' && github.ref == 'refs/heads/main' }}")})
+
+    def test_a_token_is_given_to_the_steps_that_need_it_and_to_no_other(self):
+        given = []
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                if step.get("uses", "").startswith("actions/checkout@"):
+                    if "token" in step["with"]:
+                        given.append((name, step["with"]["repository"], step["with"]["token"]))
+                    else:
+                        self.assertIs(step["with"].get("persist-credentials"), False, f"{name}: a checkout that keeps a token it was not given")
+        self.assertEqual(given, [("record", "Bee-ruche/hive-state", "${{ steps.state.outputs.token }}"),
+                                 ("apply", "Bee-ruche/hive-state", "${{ steps.state.outputs.token }}")])
+        # Whatever the spelling (steps.project.outputs.token, steps.project.outputs['token'], steps['project']…, toJSON(steps)):
+        # the steps' outputs are named four times in all, the project's once.
+        self.assertEqual(sorted(re.findall(r"\bsteps\b(?!:)\W*\w+", self.text)),
+                         ["steps.plan", "steps.project", "steps.state", "steps.state"], "(`steps:`, the list of a job's steps, aside)")
+        self.assertFalse([step for step in self.jobs["judge"]["steps"] if "env" in step], "the job that runs contributors' code is given nothing")
+        self.assertEqual([step["env"] for step in self.jobs["plan"]["steps"] if "env" in step], [{"GH_TOKEN": "${{ github.token }}"}])
+        self.assertEqual(self.text.count("github.token"), 3, "the run's own read-only token: to list the forks, and to take the artifacts")
+        self.assertEqual(self.jobs["plan"]["outputs"], {"plan_sha256": "${{ steps.plan.outputs.plan_sha256 }}"})
+
+    def test_the_judging_job_outlasts_the_time_the_hive_allows_itself(self):
+        """The hive starts no judgement that could end after its own limit; one check of the machine may follow the last."""
+        settings = json.loads((ROOT / "hive/projects/miniz.json").read_text(encoding="utf-8"))
+        allowed = settings.get("limits", {}).get("judging_seconds", 14400)
+        one = settings["judge"].get("timeout_seconds", 3600)
+        self.assertGreaterEqual(self.jobs["judge"]["timeout-minutes"] * 60, allowed + one + 1800)
+        self.assertLessEqual(self.jobs["judge"]["timeout-minutes"], 360, "GitHub's own limit for a job")
+
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
