@@ -20014,6 +20014,12 @@ class TestGitHelper(unittest.TestCase):
 # it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
 # an empty shard or a failed process fails the run.
 # Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
+# A run starts all its processes at once, and the suite holds tests that start this very file: so a run never starts more
+# than MOST_PROCESSES processes, whatever the number of tests, and none is started from inside a process of a run (each is
+# told that it is one, by INSIDE in its environment). Either way the run fails and nothing is run.
+
+MOST_PROCESSES = 64
+INSIDE = "BEE_SUITE_PROCESS"
 
 def test_name(test):
     return f"{type(test).__qualname__}.{test._testMethodName}"
@@ -20058,7 +20064,11 @@ def check_it(tests, slices, reports=None):
 
 
 def run_in_parallel(command, tests, processus):
-    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
+    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once.
+    Asked for more than MOST_PROCESSES, it starts none and fails."""
+    if processus > MOST_PROCESSES:
+        print(f"{len(tests)} tests in {processus} processes: FAILED\nmore than {MOST_PROCESSES} processes: nothing was run")
+        return 1
     slices = split_up(tests, processus)
     errors = check_it(tests, slices) or run_slices(command, tests, slices)
     print(f"{len(tests)} tests in {processus} processes ({os.cpu_count()} CPUs): "
@@ -20078,7 +20088,7 @@ def run_slices(command, tests, slices):
             for i in range(n):
                 with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as log_text:
                     children.append(subprocess.Popen([*command, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=log_text,
-                                                    stderr=subprocess.STDOUT))
+                                                    stderr=subprocess.STDOUT, env={**os.environ, INSIDE: "1"}))
             while len(codes) < n:  # a live log: each shard's journal as soon as it ends
                 for i, e in enumerate(children):
                     if i not in codes and e.poll() is not None:
@@ -20124,6 +20134,9 @@ def principal_tests(module, file, arguments):
     """`python3 <file>`: the suite, serial (unittest.main and its options); `--processes N`: in N processes;
     `--tranche <plan> <i>`: one of them."""
     if len(arguments) == 2 and arguments[0] == "--processes" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
+        if os.environ.get(INSIDE):
+            print("a parallel run is not started from inside one: nothing was run")
+            return 1
         return run_in_parallel([sys.executable, os.path.abspath(file)], test_ids(module), int(arguments[1]))
     if len(arguments) == 3 and arguments[0] == "--tranche":
         return slice_of(module, arguments[1], int(arguments[2]))
@@ -20143,7 +20156,9 @@ class TestParallelSuite(unittest.TestCase):
         self.module = pathlib.Path(self.temp.name) / "attempt.py"
         self.module.write_text(f"import os, sys, time, unittest\nsys.path.insert(0, {str(ROOT / 'tools')!r})\nimport test_bee\n"
                                "ECART = os.environ.get('ECART')\n"
-                               "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
+                               "class A(unittest.TestCase):\n"
+                               "    def test_1(self): self.assertTrue(ECART != 'inside' or os.environ.get(test_bee.INSIDE) == '1')\n"
+                               "    def test_2(self): pass\n"
                                "class B(unittest.TestCase):\n    def test_3(self): pass\n"
                                "    def test_4(self):\n"
                                "        if ECART == 'skip': self.skipTest('a reason')\n"
@@ -20231,16 +20246,41 @@ class TestParallelSuite(unittest.TestCase):
         self.assertLess(output_text.index("=== shard 2/2: 2 tests, exit code 0"), output_text.index("=== shard 1/2: 3 tests, exit code 0"))
 
     def test_the_real_file_exits_with_the_runners_code(self):
-        """The entry line of tools/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step."""
-        r = subprocess.run([sys.executable, str(ROOT / "tools" / "test_bee.py"), "--processes", "1000"], capture_output=True,
-                           text=True, stdin=subprocess.DEVNULL)
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("shard 1000/1000: no test", r.stdout)
-        self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
+        """The entry line of tools/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step.
+        The run asked of the real file here must start nothing, whatever the number of tests the suite holds: it is asked from
+        inside a process of a run, which is refused; were it not, for more processes than a run may start; and were that
+        allowed too, for more processes than the suite has tests."""
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "test_bee.py"), "--processes", "1000000"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL, env={**os.environ, INSIDE: "1"})
+        self.assertEqual((r.returncode, r.stdout), (1, "a parallel run is not started from inside one: nothing was run\n"), r.stderr)
+
+    def test_a_run_never_starts_more_processes_than_it_may_whatever_the_number_of_tests(self):
+        """A run starts all its processes at once: a suite of five thousand tests asked in as many processes, or in one more
+        than a run may start, starts none and fails. (The number CI asks for is well within: suite.yml's own test says so.)"""
+        many = [f"A.test_{k}" for k in range(5000)]
+        for processus in (MOST_PROCESSES + 1, len(many)):
+            with self.subTest(processus=processus), mock.patch("subprocess.Popen", side_effect=AssertionError("a process was started")):
+                code, output_text = self.launch(many, processus)
+                self.assertEqual((code, output_text), (1, f"5000 tests in {processus} processes: FAILED\n"
+                                                         f"more than {MOST_PROCESSES} processes: nothing was run\n"))
+        self.assertLessEqual(MOST_PROCESSES, 64)
+
+    def test_a_run_is_never_started_from_inside_a_process_of_one(self):
+        """The suite holds tests that start the real file: a run started from inside a run would start as many again, each of
+        them as many again. Each process of a run is told that it is one, and the file's own entry then starts no run."""
+        with mock.patch.dict(os.environ, ECART="inside"):  # A.test_1 then passes only in a process told that it is one of a run
+            os.environ.pop(INSIDE, None)
+            code, output_text = self.launch(self.TESTS)
+        self.assertEqual(code, 0, output_text)
+        nothing = types.ModuleType("nothing")  # (were the entry to start a run, this suite of no test would fail it at once)
+        with mock.patch.dict(os.environ, {INSIDE: "1"}), contextlib.redirect_stdout(io.StringIO()) as said:
+            code = principal_tests(nothing, str(self.module), ["--processes", "2"])
+        self.assertEqual((code, said.getvalue()), (1, "a parallel run is not started from inside one: nothing was run\n"))
 
     def test_suite_yml_runs_the_suite_in_processes_inside_its_job(self):
         step = TestCiScope.steps()[1]["tool"]
         self.assertRegex(step["run"], r"^python3 tools/test_bee\.py --processes [1-9][0-9]*\n?$")
+        self.assertLessEqual(int(step["run"].split()[-1]), MOST_PROCESSES)
         self.assertIsInstance(step.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
 
     def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
