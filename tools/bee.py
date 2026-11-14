@@ -28,10 +28,14 @@ import pathlib
 import re
 import shlex
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import time
 import unicodedata
+import zipfile
+import zlib
 from collections import Counter, defaultdict
 
 try:
@@ -9474,6 +9478,54 @@ def cmd_declared_bases(args):
     return 0
 
 
+# An archive someone else built (verdicts.yml: the one a fork's CI left) is read, never unpacked: one member is taken from it, by
+# its exact name and up to a size, and no path the archive names is ever written. Only the two ways the upload action packs a
+# file are read, stored and deflated: of those, the standard library unfolds no more than it is asked for.
+ARCHIVE_METHODS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+ARCHIVE_ERRORS = (zipfile.BadZipFile, zlib.error, struct.error, OSError, EOFError, RuntimeError, NotImplementedError, ValueError,
+                  OverflowError, RecursionError, MemoryError)
+
+
+def archive_member(path, name, most):
+    """The bytes of the one member of the zip archive `path` named exactly `name`: a plain file, not encrypted, stored or
+    deflated, of `most` bytes at most, as the archive declares it and as it reads. Otherwise BeeError, in this tool's own
+    words: nothing the archive says is repeated. No other member is read, and what opening the archive costs is the archive's
+    own weight, which the caller bounds."""
+    def refused(reason):
+        return BeeError(f"{name} is not taken from the archive: {reason}")
+    try:
+        with zipfile.ZipFile(path) as archive:  # opened to be read
+            named = [m for m in archive.infolist() if m.orig_filename == name]  # the name as the archive writes it, whole
+            if len(named) != 1:
+                raise refused("more than one member has that name" if named else "no member has that name")
+            member, kind = named[0], stat.S_IFMT(named[0].external_attr >> 16)
+            if member.is_dir() or member.external_attr & 0x10 or kind not in (0, stat.S_IFREG):  # a folder, a link, a device
+                raise refused("that member is not a plain file")
+            if member.flag_bits & 0x41:
+                raise refused("that member is encrypted")
+            if member.compress_type not in ARCHIVE_METHODS:
+                raise refused("that member is neither stored nor deflated")
+            if member.file_size > most:
+                raise refused(f"that member declares more than {most} bytes")
+            with archive.open(member) as source:  # the member itself: its name, looked up again, could be another's
+                data = source.read(most + 1)  # one byte beyond what is allowed, never more
+            if len(data) > most:
+                raise refused(f"that member holds more than {most} bytes")
+            return data
+    except ARCHIVE_ERRORS as e:
+        raise refused(f"the archive is unreadable ({type(e).__name__})") from None
+
+
+def cmd_archive_member(args):
+    """Writes the member to standard output as it is; refused: nothing written, one line on standard error, code 1. A member
+    that standard output does not take whole is a failure, never a shorter member."""
+    data, output = memoryview(archive_member(args.archive, args.member, args.most)), sys.stdout.buffer
+    while data:  # an output that is not buffered may take less than it is given
+        data = data[output.write(data):]
+    output.flush()
+    return 0
+
+
 # ruche-0040: verdict.json, from the fork, is not read past its size; then scenarios and metrics (copied up to VERDICTS_MAX + 1 times
 # with the history), suspicious constructs and judge files are bounded: the largest verdict fits a contribution (test_bee.py).
 VERDICT_MAX = {"bytes_count": 64 * 1024, "keys": 20, "suspicious": 50, "judges": 20, "name": 200}
@@ -11841,6 +11893,12 @@ def build_parser():
 
     p = add_to("declared-bases", cmd_declared_bases, "The bases a verdict.json declares, to be checked (used by the CI).")
     p.add_argument("verdict")
+
+    p = add_to("archive-member", cmd_archive_member, "Writes to standard output one member of a zip archive, taken by its exact name and "
+                                                      "up to a size, without unpacking anything (used by the CI).")
+    p.add_argument("archive", help="the zip file, built by someone else")
+    p.add_argument("member", help="the exact name of the member to take")
+    p.add_argument("--most", type=int, required=True, help="the most bytes the member may hold")
 
     p = add_to("publish", cmd_publish, "Publishes your registry changes: branch, commit, push, PR, then waits for the merge.")
     p.add_argument("--title", required=True, help="e.g. « Reservation miniz-0012 », « Submission miniz-0012-c1 »")

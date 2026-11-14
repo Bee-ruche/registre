@@ -30,6 +30,7 @@ concurrency:
 jobs:
   verdicts:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60  # what a pass can do is what the token's API budget of one hour allows: past the hour it is stopped, and the next pass redoes its work
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,18 +85,25 @@ jobs:
               [ -n "$run" ] && printf '%s\n' "$run" | log_text; continue
             fi
             read -r number_of address default_branch <<< "$run"
-            # The fork's archive is unpacked in a folder of its own, and one file is taken from it: verdict.json, if it is a plain
-            # file. Whatever else it holds stays there, unread: the files this step writes below are in a folder the archive never
-            # reaches, and one fork's archive is that fork's affair, never the pass's.
-            # No file of it may weigh more than 64 MiB on this machine (a verdict is a few kilobytes), and nothing of it stays
-            # once the one file is taken, or once the pass is over.
-            rm -rf "$RUNNER_TEMP/verdict" "$RUNNER_TEMP/fork-archive" && mkdir -p "$RUNNER_TEMP/verdict"
-            taken=no
-            if ( ulimit -f 65536; gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/fork-archive" ) \
-               && [ -f "$RUNNER_TEMP/fork-archive/verdict.json" ] && [ ! -L "$RUNNER_TEMP/fork-archive/verdict.json" ] \
-               && cp "$RUNNER_TEMP/fork-archive/verdict.json" "$RUNNER_TEMP/verdict/verdict.json"; then taken=yes; fi
-            rm -rf "$RUNNER_TEMP/fork-archive"
-            [ "$taken" = yes ] || continue
+            # The fork's archive is never unpacked. GitHub is asked for it as one file: the run's latest artifact named verdict,
+            # not expired, its number made of digits; a file of 1 MiB at most, within two minutes (a verdict is a few kilobytes).
+            # From that file bee takes the one member named verdict.json, a plain file of 1 MiB at most, and this step writes
+            # it below (bee archive-member). Whatever else the archive holds is never read, and no path it names is ever
+            # written: one fork's archive is that fork's affair, never the pass's. The file is removed once its member is taken
+            # or refused, and nothing of it stays once the pass is over.
+            rm -rf "$RUNNER_TEMP/verdict" "$RUNNER_TEMP/fork-archive.zip" && mkdir -p "$RUNNER_TEMP/verdict"
+            artifact=$(gh api "repos/$repo/actions/runs/$number_of/artifacts?name=verdict&per_page=100" \
+              --jq '[.artifacts[] | select(.name == "verdict" and .expired == false)] | sort_by(.created_at, .id) | last | .id // empty') || continue
+            [[ "$artifact" =~ ^[0-9]{1,20}$ ]] || continue
+            taken=no reason="the archive was not downloaded whole (GitHub's answer, more than 1 MiB, or more than two minutes)"
+            if ( ulimit -f 1024 && timeout 120 gh api "repos/$repo/actions/artifacts/$artifact/zip" > "$RUNNER_TEMP/fork-archive.zip" ); then
+              reason=$(python3 tools/bee.py archive-member "$RUNNER_TEMP/fork-archive.zip" verdict.json --most 1048576 \
+                         2>&1 > "$RUNNER_TEMP/verdict/verdict.json") && taken=yes
+            fi
+            rm -f "$RUNNER_TEMP/fork-archive.zip"
+            if [ "$taken" != yes ]; then
+              printf '%s: %s; no verdict is recorded, judged again at the next pass.\n' "$id" "$reason" | log_text; continue
+            fi
             # The base verdict.json declares (fork data) is never believed: the API says whether it is an ancestor of the default
             # branch (compare: identical or ahead); bee record-verdict refuses otherwise.
             : > "$RUNNER_TEMP/verdict/bases.txt"
@@ -134,7 +142,7 @@ jobs:
             python3 tools/bee.py record-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
               --sha "$sha" --run "$address" "${options[@]}" 2>&1 | log_text || true
           done < to_process.tsv
-          rm -rf to_process.tsv "$RUNNER_TEMP/fork-archive" "$RUNNER_TEMP/verdict"
+          rm -rf to_process.tsv "$RUNNER_TEMP/fork-archive.zip" "$RUNNER_TEMP/verdict"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
