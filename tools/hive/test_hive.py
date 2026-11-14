@@ -4546,7 +4546,8 @@ class TestTheWorkersClone(Volunteer):
         is not on the machine at all, the settings are not known: the command ends with one line and exit code 2,
         and no git runs on the clone. (`subprocess.run` is replaced: it fails for that one command and refuses any
         other.)"""
-        for failure, said in ((subprocess.TimeoutExpired(["git"], 60), "TimeoutExpired"), (FileNotFoundError(2, "No such file or directory", "git"), "FileNotFoundError")):
+        for failure, said in ((subprocess.TimeoutExpired(["git"], 60), "TimeoutExpired"),
+                              (FileNotFoundError(2, "No such file or directory", "git"), "FileNotFoundError")):
             def run(command, **options):
                 self.assertEqual(command[:2], ["git", "config"], "nothing else runs once the settings are not known")
                 raise failure
