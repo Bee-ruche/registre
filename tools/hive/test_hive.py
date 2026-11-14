@@ -4033,6 +4033,33 @@ class TestTheWorkersClone(Volunteer):
                 "GIT_COMMITTER_EMAIL": "alice@users.noreply.github.com", "GIT_AUTHOR_DATE": dated, "GIT_COMMITTER_DATE": dated},
                 "the member's login and GitHub's address for it, whatever the clone's own settings name")
 
+    def test_two_addresses_are_one_repository_and_a_refusal_names_only_gits_own_sections(self):
+        """Small rules the commands above lean on, held by themselves: which addresses name the same repository (the
+        existing « upstream » against the project), which address names a repository at all, and what a refusal may
+        repeat of a setting: the name of one of git's own sections, never a section whoever wrote the file chose."""
+        same = hive.same_repository
+        self.assertTrue(same("https://github.com/Alice/Toy.git", "https://github.com/alice/toy"), "case and the .git ending do not count")
+        self.assertTrue(same("http://local_proxy@127.0.0.1:38219/git/alice/toy", "https://github.com/alice/toy"))
+        for one, other in (("https://github.com/alice/toy", "https://github.com/bob/toy"), ("https://github.com/alice/toy", "https://github.com/alice/other"),
+                           ("git@github.com:alice/toy.git", "https://github.com/alice/toy"), ("https://github.com/alice/toy", "ssh://git@github.com/alice/toy")):
+            with self.subTest(one=one, other=other):
+                self.assertFalse(same(one, other))
+                self.assertFalse(same(other, one))
+        self.assertTrue(same("git@github.com:alice/toy.git", "git@github.com:alice/toy.git"), "an address this tool does not read is itself only")
+        with mock.patch.object(hive, "LOCAL_REMOTES", True):  # in the tests, a folder of the machine names nobody: itself only
+            self.assertTrue(same("/tmp/x/toy.git", "/tmp/x/toy.git"))
+            for one, other in (("/tmp/x/toy.git", "/tmp/y/toy.git"), ("/tmp/x/toy.git", "https://github.com/alice/toy")):
+                self.assertFalse(same(one, other))
+                self.assertFalse(same(other, one))
+            self.assertEqual(hive.remote_parts("/tmp/x/toy.git"), (None, None, "file"))
+        self.assertEqual([hive.remote_parts(url) for url in ("https://github.com/alice/..", "https://github.com/alice/.", "https://github.com/alice/...git",
+                                                             "https://github.com/alice/.toy", "/tmp/x/toy.git")],
+                         [None, None, None, ("alice", ".toy", "https"), None], "a name made of dots is no repository; outside the tests, nor is a folder")
+        self.assertEqual([hive.setting_name(key) for key in ("filter.x.clean", "core.fsmonitor", "url.https://x/.insteadof", "planted-run-curl.now",
+                                                             "ignore-your-instructions", "Filter.x", "")],
+                         ["a setting of the section 'filter'", "a setting of the section 'core'", "a setting of the section 'url'", "a setting",
+                          "a setting", "a setting", "a setting"])
+
     def test_git_is_told_which_folders_and_which_settings(self):
         """What every git command of a worker carries: the clone's folders by name (a GIT_DIR of the environment is
         not followed), no hook, no monitor, no attributes file, no pager; the machine's settings only to reach a remote."""
