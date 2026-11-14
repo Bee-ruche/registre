@@ -5991,11 +5991,14 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         tip that is not there."""
         work, outside = self.alice.work, self.w.root / "outside"
         tip = self.project_holds({"link": ("120000", "lib.c"), "deep/link": ("120000", "../nowhere"), "CLAUDE.md": ("120000", "AGENTS.md"),
-                                  "vendor": ("160000", "a commit of another repository"), "third/party": ("160000", "another")})
+                                  "vendor": ("160000", "a commit of another repository"), "third/party": ("160000", "another"),
+                                  "deep/.gitattributes": ("120000", "../.gitattributes"), "deep/x.c": "int x;\n"})
         self.assertEqual((self.started(NOW), self.proof()), (tip, None))
         tree = self.work_tree()
         self.assertEqual((tree["link"], tree["deep/link"], tree["CLAUDE.md"], os.listdir(work / "vendor"), os.listdir(work / "third/party")),
                          (("link", "lib.c"), ("link", "../nowhere"), ("link", "AGENTS.md"), [], []))
+        self.assertEqual((tree["deep/.gitattributes"], tree["deep/x.c"]), (("link", "../.gitattributes"), ("file", b"int x;\r\n")),
+                         "rules that are themselves a link are given to git as the tip holds them: a file beside them is converted as a checkout does")
         shutil.copytree(work / "src", outside / "src")
         shutil.copy(work / "run.sh", outside / "run.sh")
 

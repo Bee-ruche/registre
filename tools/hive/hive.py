@@ -3094,7 +3094,7 @@ class TipRules:
         """The repository of this tool's own, made once: (its Clone, the tree that holds the tip's .gitattributes)."""
         if self.scratch is None:
             try:
-                self.folder = tempfile.TemporaryDirectory()
+                self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)  # (a folder that stays behind stops nothing)
             except OSError as error:
                 raise HiveError(f"a folder of this tool's own could not be made ({type(error).__name__}): tell the user") from None
             scratch = Clone(Path(self.folder.name).resolve(), {})
@@ -3925,8 +3925,8 @@ def main(argv=None):
     p.add_argument("--project", required=True)
     p.add_argument("--state", required=True, help="a clone of the hive's state repository")
     p.set_defaults(run=cmd_next)
-    p = sub.add_parser("start", help="volunteer: set aside what an earlier run left and put the clone on the task's branch, at the "
-                                     "project's tip (before the work)")
+    p = sub.add_parser("start", help="volunteer: set aside what an earlier run left, put the clone on the task's branch at the "
+                                     "project's tip, and show that its work tree holds that tip's files and nothing else (before the work)")
     worker_side(p)
     p.add_argument("--project", required=True)
     p.add_argument("--task", required=True)
