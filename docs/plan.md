@@ -355,7 +355,8 @@ assistant that can read a repository and run commands can use it.
 | What | Who | How |
 | --- | --- | --- |
 | A task's files (judged work) | any eligible member's worker | the protocol; the judge decides |
-| A project's tasks, limits, bans, the stop button | the project's maintainers | a reviewed change to `hive/projects/` and `hive/tasks/` in the registry |
+| A project's tasks, limits, bans, its pause | the project's maintainers | a reviewed change to `hive/projects/` and `hive/tasks/` in the registry, then the workflow's line moved to that commit (6.3) |
+| Stopping the hive at once | the founder and the registry's administrators | the repository variable `HIVE_PROJECTS`, emptied (6.3) |
 | Tests, judges, CI, agent instruction files, the hive's own files in a project | maintainers only | a pull request approved by a second identity; never the protocol |
 | The collector and the worker's guide | the builder, then the maintainers | section 6.2 |
 | The rules | the council | as today |
@@ -374,14 +375,21 @@ A change to `tools/hive/` or to the workflow that runs it is accepted only with,
 
 ### 6.3 Running the hive
 
-- **The stop button**: `"paused": true` in a project's file. Nothing is read, judged or integrated. Any maintainer,
-  one reviewed line.
-- **Taking a commit back**: first close its task (`"closed": true` in the tasks file; add a new task if the work
-  is still wanted), then revert the commit on the project's branch (a revert commit, rather than moving the branch
-  back). The hive never undoes a maintainer's commit: it only ever adds to the tip it judged, and leaves a branch
+- **What a run reads.** A run uses the registry at one commit, the one the workflow file names
+  ([docs/hive-workflow.md](hive-workflow.md), setting 7): the hive's code, a project's settings (its pause, its
+  bans, its limits) and its tasks. A change to any of them acts from the day a pull request moves that line to a
+  commit that holds it, and not before.
+- **The stop button**: empty the repository variable `HIVE_PROJECTS` and cancel the run in flight. Both act at
+  once, without a pull request: nothing more is read, judged or integrated. `"paused": true` in a project's file
+  does the same for that project once the workflow names a commit that holds it.
+- **Taking a commit back**: stop the hive (above); close the commit's task (`"closed": true` in the tasks file;
+  add a new task if the work is still wanted) and move the workflow's line to the commit that closes it; then
+  revert the commit on the project's branch (a revert commit, rather than moving the branch back), and start
+  again. The hive never undoes a maintainer's commit: it only ever adds to the tip it judged, and leaves a branch
   that moved. But the ledger still says the task is done, and an integration whose record was still pending would
   be pushed again if its task were open: hence the task first.
-- **A ban** names the account's numeric id; it holds through a change of login.
+- **A ban** names the account's numeric id; it holds through a change of login. Like every setting, it acts once
+  the workflow names a commit that holds it: for an account to stop at once, stop the hive first.
 - **A lost record**: the hive promises in its ledger before it pushes; the next run completes the ledger from the
   promise.
 - **A commit the project's repository declines** (a rule on what may be pushed there): counted against its
@@ -430,10 +438,11 @@ volunteer-computing projects have done for decades).
    without being asked).
 2. **The repository settings** the private report lists, and for each hosted project: its branch writable only by
    the hive's integration identity and the maintainers, force pushes blocked.
-3. **An integration identity**: a GitHub App (preferred) or a fine-grained token that can write to the hosted
-   projects' branches and nothing else, stored as a secret that only the `apply` job can read; and the state's own
-   repository, `Bee-ruche/hive-state` (public). The hourly workflow is `.github/workflows/hive.yml`; the exact settings
-   it needs are in [docs/hive-workflow.md](hive-workflow.md).
+3. **Two integration identities** (done on 13 November 2026): two GitHub Apps, one that can write the state's own
+   repository (`Bee-ruche/hive-state`, public) and one that can write the hosted projects' branches, each key in
+   an environment of the registry that accepts the branch `main` only. The hourly workflow is
+   `.github/workflows/hive.yml`; the settings it needs, and the one still to make (the commit of the registry it
+   uses), are in [docs/hive-workflow.md](hive-workflow.md).
 4. **Access to the two forks** for the builder, or the founder applies the forks' changes: the builder's pushes to
    them are refused, and it does not work around a refusal.
 5. **The decisions** D1 to D10 (docs/founder-decisions.md), first of all D1 (ask the providers), D4 (the flagship)
