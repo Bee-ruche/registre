@@ -1272,8 +1272,10 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     # failed on (one that breaks the judging delays the others once).
     queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
-    carried, within = 0, []
+    carried, within, weighing_until = 0, [], time.monotonic() + WEIGH_SECONDS
     for candidate in queue:
+        if within and time.monotonic() >= weighing_until:
+            break  # the plan's own time: what it has not weighed waits, oldest deal first at the next run
         # Its commits that are not the project's, counted no further than the limit: one with too many is refused
         # without its history being carried to the other steps.
         count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}")
@@ -1291,7 +1293,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         carried += weight
         within.append(candidate)
     if len(within) < len(queue):
-        log(f"the candidates' file is full: {len(queue) - len(within)} candidate(s) wait for the next run")
+        log(f"the candidates' file is full, or the time to weigh them is used up: {len(queue) - len(within)} candidate(s) wait for the next run")
     queue = within
     waiting = {(c["member_id"], c["task"]) for c in queue}
 
@@ -1341,7 +1343,8 @@ def member_mark(login):
 
 
 BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, each as it packs alone)
-PACK_SECONDS = 300  # how long git may take to pack one candidate's commits before they count as too heavy
+PACK_SECONDS = 60  # how long git may take to pack one candidate's commits before they count as too heavy
+WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those it has not reached wait for the next run
 
 
 def packed_weight(repo, sha, tip, most):

@@ -889,6 +889,23 @@ class TestStructure(Base):
         self.assertGreaterEqual(hive.BUNDLE_BYTES, 2 * hive.DEFAULTS["limits"]["history_bytes"])
         self.assertLessEqual(2 * hive.BUNDLE_BYTES, 2 << 30, "what the steps with a key accept to take (the workflow's own figure)")
 
+    def test_the_plan_spends_a_bounded_time_weighing_and_what_it_has_not_weighed_waits(self):
+        """Weighing a candidate is packing it: slow ones, one after the other, must not take the plan's whole time.
+        Each has its own limit (PACK_SECONDS), and the plan one for all (WEIGH_SECONDS): the first candidate is always
+        weighed, and the ones the plan has not reached are simply not in this plan."""
+        shas = [self.w.fork("bob", 102).submit("toy-0001"), self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n"),
+                self.w.fork("dave", 104).submit("toy-0005", path="run.sh", content="#!/bin/sh\n# faster\n")]
+        with mock.patch.object(hive, "WEIGH_SECONDS", 0):
+            first = self.w.plan()
+            self.assertEqual(len(first["queue"]), 1, "the first is weighed whatever the time; the others wait")
+            self.assertEqual([r["sha"] for r in self.w.run()], [first["queue"][0]["sha"]], "and it is answered")
+            second = [r["sha"] for r in self.w.run()]
+            self.assertEqual((len(second), second[0] in shas and second[0] != first["queue"][0]["sha"]), (1, True), "then the next, one run later")
+        self.assertEqual(sorted(r["sha"] for r in self.w.run()), sorted(set(shas) - {first["queue"][0]["sha"], second[0]}), "all of them in the end")
+        self.assertLessEqual(hive.PACK_SECONDS, hive.WEIGH_SECONDS)
+        self.assertLessEqual(hive.DEFAULTS["limits"]["discovery_seconds"] + hive.WEIGH_SECONDS, 25 * 60,
+                             "reading the forks and weighing the candidates fit in the plan's job (30 minutes in the workflow)")
+
     def test_a_file_of_candidates_heavier_than_the_plan_measured_stops_the_plan(self):
         self.w.fork("bob", 102).submit("toy-0001")
         with mock.patch.object(hive, "BUNDLE_BYTES", 100), self.assertRaisesRegex(hive.HiveError, "heavier than the plan measured"):
