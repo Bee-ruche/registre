@@ -204,8 +204,9 @@ project's tip, and `start` takes none from the clone. Then it sorts what an earl
   git tracks and finds changed, and the untracked files that git does not ignore;
 - **removed** (`REMOVED`): what git ignores, a build's output for instance, and what git cannot see (a repository
   inside the work tree, a link, a pipe). Which files git ignores is decided by the work tree's own `.gitignore`
-  files, the project's and any an earlier run wrote. So a file of the user's own under an ignored name is removed,
-  not set aside: a clone that works for the hive should hold no work of the user's own.
+  files, the project's and any an earlier run wrote, and by the list the clone itself keeps (`.git/info/exclude`);
+  the machine's own list is not read. So a file of the user's own under an ignored name is removed, not set
+  aside: a clone that works for the hive should hold no work of the user's own.
 
 Then it puts the clone on the branch `hive/submit/<id>` at the project's tip and writes every file of the tip out
 again. Last, it shows that the work tree holds the files of the tip and nothing else: it reads the tip's own list
@@ -243,9 +244,12 @@ Then:
 hive submit --project <PROJECT> --task <id> --deal <DEAL> --login <LOGIN> --message "<one line: what you changed>" --model <identifier>
 ```
 
-`submit` checks the clone, asks the project's own repository for its tip, stages what you changed **inside the
+`submit` checks the clone, asks the project's own repository for its tip, takes what you changed **inside the
 task's files** (what a build left elsewhere, untracked, is left where it is), commits it and adds the marker of
-your deal: two commits of its own, made on the project's commit, whatever else the clone's branch held. Before it
+your deal: two commits of its own, made on the project's commit, whatever else the clone's branch held. What it
+takes: every file of the task that the project holds, as it now stands or removed; a file the task names, if you
+made it; and, below a folder the task names, each new file, unless a `.gitignore` of the work tree passes over
+it (a build's output is not the work). No other list of files to pass over has a say in a candidate. Before it
 pushes, it shows by its own reading of the commits that the candidate starts from the project's history and
 changes only the task's files, and runs the hive's structural checks. Then it pushes to the user's fork:
 `PUSHED <commit>`.

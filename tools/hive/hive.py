@@ -463,10 +463,13 @@ def deal_prefer(deal, tasks, config=None, ledger=None):
     the preference has the one shape a deal carries (prefer_ok), names one of the project's parts as the registry
     writes them (project_parts), and says of the task it deals nothing the registry does not bear out: a kept
     preference deals a task of that part, and « no task of that part was free » is not said of one. Given the
-    project's settings and the ledger as the plan read it, it also holds what the line says against them, as plan
-    decides it: « not_offered » if and only if the project offers none; else « needs_an_accepted_deal » if and only
-    if the member's last deal did not end with an accepted candidate; and a preference is kept only where two open
-    tasks at least list the part. Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
+    project's settings and the ledger as the plan counted with it (as_the_plan_counted), it also holds what the line
+    says against them, as plan decides it: « not_offered » if and only if the project offers none; else
+    « needs_an_accepted_deal » if and only if the member's last deal did not end with an accepted candidate; a
+    preference is kept only where two tasks at least, open and not done, list the part, the task dealt being one of
+    them; and « one task of that part was free » is said only where one such task at least exists. (Which tasks were
+    free for that member at its turn, the plan alone knew: these are the bounds a later step can hold.) Otherwise
+    HiveError: such a plan is not the hive's, and nothing of it is written."""
     if "prefer" not in deal:
         return None
     prefer = deal["prefer"]
@@ -481,9 +484,11 @@ def deal_prefer(deal, tasks, config=None, ledger=None):
     if config is not None and ledger is not None:
         offered, earned = config["members"]["preferences"], ledger.last_deal_accepted(deal.get("member_id"))
         done = ledger.done()
-        listing = sum(1 for identifier, task in tasks.items() if part in task["files"] and not task.get("closed") and identifier not in done)
+        listing = {identifier for identifier, task in tasks.items() if part in task["files"] and not task.get("closed") and identifier not in done}
         said = "not_offered" if not offered else "needs_an_accepted_deal" if not earned else None
-        if (said is not None and because != said) or (said is None and because in ("not_offered", "needs_an_accepted_deal")) or (kept and listing < 2):
+        if (said is not None and because != said) or (said is None and because in ("not_offered", "needs_an_accepted_deal")):
+            raise untrue
+        if (kept and (len(listing) < 2 or deal.get("task") not in listing)) or (because == "one_free_task" and not listing):
             raise untrue
     if kept:
         return {"file": part, "kept": True}
@@ -517,6 +522,13 @@ class Ledger:
                         raise HiveError(f"{self.path}: line {position + 1} is not JSON: the ledger needs a person") from None
                     log("the ledger's last line was cut short (a run stopped while writing it): it is left out")
             self.lines = len(self.events)  # what the file held when it was read (what was added in memory comes after)
+
+    def first(self, lines):
+        """A copy that holds the first `lines` lines the file held and nothing else, to count with: it has no file, and
+        what is added to it stays in memory (append with write=False; any other append fails)."""
+        copy_ = Ledger.__new__(Ledger)
+        copy_.folder, copy_.path, copy_.events, copy_.lines = None, None, list(self.events[:lines]), lines
+        return copy_
 
     def append(self, events, write=True):
         """write=False keeps the events in memory only: the steps that hold no write token never write the ledger."""
@@ -1616,6 +1628,20 @@ def read_plan(plan_, config):
     return instant, plan_
 
 
+def as_the_plan_counted(ledger, plan_):
+    """The ledger as the plan counted with it when it dealt: the lines the plan read (same_ledger holds that they are
+    this ledger's first ones), then, in memory only, what the plan itself added before it dealt (plan): the promised
+    pushes it found in the project's history, or found missing from it (settle), and the deals it found over. A step
+    that writes holds what a deal says of its member against THIS, never against the ledger as it stands when the
+    step runs: the plan's own lines are not written yet when the first writing step starts, and by the time a step is
+    run again the run has written more (an answer to that very member's candidate, for a conditional deal)."""
+    counted = ledger.first(plan_["ledger"]["lines"])
+    counted.append(settle(counted, parse_iso(plan_["at"]), plan_["landed"]), write=False)
+    counted.append([{"type": "expired", "at": plan_["at"], "run": plan_["key"], "task": e["task"], "member_id": e["member_id"],
+                     "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]], write=False)
+    return counted
+
+
 def same_ledger(ledger, plan_):
     """True if the ledger is the one the plan read, plus nothing but lines of this same run (a step run again). A
     plan made on another state of the ledger deals nothing and records nothing: two runs never deal one task twice."""
@@ -2003,8 +2029,9 @@ def record(plan_, config, tasks, ledger, state_folder):
     _, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is recorded")
+    counted = as_the_plan_counted(ledger, plan_)
     for deal in (*plan_["deals"], *plan_["conditional"]):
-        deal_prefer(deal, tasks, config, ledger)  # a preference that is not the registry's, or not true, stops the step before it writes anything
+        deal_prefer(deal, tasks, config, counted)  # a preference that is not the registry's, or not true, stops the step before it writes anything
     key, instant = plan_["key"], now()  # what this step writes is dated now, when it becomes visible
     # First, the pushes earlier runs promised that the plan found IN the project's history: so that the ledger never
     # shows a member with a task it has in fact finished next to the one it is dealt now. A promise the plan did not
@@ -2032,8 +2059,9 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     planned, plan_ = read_plan(plan_, config)
     if not same_ledger(ledger, plan_):
         raise HiveError("the ledger is not the one the plan read: another run wrote meanwhile; nothing is applied")
+    counted = as_the_plan_counted(ledger, plan_)
     for deal in (*plan_["deals"], *plan_["conditional"]):
-        deal_prefer(deal, tasks, config, ledger)  # a preference that is not the registry's, or not true, stops the step before it pushes or writes anything
+        deal_prefer(deal, tasks, config, counted)  # a preference that is not the registry's, or not true, stops the step before it pushes or writes anything
     # What this step writes in the ledger is dated now, when it is written: a wait counts from the moment its member
     # can see the answer, however long the judging took. The commits it derives are dated at the plan's instant, as
     # the judging step dated them: the same commits.
@@ -2446,7 +2474,7 @@ GIT_PLACES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "G
 # commit-graph, which objects a pack reaches in a bitmap, where each one lies in a multi-pack index or a reverse
 # index): git believes such a file without reading the objects again, and it is a file of .git like any other. They
 # are not refused: a clone whose owner ran « git gc » holds some, and git works without reading them.
-GIT_WORKER = ("-c", f"core.attributesFile={os.devnull}", "-c", "core.pager=cat", "-c", "core.editor=true",
+GIT_WORKER = ("-c", f"core.attributesFile={os.devnull}", "-c", f"core.excludesFile={os.devnull}", "-c", "core.pager=cat", "-c", "core.editor=true",
               "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false", "-c", "submodule.recurse=false",
               "-c", "fetch.recurseSubmodules=false", "-c", "push.recurseSubmodules=no", "-c", "push.followTags=false",
               "-c", "core.untrackedCache=false", "-c", "core.commitGraph=false", "-c", "core.multiPackIndex=false",
@@ -2612,8 +2640,18 @@ NO_START = ("the work does not start from the project's recent history (the last
 START_FAILED = ("STOP: this clone could not be put on the task's branch ({step}): an earlier run left it in a state this tool does not "
                 "repair. Run nothing from this clone, not even its sandbox, and push nothing from it: tell the user to take a fresh "
                 "clone of the fork{aside}")
-# (What the work tree held was set aside before git stopped: it is in this clone and nowhere else.)
-SET_ASIDE_FIRST = ", once what this command set aside in it is copied out (git stash list shows it)"
+# (What a start command set aside, in this run or in an earlier one, is in this clone and nowhere else.)
+SET_ASIDE_FIRST = ", once what was set aside in it is copied out (git stash list shows it)"
+
+
+def aside_first(clone):
+    """The words START_FAILED ends with: SET_ASIDE_FIRST if this clone holds anything set aside (by this command or by
+    an earlier one: a fresh clone would not hold it), else nothing."""
+    try:
+        held = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
+    except HiveError:
+        return ""
+    return SET_ASIDE_FIRST if is_sha(held) else ""
 NOT_THE_TIPS = ("STOP: the work tree of this clone is not what the project's tip holds: a file of the tip is missing or holds other bytes, "
                 "or the work tree holds something more. Run nothing from this clone, not even its sandbox, and do not commit or push from "
                 "it: tell the user to take a fresh clone of the fork")
@@ -3106,18 +3144,31 @@ def candidate_tree(clone, base, files):
     work tree's files: never from the clone's index. That index is a file of .git: the blob it names for a file, the
     date and the size that make git take a file for unchanged, the tree it once worked out, are whatever ran in the
     clone last, and a candidate made from it could hold bytes the work tree never showed. Here git reads each of the
-    task's files again, as a file, under the rules of the project's commit (line ends, an encoding) and the work
-    tree's ignore rules (what a build left under an ignored name is not the work)."""
+    task's files again, as a file, under the rules of the project's commit (line ends, an encoding).
+
+    Which files are taken is this tool's choice, not that of git's ignore rules at large. Of the task's files, what
+    the project's commit holds is taken as it stands, changed or removed. A file the task names that the commit
+    does not hold is taken if the work tree holds it. Below a folder the task names, a new file is taken unless a
+    .gitignore of the work tree passes over it (what a build left under an ignored name is not the work): the work
+    tree's own .gitignore files are read as files, and no other list is: neither .git/info/exclude, a file of .git
+    that no command resets (it still says what « start » removes rather than sets aside, and nothing of what is
+    pushed), nor the machine's (core.excludesFile, which no worker command reads)."""
     root = os.fsencode(clone.root)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         own = {"GIT_INDEX_FILE": os.path.join(folder, "index")}
         clone.git("read-tree", need_sha(base), env=own)
-        # A file of the task is given to git if the work tree holds it, or if the project's commit does (it was removed).
-        paths = [os.fsencode(file) for file in files
-                 if os.path.lexists(os.path.join(root, os.fsencode(file.rstrip("/"))))
-                 or clone.git("ls-files", "-z", "--", file, env=own, raw=True).stdout]
-        if paths:
-            clone.git("add", "--all", "--pathspec-from-file=-", "--pathspec-file-nul", stdin=b"\0".join(paths), raw=True, env=own, attributes=base)
+        given = ("--pathspec-from-file=-", "--pathspec-file-nul")
+        held = [file for file in files if clone.git("ls-files", "-z", "--", file, env=own, raw=True).stdout]
+        if held:  # what the project's commit holds of the task's files: updated, or removed if the work tree lost it
+            clone.git("add", "--update", *given, stdin=b"\0".join(os.fsencode(file) for file in held), raw=True, env=own, attributes=base)
+        new = [os.fsencode(file) for file in files
+               if not file.endswith("/") and file not in held and os.path.lexists(os.path.join(root, os.fsencode(file)))]
+        below = [file for file in files if file.endswith("/") and os.path.lexists(os.path.join(root, os.fsencode(file.rstrip("/"))))]
+        if below:
+            listed = clone.git("ls-files", "-z", "--others", "--exclude-per-directory=.gitignore", "--", *below, env=own, raw=True).stdout
+            new += [path for path in listed.split(b"\0") if path]
+        if new:  # (--force: these were chosen above, and no list of git's own passes over one of them)
+            clone.git("add", "--force", *given, stdin=b"\0".join(new), raw=True, env=own, attributes=base)
         return clone.git("write-tree", env=own).stdout.strip()
 
 
@@ -3965,7 +4016,7 @@ def cmd_start(args):
     except NotPlain:
         raise
     except HiveError as error:  # (an index git cannot read at all: nothing was changed, and nothing can be)
-        raise (NotPlain(START_FAILED.format(step=error, aside="")) if str(error).startswith("git ") else error) from None
+        raise (NotPlain(START_FAILED.format(step=error, aside=aside_first(clone))) if str(error).startswith("git ") else error) from None
     branch, who, root = SUBMIT_BRANCH.format(task=task["id"]), clone.identity(args.login), os.fsencode(clone.root)
     # Every refusal is above: from here on the clone changes.
     removed = 0
@@ -4020,8 +4071,7 @@ def cmd_start(args):
         raise
     except HiveError as error:
         if str(error).startswith("git "):
-            now = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
-            raise NotPlain(START_FAILED.format(step=error, aside=SET_ASIDE_FIRST if before is not None and now and now != before else "")) from None
+            raise NotPlain(START_FAILED.format(step=error, aside=aside_first(clone))) from None
         raise
     # What git wrote is what the clone's objects and index made it write. Nothing is said started until the work tree
     # itself, read as files, is shown to hold the tip's files and nothing else.
