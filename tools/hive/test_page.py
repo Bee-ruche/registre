@@ -732,9 +732,9 @@ class TestNobodyIsRanked(Case):
                          reason=None if n < 4 else "judge_refused") for n in range(1, 8)]  # seven accounts, three accepted
         lines += [verdict(10 + n, "2026-11-02T09:00:00Z", "solo", 400, "toy-0002", "accepted" if n == 0 else "refused", model="model-b",
                           reason=None if n == 0 else "judge_refused") for n in range(42)]  # one account: 42 judged, 41 refused
-        lines += [verdict(60 + n, "2026-11-03T09:00:00Z", None, None, "toy-0003", "refused", model="model-b", reason="judge_refused")
-                  for n in range(4)]  # lines without an account add no account
         lines += [verdict(70 + n, "2026-11-04T09:00:00Z", f"n{n}", 500 + n, "toy-0004", "refused", reason="judge_refused") for n in range(4)]
+        lines += [verdict(60 + n, "2026-11-03T09:00:00Z", None, None, "toy-0003", "refused", reason="judge_refused")
+                  for n in range(4)]  # lines without an account add no account: « undeclared » has four accounts behind it, not five
         self.ledger(lines)
         files = self.make()
         data, seen = self.summary(files), self.harmless(files)
@@ -750,7 +750,7 @@ class TestNobodyIsRanked(Case):
         self.assertIn("@solo", own)
         self.assertIn("declared model: model-b", own, "the page of an accepted contribution names its member and the model it declared")
         for name, text in files.items():
-            self.assertNotRegex(told(text), r"\b(41|42|45|46)\b", (name, "how many of that member's candidates were judged or refused"))
+            self.assertNotRegex(told(text), r"\b(41|42)\b", (name, "how many of that member's candidates were judged or refused"))
 
     def test_an_acceptance_without_a_judgement_is_an_integration_and_not_a_judged_candidate(self):
         """The hive writes no such line. If the ledger holds one, it is an integration like another for its member, its
