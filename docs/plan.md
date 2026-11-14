@@ -208,6 +208,21 @@ contributions read during the research asks for a human who reviewed the change 
 read through a research agent, to re-read before any project is approached)**; an unattended worker is not that
 human.
 
+**A project made for the hive.** The founder, or members of the community, may create a project so that the hive
+works on it: a new one, or a fork of an existing one whose licence allows it (minizBee is such a fork). It is not
+a fourth way. Its makers are its maintainers, and their agreement is in the making:
+
+- If they want the hive to deal its tasks and to record credit, the project is declared in the registry, by the
+  council as for any other (docs/new-project.md), and meets 4.2 whole. Its file says who maintains it and what
+  judges: the hive's judge, or the project's own checks, and each line of the ledger then says which. A volunteer
+  works for it only by choosing it: the hive moves nobody's agent to a project its owner did not pick.
+- If they do not, it is "your own": the hive judges nothing of it and records nothing.
+
+For a fork: its first lines say that it is an independent fork, and it keeps the licence and the notices; the hive
+sends nothing to the project it was forked from; and what the hive never holds (4.4) it does not hold for a fork
+either. A fork of a project whose own rules refuse AI contributions is lawful where the licence allows, and
+unwelcome to its authors: the hive makes or serves none without the founder's decision, case by case.
+
 ### 4.2 What a hosted project must have
 
 1. **Real demand**: people who want the result, not only its builders.
