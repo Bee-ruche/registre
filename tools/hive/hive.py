@@ -3775,6 +3775,21 @@ def empty_submodules(clone):
     return removed
 
 
+def stale_locks(git_dir):
+    """The locks a git command that was stopped left in the clone's .git: the plain files whose name ends in
+    « .lock », directly in .git (the index's, HEAD's, the packed references', the settings') and anywhere under
+    .git/refs (a reference's). git stops on one at every later run, each time it would write what the lock is on.
+    Only plain files, as lstat says: a folder or a link of such a name is not one of git's locks, and is left as it
+    is. (plain_clone has refused every link inside .git.)"""
+    found = []
+    with os.scandir(git_dir) as listed:
+        found.extend(item.path for item in listed if item.name.endswith(".lock") and stat.S_ISREG(item.stat(follow_symlinks=False).st_mode))
+    for folder, _, names in os.walk(git_dir / "refs"):
+        found.extend(os.path.join(folder, name) for name in names
+                     if name.endswith(".lock") and stat.S_ISREG(os.lstat(os.path.join(folder, name)).st_mode))
+    return sorted(found)
+
+
 def branch_in_the_way(clone):
     """The branch of this clone that stands where the tool keeps its own, or None. A task's branch is
     hive/submit/<task>, and for git a name is a branch or a folder of branches, never both: while a branch is named
@@ -3833,8 +3848,9 @@ def cmd_start(args):
     the work tree is touched, and .git itself is not cleaned (git never cleans it): plain_clone checks it first,
     and a refusal touches nothing.
 
-    Two leftovers inside .git would stop this command at every later run. A lock on the index (.git/index.lock), which
-    a git command that was stopped leaves behind, is removed first: no other git runs in the clone while a worker
+    Two leftovers inside .git would stop this command at every later run. A lock, which a git command that was
+    stopped leaves behind (a plain file whose name ends in « .lock »: on the index, on HEAD, on the packed
+    references, on a reference), is removed first (stale_locks): no other git runs in the clone while a worker
     command does. A branch named « hive » or « hive/submit » keeps git from making any task's branch: it may be
     someone's, so the command names it and stops before it changes anything. So it does when the clone is on a
     branch that has no commit: git has nothing to set its files aside against.
@@ -3891,15 +3907,14 @@ def cmd_start(args):
     # Every refusal is above: from here on the clone changes.
     removed = 0
     try:
-        # No other git runs in this clone while a worker command does (the agent runs none): a lock on the index is one
-        # that a command which was stopped left behind, and every later git that writes the index would stop on it.
-        if stat.S_ISREG(os.lstat(clone.git_dir / "index.lock").st_mode):
-            os.unlink(clone.git_dir / "index.lock")
+        # No other git runs in this clone while a worker command does (the agent runs none): a lock is one that a
+        # command which was stopped left behind, and every later git that writes what it locks would stop on it.
+        for lock in stale_locks(clone.git_dir):
+            os.unlink(lock)
             removed += 1
-    except FileNotFoundError:
-        pass
     except OSError:
-        raise HiveError("the lock an earlier git command left on the index (.git/index.lock) could not be removed: tell the user") from None
+        raise HiveError("a lock an earlier git command left in .git (a file whose name ends in .lock) could not be removed: tell the "
+                        "user") from None
     open_folders(clone.root)
     try:
         for path in links_over_folders(clone):

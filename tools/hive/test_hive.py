@@ -5742,14 +5742,45 @@ class TestVolunteerSide(Volunteer):
                 raise PermissionError(13, "Permission denied", str(path))
             return real(path, *more, **options)
         with mock.patch.object(os, "unlink", side_effect=refused):
-            self.one_line(self.begin("toy-0001", NOW), "the lock an earlier git command left on the index (.git/index.lock) could not be removed: "
-                                                      "tell the user")
+            self.one_line(self.begin("toy-0001", NOW), "a lock an earlier git command left in .git (a file whose name ends in .lock) could not be "
+                                                      "removed: tell the user")
         lock.unlink()
         lock.mkdir()
         self.one_line(self.begin("toy-0001", NOW), "git stash failed (", begins=True)
         self.assertTrue(lock.is_dir(), "a folder of that name is not the tool's to remove")
         lock.rmdir()
         self.assertEqual((self.alice.work / "lib.c").read_bytes(), (LIB + "int again;\n").encode(), "and the work tree is as it was")
+
+    def test_a_lock_left_on_a_reference_on_head_or_on_the_packed_references_is_removed_too(self):
+        """git locks what it is about to write with a file of the same name and « .lock »: the index, HEAD, the packed
+        references, each reference. A lock that stays, because a git was stopped or because something wrote one,
+        stops git at every later run, each time it would write what the lock is on: the task's branch could never be
+        made again, nor the stash. start removes them all, as it removes the index's, and counts them; a folder of
+        such a name is not a lock, and is left where it is."""
+        git_dir = self.alice.work / ".git"
+        locks = [git_dir / name for name in ("refs/heads/hive/submit/toy-0001.lock", "refs/stash.lock", "HEAD.lock", "packed-refs.lock",
+                                              "config.lock", "refs/remotes/origin/main.lock")]
+        for number, lock in enumerate(locks):
+            with self.subTest(lock=lock.name):
+                lock.parent.mkdir(parents=True, exist_ok=True)
+                lock.write_text("")
+                self.alice.write("lib.c", LIB + f"int half_done_{number};\n")
+                code, text = self.begin("toy-0001", NOW)
+                self.assertEqual((code, self.spoken(text)[:3]), (0, ["SET-ASIDE 1 change(s) of an earlier run: git stash list shows them",
+                                                                     "REMOVED 1 leftover file(s) or folder(s) of an earlier run",
+                                                                     f"STARTED hive/submit/toy-0001 at {self.start}"]), self.err)
+                self.assertFalse(lock.exists())
+        for lock in locks:
+            lock.write_text("")
+        code, text = self.begin("toy-0001", NOW)
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"REMOVED {len(locks)} leftover file(s) or folder(s) of an earlier run"), self.err)
+        self.assertEqual([lock for lock in locks if lock.exists()], [])
+        self.assertEqual(hive.stale_locks(git_dir), [])
+        folder = git_dir / "refs/heads/kept.lock"
+        folder.mkdir()
+        (git_dir / "objects/info/some.lock").write_text("")  # not where git keeps a lock this tool removes
+        self.assertEqual((hive.stale_locks(git_dir), self.begin("toy-0001", NOW)[0]), ([], 0), self.err)
+        self.assertTrue(folder.is_dir() and (git_dir / "objects/info/some.lock").exists())
 
     def test_a_branch_that_stands_where_the_tool_keeps_its_own_is_named_and_nothing_is_changed(self):
         """A task's branch is hive/submit/<task>. For git a name is a branch or a folder of branches, never both: a
