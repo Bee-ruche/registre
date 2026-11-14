@@ -81,6 +81,8 @@ MODEL_MEMBERS_MIN = 5
 GAIN_MAX = 10  # a gain is a fraction: 10 is 1000 %, and nothing above is shown
 MEASURES_MAX = 40  # rows of « what the judge measured » kept for one integration
 COUNT_MAX = 10 ** 16 - 1  # a count in a report (outputs compared, files, lines): sixteen digits, as the hive reads them
+# The kinds of an « error » line (hive.Ledger.marks()), and those that say the judge was started (judge_runs()).
+ERROR_KINDS, JUDGE_RAN = ("judge", "push", "hive", "none"), ("judge", "push", "none")
 # The answers that are the hive's or the project's doing, not the candidate's (hive.HIVE_SIDE_REASONS: « no cost at
 # all »): the task was closed while the candidate waited, or the hive spent its runs without an answer. The ledger
 # records them as refused verdicts; the page does not list them under what was refused of candidates.
@@ -315,10 +317,12 @@ def clean_event(raw, goals=None):
     # « marks »: what makes this line the same line as another (once()); the candidate is the ledger's « sha ».
     event = {"type": kind, "at": at, "member_id": account_id(raw.get("member_id")), "login": matching(raw.get("member"), LOGIN), "marks": []}
     candidate, run = matching(raw.get("sha"), SHA), matching(raw.get("run"), RUN)
-    if kind == "error":
-        event["judge"] = raw.get("kind", "judge") == "judge"  # as the hive reads it: no kind means the judge failed
-        if candidate is not None and run is not None and isinstance(raw.get("kind", "judge"), str):
-            event["marks"] = [("error", candidate, run, raw.get("kind", "judge"))]
+    if kind in ("error", "unused"):
+        failed = raw.get("kind", "judge") if kind == "error" else None  # as the hive reads it: no kind means the judge failed
+        failed = failed if isinstance(failed, str) and failed in ERROR_KINDS else None
+        event.update(judge=failed == "judge", ran=kind == "unused" or failed in JUDGE_RAN)  # « ran »: a run of the judge (judge_runs())
+        if candidate is not None and run is not None and (kind == "unused" or failed is not None):
+            event["marks"] = [(kind, candidate, run, failed)]
     elif kind == "verdict":
         result = raw.get("result")
         if not isinstance(result, str) or result not in ("accepted", "refused"):
@@ -336,13 +340,36 @@ def clean_event(raw, goals=None):
     return event
 
 
+def judge_runs(events):
+    """How many times the judge was started on a candidate, as the ledger's lines say (hive.events_of(), hive.apply()).
+    A run of the judge leaves one of these lines, and each is counted once:
+
+      verdict, judged true     the judge examined the candidate, and the hive accepted or refused it on its answer
+      error, kind « judge »    the judge failed on it (a line without a kind is read so, as the hive reads it)
+      error, kind « none »     the judging step had started the judge on it and gave no answer
+      error, kind « push »     the judge accepted it, and the project's repository declined its commit
+      unused                   the judge ran on it, and the hive could not use the answer: an earlier push of the
+                               same run did not land. It is judged again at a later run, which is another run
+
+    Not a run of the judge: an error of kind « hive » (the hive could not derive the candidate: the judge never saw
+    it), a verdict whose judged is not true (refused before the judge), an intent and a void (a promised push and its
+    closing: the run that made the promise is counted by its verdict, its error or its unused line).
+
+    What the ledger does not tell apart. An unused line carries no kind: the hive also writes one for a candidate it
+    could not derive after a push that did not land, and it is counted here as a run. A promise whose push the hive
+    could not tell the fate of, and that a later run closes with a void, leaves no line of the five above: that run is
+    not counted. Both are rare, and neither can be read from the ledger with certainty."""
+    return sum(1 for event in events if (event["type"] == "verdict" and event["judged"]) or (event["type"] in ("error", "unused") and event["ran"]))
+
+
 def once(events):
     """(the lines that count, in order; how many were left out as repeats). The hive records an answer once
-    (hive.Ledger.mark): one verdict for a candidate, one error for a candidate, a run and a kind. A ledger that holds
-    a line twice (merged twice, a line replayed) is read here as the hive reads its own: the first line stands and the
-    others count for nothing, in any figure, card or badge. An accepted verdict whose integrated commit an earlier
-    accepted verdict already holds is a repeat too: one commit is one integration, one card, one page. Only whole
-    ids are compared (a 40-hex candidate or commit, a run's key): a line without them counts for itself."""
+    (hive.Ledger.mark): one verdict for a candidate; one error for a candidate, a run and a kind; one unused line for
+    a candidate and a run. A ledger that holds a line twice (merged twice, a line replayed) is read here as the hive
+    reads its own: the first line stands and the others count for nothing, in any figure, card or badge. An accepted
+    verdict whose integrated commit an earlier accepted verdict already holds is a repeat too: one commit is one
+    integration, one card, one page. Only whole ids are compared (a 40-hex candidate or commit, a run's key): a line
+    without them counts for itself."""
     kept, known = [], set()
     for event in events:
         if any(mark in known for mark in event["marks"]):
@@ -436,7 +463,7 @@ def collect(state, now, tasks=None):
 
     since = now - WEEK
     members, models, refusals, ended, recent, firsts = {}, {}, {}, {}, [], {}
-    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "ended_by_hive", "judge_failures"), 0)
+    totals = dict.fromkeys(("verdicts", "judged", "accepted", "integrations", "refused", "ended_by_hive", "judge_failures", "judge_runs"), 0)
     week = {"integrations": 0, "judged": 0, "accepted": 0, "ids": set()}
     for position, event in enumerate(verdicts):
         accepted, judged, member_id = event["accepted"], event["judged"], event["member_id"]
@@ -473,6 +500,7 @@ def collect(state, now, tasks=None):
             if member_id is not None and (member_id not in firsts or event["at"] < firsts[member_id]["at"]):
                 firsts[member_id] = event  # the account's first integration: the earliest instant, then the ledger's order
     totals["judge_failures"] = sum(1 for event in events if event["type"] == "error" and event["judge"])
+    totals["judge_runs"] = judge_runs(events)
 
     # An order that is no score: the login, as a dictionary lists it; an account without a login comes after, by number.
     named = sorted(((member_id, row) for member_id, row in members.items() if row["integrations"]),
@@ -516,7 +544,7 @@ def collect(state, now, tasks=None):
         "measures": {
             "yield": rate(totals["accepted"], totals["judged"]),
             "time_to_answer_seconds": None,  # the ledger says when a candidate was answered, not when it was pushed
-            "judge_runs_per_integration": round((totals["judged"] + totals["judge_failures"]) / integrations, 2) if integrations else None,
+            "judge_runs_per_integration": round(totals["judge_runs"] / integrations, 2) if integrations else None,  # judge_runs()
             "waiting": read_waiting(state, now),
         },
         "ledger": {"lines": len(objects) + skipped, "unreadable_lines": skipped, "events_left_out": len(objects) - len(usable),
@@ -874,7 +902,8 @@ def render_html(data, title, repo_url, join):
         tile("Time to an answer", "n/a", "the ledger records when a candidate was answered, not when it was pushed"
              + (f"; {waiting['count']} waiting now, the oldest for {duration(waiting['oldest_seconds'])}" if waiting else "")),
         tile("Judge runs per integration", "n/a" if runs is None else f"{runs:.1f}",
-             f"candidates judged: {totals['judged']}; runs the judge failed on: {totals['judge_failures']}; integrations: {integrations}"),
+             f"runs of the judge: {totals['judge_runs']}; {totals['judged']} ended in a candidate's answer, "
+             f"{totals['judge_runs'] - totals['judged']} did not; integrations: {integrations}"),
     ], class_="tiles")))
 
     sections.append(join_block(join))

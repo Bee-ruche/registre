@@ -282,12 +282,14 @@ class TestFigures(Case):
         files = self.make("--repo-url", "https://github.com/Bee-ruche/toy")
         data, seen = self.summary(files), self.harmless(files)
         self.assertEqual(data["totals"], {"verdicts": 6, "judged": 4, "accepted": 3, "integrations": 3, "refused": 3, "ended_by_hive": 0,
-                                          "judge_failures": 2})
+                                          "judge_failures": 2, "judge_runs": 8})
         self.assertEqual(data["tasks"], {"done": 3, "dealt": 1, "open": 2, "closed": 1, "total": 7})
         self.assertEqual(data["week"], {"since": "2026-11-05T12:00:00Z", "integrations": 2, "members": 2, "judged": 3, "accepted": 2,
                                         "acceptance_rate": 0.6667})
+        # Eight runs of the judge for three integrations: four judged verdicts, two failures of the judge (one line says so,
+        # one has no kind), one commit the project's repository declined, one answer the hive could not use.
         self.assertEqual(data["measures"], {"yield": 0.75, "time_to_answer_seconds": None,
-                                            "judge_runs_per_integration": 2.0, "waiting": None})
+                                            "judge_runs_per_integration": 2.67, "waiting": None})
         self.assertEqual(data["refusals"], [{"reason": reason, "count": 1} for reason in ("conflict", "judge_refused", "path_outside_task")])
         # Three accounts in all: no model has enough members behind it for its judged count and its rate to be shown
         # (TestNobodyIsRanked holds the models' table when there are enough).
@@ -407,6 +409,44 @@ class TestFigures(Case):
         self.assertIn("join.html", self.harmless(self.make("--join")).hrefs)
         other = "https://github.com/Bee-ruche/registre/blob/hive/docs/join.md"
         self.assertIn(other, self.harmless(self.make("--join-url", other), join=other).hrefs)
+
+
+class TestJudgeRuns(Case):
+    """« Judge runs per integration » counts every run of the judge the ledger holds a line for (page.judge_runs)."""
+
+    def line(self, type_, number, /, **more):
+        return {"type": type_, "at": "2026-11-10T09:00:00Z", "run": f"{number:032x}", "task": "toy-0001", "member": "bob", "member_id": 102,
+                "repo_id": 1, "sha": sha(number), **more}
+
+    def test_every_run_the_judge_started_is_counted_and_nothing_else(self):
+        runs = [verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001"),
+                verdict(2, "2026-11-10T09:00:00Z", "bob", 102, "toy-0002", "refused", reason="judge_refused"),
+                self.line("error", 3, kind="judge"), self.line("error", 4),  # no kind: the judge failed, as the hive reads it
+                self.line("error", 5, kind="none"),  # the judge had started on it and gave no answer
+                self.line("error", 6, kind="push"),  # the judge accepted it; the project's repository declined its commit
+                *(self.line("unused", number) for number in range(7, 11))]  # the judge ran, and an earlier push did not land
+        others = [verdict(11, "2026-11-10T09:00:00Z", "bob", 102, "toy-0003", "refused", judged=False, reason="conflict"),  # refused before the judge
+                  self.line("error", 12, kind="hive"),  # the hive could not derive it: the judge never saw it
+                  self.line("error", 13, kind="a kind of tomorrow"), self.line("error", 14, kind=["judge"]), self.line("error", 15, kind=None),
+                  {**verdict(16, "2026-11-10T09:00:00Z", "bob", 102, "toy-0004"), "type": "intent", "run": "f" * 32},
+                  self.line("void", 16, commit=sha(5016)), self.line("deal", 17, until="2026-11-11T09:00:00Z"), self.line("expired", 18),
+                  self.line("unused", 19, at="2026-11-13T09:00:00Z")]  # dated after the page's instant
+        self.ledger(runs + others)
+        files = self.make()
+        data, seen = self.summary(files), self.harmless(files)
+        self.assertEqual({key: data["totals"][key] for key in ("judged", "judge_failures", "judge_runs", "integrations")},
+                         {"judged": 2, "judge_failures": 2, "judge_runs": 10, "integrations": 1})
+        self.assertEqual(data["measures"]["judge_runs_per_integration"], 10.0)
+        self.assertIn("Judge runs per integration10.0runs of the judge: 10; 2 ended in a candidate's answer, 8 did not; integrations: 1", seen.said)
+        self.assertEqual(page.judge_runs([page.clean_event(line) for line in runs]), 10)
+        self.assertEqual(page.judge_runs([page.clean_event(line) for line in others]), 1, "of the others, only the line dated later is a run, at its time")
+        for line in runs:  # each of them counts by itself
+            self.assertEqual(page.judge_runs([page.clean_event(line)]), 1, line)
+
+    def test_the_same_line_twice_is_one_run(self):
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001"), self.line("unused", 7), self.line("unused", 7),
+                     self.line("unused", 7, run="a" * 32), self.line("error", 5, kind="none"), self.line("error", 5, kind="none")])
+        self.assertEqual(self.summary(self.make())["totals"]["judge_runs"], 4, "one for a candidate and a run, as the hive records them")
 
 
 class TestRefusals(Case):
@@ -685,7 +725,7 @@ class TestHostile(Case):
         self.assertEqual({r["task"] for r in data["recent"]}, {"toy-0001", "toy-0002", None}, "a task id that is not one is unknown")
         self.assertEqual(data["tasks"], {"done": 2, "dealt": 0, "open": 0, "closed": 0, "total": 2}, "a task counts once, under a real id and status")
         self.assertEqual(data["totals"], {"verdicts": 38, "judged": 35, "accepted": 32, "integrations": 35, "refused": 3, "ended_by_hive": 0,
-                                          "judge_failures": 0}, "« judged » is true or it is not; a line too long to be honest is not read")
+                                          "judge_failures": 0, "judge_runs": 35}, "« judged » is true or it is not; a line too long to be honest is not read")
         self.assertEqual({r["commit"] for r in data["recent"] if r["member_id"] == 300 and r["at"] == "2026-11-10T01:00:00Z"},
                          {None, sha(5040), sha(5041), sha(5042), sha(5055)})
         self.assertEqual(data["refusals"], [{"reason": None, "count": 3}])
