@@ -724,6 +724,7 @@ tbody th{font-weight:600}
 .plain tbody th{font-weight:400;overflow-wrap:anywhere}
 .plain tr.asked th,.plain tr.asked td{font-weight:600}
 code{font:.88em ui-monospace,SFMono-Regular,Consolas,monospace}
+.login{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .copy{display:block;margin:.5rem 0;padding:.6rem .7rem;border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;
 overflow-wrap:anywhere;user-select:all}
 .card>svg{display:block;max-width:100%;height:auto;margin:.2rem 0 1rem}
@@ -779,10 +780,11 @@ def table(head, rows, stack=True, ids=None, looks=None):
 
 def member_cell(login, member_id):
     """A member, linked to their GitHub profile when the login is a checked one; the account's number when the
-    login is not known (or no longer theirs); « unknown » when the account itself is not."""
+    login is not known (or no longer theirs); « unknown » when the account itself is not. A login is set in a
+    fixed-width face (the class « login »), where letters that look alike elsewhere differ."""
     link = member_link(login) if login is not None else None
     if link is not None:
-        return el("a", login, href=link, rel="nofollow noopener")
+        return el("a", login, href=link, rel="nofollow noopener", class_="login")
     return el("span", "unknown" if member_id is None else f"account {member_id}", class_="soft")
 
 
@@ -1086,12 +1088,14 @@ def render_win(project, win, repo_url=None):
     parts.append(el("path", class_="l", stroke_dasharray="2 4", d=f"M{pad} {y}H{wide - pad}"))
     when = ("first integration · " if win["first"] else "integrated ") + date(win["at"])
     y += 26
-    # Who: the login, whole (it shrinks, and takes the line for itself when it is long). When the login is no longer
-    # this account's, the account's number, which is what the ledger is sure of.
-    who = "@" + win["login"] if win["login"] else f"GitHub account {win['member_id']}" if win["member_id"] else ""
+    # Who: the login, whole (it shrinks, and takes the line for itself when it is long), in the cards' fixed-width
+    # face: two logins that differ by a letter another letter looks like (« I » and « l », « 0 » and « O », « rn » and
+    # « m ») must not read the same on a card. When the login is no longer this account's, the account's number, which
+    # is what the ledger is sure of.
+    who, mono = ("@" + win["login"], True) if win["login"] else (f"GitHub account {win['member_id']}" if win["member_id"] else "", False)
     if who:
-        alone = width(who, 15, True) > room - width(when, 12) - 16
-        parts.append(line(who, pad, y, 15, room=room, bold=True, floor=0.55, whole=True))
+        alone = width(who, 15, True, mono) > room - width(when, 12) - 16
+        parts.append(line(who, pad, y, 15, room=room, bold=True, mono=mono, floor=0.55, whole=True))
         y += 19 if alone else 0
         parts.append(line(when, pad, y, 12, "j") if alone else line(when, wide - pad, y, 12, "j", end=True))
         said.append(who)
@@ -1244,12 +1248,15 @@ def reading(row):
 
 def story(win):
     """One sentence that tells an integration, as the children of a paragraph: this file's words around checked fields
-    (a task id and its title from the feed, a login or an account's number, a model identifier, a date, a commit id)."""
+    (a task id and its title from the feed, a login and its account's number, a model identifier, a date, a commit
+    id). The login is in a fixed-width face, and the account's number stands beside it as text: a login can look like
+    another's, or pass to another account; the number is one account's for ever."""
     title = plain(win["title"], 100)
     task = ["Task ", el("code", win["task"]), f": {title}" + ("" if title.endswith((".", "!", "?", "…")) else ".") if title else ".", " "]
     profile = member_link(win["login"]) if win["login"] else None
     if profile is not None:
-        who = ["the AI coding assistant of ", el("strong", el("a", "@" + win["login"], href=profile, rel="nofollow noopener"))]
+        who = ["the AI coding assistant of ", el("strong", el("a", "@" + win["login"], href=profile, rel="nofollow noopener", class_="login")),
+               f", GitHub account {win['member_id']}" if win["member_id"] else None]
     else:
         who = f"the AI coding assistant of GitHub account {win['member_id']}" if win["member_id"] else "a member's AI coding assistant"
     return [task if win["task"] else None, "Written by ", who,

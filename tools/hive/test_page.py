@@ -94,12 +94,14 @@ class Seen(HTMLParser):
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
         self.tags, self.attributes, self.hrefs, self.rows, self.cell = [], [], [], [], None
-        self.styles, self.ids, self.metas, self.open, self.words, self.heads = [], [], {}, [], [], []
+        self.styles, self.ids, self.metas, self.open, self.words, self.heads, self.links = [], [], {}, [], [], [], []
         self.feed(text)
         self.close()
 
     def handle_starttag(self, tag, attrs):
         self.tags.append(tag)
+        if tag == "a":
+            self.links.append(dict(attrs))  # every link, with its attributes
         self.attributes.extend(name for name, _ in attrs)
         self.hrefs.extend(value for name, value in attrs if name in ("href", "src", "xlink:href", "action"))
         self.ids.extend(value for name, value in attrs if name == "id")
@@ -853,7 +855,7 @@ class TestHostile(Case):
         self.assertIn("&lt;img src=x&gt;", text)
         self.assertIn("a&quot;onmouseover=&quot;x", text)
         own = files[f"wins/{sha(5020)}.html"]  # the page of the first hostile login's integration
-        self.assertIn("<strong><a href=\"https://github.com/%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E\" rel=\"nofollow noopener\">"
+        self.assertIn("<strong><a href=\"https://github.com/%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E\" rel=\"nofollow noopener\" class=\"login\">"
                       "@&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;</a></strong>", own, "and the builder of its page: quoted in the link, escaped in the text")
         self.assertIn("&lt;img src=x&gt;", files[f"wins/{sha(5040)}.html"], "a hostile model, in the story of its page")
         for name, content in files.items():
@@ -1319,6 +1321,64 @@ class TestOnce(Case):
         self.assertEqual(self.errors.count("\n"), 1, "one line on the standard error says how many lines were left out")
 
 
+class TestLogins(Case):
+    """Wherever a login credits someone, it is set in a fixed-width face, where letters that look alike elsewhere
+    differ; and the page of a contribution gives the account's number beside the login."""
+
+    def setUp(self):
+        super().setUp()
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "Alice-dev", 1, "toy-0001", report={"gain_a": 0.042, "sure_a": 1}),
+                     verdict(2, "2026-11-11T09:00:00Z", "AIice-dev", 2, "toy-0002", report={"gain_a": 0.042, "sure_a": 1}),
+                     verdict(3, "2026-11-09T10:00:00Z", "not a login", 3, "toy-0003")])
+        self.files = self.make()
+        self.harmless(self.files)
+
+    def test_a_card_sets_the_login_in_its_fixed_width_face_and_two_accounts_do_not_share_a_line(self):
+        lines = {}
+        for number, login in ((1, "@Alice-dev"), (2, "@AIice-dev")):
+            root = minidom.parseString(self.files[f"wins/{sha(5000 + number)}.svg"].encode("utf-8")).documentElement
+            nodes = [node for node in root.getElementsByTagName("text") if node.firstChild.data == login]
+            self.assertEqual(len(nodes), 1, login)
+            self.assertEqual(nodes[0].getAttribute("class").split(), ["i", "b", "m"], "« m » is the cards' fixed-width face")
+            self.assertNotIn("GitHub account", self.files[f"wins/{sha(5000 + number)}.svg"], "the number is on the page, not on the card")
+            lines[login] = nodes[0].toxml()
+        self.assertNotEqual(lines["@Alice-dev"].replace("Alice", "AIice"), lines["@Alice-dev"])
+        # The face: a list of fixed-width fonts that ends with the generic one; no font is fetched.
+        self.assertRegex(page.CARD_CSS, r"\.m\{font-family:(?:[A-Za-z][A-Za-z -]*,)+monospace\}")
+        self.assertRegex(page.CARD_CSS, r"(?<![.a-z])text\{font-family:(?:[A-Za-z-][A-Za-z -]*,)+sans-serif\}")
+        for style in (page.CARD_CSS, page.CSS):
+            self.assertNotRegex(style, r"(?i)url\(|@font-face|@import|https?:|//")
+        # An account shown by its number has no login to tell from another: the cards' usual face.
+        root = minidom.parseString(self.files[f"wins/{sha(5003)}.svg"].encode("utf-8")).documentElement
+        self.assertEqual([node.getAttribute("class") for node in root.getElementsByTagName("text") if node.firstChild.data == "GitHub account 3"], ["i b"])
+
+    def test_the_longest_login_is_whole_in_the_fixed_width_face(self):
+        login = "W" * 20 + "m" * 19
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", login, 1, "toy-0001")])
+        root = minidom.parseString(self.make()[f"wins/{sha(5001)}.svg"].encode("utf-8")).documentElement
+        node = next(node for node in root.getElementsByTagName("text") if node.firstChild.data == "@" + login)
+        size = float(node.getAttribute("font-size"))
+        self.assertGreaterEqual(size, 8)
+        self.assertLessEqual(0.62 * size * (len(login) + 1), 440 - 2 * 24, "forty characters of a fixed-width face fit between the card's margins")
+
+    def test_a_page_sets_every_login_in_the_fixed_width_face_and_gives_the_account_s_number_beside_it(self):
+        self.assertRegex(page.CSS, r"\n\.login\{font-family:(?:[A-Za-z][A-Za-z -]*,)+monospace\}\n")
+        index = Seen(self.files["index.html"])
+        profiles = [link for link in index.links if MEMBER_HREF.match(link["href"])]
+        self.assertEqual([link["href"][19:] for link in profiles], ["AIice-dev", "AIice-dev", "Alice-dev", "AIice-dev", "Alice-dev"],
+                         "the first screen, the two integrations, the two members")
+        self.assertEqual({link.get("class") for link in profiles}, {"login"})
+        self.assertEqual([link.get("class") for link in index.links].count("login"), len(profiles), "and nothing else wears it")
+        for number, login in ((1, "Alice-dev"), (2, "AIice-dev")):
+            own = Seen(self.files[f"wins/{sha(5000 + number)}.html"])
+            self.assertIn(f"Written by the AI coding assistant of @{login}, GitHub account {number}, measured and accepted", own.said)
+            self.assertEqual([(link["href"], link.get("class")) for link in own.links if MEMBER_HREF.match(link["href"])],
+                             [(f"https://github.com/{login}", "login")])
+            self.assertIn(f'class="login">@{login}</a></strong>, GitHub account {number},', self.files[f"wins/{sha(5000 + number)}.html"],
+                          "the number is text, right after the login")
+        self.assertIn("Written by the AI coding assistant of GitHub account 3, measured", Seen(self.files[f"wins/{sha(5003)}.html"]).said)
+
+
 def task(identifier, goal=None, **more):
     """A task line as the registry's task file holds one."""
     return {"id": identifier, "title": f"Title of {identifier}", "files": ["lib.c"], **({"goal": goal} if goal is not None else {}), **more}
@@ -1533,7 +1593,7 @@ class TestWinPage(Case):
         text, seen = files[self.first], Seen(files[self.first])
         self.assertTrue(seen.said.startswith(
             "La Ruche · toy · accepted by the judge4.3 %better · instructions n6Task toy-0001: Compare matches 16 bits at a time. Written by the AI "
-            "coding assistant of @ada (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox, and integrated "
+            "coding assistant of @ada, GitHub account 101 (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox, and integrated "
             "on 21 Oct 2026 as commit 0000000000, credited to that account.This is the first integration of this account in toy."
             "What the judge measured"), seen.said)
         self.assertEqual(seen.rows, [["Measure", "Gain", "Reading"],
@@ -1569,7 +1629,7 @@ class TestWinPage(Case):
         other = Seen(files[self.second])
         self.assertTrue(other.said.startswith(
             "La Ruche · toy · accepted by the judge3.2 %better · instructions n9Task toy-0002: Fewer instructions per probe. Written by the AI coding "
-            "assistant of @ada, measured and accepted by the project's judge in a sandbox, and integrated on 9 Nov 2026 as commit 0000000000, credited "
+            "assistant of @ada, GitHub account 101, measured and accepted by the project's judge in a sandbox, and integrated on 9 Nov 2026 as commit 0000000000, credited "
             "to that account.What the judge measured"), other.said)
         self.assertEqual(other.rows[1:], [["instructions n9", "3.2 %", "the figure the task asked for"],
                                           ["size", "2.9 %", "beyond the noise"],
@@ -1618,12 +1678,12 @@ class TestWinPage(Case):
             "account.This is the first integration of this account in this project.What the judge measuredThe ledger keeps no measured gain for this "
             "contribution.Changed: 1 file, 3 lines.Check it yourself"), said[1])
         self.assertNotRegex(said[1], r"(?i)alice|gpt-x|declared", "a login that passed to another account, a model that is not an identifier: not shown")
-        self.assertIn("Task toy-0009. Written by the AI coding assistant of @Alice, measured", said[2], "a task the feed does not know: its id alone")
+        self.assertIn("Task toy-0009. Written by the AI coding assistant of @Alice, GitHub account 105, measured", said[2], "a task the feed does not know: its id alone")
         self.assertIn("accepted by the judgeAcceptedby the judgeWritten by a member's AI coding assistant, accepted, and integrated on 3 Nov 2026 as commit "
                       "0000000000.What the judge measuredThe ledger keeps no measured gain for this contribution.Check it yourself", said[3],
                       "no task, no account, not judged, no size of the change: none is invented")
         self.assertNotRegex(said[3], r"credited to that|first integration|The task|Changed|measured and accepted")
-        self.assertIn("of @Alice, accepted, and integrated on 4 Nov 2026", said[4], "« judged » is true or it is not")
+        self.assertIn("of @Alice, GitHub account 105, accepted, and integrated on 4 Nov 2026", said[4], "« judged » is true or it is not")
         self.assertIn("All the integrations", said[4])
         self.assertIn(f"[![La Ruche · accepted by the judge]({SITE}/wins/{sha(5003)}.svg)]({SITE}/wins/{sha(5003)}.html)", files[f"wins/{sha(5003)}.html"])
 
@@ -1830,7 +1890,7 @@ class TestEndToEnd(test_hive.Base):
         self.assertIn("toy-0001 · Make f0 faster", win.getAttribute("aria-label"))
         self.assertEqual(sorted(path.name for path in (out / "wins").iterdir()), [f"{self.w.tip()}.html", f"{self.w.tip()}.svg"])
         own = Seen((out / "wins" / f"{self.w.tip()}.html").read_text(encoding="utf-8"))
-        self.assertIn("Task toy-0001: Make f0 faster. Written by the AI coding assistant of @alice (declared model: claude-fable-5-2), measured and "
+        self.assertIn("Task toy-0001: Make f0 faster. Written by the AI coding assistant of @alice, GitHub account 101 (declared model: claude-fable-5-2), measured and "
                       f"accepted by the project's judge in a sandbox, and integrated on 12 Nov 2026 as commit {self.w.tip()[:10]}, credited to that "
                       "account.This is the first integration of this account in toy.", own.said)
         self.assertIn(f"https://github.com/Bee-ruche/toy/commit/{self.w.tip()}", own.hrefs)
