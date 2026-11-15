@@ -7498,6 +7498,60 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             file.unlink()
         self.assertEqual(self.ready()[0], 0, self.err)
 
+    def test_a_candidate_is_pushed_from_a_copy_in_which_every_object_was_hashed_again(self):
+        """A push copies the bytes of what it sends as they lie in the store it is pushed from, and it sends more than
+        a candidate's own objects: any object the candidate names that is not in the tree of the fork's tip, even one
+        the fork holds already in its history. A pack of the clone may hold any bytes under such an object's id: the
+        fork would hash them to their own id and keep them, and the push would pass, since the fork does hold the
+        object named. So a candidate is not pushed from the clone: it is copied into a store of the tool's own, where
+        git hashes each object again, and pushed from there. What stood in the clone under another object's id is
+        carried by no push; the object whose place it took is missing from the copy, and the command stops. A clone
+        whose history was cut short pushes as before."""
+        work, old, new = self.alice.work, "int a = 1; /* old */\n", "int a = 2; /* new */\n"
+        self.project_holds({"src/a.c": old})
+        tip = self.project_holds({"src/a.c": new})
+        sh("git", "push", "--quiet", str(self.alice.bare), f"{tip}:refs/heads/main", cwd=work)  # the fork is in step with the project
+        old_id, payload = hashlib.sha1(b"blob %d\0" % len(old) + old.encode()).hexdigest(), b"what ran in the sandbox could read this\n" * 40
+        payload_id = hashlib.sha1(b"blob %d\0" % len(payload) + payload).hexdigest()
+        self.assertEqual(sh("git", "cat-file", "-e", old_id, cwd=self.alice.bare, check=False).returncode, 0, "the fork holds the older file, in its history")
+
+        def fork_holds_payload():
+            return sh("git", "cat-file", "-e", payload_id, cwd=self.alice.bare, check=False).returncode == 0
+
+        for path in ("src/cache.c", "src/a.c"):  # a new file of the task's folder with the older text, or the task's file brought back to it
+            with self.subTest(file=path):
+                dealt = self.w.deal(self.alice, "toy-0002", fresh=True)
+                self.assertEqual(self.begin("toy-0002", dealt)[0], 0, self.err)
+                self.alice.write("src/b.c", "int the_work;\n").write(path, old)
+                files = self.write_pack([(old_id, "blob", payload)])
+                self.assertEqual((self.submit("toy-0002", dealt), self.err), ((3, ""), f"hive: {hive.NOT_COPIED}\n"))
+                self.assertEqual((fork_holds_payload(), self.fork_branch("hive/submit/toy-0002")), (False, None), "nothing was pushed")
+                for file in files:
+                    file.unlink()
+                code, text = self.submit("toy-0002", dealt)
+                candidate = self.fork_branch("hive/submit/toy-0002")
+                self.assertEqual((code, self.spoken(text)[0], fork_holds_payload()), (0, f"PUSHED {candidate}", False), self.err)
+                self.assertEqual(sh("git", "show", f"{candidate}:{path}", cwd=self.alice.bare).stdout, old)
+                self.assertEqual(sh("git", "fsck", "--no-dangling", cwd=self.alice.bare, check=False).returncode, 0)
+                sh("git", "push", "--quiet", str(self.alice.bare), ":refs/heads/hive/submit/toy-0002", cwd=work)
+        # A clone cut short (a session's checkout): its copy is cut at the same commits, and the candidate is pushed.
+        zed = self.w.fork("zed", 107)
+        shutil.rmtree(zed.work)
+        sh("git", "clone", "--quiet", "--depth", "1", f"file://{zed.bare}", str(zed.work), cwd=self.w.root)
+        sh("git", "remote", "set-url", "origin", str(zed.bare), cwd=zed.work)
+        self.assertTrue((zed.work / ".git/shallow").is_file())
+        dealt = self.w.deal(zed, "toy-0001")
+        common = ("--registry", self.registry, "--project", "toy", "--login", "zed", "--upstream-url", str(self.w.upstream))
+        self.assertEqual(self.run_cli("setup", *common, cwd=zed.work)[0], 0, self.err)
+        self.assertEqual(self.run_cli("start", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)[0], 0, self.err)
+        (zed.work / "lib.c").write_text(LIB + "int by_zed;\n")
+        code, text = self.run_cli("submit", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001', zed)}"), self.err)
+        (zed.work / "lib.c").write_text(LIB + "int by_zed_again;\n")
+        with mock.patch.object(hive, "SHALLOW_BYTES", 10):  # (a list of cuts longer than this tool reads is not copied in part)
+            self.assertEqual((self.run_cli("submit", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)[0], self.err),
+                             (3, f"hive: {hive.NOT_COPIED}\n"))
+
     def test_the_rules_git_follows_for_a_candidate_are_read_first_as_bytes_the_tool_hashes(self):
         """To make a candidate, git reads the project's commit by itself: its folders, and the .gitattributes files that
         tell it how to store a file (a line end, an encoding, the text between « $Id » and « $ »). It reads them from

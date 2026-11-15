@@ -3608,6 +3608,56 @@ def own_store(clone, folder):
     return store
 
 
+NOT_COPIED = ("STOP: what this clone holds could not be copied out whole for the push: an object the candidate reaches is missing from "
+              "it, or is not what its name says. Nothing was pushed. Do not push from this clone, and run no git command in it: tell "
+              "the user to take a fresh clone of the fork")
+COPY_SECONDS = 900  # how long the copy of a candidate and its history, out of the clone, may take
+SHALLOW_BYTES = 1 << 20  # the most of .git/shallow that is read: a clone cut short names a handful of commits there
+
+
+def copied_out(clone, folder, commit):
+    """A store of this tool's own (own_store) that holds `commit` and all it reaches, copied out of the clone: the
+    store a candidate is pushed from. A push copies the bytes of what it sends as they lie in the store it is pushed
+    from, for every object it sends, and it sends more than the candidate's own: any object the candidate names that
+    is not in the tree of the fork's tip, even one the fork holds already. A clone's store is whatever ran in the
+    clone left; a pack there may hold any bytes under such an object's id, and the fork would keep them.
+
+    So the candidate is not pushed from the clone. git packs it there (the bytes as they lie), and in the store of
+    this tool's own git unpacks what it receives: it hashes each object again and files it under the id its bytes
+    give. Then everything the commit reaches is asked for, there: what stood in the clone under the id of another
+    object is here under its own id, reached by nothing, and no push carries it; and the object whose place it took
+    is missing, which stops the command. Where the clone's history was cut short (.git/shallow), the copy's is cut at
+    the same commits, as a fetch would leave it."""
+    store = own_store(clone, folder)
+    cut = first_bytes(clone.git_dir / "shallow", SHALLOW_BYTES + 1)
+    if len(cut) > SHALLOW_BYTES:
+        raise NotPlain(NOT_COPIED)
+    if cut:
+        (store.git_dir / "shallow").write_bytes(cut)
+    packing = receiving = None
+    try:
+        packing = subprocess.Popen(clone.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root)
+        receiving = subprocess.Popen(store.command("index-pack", "--stdin"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, env=store.environment(), cwd=store.root)
+        packing.stdout.close()
+        packing.stdin.write(f"{need_sha(commit)}\n".encode())
+        packing.stdin.close()
+        ended = (receiving.wait(timeout=COPY_SECONDS), packing.wait(timeout=COPY_SECONDS))
+    except subprocess.TimeoutExpired:
+        raise HiveError(f"git pack-objects: timeout after {COPY_SECONDS} s") from None
+    except OSError:
+        ended = None
+    finally:
+        for process in (packing, receiving):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+    if ended != (0, 0) or store.git("rev-list", "--objects", "--quiet", need_sha(commit), check=False, timeout=COPY_SECONDS).returncode != 0:
+        raise NotPlain(NOT_COPIED)
+    return store
+
+
 def push(clone, url, source, branch):
     """Pushes one commit (or, with an empty source, a deletion) to one branch of the member's own fork, over what was
     there. To the address own_fork derived, never to a remote's name: a name is resolved through settings."""
@@ -4301,8 +4351,9 @@ def cmd_submit(args):
     is taken for the candidate, whatever it looks like. Then it shows, by its own reading, that
     the candidate starts from the project's history and changes only the task's files (candidate_proof), checks it
     as the hive will, on the tip the project's own address gives during the command (check_structure), and only
-    then moves the branch and pushes to the member's own fork. A refusal leaves every branch where it was, and
-    pushes nothing; so does --no-push, once every check has passed. A refusal names a path only if the project's own
+    then moves the branch and pushes to the member's own fork, from a store of its own into which the candidate was
+    copied, each object hashed again (copied_out). A refusal leaves every branch where it was, and pushes nothing;
+    so does --no-push, once every check has passed. A refusal names a path only if the project's own
     commit holds it (named_paths)."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
@@ -4380,7 +4431,10 @@ def cmd_submit(args):
         print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without --no-push "
               "to make the candidate anew and push it")
         return
-    push(clone, fork, marker, branch)
+    # The candidate is pushed from a store of this tool's own, into which it was copied object by object, each hashed
+    # again: nothing goes to the fork as it lies in the clone's store (copied_out).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+        push(copied_out(clone, folder, marker), fork, marker, branch)
     print(f"PUSHED {marker}")
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
