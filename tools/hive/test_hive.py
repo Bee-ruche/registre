@@ -2792,6 +2792,12 @@ class TestSecondReview(Base):
             other = self.alice.fresh("more").write("src/more.bin", os.urandom(3 << 20)).commit().marker("toy-0002").push("more")
             hive.fetch_heads(self.w.harvest, str(self.alice.bare), [(other, "refs/heads/more")], 8, allow_local=True, most=1 << 20)
         self.assertEqual((store()[1], sh("git", "for-each-ref", "refs/hive", cwd=self.w.harvest).stdout), ([], ""), "no file and no scratch ref is left")
+        alone = World(tempfile.mkdtemp(dir=self.tmp.name), {"limits": {"history_bytes": 100_000}})  # (the heavy fork is the only one the hive reads)
+        only = alone.fork("alice", 101)
+        for number in range(40):
+            only.write(f"src/bulk{number}.bin", os.urandom(100_000))
+        only.commit().marker("toy-0002").push()
+        self.assertEqual(hive.discover(alone.harvest, alone.load()[0], alone.api, set(), hive.now(), allow_local=True)[::2], ([], {101: True}))
         # Its time used up, a fetch is stopped and counts as failed: the fork is then not read (GitHub may be the cause).
         with mock.patch.object(hive, "FETCH_SECONDS", 0):
             self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/more:refs/hive/in/9/0"], 8 << 20, True), "failed")
@@ -2811,7 +2817,12 @@ class TestSecondReview(Base):
         self.assertEqual((hive.swept(self.w.harvest, 4001), sorted(str(Path(folder, name)) for folder, _, names in os.walk(objects) for name in names)),
                          (False, kept))
         (objects / "pack/tmp_pack_a1").write_bytes(b"x" * 4000)
+        (objects / "ab/tmp_obj_a5").write_bytes(b"x" * 10)  # (listed after it: a small one does not hide it)
         self.assertEqual((hive.swept(self.w.harvest, 4000), (objects / "pack/tmp_pack_a1").exists()), (True, False), "a file that reached the bound")
+        # A git that cannot be started is an error of the fetch, said as one.
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=FileNotFoundError(2, "no git")):
+            with self.assertRaisesRegex(hive.HiveError, r"\Agit fetch: FileNotFoundError\Z"):
+                hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/main:refs/hive/in/9/0"], 8 << 20, True)
         # A program git started outlives git unless the whole group is stopped.
         fake, real = Path(tempfile.mkdtemp(dir=self.tmp.name)), shutil.which("git")
         (fake / "git").write_text(f"""#!/bin/sh
@@ -2999,6 +3010,7 @@ exec {real} "$@"
         config, tasks, _ = self.w.load()
         hive.check_goals(config, tasks)
         for goal in ({"kind": "metric", "name": "speed", "min": 1}, {"kind": "metric", "name": "gain"}, {"kind": "metric", "name": "gain", "min": "2"},
+                     {"kind": "figure", "name": "gain", "min": 0.02},
                      {"kind": "metric", "name": "gain", "min": float("nan")}, {"kind": "sometimes"}, {"kind": "metric", "min": 1},
                      {"kind": "metric", "name": "gain", "min": 1, "and": [{"name": "speed", "min": 1}]},
                      {"kind": "metric", "name": "gain", "min": 1, "and": "gain"},
@@ -3011,6 +3023,7 @@ exec {real} "$@"
         alone, seen_twice = {"kind": "metric", "name": "gain", "min": 0.02}, {"kind": "metric", "name": "gain", "min": 0.02, "and": [{"name": "outputs_compared", "min": 1}]}
         for goal, taken in ((alone, False), (seen_twice, True), ({**alone, "and": [{"name": "outputs_compared", "min": 0}]}, False),
                             ({**alone, "and": [{"name": "outputs_compared", "min": 0.5}]}, False),
+                            ({"kind": "metric", "name": "gain", "min": 1}, False), ({**alone, "and": [{"name": "gain", "min": 2}]}, False),
                             ({**alone, "and": [{"name": "outputs_compared", "max": 5}]}, False), ({"kind": "metric", "name": "outputs_compared", "min": 1}, True),
                             ({"kind": "correct"}, True)):
             with self.subTest(goal=goal):
