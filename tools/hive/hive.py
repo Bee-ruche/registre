@@ -416,6 +416,9 @@ def load_config(path):
         raise HiveError(f"{path}: judge.metrics: the names of the judge's figures the hive keeps")
     if not (isinstance(judge["require"], list) and all(condition_ok(c, judge["metrics"]) for c in judge["require"])):
         raise HiveError(f"{path}: judge.require: conditions on figures listed in judge.metrics")
+    judge.setdefault("confirm", [])
+    if not (isinstance(judge["confirm"], list) and all(isinstance(m, str) and m in judge["metrics"] for m in judge["confirm"])):
+        raise HiveError(f"{path}: judge.confirm: figures listed in judge.metrics (a goal on a figure must hold one of them)")
     judge.setdefault("history", [])
     if not (isinstance(judge["history"], list) and len(judge["history"]) <= 16 and all(is_sha(c) for c in judge["history"])):
         raise HiveError(f"{path}: judge.history: the commits of the project's own history its judge reads by id (full ids)")
@@ -433,13 +436,18 @@ def condition_ok(condition, metrics, nested=True):
 
 
 def check_goals(config, tasks):
-    """A goal names figures the judge gives: a task whose goal could never be met is a mistake to fix, not to run."""
+    """A goal names figures the judge gives: a task whose goal could never be met is a mistake to fix, not to run.
+    Where the project lists figures that confirm a gain (judge.confirm), a goal on a figure holds one of them, with a
+    minimum of 1 or more: a gain measured another way is then seen by two independent measures, never by that one alone."""
+    confirm = config["judge"].get("confirm") or []
     for task in tasks.values():
         goal = task.get("goal") or {"kind": "correct"}
         if goal.get("kind") == "correct":
             continue
         if goal.get("kind") != "metric" or not condition_ok(goal, config["judge"]["metrics"]):
             raise HiveError(f"task {task['id']}: goal: « correct », or « metric » on a figure listed in the project's judge.metrics")
+        if confirm and not any(c.get("name") in confirm and c.get("min", 0) >= 1 for c in [goal, *goal.get("and", [])]):
+            raise HiveError(f"task {task['id']}: goal: it must hold one of the project's judge.confirm figures, with a minimum of 1 or more")
 
 
 def load_tasks(path):

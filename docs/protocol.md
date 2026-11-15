@@ -409,8 +409,11 @@ hour and the fork's own number, which adding forks to the list does not shift.
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
   (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the
-  judge's options, the figures of the judge it keeps (`judge.metrics`) and requires (`judge.require`), and the
-  project's pause (`"paused": true`). A run reads this file, and the tasks, at the commit of the registry the
+  judge's options, the figures of the judge it keeps (`judge.metrics`) and requires (`judge.require`), those that
+  confirm a gain (`judge.confirm`: where a project lists some, every goal on a figure holds one of them, with a
+  minimum of 1 or more, so that a gain measured another way is seen by two independent measures; what the project
+  requires of every candidate, `judge.require`, stays as the project wrote it), and the project's pause
+  (`"paused": true`). A run reads this file, and the tasks, at the commit of the registry the
   workflow names: a change acts once that line is moved to it.
 - `hive/tasks/<project>.jsonl` in the registry: one task per line: `id`, `title`, `files` (exact paths, or a
   folder ending with `/`), and optionally `size`, `tier`, `goal`, `options`, `context`, `closed`. Tasks are

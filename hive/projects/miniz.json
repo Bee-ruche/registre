@@ -54,7 +54,7 @@
    "gain_instructions_n9",
    "gain_instructions_decompression"
   ],
-  "require": [
+  "confirm": ["sure_compression_throughput_n1", "sure_compression_throughput_n6", "sure_compression_throughput_n9", "sure_decompression_throughput"], "require": [
    {
     "name": "suspects",
     "max": 0

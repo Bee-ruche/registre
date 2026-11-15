@@ -2815,6 +2815,25 @@ class TestSecondReview(Base):
                      {"kind": "metric", "name": "gain", "min": 1, "and": [{"name": "gain", "min": 1, "and": [{"name": "gain", "min": 1}]}]}):
             with self.subTest(goal=goal), self.assertRaisesRegex(hive.HiveError, "goal"):
                 hive.check_goals(config, {"toy-0004": {"id": "toy-0004", "goal": goal}})
+        # Where a project lists figures that confirm a gain, a goal on a figure holds one of them too, with a minimum of
+        # 1 or more: two independent measures, never one alone. (A goal that asks for a correct candidate asks no figure.)
+        twice = {**config, "judge": {**config["judge"], "confirm": ["outputs_compared"]}}
+        alone, seen_twice = {"kind": "metric", "name": "gain", "min": 0.02}, {"kind": "metric", "name": "gain", "min": 0.02, "and": [{"name": "outputs_compared", "min": 1}]}
+        for goal, taken in ((alone, False), (seen_twice, True), ({**alone, "and": [{"name": "outputs_compared", "min": 0}]}, False),
+                            ({**alone, "and": [{"name": "outputs_compared", "min": 0.5}]}, False),
+                            ({**alone, "and": [{"name": "outputs_compared", "max": 5}]}, False), ({"kind": "metric", "name": "outputs_compared", "min": 1}, True),
+                            ({"kind": "correct"}, True)):
+            with self.subTest(goal=goal):
+                if taken:
+                    hive.check_goals(twice, {"toy-0004": {"id": "toy-0004", "goal": goal}})
+                else:
+                    with self.assertRaisesRegex(hive.HiveError, "judge.confirm"):
+                        hive.check_goals(twice, {"toy-0004": {"id": "toy-0004", "goal": goal}})
+        hive.check_goals(config, {"toy-0004": {"id": "toy-0004", "goal": alone}})  # a project that lists none asks nothing more
+        for wrong in ("gain", ["speed"], [1]):
+            with self.subTest(confirm=wrong), self.assertRaisesRegex(hive.HiveError, "judge.confirm"):
+                self.w.set_config({"judge": {**config["judge"], "confirm": wrong}})
+                self.w.load()
 
     def test_a_figure_the_project_requires_of_every_contribution(self):
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "require": [{"name": "outputs_compared", "min": 13}]}})
