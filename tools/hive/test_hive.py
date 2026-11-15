@@ -5523,6 +5523,39 @@ class TestVolunteerSide(Volunteer):
                                   "https address")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
+    def test_no_worker_command_ends_in_anything_but_one_line(self):
+        """What the tool did not foresee ends a worker's command as every error does: one line on the standard error,
+        exit code 2, which says so and where. Never the tool's own trace: an agent reads what a command prints. (A run
+        of the hive's own ends as it is: its log is read by its maintainers.)"""
+        before = self.work_tree()
+        unforeseen = (r"\Ahive: this command stopped on an error of the tool's own \({kind}, line [1-9][0-9]* of hive\.py\): what it had done stays "
+                      r"done\. Run nothing more for this task, and tell the user\n\Z")
+        with mock.patch.object(hive, "hive_project", side_effect=ZeroDivisionError("x")), mock.patch.object(hive, "hive_projects", side_effect=ZeroDivisionError("x")):
+            for name, run in self.every_command():
+                with self.subTest(command=name):
+                    self.assertEqual(run(), (2, ""))
+                    self.assertRegex(self.err, unforeseen.format(kind="ZeroDivisionError"))
+        self.assertEqual(self.work_tree(), before)
+        # A project file whose fields have another shape than the tool reads them in, wherever the reading stops on it.
+        own = Path(self.registry) / "hive/projects/toy.json"
+        kept = own.read_text()
+        (Path(self.registry) / "hive/projects/zz.json").write_text("[" * 200_000 + "]" * 200_000)
+        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (RecursionError): update your clone of the registry")
+        (Path(self.registry) / "hive/projects/zz.json").unlink()
+        own.write_text("[" * 200_000 + "]" * 200_000)
+        self.one_line(self.ready("--no-push"), "the project's files cannot be read (RecursionError): update your clone of the registry")
+        own.write_text(kept)
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "int the_work;\n")
+        own.write_text(json.dumps({**json.loads(kept), "limits": {**json.loads(kept).get("limits", {}), "commits": "five"}}))
+        self.assertEqual((self.submit("toy-0001", dealt), len(self.err.splitlines())), ((2, ""), 1), self.err)
+        self.assertRegex(self.err, unforeseen.format(kind="TypeError"))
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing was pushed")
+        own.write_text(kept)
+        with mock.patch.object(hive, "cmd_feed", side_effect=ZeroDivisionError("x")), self.assertRaises(ZeroDivisionError):
+            hive.main(["feed", "--registry", self.registry, "--project", "toy", "--state", self.state_root])
+
     def test_what_a_worker_command_takes_from_the_machine_and_what_it_does_not(self):
         """A worker's command runs git by its name, from the clone's folder, and gives it an environment of its own.
         A PATH that holds an entry which is not a folder named from the root (an empty one, a dot), or a folder of
@@ -5569,6 +5602,24 @@ class TestVolunteerSide(Volunteer):
         with mock.patch.dict(os.environ):  # no PATH at all: the system's own default, written out for git and what git runs
             del os.environ["PATH"]
             self.assertEqual((self.ready("--no-push")[0], os.environ.get("PATH")), (0, os.defpath), self.err)
+        # Programs under git's names in a folder of the clone: whichever of the five commands is run, and whether the
+        # folder is reached through PATH or through GIT_EXEC_PATH (where git looks for its own programs first), the
+        # command stops on its first line and none of them was run. (Each would say so in a file beside the clone.)
+        ran, own_programs = self.w.root / "a-program-of-the-clone-ran", sh("git", "--exec-path", cwd=self.w.root).stdout.strip()
+        (work / "tools/bin").mkdir(parents=True)
+        for name in ("git", "git-upload-pack", "git-receive-pack", "git-remote-https"):
+            (work / "tools/bin" / name).write_text(f"#!/bin/sh\necho {name} >> '{ran}'\nexec '{own_programs}/{name}' \"$@\"\n")
+            (work / "tools/bin" / name).chmod(0o755)
+        for searched in ({"PATH": f"{work}/tools/bin:{os.environ['PATH']}"}, {"GIT_EXEC_PATH": "tools/bin"}, {"GIT_EXEC_PATH": f"{work}/tools/bin"},
+                         {"GIT_EXEC_PATH": str(aside / "bin")}, {"GIT_EXEC_PATH": ""}):
+            for name, run in self.every_command():
+                with self.subTest(command=name, searched=searched), mock.patch.dict(os.environ, searched):
+                    self.one_line(run(), hive.RELATIVE_PATH)
+                    self.assertFalse(ran.exists(), "no program of the clone was run")
+        with mock.patch.dict(os.environ, {"GIT_EXEC_PATH": own_programs}):  # (git's own folder, named from the root: taken)
+            self.assertEqual(self.setup("--project", "toy")[0], 0, self.err)
+        self.assertFalse(ran.exists())
+        shutil.rmtree(work / "tools")
 
     def test_a_login_is_a_plain_name_and_start_takes_no_tip_from_the_command_line(self):
         """What the command line gives goes into git commands and into the marker of a commit. A login is a GitHub
@@ -7836,8 +7887,9 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             return real_git(clone, *args, **options)
         with mock.patch.object(hive, "poured", side_effect=no_way_back), mock.patch.object(hive.Clone, "git", watched):
             self.one_line(self.submit("toy-0001", dealt, "--no-push"),
-                          "the candidate could not be written into this clone (git unpack-objects failed): start the task again (hive.py start), "
-                          "which sets the work aside; if start stops too, tell the user")
+                          "the candidate could not be written into this clone (git unpack-objects failed): nothing was pushed. The same command "
+                          "without --no-push pushes the candidate all the same; otherwise start the task again (hive.py start), which sets the "
+                          "work aside; if start stops too, tell the user")
             code, text = self.submit("toy-0001", dealt)
         candidate = self.fork_branch("hive/submit/toy-0001")
         self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(f"costs a wait.{hive.NOT_KEPT}"), len(self.spoken(text)), self.head()),
@@ -7852,21 +7904,38 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         self.alice.write("lib.c", LIB + "int the_work_again;\n")
         code, text = self.submit("toy-0001", dealt)
         self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(hive.NOT_KEPT)), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", True), self.err)
+        self.assertEqual(sh("git", "diff", "--cached", "--name-only", head, cwd=work).stdout, "", "and its index is left as it was")
         # (And a candidate the clone takes ends on the plain line; an index git does not rewrite in time changes nothing.)
         sh("git", "update-ref", "refs/heads/hive/submit/toy-0001", head, cwd=work)
-        self.alice.write("lib.c", LIB + "int the_work_once_more;\n")
-
         asked = []
+        for number, went_wrong in enumerate((hive.HiveError("git read-tree: timeout after 300 s"), BlockingIOError(11, "Resource temporarily unavailable"))):
+            self.alice.write("lib.c", LIB + f"int the_work_once_more_{number};\n")
 
-        def no_answer(clone, *args, **options):
-            if args[0] == "read-tree" and Path(clone.git_dir).resolve() == (work / ".git").resolve():  # (the clone's own index, after the push)
-                asked.append(args)
-                raise hive.HiveError("git read-tree: timeout after 300 s")
+            def no_answer(clone, *args, **options):
+                if args[0] == "read-tree" and Path(clone.git_dir).resolve() == (work / ".git").resolve():  # (the clone's own index, after the push)
+                    asked.append(args)
+                    raise went_wrong
+                return real_git(clone, *args, **options)
+            with mock.patch.object(hive.Clone, "git", no_answer):
+                code, text = self.submit("toy-0001", dealt)
+            self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith("costs a wait."), len(asked)),
+                             (0, f"PUSHED {self.head()}", True, number + 1), self.err)
+        # (A step that the machine itself could not start, after the push: PUSHED was said, and the last line follows.)
+        self.alice.write("lib.c", LIB + "int the_work_a_last_time;\n")
+        head = self.head()
+
+        def no_program(clone, *args, **options):
+            if args[0] == "update-ref" and Path(clone.git_dir).resolve() == (work / ".git").resolve():
+                raise BlockingIOError(11, "Resource temporarily unavailable")
             return real_git(clone, *args, **options)
-        with mock.patch.object(hive.Clone, "git", no_answer):
+        with mock.patch.object(hive.Clone, "git", no_program):
+            self.one_line(self.submit("toy-0001", dealt, "--no-push"),
+                          "the candidate could not be written into this clone (BlockingIOError): nothing was pushed. The same command without "
+                          "--no-push pushes the candidate all the same; otherwise start the task again (hive.py start), which sets the work "
+                          "aside; if start stops too, tell the user")
             code, text = self.submit("toy-0001", dealt)
-        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith("costs a wait."), len(asked)), (0, f"PUSHED {self.head()}", True, 1), self.err)
-        self.assertEqual(sh("git", "diff", "--cached", "--name-only", head, cwd=work).stdout, "", "and its index is left as it was")
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(hive.NOT_KEPT), len(self.spoken(text)), self.head(), self.err),
+                         (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", True, 2, head, ""))
 
     def test_what_the_clone_does_not_hold_and_what_its_packs_list_are_read_right(self):
         """Two readings of the tool's own, each held by itself. An object the clone does not hold is said not held,

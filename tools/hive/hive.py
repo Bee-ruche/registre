@@ -57,7 +57,8 @@ keyword is a value this file checked or a sentence of its own, never a text of t
   REFUSED (<reason>): <sentence> <details as JSON>
                                   submit: a structural rule is broken: nothing was committed or pushed (the details
                                   are numbers, and paths that the project's own commit holds)
-  PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
+  PUSHED <commit>                 submit: the candidate is made, marked and pushed to the fork: it is with the hive,
+                                  whatever the line after it adds about this clone
   NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 
 An error is one line on the standard error, « hive: <sentence> », with exit code 2 (1 after REFUSED). « hive: STOP:
@@ -85,6 +86,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import zlib
 from pathlib import Path
 
@@ -3146,7 +3148,7 @@ def hive_projects(registry):
     """Every project the registry declares: [configuration]. Trusted: the registry's own tree."""
     try:
         return [load_config(path) for path in sorted((Path(registry) / "hive/projects").glob("*.json"))]
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+    except (OSError, ValueError, TypeError, RecursionError) as error:
         raise HiveError(f"the registry's project files cannot be read ({type(error).__name__}): update your clone of the registry") from None
 
 
@@ -3160,7 +3162,7 @@ def hive_project(registry, project):
         tasks = load_tasks(Path(registry) / config["tasks"])
     except FileNotFoundError:
         raise HiveError(f"the registry declares no project {project}, or lacks its tasks: update your clone of the registry") from None
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+    except (OSError, ValueError, TypeError, RecursionError) as error:
         raise HiveError(f"the project's files cannot be read ({type(error).__name__}): update your clone of the registry") from None
     if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
         raise HiveError("the project's branch is not a plain branch name")
@@ -4431,9 +4433,10 @@ def cmd_submit(args):
 
     The push goes first. The clone's own branch is moved to the candidate after it, for the clone's own bookkeeping
     (the candidate's two commits are written into the clone for that): nothing that branch is, or cannot be made,
-    holds a checked candidate back. If the clone cannot take it, the candidate is pushed all the same and the
-    command's last line says so; with --no-push, where the clone is all there is, the command ends in one line that
-    says what to do. A push that fails leaves the clone as it was."""
+    holds a checked candidate back: PUSHED is said as soon as the push has landed, and no step after it ends the
+    command before its last line. If the clone cannot take the candidate, that last line says so; with --no-push,
+    where the clone is all there is, the command ends in one line that says what to do. A push that fails leaves
+    the clone as it was."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -4506,6 +4509,7 @@ def cmd_submit(args):
         # (The push goes first: nothing the clone's own branch is, or cannot be made, holds a checked candidate back.)
         if not args.no_push:
             push(store, fork, marker, branch)
+            print(f"PUSHED {marker}")  # (said at once: whatever the clone then does or cannot do, the candidate is with the hive)
         try:
             if not poured(store, clone, [marker, f"^{base}"]):
                 raise HiveError("git unpack-objects failed")
@@ -4514,22 +4518,22 @@ def cmd_submit(args):
                 moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
                 clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
             kept = True
-        except HiveError as error:
+        except Exception as error:  # (of any kind: a step git could not take, a program the machine could not start)
             if args.no_push:
-                raise HiveError(f"the candidate could not be written into this clone ({error}): {restart}") from None
+                raise HiveError(f"the candidate could not be written into this clone ({error if isinstance(error, HiveError) else type(error).__name__}): "
+                                f"nothing was pushed. The same command without --no-push pushes the candidate all the same; otherwise {restart}") from None
             kept = False
         # The clone's own index now says what the candidate holds (the work tree is not touched): git's later answers
         # about the work tree are read against this one.
         if kept:
             try:  # (a lock left on that index keeps git from writing it: « start » removes it, and makes the index anew)
                 clone.git("read-tree", marker, check=False)
-            except HiveError:
+            except Exception:
                 pass
         if args.no_push:
             print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
                   "--no-push to make the candidate anew and push it")
             return
-    print(f"PUSHED {marker}")
     not_kept = "" if kept else NOT_KEPT
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
@@ -4550,9 +4554,14 @@ ONLY_ON_LINUX = ("a worker's commands have been run and reviewed on Linux only: 
 
 
 # git is run by its name, from the clone's folder: a PATH that holds an empty entry, « . », any folder named from where
-# the command runs, or a folder of the clone itself, would have a file of the clone run in its place, on the host.
-RELATIVE_PATH = ("PATH holds an entry that is not a folder named from the root (an empty one, a dot, a relative one), or one that lies "
-                 "in this clone: a file of the clone could then be run in git's place. Nothing was run: tell the user to remove that entry")
+# the command runs, or a folder of the clone itself, would have a file of the clone run in its place, on the host. So
+# would GIT_EXEC_PATH, where git looks for its own programs first, when the environment gives one.
+RELATIVE_PATH = ("PATH (or GIT_EXEC_PATH) holds an entry that is not a folder named from the root (an empty one, a dot, a relative "
+                 "one), or one that lies in this clone: a file of the clone could then be run in git's place. Nothing was run: tell the "
+                 "user to remove that entry")
+# No worker command ends in anything but one line: what this tool did not foresee is said as such, with where it was.
+UNFORESEEN = ("this command stopped on an error of the tool's own ({kind}, line {line} of hive.py): what it had done stays done. Run "
+              "nothing more for this task, and tell the user")
 
 
 def of_the_clone(entry):
@@ -4661,12 +4670,19 @@ def main(argv=None):
             raise HiveError(ONLY_ON_LINUX)
         if VOLUNTEER_SIDE:
             os.environ.setdefault("PATH", os.defpath)  # (no PATH at all: the system's own, written out, so that no program falls back on another)
-            if any(not os.path.isabs(entry) or of_the_clone(entry) for entry in os.environ["PATH"].split(os.pathsep)):
+            searched = os.environ["PATH"].split(os.pathsep) + [os.environ[name] for name in ("GIT_EXEC_PATH",) if name in os.environ]
+            if any(not os.path.isabs(entry) or of_the_clone(entry) for entry in searched):
                 raise HiveError(RELATIVE_PATH)
         args.run(args)
     except HiveError as error:
         print(f"hive: {safe_text(error, 400)}", file=sys.stderr)
         sys.exit(3 if isinstance(error, NotPlain) else 2)
+    except Exception as error:
+        if not VOLUNTEER_SIDE:  # (the hive's own runs end as they are: their log is read by its maintainers)
+            raise
+        lines = [frame.lineno for frame in traceback.extract_tb(error.__traceback__) if frame.filename == __file__]
+        print(f"hive: {UNFORESEEN.format(kind=type(error).__name__, line=lines[-1] if lines else 0)}", file=sys.stderr)
+        sys.exit(2)
     finally:
         VOLUNTEER_SIDE = before
 

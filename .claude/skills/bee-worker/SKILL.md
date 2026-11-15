@@ -87,7 +87,8 @@ WITHDRAWN                       ready --withdraw: the ask is taken back
 REFUSED (<reason>): <sentence> <details as JSON>
                                 submit: a structural rule is broken: nothing was committed or pushed (the details
                                 are numbers, and paths that the project's own commit holds)
-PUSHED <commit>                 submit: the candidate is committed, marked and pushed to the fork
+PUSHED <commit>                 submit: the candidate is made, marked and pushed to the fork: it is with the hive,
+                                whatever the line after it adds about this clone
 NOT-PUSHED <commit>: <sentence> ready, submit with --no-push: nothing was pushed; the same command without it pushes
 ```
 
