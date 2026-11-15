@@ -1111,6 +1111,66 @@ class TestStructure(Base):
         self.alice.write("lib.c", LIB, mode=0o755).commit().marker("toy-0001").push()
         self.refused("mode_change")
 
+    def test_a_file_stored_otherwise_than_the_projects_rules_store_it(self):
+        """The project's own rules (its .gitattributes) say how a text file is stored: its line ends, an encoding. A
+        candidate whose file is stored otherwise (here with CR LF under a rule that stores LF, written with git's own
+        plumbing: a fork holds what its owner pushes) would, once it is the project's, be found changed by git in every
+        clone, where nobody changed it. It is refused, at no file's cost but its own."""
+        text = (LIB + "int by_alice(void) { return 1; }\n").replace("\n", "\r\n").encode()
+        blob = subprocess.run(["git", "hash-object", "-w", "--no-filters", "--stdin"], cwd=self.alice.work, input=text, capture_output=True,
+                              check=True).stdout.decode().strip()
+        sh("git", "update-index", "--cacheinfo", f"100644,{blob},lib.c", cwd=self.alice.work)
+        sh("git", "commit", "--quiet", "-m", "work", cwd=self.alice.work)
+        self.alice.marker("toy-0001").push()
+        self.refused("stored_otherwise")
+        # A file a candidate removes is stored no more: nothing of it is compared, and the candidate is taken.
+        world = World(tempfile.mkdtemp(dir=self.tmp.name))
+        bob = world.fork("bob", 102)
+        sh("git", "rm", "--quiet", "src/a.c", cwd=bob.work)
+        bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        self.assertEqual(self.one(world.run())["result"], "accepted")
+
+    def test_what_a_fresh_clone_finds_changed_is_what_the_hive_calls_stored_otherwise(self):
+        """The rule is git's own, and the hive asks git: for each kind of rule a project may write and each way a text
+        file may be stored, the hive's answer is what a fresh clone of that tree shows (« changed », where nobody
+        changed anything). So nothing honest is refused: a file stored with CR LF under no rule, or under
+        « text=auto » alone, is as the rules store it."""
+        rules = (None, "* text=auto", "*.txt text", "*.txt text eol=lf", "*.txt eol=crlf", "*.txt ident", "*.txt -text",
+                 "*.txt text=auto eol=crlf", "*.txt working-tree-encoding=UTF-16", "*.txt working-tree-encoding=UTF-16LE",
+                 "*.txt filter=lfs diff=lfs merge=lfs -text")
+        forms = {"lf": b"one\ntwo\n", "crlf": b"one\r\ntwo\r\n", "mixed": b"one\r\ntwo\n", "id": b"a $Id$ b\n", "id written out": b"a $Id: chosen $ b\n",
+                 "not UTF-8": b"caf\xe9 au lait\n"}
+        top, found = Path(tempfile.mkdtemp(dir=self.tmp.name)), {}
+        for number, rule in enumerate(rules):
+            for form, data in forms.items():
+                seed, bare, fresh = top / f"seed-{number}-{form}", top / f"bare-{number}-{form}.git", top / f"fresh-{number}-{form}"
+                seed.mkdir()
+                sh("git", "init", "--quiet", "-b", "main", ".", cwd=seed)
+                if rule is not None:
+                    (seed / ".gitattributes").write_text(rule + "\n")
+                    sh("git", "add", ".gitattributes", cwd=seed)
+                blob = subprocess.run(["git", "hash-object", "-w", "--no-filters", "--stdin"], cwd=seed, input=data, capture_output=True,
+                                      check=True).stdout.decode().strip()
+                sh("git", "update-index", "--add", "--cacheinfo", f"100644,{blob},notes.txt", cwd=seed)
+                sh("git", "commit", "--quiet", "-m", "a tree", cwd=seed)
+                sh("git", "clone", "--quiet", "--bare", str(seed), str(bare), cwd=top)
+                sh("git", "clone", "--quiet", str(bare), str(fresh), cwd=top)
+                tree = sh("git", "rev-parse", "HEAD^{tree}", cwd=bare).stdout.strip()
+                found[rule, form] = (bool(sh("git", "status", "--porcelain", cwd=fresh).stdout.strip()), hive.stored_otherwise(bare, tree, ["notes.txt"]) == ["notes.txt"])
+        self.assertEqual({case: fresh for case, (fresh, _) in found.items()}, {case: said for case, (_, said) in found.items()})
+        changed = sorted((str(rule), form) for (rule, form), (fresh, _) in found.items() if fresh)
+        self.assertEqual(changed, sorted([("*.txt text", "crlf"), ("*.txt text", "mixed"), ("*.txt text eol=lf", "crlf"), ("*.txt text eol=lf", "mixed"),
+                                          ("*.txt eol=crlf", "crlf"), ("*.txt eol=crlf", "mixed"), ("*.txt ident", "id written out")]))
+        self.assertEqual(hive.stored_otherwise(bare, tree, []), [])
+        # A file git could not write out under the rules is not passed: the check never takes what it could not make.
+        real = hive.git
+
+        def cannot_write(repo, *args, **options):
+            return subprocess.CompletedProcess(args, 1, "", "") if args[0] == "checkout-index" else real(repo, *args, **options)
+        self.assertEqual(hive.stored_otherwise(bare, tree, ["notes.txt"]), [])
+        with mock.patch.object(hive, "git", side_effect=cannot_write):
+            self.assertEqual(hive.stored_otherwise(bare, tree, ["notes.txt"]), ["notes.txt"])
+
     def test_a_binary_file(self):
         self.alice.write("lib.c", b"\x00\x01\x02binary").commit().marker("toy-0001").push()
         self.refused("binary")
@@ -6226,6 +6286,95 @@ class TestVolunteerSide(Volunteer):
         (git_dir / "objects/info/some.lock").write_text("")  # not where git keeps a lock this tool removes
         self.assertEqual((hive.stale_locks(git_dir), self.begin("toy-0001", NOW)[0]), ([], 0), self.err)
         self.assertTrue(folder.is_dir() and (git_dir / "objects/info/some.lock").exists())
+
+    def test_a_file_the_project_itself_stores_otherwise_than_its_rules_stops_no_worker(self):
+        """A project may hold, in its own history, a file stored otherwise than its rules store it (here a text file
+        kept with CR LF under a rule that stores LF). git finds it changed in every clone, where nobody changed it.
+        start does not take it for a leftover, however often it is run, nor when the project moves on in that very
+        file; submit does not take it for a change outside the task. A file that somebody did change is still named
+        by submit and still set aside by start."""
+        def moves_on(text, first_line_end="\r\n"):
+            seed = self.w.seed
+            sh("git", "pull", "--quiet", "origin", "main", cwd=seed)
+            stored = text.replace("\n", "\r\n").replace("\r\n", first_line_end, 1).encode()
+            blob = subprocess.run(["git", "hash-object", "-w", "--no-filters", "--stdin"], cwd=seed, input=stored,
+                                  capture_output=True, check=True).stdout.decode().strip()
+            sh("git", "update-index", "--cacheinfo", f"100644,{blob},lib.c", cwd=seed)
+            sh("git", "commit", "--quiet", "-m", "stored with CR LF", cwd=seed)
+            sh("git", "push", "--quiet", "origin", "main", cwd=seed)
+            sh("git", "checkout", "--quiet", "--", "lib.c", cwd=seed, check=False)
+        moves_on(LIB + "int kept_with_cr_lf;\n")
+        dealt = self.w.deal(self.alice, "toy-0002")
+        for _ in range(2):  # the second run starts from a clone that is on that commit
+            code, text = self.begin("toy-0002", dealt)
+            self.assertEqual((code, self.spoken(text)[-2].split()[0]), (0, "STARTED"), self.err)
+        self.assertEqual(sh("git", "status", "--porcelain", "--", "lib.c", cwd=self.alice.work).stdout, " M lib.c\n", "git finds it changed, in a clone nobody touched")
+        self.alice.write("src/new.c", "int by_alice;\n")
+        code, text = self.submit("toy-0002", dealt, "--no-push")
+        self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), self.err)
+        moves_on(LIB + "int kept_with_cr_lf;\nint and_changed_again;\n")
+        code, text = self.begin("toy-0002", dealt)
+        self.assertEqual((code, self.spoken(text)[-2].split()[0]), (0, "STARTED"), self.err)
+        self.assertEqual(subprocess.run(["git", "cat-file", "blob", "HEAD:lib.c"], cwd=self.alice.work, capture_output=True, check=True).stdout,
+                         (LIB + "int kept_with_cr_lf;\nint and_changed_again;\n").replace("\n", "\r\n").encode(), "the clone is on the project's new commit")
+        # Beyond a fixed number of them, what git finds changed is taken as changed, unread: the command then stops.
+        with mock.patch.object(hive, "LEFT_MAX", 0):
+            self.one_line(self.begin("toy-0002", dealt), "the work tree still holds files an earlier run left, which git could not set aside or "
+                                                        "remove: tell the user")
+            self.alice.write("src/new.c", "int by_alice;\n")
+            code, text = self.submit("toy-0002", dealt, "--no-push")
+            self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": ["lib.c"], "files": 1}\n'), self.err)
+        # The same holds when a checkout writes other bytes than the commit stores: here one line of the stored file
+        # ends with LF, where the rule (« eol=crlf ») has a checkout write CR LF.
+        moves_on(LIB + "int kept_with_one_lf;\n", first_line_end="\n")
+        for _ in range(2):
+            code, text = self.begin("toy-0002", dealt)
+            self.assertEqual((code, self.spoken(text)[-2].split()[0]), (0, "STARTED"), self.err)
+        stored = subprocess.run(["git", "cat-file", "blob", "HEAD:lib.c"], cwd=self.alice.work, capture_output=True, check=True).stdout
+        self.assertEqual(((self.alice.work / "lib.c").read_bytes(), stored.count(b"\r\n") + 1), (stored.replace(b"\n", b"\r\n", 1), stored.count(b"\n")),
+                         "the checkout wrote CR LF where the commit stores LF")
+        self.assertEqual(sh("git", "status", "--porcelain", "--", "lib.c", cwd=self.alice.work).stdout, " M lib.c\n")
+        self.alice.write("src/new.c", "int by_alice;\n")
+        code, text = self.submit("toy-0002", dealt, "--no-push")
+        self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), self.err)
+        # What somebody changed is still somebody's.
+        self.alice.write("src/other.c", "int by_alice;\n").write("run.sh", "#!/bin/sh\necho changed by hand\n")
+        code, text = self.submit("toy-0002", dealt, "--no-push")
+        self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": ["run.sh"], "files": 1}\n'), self.err)
+        code, text = self.begin("toy-0002", dealt)
+        self.assertEqual((code, [line.split()[0] for line in self.spoken(text)][:2]), (0, ["SET-ASIDE", "STARTED"]), self.err)
+        aside = sh("git", "stash", "show", "--name-only", "--include-untracked", "stash@{0}", cwd=self.alice.work).stdout.split()
+        self.assertLessEqual({"run.sh", "src/other.c"}, set(aside), "(git sets the file it finds changed aside with them: nothing is lost by that)")
+
+    def test_what_git_could_not_set_aside_is_never_written_over(self):
+        """start forces its checkout, so that a file the project itself stores otherwise than its rules stops no one.
+        It forces it only once nothing is left that somebody wrote: what git still finds changed, when everything was
+        set aside, ends the command unless its bytes are what a checkout of the held commit writes. (A file that an
+        earlier run left and git did not set aside is made here by writing it at the moment the tool asks git what is
+        left.) A path the commit does not hold, and a plain file where the commit holds a link, be it of the very
+        bytes git stores for that link, are changes too."""
+        real = hive.work_tree_changes
+
+        def left_behind(clone):
+            (self.alice.work / "lib.c").write_text("int left_by_an_earlier_run;\n")
+            return real(clone)
+        with mock.patch.object(hive, "work_tree_changes", side_effect=left_behind):
+            self.one_line(self.begin("toy-0001", NOW), "the work tree still holds files an earlier run left, which git could not set aside or "
+                                                      "remove: tell the user")
+        self.assertEqual((self.alice.work / "lib.c").read_text(), "int left_by_an_earlier_run;\n", "nothing was written over")
+        self.assertEqual((self.alice.work / ".git/HEAD").read_text(), "ref: refs/heads/claude/work\n")
+        work = self.alice.work
+        sh("git", "checkout", "--quiet", "--", "lib.c", cwd=work)
+        os.symlink("lib.c", work / "link")
+        sh("git", "add", "link", cwd=work)
+        sh("git", "commit", "--quiet", "-m", "a link", cwd=work)
+        commit = sh("git", "rev-parse", "HEAD", cwd=work).stdout.strip()
+        clone = hive.Clone(work.resolve(), {})
+        self.assertEqual(hive.not_as_checked_out(clone, commit, [b"link", b"run.sh", b"nowhere.c"]), [b"link", b"nowhere.c"], "(a link is no plain file)")
+        os.unlink(work / "link")
+        (work / "link").write_bytes(b"lib.c")
+        (work / "run.sh").write_text("#!/bin/sh\necho other\n")
+        self.assertEqual(hive.not_as_checked_out(clone, commit, [b"link", b"run.sh", b"lib.c"]), [b"link", b"run.sh"])
 
     def test_a_step_of_gits_that_fails_on_the_way_ends_start_with_what_the_user_is_to_do(self):
         """What an earlier run left in .git may be more than this tool repairs: a branch below the task's own, where git

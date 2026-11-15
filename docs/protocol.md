@@ -181,6 +181,7 @@ it**: exactly what would land.
 | `bad_path` | a path that is not plain printable ASCII, or a **new** name that is not an identifier: letters, digits, `. _ + -`, 64 characters at most per part, not starting with a dot or a dash, not ending with a dot |
 | `binary` | a file with a NUL byte anywhere (the hive reads the bytes itself), or one git calls binary |
 | `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe |
+| `stored_otherwise` | a changed file is not stored as the project's own rules store it (its `.gitattributes`: line ends, an encoding): once integrated, git would find it changed in every clone, where nobody changed it. The hive asks git, as a checkout does |
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
 | `judge_failed` | three times the judge failed on this deal's candidates (it ran out of time, for instance), or the hive could not derive them, while both worked on the project itself |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |

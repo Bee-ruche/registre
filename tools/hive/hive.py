@@ -171,6 +171,7 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "too_large": "too many changed lines",
     "file_too_big": "a changed file is too big",
     "line_too_long": "an added line is longer than the project allows",
+    "stored_otherwise": "a changed file is not stored as the project's own rules store it (line ends, an encoding)",
     "judge_refused": "the judge refused the candidate",
     "judge_failed": "three times the judge failed on this deal's candidates, or the hive could not derive them, while both worked on the project itself",
     "push_refused": "the project's repository declined the commit, three times (a rule on its content)",
@@ -264,11 +265,12 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
     """Runs git on a repository, never through a shell, with hooks off; isolated from the machine's configuration
     (the hive's side) unless the caller is the volunteer's own clone. attributes=False: the command reads no
     .gitattributes at all, neither a work tree's nor a commit's (the empty tree is its attribute source), so that what
-    a tree says never changes how the hive merges, counts lines or finds binary files. Needs git 2.40."""
+    a tree says never changes how the hive merges, counts lines or finds binary files. attributes=<a tree's id>: the
+    command follows that tree's .gitattributes files and no other (stored_otherwise). Needs git 2.40."""
     environment = isolated_environment() if isolated else dict(os.environ)
     environment.update(env or {})
     try:
-        source = () if attributes else (f"--attr-source={EMPTY_TREE}",)
+        source = () if attributes is True else (f"--attr-source={EMPTY_TREE if attributes is False else need_sha(attributes)}",)
         result = subprocess.run(["git", *GIT_BASE, *source, "-C", str(repo), *args], input=stdin, capture_output=True, text=True,
                                 timeout=timeout, env=environment, errors="replace")
     except subprocess.TimeoutExpired as e:
@@ -986,12 +988,12 @@ def check_structure(repo, tip_tree, merged_tree, task, config):
             raise Refusal("mode_change")
         if not in_task_files(path, task["files"]):
             raise Refusal("path_outside_task")
-        changed.append((deleted, added, old_sha, new_sha))
+        changed.append((deleted, added, old_sha, new_sha, path))
     if not changed:
         raise Refusal("empty")
     if len(changed) > limits["files"]:
         raise Refusal("too_many_files", {"files": len(changed)})
-    for deleted, added, old_sha, new_sha in changed:
+    for deleted, added, old_sha, new_sha, _ in changed:
         if deleted:
             continue
         new = blob_bytes(repo, new_sha, limits["file_bytes"])
@@ -1015,7 +1017,32 @@ def check_structure(repo, tip_tree, merged_tree, task, config):
         lines += int(added_lines) + int(removed_lines)
     if lines > limits["changed_lines"]:
         raise Refusal("too_large", {"lines": lines})
+    # Last, once the candidate is known to be small: each file it leaves is stored as the project's own rules store it.
+    if stored_otherwise(repo, merged_tree, [path for deleted, _, _, _, path in changed if not deleted]):
+        raise Refusal("stored_otherwise")
     return {"files": len(changed), "lines": lines}
+
+
+def stored_otherwise(repo, tree, paths):
+    """Among these paths of a tree, those that a fresh checkout would show as changed though nobody changed them:
+    files stored otherwise than the tree's own rules store them (its .gitattributes files: line ends, an encoding,
+    the text between « $Id » and « $ »). Such a file, once it is the project's, is found changed by git in every
+    clone, where no one touched it. git itself is asked, as a checkout asks it: in an index and a folder of the
+    hive's own, the files are written out under the tree's rules, and what was written is compared with what the
+    tree stores. No filter runs (none is defined on the hive's side, nor in a worker's own store). A file that
+    cannot be written out under those rules is one of them."""
+    need_sha(tree)
+    if not paths:
+        return []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+        own = {"GIT_INDEX_FILE": os.path.join(folder, "index"), "GIT_WORK_TREE": os.path.join(folder, "files"), "GIT_LITERAL_PATHSPECS": "1"}
+        os.mkdir(own["GIT_WORK_TREE"])
+        git(repo, "read-tree", tree, env=own, attributes=tree)
+        if git(repo, "checkout-index", "--force", "--", *paths, env=own, attributes=tree, check=False).returncode != 0:
+            return list(paths)
+        git(repo, "update-index", "-q", "--refresh", env=own, attributes=tree, check=False)  # (it reads the files again; its answer is the next line's)
+        listed = git(repo, "diff-files", "--name-only", "-z", "--", *paths, env=own, attributes=tree).stdout
+    return [path for path in listed.split("\0") if path]
 
 
 UNATTENDED = ("Written by an AI coding agent running unattended, credited to the member whose agent it is. "
@@ -4017,6 +4044,34 @@ def cmd_next(args):
               "\"<one line: what you changed>\"")
 
 
+LEFT_MAX = 1000  # how many paths that git finds changed the tool reads again as bytes; beyond, they are taken as changed
+
+
+def not_as_checked_out(clone, commit, paths):
+    """Among these paths that git finds changed (bytes, as git names them), those whose file is not what a checkout
+    of the commit writes: neither the commit's own bytes for it, nor those bytes as the commit's own rules convert
+    them. Read as work_tree_proof reads: the commit and its folders through Objects, the files as plain files. What
+    is left out of the answer is a file the commit itself stores otherwise than its rules store it: git finds it
+    changed in every clone, and it is nobody's work."""
+    deadline, other = time.monotonic() + PROOF_SECONDS, []
+    with Objects(clone) as objects:
+        entries, _ = tip_entries(objects, commit, deadline)
+        rules = {path: entry for path, entry in entries.items() if path.rpartition(b"/")[2] == b".gitattributes" and entry[0] != SUBMODULE_MODE}
+        with TipRules(objects, rules, deadline) as converted:
+            for path in paths:
+                in_time(deadline)
+                entry, place = entries.get(path), place_inside(clone.root, path)
+                try:
+                    plain = place is not None and stat.S_ISREG(os.lstat(place).st_mode)
+                except OSError:
+                    plain = False
+                if entry is None or entry[0] != stat.S_IFREG or not plain:
+                    other.append(path)
+                elif file_blob_id(place, deadline) != entry[2] and not converted.writes(path, entry[2], place):
+                    other.append(path)
+    return other
+
+
 def work_tree_changes(clone):
     """What the work tree and the index hold that the last commit does not: [(path as bytes, tracked)]. File names
     are whatever ran in the work tree chose: read between NULs, kept as bytes, never read as patterns. (git follows
@@ -4334,9 +4389,19 @@ def cmd_start(args):
             removed += remove_unseen(clone.root) + empty_submodules(clone)
         except OSError:
             raise HiveError("a file an earlier run left in the work tree could not be removed: tell the user") from None
-        if untracked(clone) or work_tree_changes(clone):
+        # What git still finds changed, once everything was set aside, is a leftover only if its bytes are not what a
+        # checkout of that commit writes: a file the project itself stores otherwise than its own rules store it is
+        # found changed in every clone, and is nobody's work. So the checkout below may be forced: nothing is lost.
+        left = [path for path, _ in work_tree_changes(clone)]
+        try:
+            left = left if len(left) > LEFT_MAX or not left else not_as_checked_out(clone, held, left)
+        except NotPlain:
+            raise
+        except HiveError:  # (a commit the tool cannot read whole: what git finds changed is then taken as it is)
+            pass
+        if untracked(clone) or left:
             raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
-        clone.git("checkout", "--quiet", "-l", "-B", branch, tip, env=who)
+        clone.git("checkout", "--quiet", "--force", "-l", "-B", branch, tip, env=who)
         # git writes a file again only if the index says it changed, and the index is a file of .git like any other: it
         # may say of a file « do not look », or hold the size and the date of bytes an earlier run wrote. So the index is
         # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
@@ -4463,9 +4528,13 @@ def cmd_submit(args):
     base, base_tree = rests_on(clone, tip, head, config["limits"])
     # What git finds changed outside the task's files, among the files it tracks: said to the worker, who may have
     # tested with it. (Nothing of it would go into the candidate: its tree takes the task's files and no other.)
-    outside = [path.decode("utf-8", errors="surrogateescape")
-               for path, tracked in in_words(lambda: work_tree_changes(clone), f"git cannot read what this clone holds (its index): {restart}")
+    # (A file is changed only if its bytes are not what a checkout of the project's commit writes for it: one that the
+    # project itself stores otherwise than its own rules store it is found changed by git in every clone.)
+    outside = [path for path, tracked in in_words(lambda: work_tree_changes(clone), f"git cannot read what this clone holds (its index): {restart}")
                if tracked and not in_task_files(path.decode("utf-8", errors="surrogateescape"), task["files"])]
+    if outside and len(outside) <= LEFT_MAX:
+        outside = not_as_checked_out(clone, base, outside)
+    outside = [path.decode("utf-8", errors="surrogateescape") for path in outside]
     if outside:
         with Objects(clone) as objects:
             detail = named_paths(objects, base_tree, outside)
