@@ -2933,6 +2933,11 @@ exec {real} "$@"
         self.assertEqual((len(entries), sorted(reads.values())), (1, [False, True]), "one fork was read; the other waits")
         entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
         self.assertEqual((len(entries), sorted(reads.values())), (2, [True, True]))
+        # A clone that cannot be listed is an error, never a weight of nothing: the room is counted or the run says so.
+        self.assertGreater(hive.packs_weight(self.w.harvest), 0)
+        with mock.patch.object(hive.os, "scandir", side_effect=FileNotFoundError(2, "a file that went while it was listed")):
+            with self.assertRaisesRegex(hive.HiveError, r"\Athe hive's clone could not be listed \(FileNotFoundError\)\Z"):
+                hive.packs_weight(self.w.harvest)
 
     def test_the_judges_folders_are_removed(self):
         self.alice.submit("toy-0001", content=LIB + "/* ENVERR */\n")
