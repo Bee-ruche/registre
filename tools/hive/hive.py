@@ -2746,10 +2746,9 @@ PLAIN_CONFIG = tuple((re.compile(rf"(?:{key})\Z"), re.compile(rf"(?:{value})\Z")
     # Who commits, for the git commands a person runs in the clone. The worker commands never read it (Clone.identity).
     (r"user\.name", r"[^\x00-\x1f\x7f<>]{1,100}"),
     (r"user\.email", r"[^\x00-\x20\x7f<>]{1,200}"),
-    # actions/checkout, when it keeps the job's token (persist-credentials, its default up to v5), writes it as a
-    # header sent to github.com alone. (v6 is said to write an « includeIf » instead: refused like any include;
-    # check out with persist-credentials: false.) A header is sent to GitHub; it starts nothing.
-    (r"http\.https://github\.com/\.extraheader", r"(?i:authorization): basic [A-Za-z0-9+/=]{1,500}"),
+    # No setting of the section « http »: none of the clone's settings goes into a request. actions/checkout, when it
+    # keeps the job's token (persist-credentials, its default up to v5), writes it there as a header (v6 is said to
+    # write an « includeIf » instead, refused like any include): plain_clone stops on it with a sentence of its own.
 ))
 
 
@@ -3296,6 +3295,10 @@ def plain_clone():
             raise not_plain("its .git/config reads settings from another file (include)")
         if key.startswith("remote.") and key.endswith(".pushurl"):
             raise not_plain("its .git/config gives a remote another address to push to (pushurl)")
+        if key.startswith("http.") and key.endswith(".extraheader"):
+            # A credential in the clone is one that project code can read wherever .git is shown to it, and a header
+            # that whatever ran in the clone wrote would go with every request of the tool's.
+            raise not_plain("its .git/config holds a header that git sends with its requests, as a checkout keeps a token: a worker's credential does not lie in the clone (check out without it: persist-credentials: false)")
         if not any(name.match(key) and values.match(value) for name, values in PLAIN_CONFIG):
             known = any(name.match(key) for name, _ in PLAIN_CONFIG)
             raise not_plain(f"its .git/config holds {setting_name(key)} " + ("with a value a clone does not have" if known
@@ -3822,16 +3825,10 @@ def own_store(clone, folder):
     """A repository of this tool's own, made now in an empty folder outside the clone, which holds nothing: what a
     command writes there is all it holds. A push copies what it sends out of the store it is pushed from, as the
     bytes lie there, and a clone's store is whatever ran in the clone left: a pack may hold any bytes under the id of
-    an object the push names. What is pushed from here is what this command wrote. The one setting of the clone that
-    a push to GitHub may need goes with it: the header in which a checkout keeps its token, which plain_clone took in
-    that one form (PLAIN_CONFIG). The machine's own settings (the user's credentials, a proxy) are read as for any
-    push (Clone.git)."""
+    an object the push names. What is pushed from here is what this command wrote. No setting of the clone goes with
+    it: the machine's own settings (the user's credentials, a proxy) are read as for any push (Clone.git)."""
     git(folder, "init", "--quiet", "--template=", "--object-format=sha1", ".")  # (the ids of this protocol are SHA-1's)
-    store = Clone(Path(folder), {})
-    for key, value in clone.settings.items():
-        if key.startswith("http."):
-            store.git("config", "--local", key, value)
-    return store
+    return Clone(Path(folder), {})
 
 
 NOT_COPIED = ("STOP: what this clone holds could not be copied out whole: an object the work rests on is missing from it, or is not "
