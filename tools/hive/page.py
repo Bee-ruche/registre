@@ -50,12 +50,16 @@ The rules the page follows, each stated where it is applied:
     the ledger's date: for a push that a later run recorded, that run's. The page of a contribution says so.
 
 Trust: the ledger holds strings that strangers chose (logins, model identifiers), within patterns the hive checks.
-This file trusts none of that. Every value read is checked again against its pattern, and dropped or replaced when
-it does not match; everything placed in HTML or SVG goes through one builder that escapes it; a link is built from
-a checked login, a 40-hex commit id or an address given on the command line and checked, and from nothing else; a
-file's name is one of three constants, or an account's number or a 40-hex commit id under members/ or wins/.
-write() checks its whole plan against the output folder before it writes anything, and follows no link there.
-The page has no script, loads nothing, and names a member only for work the judge accepted.
+This file trusts none of that. A file of the state is read only if it is a plain file under its own name: no link
+is followed there, no pipe or device is waited on or read, and neither a line nor a file is read further than a
+fixed size (plain_file, lines_of, read_json). Every value read is checked again against its pattern, and dropped or
+replaced when it does not match. Everything placed in HTML or SVG goes through one builder that
+escapes it; a link is built from a checked login, a 40-hex commit id or an address given on the command line and
+checked, or leads to a file of the site by a name this tool gave it, and comes from nothing else; a file's name is
+one of three constants, or an account's number or a 40-hex commit id under members/ or wins/. write() checks its
+whole plan against the output folder before it writes anything, follows no link there, and gives no file its name
+before every file is written whole. The page has no script, loads nothing, and names a member only for a line the
+ledger records as accepted.
 
 Standard library only. The figures come from the ledger; stats.json is only compared with them.
 """
@@ -337,10 +341,10 @@ def read_tasks(path):
     PageError when the file cannot be read at all: it was named on the command line."""
     goals, asked, seen = {}, {}, set()
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
+        with plain_file(path) as f:
+            for line in lines_of(f):
                 try:
-                    task = json.loads(line) if line.strip() and len(line) <= LINE_MAX else None
+                    task = json.loads(line) if line is not None and line.strip() else None
                 except (ValueError, RecursionError):
                     task = None
                 identifier = matching(task.get("id"), TASK_ID, TASK_ID_MAX) if isinstance(task, dict) else None
@@ -375,11 +379,46 @@ def read_prefer(prefer):
     return {"file": prefer["file"], "kept": False, "because": because} if isinstance(because, str) and because in PREFER_WORDS else None
 
 
-def read_json(folder, name):
-    """A state file's content, or None when it is absent or unreadable: the page says less, and is still made."""
+def plain_file(path):
+    """A file opened to be read as bytes, if a plain file stands under that very name. A link there is not followed:
+    it could lead to any file of the machine, whose content the page would then show as this project's. A pipe or a
+    device is neither waited on nor read: the one may never begin, the other never ends. Raises OSError otherwise,
+    and FileNotFoundError when nothing stands there."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
-        with open(Path(folder) / name, encoding="utf-8", errors="replace") as f:
-            return json.load(f)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError("not a plain file")
+        return open(descriptor, "rb")
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def lines_of(f):
+    """The lines of a file opened as bytes, one at a time, as text; None stands for a line longer than LINE_MAX,
+    of which no more than that many bytes are ever held at once."""
+    while True:
+        raw = f.readline(LINE_MAX + 1)
+        if not raw:
+            return
+        if len(raw) > LINE_MAX:
+            while raw and not raw.endswith(b"\n"):  # (the rest of that line is passed over, a piece at a time)
+                raw = f.readline(LINE_MAX + 1)
+            yield None
+        else:
+            yield raw.decode("utf-8", errors="replace")
+
+
+def read_json(folder, name):
+    """A state file's content, or None when it is absent or unreadable: the page says less, and is still made. It is
+    read only if it is a plain file under its own name (plain_file), and no further than the hive itself reads a file
+    of its state (hive.STATE_BYTES): a larger one is unreadable."""
+    try:
+        with plain_file(Path(folder) / name) as f:
+            raw = f.read(hive.STATE_BYTES + 1)
+        if len(raw) > hive.STATE_BYTES:
+            raise ValueError("larger than a file of the hive's state")
+        return json.loads(raw.decode("utf-8", errors="replace"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RecursionError):
@@ -387,28 +426,34 @@ def read_json(folder, name):
         return None
 
 
-def read_ledger(folder):
-    """(the ledger's lines that are JSON objects, in order; how many lines were left out). Unlike the hive, the
-    page goes on when a line is broken: it shows what it can read, and says how many lines it could not."""
-    path, objects, skipped = Path(folder) / "ledger.jsonl", [], 0
+def read_ledger(folder, goals=None):
+    """(the ledger's lines as the page uses them, in order (clean_event); how many lines the ledger holds; how many
+    of them are not JSON objects). Unlike the hive, the page goes on when a line is broken: it shows what it can
+    read, and says how many lines it could not. Each line is cleaned as it is read, and only what the page uses of it
+    is kept: what the reading costs follows the number of lines, not what a line was filled with. The ledger is read
+    only if it is a plain file under its own name (plain_file). `goals`: see clean_event."""
+    events, lines, skipped = [], 0, 0
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                if not line.strip():
+        with plain_file(Path(folder) / "ledger.jsonl") as f:
+            for line in lines_of(f):
+                if line is not None and not line.strip():
                     continue
+                lines += 1
                 try:
-                    value = json.loads(line) if len(line) <= LINE_MAX else None
+                    value = json.loads(line) if line is not None else None
                 except (ValueError, RecursionError):
                     value = None
-                if isinstance(value, dict):
-                    objects.append(value)
-                else:
+                if not isinstance(value, dict):
                     skipped += 1
+                    continue
+                event = clean_event(value, goals)
+                if event is not None:
+                    events.append(event)
     except FileNotFoundError:
-        return [], 0
+        return [], 0, 0
     except OSError:
         raise PageError("the ledger cannot be read") from None
-    return objects, skipped
+    return events, lines, skipped
 
 
 def clean_event(raw, goals=None):
@@ -447,6 +492,10 @@ def clean_event(raw, goals=None):
         if candidate is not None:
             event["marks"].append(("candidate", candidate))
         if result == "accepted":
+            # (The hive accepts only what the judge judged, and records the commit it integrated. A line it never
+            # writes, accepted without « judged » or without a whole commit id, is still read field by field, as
+            # every line is: an integration of its member, not in what the judge judged; without a commit id it has
+            # no card and no page, since nothing is linked or named on a guess.)
             event.update(read_report(raw.get("report"), (goals or {}).get(task)), changed=read_changed(raw.get("figures")))
             if event["commit"] is not None:
                 event["marks"].append(("commit", event["commit"]))
@@ -515,7 +564,9 @@ def read_feed(folder):
 
 def read_waiting(folder, now):
     """{count, oldest_seconds} for the dealt candidates the judge has not answered yet (the feed's deals whose
-    candidate is true; the age is measured from the deal's `at`), or None when there is none."""
+    candidate is true; the age is measured from the deal's `at`), or None when there is none. A deal dated after
+    the instant the page is made for is not counted, as a ledger line dated after it is not. (How the tasks stand
+    is the feed's own count: the feed is the hive's latest, and says nothing of an earlier instant.)"""
     feed = read_json(folder, "feed.json")
     deals = feed.get("deals") if isinstance(feed, dict) else None
     if not isinstance(deals, dict):
@@ -525,8 +576,8 @@ def read_waiting(folder, now):
         if not matching(mark, MARK) or not isinstance(deal, dict) or deal.get("candidate") is not True:
             continue
         since = instant_of(deal.get("at"))
-        if since is not None and matching(deal.get("task"), TASK_ID, TASK_ID_MAX) and instant_of(deal.get("until")) is not None:
-            ages.append(max(0, int((now - since).total_seconds())))
+        if since is not None and since <= now and matching(deal.get("task"), TASK_ID, TASK_ID_MAX) and instant_of(deal.get("until")) is not None:
+            ages.append(int((now - since).total_seconds()))
     return {"count": len(ages), "oldest_seconds": max(ages)} if ages else None
 
 
@@ -548,8 +599,7 @@ def collect(state, now, tasks=None):
     contributions and nothing else: what was refused is counted for the project and for a model (model_rows), and
     added up for no person, here or in any file (the public ledger still names the member of every answer)."""
     goals, asked = read_tasks(tasks) if tasks is not None else ({}, {})
-    objects, skipped = read_ledger(state)
-    usable = [event for event in (clean_event(raw, goals) for raw in objects) if event is not None]
+    usable, lines, skipped = read_ledger(state, goals)
     # A line dated after `now` says nothing yet: the page is made for that instant, and its latest contribution is never
     # one from the future. Then each answer is read once (once()). Both are said on the standard error and in the files.
     dated = [event for event in usable if event["at"] <= now]
@@ -682,7 +732,7 @@ def collect(state, now, tasks=None):
             "judge_runs_per_integration": round(totals["judge_runs"] / integrations, 2) if integrations else None,  # judge_runs()
             "waiting": read_waiting(state, now),
         },
-        "ledger": {"lines": len(objects) + skipped, "unreadable_lines": skipped, "events_left_out": len(objects) - len(usable),
+        "ledger": {"lines": lines, "unreadable_lines": skipped, "events_left_out": lines - skipped - len(usable),
                    "lines_after_now": after, "repeated_lines": repeated},
     }
     data["stats_json"] = compare_stats(read_json(state, "stats.json"), models)
@@ -1652,11 +1702,15 @@ def write(out, files):
     followed while writing either, should one appear in between: `out` and each folder under it are opened as
     folders without following a link (O_NOFOLLOW), each file is written through its folder's descriptor under a
     temporary name opened the same way, and moved over its own name, which replaces what stands there and follows
-    nothing."""
+    nothing.
+
+    Every file is written whole under its temporary name before any takes its own: a folder that cannot be written
+    into stops the run there, with the site as it was. Then each takes its name, the cards and the pages of the
+    integrations first and index.html, which leads to them, last. A run that stops removes what it wrote aside."""
     if any(name not in FIXED_NAMES and not any(pattern.match(name) for pattern in NAMES) for name in files):
         raise PageError("a file name this tool does not write")
     check_plan(out, files)
-    folders, place = {}, "the folder itself"
+    folders, place, written, named = {}, "the folder itself", [], 0
     try:
         os.makedirs(out, exist_ok=True)
         folders[""] = os.open(out, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -1672,11 +1726,20 @@ def write(out, files):
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary_name(leaf), dir_fd=folders[folder])
             descriptor = os.open(temporary_name(leaf), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=folders[folder])
+            written.append((folder, leaf))
             with open(descriptor, "w", encoding="utf-8", newline="\n") as f:
                 f.write(files[name])
+        for name in sorted(files, key=lambda name: (name == "index.html", "/" not in name, name)):
+            place = name
+            folder, _, leaf = name.rpartition("/")
             os.replace(temporary_name(leaf), leaf, src_dir_fd=folders[folder], dst_dir_fd=folders[folder])
+            named += 1
     except OSError as error:
-        raise PageError(f"--out: {place} could not be written ({error.strerror or type(error).__name__}): the site is not whole") from None
+        for folder, leaf in written:  # (what was written aside and took no name is removed)
+            with contextlib.suppress(OSError):
+                os.unlink(temporary_name(leaf), dir_fd=folders[folder])
+        raise PageError(f"--out: {place} could not be written ({error.strerror or type(error).__name__}): "
+                        f"{'the site is not whole' if named else 'the site is as it was'}") from None
     finally:
         for descriptor in folders.values():
             os.close(descriptor)

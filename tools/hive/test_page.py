@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -411,7 +412,8 @@ class TestFigures(Case):
 
     def test_candidates_that_wait_are_counted_and_the_time_to_an_answer_is_not_invented(self):
         deals = {mark(1): deal(at="2026-11-12T07:00:00Z"), mark(2): deal("toy-0006", at="2026-11-12T11:00:00Z"),
-                 mark(3): deal("toy-0007", candidate=False), mark(4): deal(at="never"), "zz": deal(), mark(5): deal(task="../x")}
+                 mark(3): deal("toy-0007", candidate=False), mark(4): deal(at="never"), "zz": deal(), mark(5): deal(task="../x"),
+                 mark(6): deal("toy-0008", at="2026-11-12T12:00:01Z", until="2026-11-13T12:00:01Z")}  # (dated after the instant the page is made for)
         self.put("feed.json", feed({"toy-0005": "dealt", "toy-0006": "dealt", "toy-0007": "dealt"}, deals=deals))
         files = self.make()
         self.assertEqual(self.summary(files)["measures"]["waiting"], {"count": 2, "oldest_seconds": 5 * 3600})
@@ -599,7 +601,7 @@ class TestFolder(Case):
         before = tree(self.root)
         self.make(out=self.out / "under" / "a file", code=2)
         self.assertEqual(tree(self.root), before)
-        self.assertRegex(self.errors, r"\Apage: --out: the folder itself could not be written \([A-Za-z ]+\): the site is not whole\n\Z")
+        self.assertRegex(self.errors, r"\Apage: --out: the folder itself could not be written \([A-Za-z ]+\): the site is as it was\n\Z")
 
     def test_a_folder_or_a_pipe_where_a_file_goes_stops_the_run_with_one_line_and_the_site_as_it_was(self):
         (self.out / self.own).mkdir(parents=True)
@@ -624,6 +626,36 @@ class TestFolder(Case):
                                                 self.own, f"wins/{sha(5001)}.svg"]), "the site is whole, and no temporary file is left")
         self.assertIn("Latest accepted contribution", files["index.html"])
 
+    def test_no_file_takes_its_name_before_every_file_is_written_whole(self):
+        """A folder of the site that cannot be written into stops the run before any file took its name: the site is as
+        it was, index.html included, and nothing written aside is left. When every file is written, the cards and the
+        pages take their names first and index.html, which leads to them, last; a name that cannot be taken then leaves
+        a site that is not whole, and the run says so."""
+        if os.geteuid() == 0:
+            self.skipTest("the administrator writes where a folder's mode forbids it: this is tried as another user")
+        (self.out / "wins").mkdir()
+        os.chmod(self.out / "wins", 0o555)
+        self.addCleanup(os.chmod, self.out / "wins", 0o755)
+        before = tree(self.root)
+        self.make(code=2)
+        self.assertRegex(self.errors, r"\Apage: --out: wins/[0-9a-f]{40}\.(svg|html) could not be written \(Permission denied\): the site is as it was\n\Z")
+        self.assertEqual(tree(self.root), {**before, "site/members": None}, "no file changed, none left aside: only a folder was made")
+        os.chmod(self.out / "wins", 0o755)
+        real, order = os.replace, []
+
+        def watched(source, name, **where):
+            order.append(name)
+            if len(order) == 9:
+                raise PermissionError(13, "Permission denied")
+            return real(source, name, **where)
+        with mock.patch.object(page.os, "replace", watched):
+            files = self.make()
+            self.assertEqual((len(order), order[-3:]), (7, ["badge.svg", "summary.json", "index.html"]), order)
+            self.assertIn("Latest accepted contribution", files["index.html"])
+            self.make(code=2)
+        self.assertRegex(self.errors, r"\Apage: --out: [A-Za-z0-9./-]+ could not be written \(Permission denied\): the site is not whole\n\Z")
+        self.assertEqual([name for name in tree(self.out) if name.endswith(".tmp")], [], "what was written aside and took no name is removed")
+
     def test_no_link_is_followed_while_writing_either(self):
         """The plan's check comes first; with it taken away, the writing itself follows no link."""
         files = page.render(page.collect(self.state, page.instant_of(NOW)))
@@ -631,7 +663,7 @@ class TestFolder(Case):
         os.symlink(self.outside, link)  # a folder of the site that is a link: not entered
         with mock.patch.object(page, "check_plan", lambda out, names: None), self.assertRaises(page.PageError) as stopped:
             page.write(self.out, files)
-        self.assertRegex(str(stopped.exception), r"\A--out: [A-Za-z0-9./-]+ could not be written \([A-Za-z ]+\): the site is not whole\Z")
+        self.assertRegex(str(stopped.exception), r"\A--out: [A-Za-z0-9./-]+ could not be written \([A-Za-z ]+\): the site is as it was\Z")
         self.assertEqual((self.victim.read_text(), sorted(path.name for path in self.outside.iterdir())), ("precious\n", ["victim.txt"]))
         link.unlink()
         # Whatever stands at a file's temporary name is removed, never opened: a link, a second name of a file elsewhere
@@ -1265,6 +1297,100 @@ class TestHostile(Case):
         self.assertEqual(page.plain("x" * 300, 20), "x" * 19 + "…")
         self.assertEqual(page.plain(["x"], 20), "")
         self.assertEqual(page.plain("Bibliothèque zlib · 圧縮", 50), "Bibliothèque zlib · 圧縮")
+
+
+class TestStateFiles(Case):
+    """A file of the state is read only if it is a plain file under its own name, and no further than a fixed size."""
+
+    def aside(self, *options):
+        """The tool run as a program of its own, with a limit of time: a run that waits on a pipe, or reads what never
+        ends, would not end by itself."""
+        done = subprocess.run([sys.executable, "-B", page.__file__, "--state", str(self.state), "--out", str(self.out), "--now", NOW, *options],
+                              capture_output=True, text=True, timeout=30)
+        return done.returncode, done.stderr
+
+    def gone(self, place):
+        if place.is_dir() and not place.is_symlink():
+            place.rmdir()
+        else:
+            place.unlink()
+
+    def test_a_link_a_pipe_or_a_device_where_a_state_file_goes_is_not_read(self):
+        """A link where the ledger goes could lead to any file of the machine, whose lines the page would show as this
+        project's; a pipe may never begin, and a device never ends. The ledger is then one that cannot be read: one
+        line, status 2, nothing written. The feed and the statistics are left out, and the page is made without them.
+        The task file, named on the command line, is read the same way."""
+        elsewhere = self.root / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "ledger.jsonl").write_text(json.dumps(verdict(1, "2026-11-10T09:00:00Z", "outsider", 7, "toy-0001")) + "\n")
+        (elsewhere / "feed.json").write_text(json.dumps(feed({"toy-0001": "done"}, project="another")))
+        (elsewhere / "stats.json").write_text("{}")
+        plants = {"a link to a file elsewhere": lambda place: os.symlink(elsewhere / place.name, place),
+                  "a link to a device": lambda place: os.symlink("/dev/zero", place), "a pipe": os.mkfifo, "a folder": os.mkdir,
+                  "a link that leads nowhere": lambda place: os.symlink(elsewhere / "nothing", place)}
+        for what, plant in plants.items():
+            with self.subTest(file="ledger.jsonl", there=what):
+                plant(self.state / "ledger.jsonl")
+                self.assertEqual(self.aside(), (2, "page: the ledger cannot be read\n"))
+                self.assertFalse(self.out.exists(), "nothing is written")
+                self.gone(self.state / "ledger.jsonl")
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001")])
+        for name in ("feed.json", "stats.json"):
+            for what, plant in plants.items():
+                with self.subTest(file=name, there=what):
+                    plant(self.state / name)
+                    code, said = self.aside()
+                    self.assertEqual((code, set(said.splitlines())), (0, {f"page: {name} is unreadable and is left out"}))
+                    made = json.loads((self.out / "summary.json").read_text())
+                    self.assertEqual((made["project"], made["tasks"], made["totals"]["integrations"]), ("toy", None, 1), "the page is made without it")
+                    self.assertNotIn("another", (self.out / "index.html").read_text())
+                    self.gone(self.state / name)
+        tasks = self.tasks([{"id": "toy-0001", "title": "t", "files": ["lib.c"]}])
+        os.symlink(tasks, self.root / "tasks-link.jsonl")
+        self.assertEqual(self.aside("--tasks", str(self.root / "tasks-link.jsonl"))[0], 2)
+        self.assertEqual(self.aside("--tasks", tasks)[0], 0)
+
+    def test_neither_a_file_nor_a_line_is_read_further_than_a_fixed_size(self):
+        """The feed and the statistics are read up to the size the hive itself reads a file of its state to, and no
+        further: a larger one is left out. A ledger's line is read up to LINE_MAX bytes: a longer one is passed over
+        a piece at a time, counted as a line that could not be read, and the lines after it are read."""
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001")])
+        text = json.dumps(feed({"toy-0001": "open"}))
+        with mock.patch.object(hive, "STATE_BYTES", 3000):
+            self.put("feed.json", text + " " * (3000 - len(text)))
+            self.assertEqual((self.summary(self.make())["tasks"]["open"], self.errors), (1, ""), "a file of that very size is read")
+            self.put("feed.json", text + " " * (3001 - len(text)))
+            self.assertEqual((self.summary(self.make())["tasks"], set(self.errors.splitlines())), (None, {"page: feed.json is unreadable and is left out"}))
+        (self.state / "feed.json").unlink()
+
+        def line(number, size):
+            """A verdict's line of exactly that many bytes, its line feed counted."""
+            plain = verdict(number, "2026-11-10T09:00:00Z", "bob", 102, f"toy-{number:04d}")
+            return json.dumps({**plain, "pad": "x" * (size - 1 - len(json.dumps({**plain, "pad": ""})))})
+        with mock.patch.object(page, "LINE_MAX", 1000):
+            self.assertEqual(len(line(2, 1000)), 999)
+            self.ledger([line(1, 500), line(2, 1000), line(3, 1001), line(4, 50_000), "", line(5, 500)])
+            made = self.summary(self.make())
+            self.assertEqual((made["totals"]["integrations"], made["ledger"]["lines"], made["ledger"]["unreadable_lines"]), (3, 5, 2))
+            self.assertEqual(sorted(row["task"] for row in made["recent"]), ["toy-0001", "toy-0002", "toy-0005"], "the lines after a long one are read")
+            asked, given = [], []
+
+            class Watched(io.BytesIO):
+                def readline(self, size=-1):
+                    asked.append(size)
+                    given.append(super().readline(size))
+                    return given[-1]
+            self.assertEqual(list(page.lines_of(Watched(b"a\n" + b"x" * 5000 + b"\n\nb"))), ["a\n", None, "\n", "b"])
+            self.assertEqual((set(asked), max(len(piece) for piece in given)), ({1001}, 1001), "no more of a line is held than that")
+
+    def test_a_feed_or_statistics_nested_deeper_than_can_be_read_are_left_out(self):
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "bob", 102, "toy-0001")])
+        for name in ("feed.json", "stats.json"):
+            with self.subTest(file=name):
+                self.put(name, "[" * 100_000 + "]" * 100_000)
+                made = self.summary(self.make())
+                self.assertEqual((made["totals"]["integrations"], set(self.errors.splitlines())), (1, {f"page: {name} is unreadable and is left out"}))
+                (self.state / name).unlink()
 
 
 def report_verdict(number, report, **more):
