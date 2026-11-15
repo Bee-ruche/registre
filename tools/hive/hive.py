@@ -2794,6 +2794,20 @@ def same_repository(one, other):
     return (first[0].lower(), first[1].lower()) == (second[0].lower(), second[1].lower())
 
 
+GIT_DATA_BYTES = 2 << 30  # the data memory one git of a worker's command may take (measured: a clone of 58 MB needs less than a quarter of a GiB)
+
+
+def bounded():
+    """Runs in each git that a worker's command starts on the clone, before git does: git is bounded in memory as it
+    is in time. A store is whatever ran in the clone left, and a few bytes there can name gigabytes (an object that
+    declares a size, a pack that leads back to itself): git would take them from the machine, and a session's
+    memory with them. Beyond GIT_DATA_BYTES of data the kernel gives git no more, and git ends saying so: the
+    command then stops as on any git that failed. (The files git maps to read them are not counted: a large
+    repository's packs do not stop it.)"""
+    import resource  # (Linux, like the worker's commands themselves: main)
+    resource.setrlimit(resource.RLIMIT_DATA, (GIT_DATA_BYTES, GIT_DATA_BYTES))
+
+
 class Clone:
     """The fork's clone a worker command runs in: its folder, and its settings as plain_clone read them."""
 
@@ -2840,7 +2854,8 @@ class Clone:
         .gitattributes files the command follows, in place of those that lie in the work tree."""
         try:
             result = subprocess.run(self.command(*args, literal=literal, attributes=attributes), input=stdin, capture_output=True, timeout=timeout,
-                                    env=self.environment(to, env), cwd=self.root, **({} if raw else {"text": True, "errors": "replace"}))
+                                    env=self.environment(to, env), cwd=self.root, preexec_fn=bounded,
+                                    **({} if raw else {"text": True, "errors": "replace"}))
         except subprocess.TimeoutExpired as e:
             raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
         if check and result.returncode != 0:
@@ -2922,7 +2937,7 @@ class Objects:
     def __init__(self, clone):
         try:
             self.process = subprocess.Popen(clone.command("cat-file", "--batch"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root)
+                                            stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root, preexec_fn=bounded)
         except OSError as error:
             raise HiveError(f"git cat-file: {type(error).__name__}") from None
         self.alarm = threading.Timer(OBJECTS_SECONDS, self.process.kill)
@@ -3721,7 +3736,7 @@ class TipRules:
         try:
             process = subprocess.Popen(scratch.command("cat-file", "--filters", "--path=" + os.fsdecode(path), sha, attributes=tree),
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=scratch.environment(),
-                                       cwd=scratch.root)
+                                       cwd=scratch.root, preexec_fn=bounded)
         except OSError as error:
             raise HiveError(f"git cat-file: {type(error).__name__}") from None
         alarm = threading.Timer(max(0.0, self.deadline - time.monotonic()), process.kill)
@@ -3849,9 +3864,9 @@ def poured(source, target, wanted, cuts=None):
     try:
         packing = subprocess.Popen(source.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, env=source.environment(env=None if cuts is None else {"GIT_SHALLOW_FILE": cuts}),
-                                   cwd=source.root)
+                                   cwd=source.root, preexec_fn=bounded)
         receiving = subprocess.Popen(target.command("unpack-objects", "-q"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, env=target.environment(), cwd=target.root)
+                                     stderr=subprocess.DEVNULL, env=target.environment(), cwd=target.root, preexec_fn=bounded)
         packing.stdout.close()
         packing.stdin.write("".join(f"{line}\n" for line in wanted).encode())
         packing.stdin.close()

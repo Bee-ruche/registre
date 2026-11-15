@@ -6613,6 +6613,47 @@ class TestVolunteerSide(Volunteer):
         code, text = self.submit("toy-0001", dealt, "--no-push")
         self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), self.err)
 
+    def test_every_git_of_a_workers_command_is_bounded_in_memory(self):
+        """A store is whatever ran in the clone left, and a few bytes there can name gigabytes. Each git that a worker's
+        command starts on the clone is bounded in its data memory (bounded): beyond, the kernel gives it no more, git
+        ends saying so, and the command stops as on any git that failed. Here the clone holds a commit of two
+        hundred megabytes (a few hundred kilobytes on the disk): git reads it under the bound as it stands, and not
+        under a bound set lower. And every git that the five commands start on the clone is started that way."""
+        header = (b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor t <t@example.invalid> 0 +0000\n"
+                  b"committer t <t@example.invalid> 0 +0000\n\n")
+        size, piece = len(header) + (200 << 20), b"x" * (1 << 20)
+        name, packer = hashlib.sha1(b"commit %d\0" % size + header), zlib.compressobj(1)
+        stored = [packer.compress(b"commit %d\0" % size + header)]
+        for _ in range(200):
+            name.update(piece)
+            stored.append(packer.compress(piece))
+        stored.append(packer.flush())
+        sha = name.hexdigest()
+        path = self.alice.work / ".git/objects" / sha[:2] / sha[2:]
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b"".join(stored))
+        self.assertLess(path.stat().st_size, 1 << 20)
+        clone = hive.Clone(self.alice.work.resolve(), {})
+        self.assertEqual(clone.git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 0, "under the bound as it stands")
+        with mock.patch.object(hive, "GIT_DATA_BYTES", 64 << 20):
+            self.assertEqual(clone.git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 128, "git was given no more")
+            with self.assertRaisesRegex(hive.HiveError, r"\Agit rev-parse failed \(128\)\Z"), mock.patch.object(hive, "VOLUNTEER_SIDE", True):
+                clone.git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}")
+        path.unlink()
+        started, real = [], subprocess.Popen
+
+        def watched(command, *args, **options):
+            if any(str(word).startswith("--git-dir=") for word in command):
+                started.append((next(word for word in command if not str(word).startswith("-") and word != "git"
+                                     and not str(word).startswith(("core.", "protocol.", "gc.", "advice.", "merge.", "i18n."))), options.get("preexec_fn")))
+            return real(command, *args, **options)
+        self.alice.write("lib.c", LIB + "int by_alice;\n")
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=watched):
+            for name, command in self.every_command():
+                command()
+        self.assertGreater(len(started), 40, "the five commands start git on the clone many times")
+        self.assertEqual([what for what, how in started if how is not hive.bounded], [], "each of them under the bound")
+
     def test_what_git_could_not_set_aside_is_never_written_over(self):
         """start forces its checkout, so that a file the project itself stores otherwise than its rules stops no one.
         It forces it only once nothing is left that somebody wrote: what git still finds changed, when everything was
