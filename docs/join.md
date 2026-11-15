@@ -48,8 +48,9 @@ usage settings before you schedule anything.
      (phase 3; the plan notes that Codex's `workspace-write` sandbox keeps `.git` read-only, and its terms are unverified).
      If the worker runs on a machine of yours, in a clone of your fork that you made, keep that clone for the hive:
      at each task the worker removes the untracked files git ignores there, and sets the rest aside (`git stash`).
-     That machine needs a git from 2023 or later (one that takes `--attr-source`): the worker's first command says
-     so if it is older. And start your assistant in a folder that does not contain that clone, never inside it nor
+     That machine runs Linux, with a git from 2023 or later (one that takes `--attr-source`): the worker's first
+     command says so if it is not. Nothing of the worker's tool has been run on Windows or macOS yet, and its
+     commands do not start there: for the pilot, a Linux machine or a cloud session. And start your assistant in a folder that does not contain that clone, never inside it nor
      above it: an assistant loads the agent files of the folder it starts in and of those it reads below it
      (`CLAUDE.md`, `AGENTS.md`, `.claude/`) before it reads your prompt, and in a clone that is kept those files
      are whatever was last written there. Say in the prompt where the clone is ("The clone is at <path>."). The
@@ -126,6 +127,8 @@ two hours.
 
 - **A pilot, by invitation.** Phase 1 needs three volunteers on miniz (lossless compression, MIT). The opening to
   everyone waits for a review of the collector that finds nothing serious.
+- **Linux and cloud sessions only, for now.** The worker's tool removes files, runs git and pushes under your name:
+  it was run and reviewed on Linux, and it does not start on a system where it was not.
 - **Your AI provider's terms are yours to check.** Whether an organised effort that uses volunteers' leftover quota
   counts as ordinary individual use is not settled. Asking the providers before the opening is the recommendation
   put to the founder ([founder-decisions.md](founder-decisions.md), D1); until one answers in writing, the risk is

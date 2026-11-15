@@ -5371,6 +5371,16 @@ class TestVolunteerSide(Volunteer):
                 self.one_line(self.run_cli(*command, "--registry", self.registry), "the following arguments are required: --login", begins=True)
         self.one_line(self.run_cli("ready", "--registry", self.registry, "--project", "toy", "--login", "alice", "--frobnicate", "x\x1b[31m"),
                       "unrecognized arguments: --frobnicate", begins=True)
+        # A worker's commands start on Linux only, where they were run and reviewed: elsewhere each ends at once, and
+        # nothing of the clone is read or changed. (The hive's own steps run where the hive runs them.)
+        before = self.work_tree()
+        for system in ("darwin", "win32", "cygwin"):
+            with mock.patch.object(sys, "platform", system):
+                for command in (("setup",), ("next", "--project", "toy", "--state", self.state_root), ("ready", "--project", "toy"),
+                                ("start", "--project", "toy", "--task", "toy-0001", "--deal", dealt),
+                                ("submit", "--project", "toy", "--task", "toy-0001", "--deal", dealt)):
+                    self.one_line(self.run_cli(*command, "--registry", self.registry, "--login", "alice"), hive.ONLY_ON_LINUX)
+        self.assertEqual((self.work_tree(), self.fork_branches()), (before, ["refs/heads/main"]))
         self.assertNotIn("\x1b", self.err, "what a line quotes of the command line is made plain")
         self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"], "setup without a login added nothing to the clone")
         self.assertEqual(self.setup("--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"),

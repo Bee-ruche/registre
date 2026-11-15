@@ -4454,6 +4454,12 @@ def cmd_submit(args):
           "once the wait is over. If it does not run that often, do not ask: a task dealt and left costs a wait.")
 
 
+# A worker command removes files, runs git and pushes under its user's name; on a system where none of that was ever
+# run and reviewed, a name or a path may mean something else than it does here (what is « .git », what a link is).
+ONLY_ON_LINUX = ("a worker's commands have been run and reviewed on Linux only: on this system they do not start. Use a Linux machine "
+                 "or a cloud session, and tell the user")
+
+
 def main(argv=None):
     parser = OneLineParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -4549,6 +4555,8 @@ def main(argv=None):
     global VOLUNTEER_SIDE
     before, VOLUNTEER_SIDE = VOLUNTEER_SIDE, getattr(args, "volunteer", False)
     try:
+        if VOLUNTEER_SIDE and not sys.platform.startswith("linux"):
+            raise HiveError(ONLY_ON_LINUX)
         args.run(args)
     except HiveError as error:
         print(f"hive: {safe_text(error, 400)}", file=sys.stderr)

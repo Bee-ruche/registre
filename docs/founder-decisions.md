@@ -183,6 +183,10 @@ The engineering plan lists it once (docs/plan.md, 7.1): the pull request to `mai
 integration identity, access to the two forks, and phase 1's three volunteers (D8). Nothing goes into service
 before these, and the builder does none of them.
 
+One more since 15 November 2026: **a private repository of the organisation for the private report** (docs/plan.md,
+6.2), with the builder given the right to write it, or the founder putting there the files the builder hands
+over. The builder creates no repository.
+
 The integration identity is two rights, kept apart: the right to write a project's branch, given to the `apply` job
 alone; and the right to write the hive's state, a repository of its own (`Bee-ruche/hive-state`, the founder's choice of 13 November: the jobs that write the state then hold no right on the registry), given to the `record` and `apply` jobs. The `plan`
 and `judge` jobs hold nothing.

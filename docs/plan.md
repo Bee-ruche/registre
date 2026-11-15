@@ -581,8 +581,14 @@ What the builder adds to make it permanent (proposals, the founder's to change):
 - **Work that looks for a break is not dealt through the protocol.** Forks, candidates and the ledger are public,
   and rule 4 above forbids it. Volunteers' workers can help the safety base only once a private channel exists
   for what they find, which is the founder's to set up; until then this work is the builder's and the reviewers'.
-- **The private report needs a home that lasts.** It is kept outside the public repository, by rule 4; where, is
-  the founder's to decide.
+- **The private report lives in a private repository of the organisation** (the builder's choice of 15 November
+  2026, the founder having left it to the builder), with the reviewers' reports and their proofs. Creating it is
+  the founder's click (D10); until it exists the founder holds the files, handed over on that day. It is kept
+  outside the public repository by rule 4, and nothing of it is copied here before the weakness it describes is
+  closed.
+- **A worker's commands run on Linux only, for now** (the same day, the same delegation): a Linux machine or a
+  cloud session. They were never run on Windows or macOS, where a name or a path may mean something else; they do
+  not start there until a whole round has been run on that system.
 
 ### 6.3 Running the hive
 
