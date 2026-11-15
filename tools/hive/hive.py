@@ -35,6 +35,7 @@ keyword is a value this file checked or a sentence of its own, never a text of t
   LOGIN <login>                   setup: the member the hive credits: the login given, which the origin agrees with
   UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
   NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
+                                  submit: the candidate is pushed, and the clone's own branch is not on it: go on
   ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
   ASK-UNANSWERED since <instant>: <sentence>
                                   next: your ask has waited six hours: stop, do not ask again, tell the user
@@ -2638,6 +2639,9 @@ class Clone:
     def environment(self, to=None, env=None):
         """The environment of a git command on this clone: see git."""
         environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
+        if to is None:  # (settings the environment carries are for reaching a remote: a proxy, a credential; never for the rest)
+            environment = {key: value for key, value in environment.items()
+                           if key not in GIT_SETTINGS_OF_THE_ENVIRONMENT and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
                             "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
         if to is None:
@@ -2652,11 +2656,13 @@ class Clone:
 
     def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True, attributes=None):
         """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
-        turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read:
+        turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read,
+        nor those the environment carries for git (GIT_CONFIG_COUNT with its keys and values, GIT_CONFIG_PARAMETERS):
         a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
         because for these commands no filter is defined anywhere (the clone's own settings define none:
-        plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings ARE
-        read: the volunteer's credentials and proxy live there, and a fetch or a push converts no file. raw: the
+        plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings, and
+        the environment's, ARE read: the volunteer's credentials and proxy live there, and a fetch or a push
+        converts no file. raw: the
         input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
         whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
         reading takes for a file of that name, and then removes nothing). attributes: the commit or the tree whose
@@ -3137,7 +3143,7 @@ def hive_projects(registry):
     """Every project the registry declares: [configuration]. Trusted: the registry's own tree."""
     try:
         return [load_config(path) for path in sorted((Path(registry) / "hive/projects").glob("*.json"))]
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         raise HiveError(f"the registry's project files cannot be read ({type(error).__name__}): update your clone of the registry") from None
 
 
@@ -3151,7 +3157,7 @@ def hive_project(registry, project):
         tasks = load_tasks(Path(registry) / config["tasks"])
     except FileNotFoundError:
         raise HiveError(f"the registry declares no project {project}, or lacks its tasks: update your clone of the registry") from None
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         raise HiveError(f"the project's files cannot be read ({type(error).__name__}): update your clone of the registry") from None
     if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
         raise HiveError("the project's branch is not a plain branch name")
@@ -3314,7 +3320,7 @@ def candidate_tree(clone, base, files):
             new += [path for path in listed.split(b"\0") if path]
         if new:  # (--force: these were chosen above, and no list of git's own passes over one of them)
             clone.git("add", "--force", *given, stdin=b"\0".join(new), raw=True, env=own, attributes=base)
-        return clone.git("write-tree", env=own).stdout.strip()
+        return clone.git("write-tree", env=own, attributes=base).stdout.strip()
 
 
 def in_words(step, sentence):
@@ -3778,7 +3784,12 @@ def cmd_setup(args):
     elif not same_repository(current, url):
         raise HiveError("this clone already has an 'upstream' remote that is not the project: remove it or use a fresh clone")
     wanted = ("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", url, f"+refs/heads/{branch}:refs/remotes/upstream/{branch}")
-    clone.git(*wanted, to=url, timeout=900)
+    not_fetched = ("the project could not be fetched into this clone ({error}): run setup again; if it fails again, tell the user to check "
+                   "that this machine reaches GitHub, and if it does, to take a fresh clone of the fork")
+    try:
+        clone.git(*wanted, to=url, timeout=900)
+    except HiveError as error:
+        raise HiveError(not_fetched.format(error=error)) from None
 
     def lacking():
         return [commit for commit in config["judge"]["history"]
@@ -3787,7 +3798,10 @@ def cmd_setup(args):
     # The project's own check may read files of an old commit by its id (the commits its file lists for the judge). A
     # clone cut short, as a session's checkout is, does not hold them: its history is completed, from the project.
     if lacking() and (clone.git_dir / "shallow").is_file():
-        clone.git(wanted[0], "--unshallow", *wanted[1:], to=url, timeout=900)
+        try:
+            clone.git(wanted[0], "--unshallow", *wanted[1:], to=url, timeout=900)
+        except HiveError as error:
+            raise HiveError(not_fetched.format(error=error)) from None
     if lacking():
         raise HiveError("this clone does not hold a commit that the project's own check reads by its id: take a full clone of "
                         "your fork (git clone, without --depth) and run setup again")
@@ -3999,7 +4013,9 @@ def cmd_next(args):
 
 def work_tree_changes(clone):
     """What the work tree and the index hold that the last commit does not: [(path as bytes, tracked)]. File names
-    are whatever ran in the work tree chose: read between NULs, kept as bytes, never read as patterns."""
+    are whatever ran in the work tree chose: read between NULs, kept as bytes, never read as patterns. (git follows
+    here the .gitattributes files that lie in the work tree, which the worker can read: not a commit's, whose bytes
+    in the clone's store nobody hashed for this.)"""
     listed = clone.git("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all", "--no-renames", raw=True).stdout
     return [(record[3:], record[:2] != b"??") for record in listed.split(b"\0") if len(record) > 3]
 
@@ -4404,11 +4420,17 @@ def cmd_submit(args):
     is taken for the candidate, whatever it looks like. Then it shows, by its own reading, that
     the candidate starts from the project's history and changes only the task's files (candidate_proof), checks it
     as the hive will, on the tip the project's own address gives during the command (check_structure), and only
-    then moves the branch and pushes to the member's own fork. All of it is done in a store of the tool's own, into
+    then pushes to the member's own fork. All of it is done in a store of the tool's own, into
     which the project's commits were copied, each object written anew (copied_out): the staging, the commits, the
     checks and the push read nothing of the clone's own store. A refusal leaves every branch where it was, and
     pushes nothing; so does --no-push, once every check has passed. A refusal names a path only if the project's own
-    commit holds it (named_paths)."""
+    commit holds it (named_paths).
+
+    The push goes first. The clone's own branch is moved to the candidate after it, for the clone's own bookkeeping
+    (the candidate's two commits are written into the clone for that): nothing that branch is, or cannot be made,
+    holds a checked candidate back. If the clone cannot take it, the candidate is pushed all the same and a NOTE
+    line says so; with --no-push, where the clone is all there is, the command ends in one line that says what to
+    do. A push that fails leaves the clone as it was."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -4478,21 +4500,33 @@ def cmd_submit(args):
         # The candidate's own objects go to the clone, each written there anew, so that the clone's branch can be
         # moved to it: the branch HEAD names, by its own name, and HEAD itself when it names a commit: never a
         # reference that another one would lead to. (The branch's log names who moved it.)
-        if not poured(store, clone, [marker, f"^{base}"]):
-            raise HiveError(f"the candidate could not be written into this clone: {restart}")
-        if marker != head:
-            named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
-            moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
-            clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
+        # (The push goes first: nothing the clone's own branch is, or cannot be made, holds a checked candidate back.)
+        if not args.no_push:
+            push(store, fork, marker, branch)
+        try:
+            if not poured(store, clone, [marker, f"^{base}"]):
+                raise HiveError("git unpack-objects failed")
+            if marker != head:
+                named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
+                moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
+                clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
+            kept = True
+        except HiveError as error:
+            if args.no_push:
+                raise HiveError(f"the candidate could not be written into this clone ({error}): {restart}") from None
+            kept = False
         # The clone's own index now says what the candidate holds (the work tree is not touched): git's later answers
         # about the work tree are read against this one.
-        clone.git("read-tree", marker, check=False)  # (a lock left on that index keeps git from writing it: « start » removes it)
+        if kept:
+            clone.git("read-tree", marker, check=False)  # (a lock left on that index keeps git from writing it: « start » removes it)
         if args.no_push:
             print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
                   "--no-push to make the candidate anew and push it")
             return
-        push(store, fork, marker, branch)
     print(f"PUSHED {marker}")
+    if not kept:
+        print("NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is needed for this task; "
+              "begin the next one with hive.py start, as always")
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
           f"every {hours} hours (hourly is best), ask for its next task now (hive.py ready --project {config['project']} "
@@ -4504,6 +4538,12 @@ def cmd_submit(args):
 # run and reviewed, a name or a path may mean something else than it does here (what is « .git », what a link is).
 ONLY_ON_LINUX = ("a worker's commands have been run and reviewed on Linux only: on this system they do not start. Use a Linux machine "
                  "or a cloud session, and tell the user")
+
+
+# git is run by its name, from the clone's folder: a PATH that holds an empty entry, « . » or any folder named from where
+# the command runs would have a file of the clone run in its place, on the host.
+RELATIVE_PATH = ("PATH holds an entry that is not a folder named from the root (an empty one, a dot, a relative one): a file of the "
+                 "clone could then be run in git's place. Nothing was run: tell the user to remove that entry")
 
 
 def main(argv=None):
@@ -4603,6 +4643,10 @@ def main(argv=None):
     try:
         if VOLUNTEER_SIDE and not sys.platform.startswith("linux"):
             raise HiveError(ONLY_ON_LINUX)
+        if VOLUNTEER_SIDE:
+            os.environ.setdefault("PATH", os.defpath)  # (no PATH at all: the system's own, written out, so that no program falls back on another)
+            if any(not os.path.isabs(entry) for entry in os.environ["PATH"].split(os.pathsep)):
+                raise HiveError(RELATIVE_PATH)
         args.run(args)
     except HiveError as error:
         print(f"hive: {safe_text(error, 400)}", file=sys.stderr)

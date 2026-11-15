@@ -44,7 +44,8 @@ tell the user.
    Project code that ran in the sandbox may have written into the work tree and into `.git`, and a git command of
    yours would run what it wrote (a filter, a hook), on the host, next to the credentials that push to the user's
    fork. `hive` does every step: `hive start` puts the clone on the task's branch, `hive submit` and `hive ready`
-   commit and push; each checks the clone first and reads neither its settings nor the machine's. (The registry's
+   commit and push; each checks the clone first, takes of its settings only a short list that names no program,
+   and reads the machine's own only to reach GitHub (the user's credentials, a proxy). (The registry's
    clone and the state's, in `~/.hive`, are taken with git as "The run" shows.) If `hive` answers `hive: STOP: …`
    (this clone is not a plain clone, an object of this clone is not what its name says, or its work tree is not
    what the project's tip holds), **stop: do not commit, do not push, run no git command in that clone, and run
@@ -64,6 +65,7 @@ PROJECT <id>                    setup: the hive's project this clone is a fork o
 LOGIN <login>                   setup: the member the hive credits: the login given, which the origin agrees with
 UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
 NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
+                                submit: the candidate is pushed, and the clone's own branch is not on it: go on
 ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
 ASK-UNANSWERED since <instant>: <sentence>
                                 next: your ask has waited six hours: stop, do not ask again, tell the user
@@ -98,15 +100,18 @@ clone, or from it.
 
 ```bash
 # The registry (this skill, the tool, the projects' tasks) and the hive's state: two public repositories, taken
-# afresh at each run, whether or not the folders are already there. If one of these commands fails, stop.
+# afresh at each run, whether or not the folders are already there: what git does not track there is removed
+# too. If one of these commands fails, stop.
 mkdir -p ~/.hive
 if [ -d ~/.hive/registre/.git ]; then
-  git -C ~/.hive/registre fetch --depth 1 origin main && git -C ~/.hive/registre reset --hard FETCH_HEAD
+  git -C ~/.hive/registre fetch --depth 1 origin main && git -C ~/.hive/registre reset --hard FETCH_HEAD \
+    && git -C ~/.hive/registre clean -ffdx --quiet
 else
   git clone --depth 1 https://github.com/Bee-ruche/registre ~/.hive/registre
 fi
 if [ -d ~/.hive/hive-state/.git ]; then
-  git -C ~/.hive/hive-state fetch --depth 1 origin main && git -C ~/.hive/hive-state reset --hard FETCH_HEAD
+  git -C ~/.hive/hive-state fetch --depth 1 origin main && git -C ~/.hive/hive-state reset --hard FETCH_HEAD \
+    && git -C ~/.hive/hive-state clean -ffdx --quiet
 else
   git clone --depth 1 https://github.com/Bee-ruche/hive-state ~/.hive/hive-state
 fi

@@ -4094,6 +4094,8 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"UPSTREAM upstream/[A-Za-z0-9._/-]+",
     r"NOTE this fork holds (\.claude/settings\.json|\.claude/settings\.local\.json|\.mcp\.json|\.cursor) at its root: your tool may "
     r"already have run something from it\. Stop, and tell the user\.",
+    r"NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is needed for this task; begin the "
+    r"next one with hive\.py start, as always",
     rf"ASK: you hold no task\. If this worker runs at least every [0-9]+ hours, ask for one: hive\.py ready --project toy {WHOSE}",
     rf"ASK-UNANSWERED since {INSTANT}: the hive has not dealt you a task for 6 hours: stop, do not ask again in this run, tell the user",
     r"WAIT: the project is paused: the hive deals nothing and judges nothing for now",
@@ -5208,6 +5210,16 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.setup("--login", "zed", cwd=zed.work)[0], 0, self.err)
         self.assertTrue((zed.work / ".git/shallow").is_file(), "a project whose check reads no old commit: the clone stays as it was")
         self.w.set_config({"judge": {"metrics": ["gain", "outputs_compared"], "history": [old]}})
+        real_git = hive.Clone.git
+
+        def no_further(clone, *args, **options):  # the project is reached once, and not a second time
+            if "--unshallow" in args:
+                raise hive.HiveError("git fetch failed (128)")
+            return real_git(clone, *args, **options)
+        with mock.patch.object(hive.Clone, "git", no_further):
+            self.one_line(self.setup("--login", "zed", cwd=zed.work),
+                          "the project could not be fetched into this clone (git fetch failed (128)): run setup again; if it fails again, tell "
+                          "the user to check that this machine reaches GitHub, and if it does, to take a fresh clone of the fork")
         code, text = self.setup("--login", "zed", cwd=zed.work)
         self.assertEqual((code, self.spoken(text)[0]), (0, "PROJECT toy"), self.err)
         self.assertEqual(sh("git", "cat-file", "-e", f"{old}^{{commit}}", cwd=zed.work, check=False).returncode, 0, "the old commit is there")
@@ -5512,6 +5524,37 @@ class TestVolunteerSide(Volunteer):
                                   "https address")
         self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
 
+    def test_what_a_worker_command_takes_from_the_machine_and_what_it_does_not(self):
+        """A worker's command runs git by its name, from the clone's folder, and gives it an environment of its own.
+        A PATH that holds an entry which is not a folder named from the root (an empty one, a dot) would have a
+        file of the clone run in git's place: the command does not start. Settings that the environment carries for
+        git (GIT_CONFIG_COUNT and its keys and values, GIT_CONFIG_PARAMETERS) go only to the commands that reach a
+        remote, where the user's credentials and a proxy live: never to the others. And a project file of the
+        registry that is not what a project file is ends the command in one line."""
+        before = self.work_tree()
+        for path in (":/usr/bin:/bin", "/usr/bin::/bin", ".:/usr/bin", "/usr/bin:bin", "/usr/bin:/bin:"):
+            with mock.patch.dict(os.environ, {"PATH": path}):
+                self.one_line(self.ready("--no-push"), hive.RELATIVE_PATH)
+        self.assertEqual(self.work_tree(), before)
+        clone = hive.Clone(self.alice.work.resolve(), {})
+        carried = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.fsmonitor", "GIT_CONFIG_VALUE_0": "true", "GIT_CONFIG_PARAMETERS": "'a.b=c'",
+                   "GIT_SHALLOW_FILE": "/nowhere"}
+        with mock.patch.dict(os.environ, carried), mock.patch.object(hive, "LOCAL_REMOTES", True):
+            own, remote = clone.environment(), clone.environment(to=str(self.alice.bare))
+        self.assertEqual(([name for name in carried if name in own], [name for name in ("GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0") if name in remote]),
+                         ([], ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0"]))
+        (Path(self.registry) / "hive/projects/zz.json").write_text('{"protocol": 1, "limits": 5}')
+        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (", begins=True)
+        (Path(self.registry) / "hive/projects/zz.json").unlink()
+        own = Path(self.registry) / "hive/projects/toy.json"
+        kept = own.read_text()
+        own.write_text(json.dumps({**json.loads(kept), "limits": 5}))
+        self.one_line(self.ready("--no-push"), "the project's files cannot be read (TypeError): update your clone of the registry")
+        own.write_text(kept)
+        with mock.patch.dict(os.environ):  # no PATH at all: the system's own default, written out for git and what git runs
+            del os.environ["PATH"]
+            self.assertEqual((self.ready("--no-push")[0], os.environ.get("PATH")), (0, os.defpath), self.err)
+
     def test_a_login_is_a_plain_name_and_start_takes_no_tip_from_the_command_line(self):
         """What the command line gives goes into git commands and into the marker of a commit. A login is a GitHub
         login. The project's tip is no word of the command line at all: start asks the project's own address for it,
@@ -5678,14 +5721,14 @@ class TestVolunteerSide(Volunteer):
         self.one_line(self.ready(), pushing, begins=True)
         self.one_line(self.ready("--withdraw"), "git ls-remote failed (", begins=True)
         self.one_line(self.submit("toy-0001", dealt), pushing, begins=True)
-        candidate = self.head()
-        self.assertNotEqual(candidate, before, "the candidate is made, and waits in the clone for the push")
+        self.assertEqual(self.head(), before, "the push goes first: nothing of the clone was moved for a candidate that did not leave")
         away.rename(self.alice.bare)
         self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing reached the fork")
-        self.assertEqual(self.submit("toy-0001", dealt)[1].splitlines()[0], f"PUSHED {candidate}", "run again: the same candidate")
-        self.assertEqual(self.fork_branch("hive/submit/toy-0001"), candidate)
+        self.assertEqual(self.submit("toy-0001", dealt)[1].splitlines()[0], f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", "run again: made anew, and pushed")
+        self.assertEqual(self.fork_branch("hive/submit/toy-0001"), self.head())
         sh("git", "remote", "set-url", "origin", "https://github.com/alice/toy.git", cwd=self.alice.work)
-        self.one_line(self.setup("--upstream-url", str(self.w.root / "nowhere.git")), "git fetch failed (", begins=True)
+        self.one_line(self.setup("--upstream-url", str(self.w.root / "nowhere.git")),
+                      "the project could not be fetched into this clone (git fetch failed (", begins=True)
         self.assertNotEqual(sh("git", "rev-parse", "--verify", "--quiet", "upstream/main", cwd=self.alice.work, check=False).returncode, 0,
                             "and the project's tip is not in the clone")
 
@@ -6133,10 +6176,24 @@ class TestVolunteerSide(Volunteer):
         self.assertRegex(self.err, r"take a fresh clone of the fork, once what was set aside in it is copied out \(git stash list shows it\)\n\Z")
         self.assertLess(len(self.err), 400, "the whole sentence fits the one line a command ends on")
         self.assertEqual(len(sh("git", "stash", "list", cwd=self.alice.work).stdout.splitlines()), 1)
+        # (When the commit the clone was on cannot be read whole by the tool, its rules are not followed: what the work
+        # tree held is set aside byte for byte, under no rule, and the stop sentence is the same.)
+        self.alice.write("lib.c", LIB + "int more;\n")
+        real_git, rules = hive.Clone.git, []
+
+        def watched(clone, *args, **options):
+            if args[0] == "stash":
+                rules.append(options.get("attributes"))
+            return real_git(clone, *args, **options)
+        with mock.patch.object(hive, "rules_as_named", side_effect=hive.HiveError(hive.NOT_HELD)), mock.patch.object(hive.Clone, "git", watched):
+            self.assertEqual(self.begin("toy-0001", NOW)[0], 3, self.err)
+        self.assertEqual(rules, [hive.EMPTY_TREE], "set aside once, and under no rule")
+        self.assertEqual(sh("git", "show", "stash@{0}:lib.c", cwd=self.alice.work).stdout, LIB + "int more;\n")
+        self.assertEqual(len(sh("git", "stash", "list", cwd=self.alice.work).stdout.splitlines()), 2)
         # And at every later run, which sets nothing more aside: what the first one set aside is still in this clone only.
         self.assertEqual((self.begin("toy-0001", NOW), len(self.err.splitlines())), ((3, ""), 1), self.err)
         self.assertRegex(self.err, r"take a fresh clone of the fork, once what was set aside in it is copied out \(git stash list shows it\)\n\Z")
-        self.assertEqual(len(sh("git", "stash", "list", cwd=self.alice.work).stdout.splitlines()), 1)
+        self.assertEqual(len(sh("git", "stash", "list", cwd=self.alice.work).stdout.splitlines()), 2)
         shutil.rmtree(self.alice.work / ".git/refs/heads/hive/submit")
         sh("git", "checkout", "--quiet", "--", "lib.c", cwd=self.alice.work)
         # An index git cannot read at all: start changes nothing and says the same; submit says to start again.
@@ -7744,6 +7801,69 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         code, text = self.submit("toy-0001", dealt)
         self.assertEqual((code, self.spoken(text)[0], pushed()), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", LIB + "int the_work;\n"), self.err)
 
+    def test_a_checked_candidate_is_pushed_whatever_the_clones_own_branch_can_be_made(self):
+        """The push goes first. Then the candidate's own objects are written into the clone and its branch is moved to
+        it, for the clone's own bookkeeping: if that cannot be done, the candidate is pushed all the same, and the
+        command says so; with --no-push, where the clone is all there is, it ends in one line that says what to do.
+        And git stages a candidate under the rules of the project's commit at every step (the tree it writes too)."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "int the_work;\n")
+        head, real, seen = self.head(), hive.poured, []
+
+        def no_way_back(source, target, wanted):  # the copy out works; the way back into the clone does not
+            return False if Path(target.root).resolve() == work.resolve() else real(source, target, wanted)
+        real_git = hive.Clone.git
+
+        def watched(clone, *args, **options):
+            if args[0] in ("write-tree", "add"):
+                seen.append((args[0], options.get("attributes")))
+            return real_git(clone, *args, **options)
+        with mock.patch.object(hive, "poured", side_effect=no_way_back), mock.patch.object(hive.Clone, "git", watched):
+            self.one_line(self.submit("toy-0001", dealt, "--no-push"),
+                          "the candidate could not be written into this clone (git unpack-objects failed): start the task again (hive.py start), "
+                          "which sets the work aside; if start stops too, tell the user")
+            code, text = self.submit("toy-0001", dealt)
+        candidate = self.fork_branch("hive/submit/toy-0001")
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[1], self.head()),
+                         (0, f"PUSHED {candidate}", "NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is "
+                             "needed for this task; begin the next one with hive.py start, as always", head), self.err)
+        self.assertEqual(sh("git", "show", f"{candidate}:lib.c", cwd=self.alice.bare).stdout, LIB + "int the_work;\n")
+        self.assertTrue(seen and all(rules == self.start for _, rules in seen), seen)
+        # A branch of the clone that names something other than a commit (an annotated tag of it) cannot be moved by its
+        # old value: the candidate is pushed all the same.
+        sh("git", "tag", "-a", "-m", "a tag", "named", head, cwd=work)
+        (work / ".git/refs/heads/hive/submit/toy-0001").write_text(sh("git", "rev-parse", "named", cwd=work).stdout)
+        sh("git", "tag", "-d", "named", cwd=work)
+        self.alice.write("lib.c", LIB + "int the_work_again;\n")
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[1].split()[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", "NOTE"), self.err)
+        self.assertEqual(sh("git", "diff", "--cached", "--name-only", head, cwd=work).stdout, "", "and its index is left as it was")
+
+    def test_what_the_clone_does_not_hold_and_what_its_packs_list_are_read_right(self):
+        """Two readings of the tool's own, each held by itself. An object the clone does not hold is said not held,
+        in a sentence that says what to do. And the place of an id in a pack's index is found whatever stands before
+        and after it there: an index lists its ids in order, and the search goes both ways."""
+        work = self.alice.work
+        clone = hive.Clone(work.resolve(), {})
+        with hive.Objects(clone) as objects:
+            with self.assertRaises(hive.HiveError) as error:
+                objects.held("commit", "1" * 40)
+            self.assertEqual(str(error.exception), hive.NOT_HELD)
+        self.assertFalse(hive.stored_empty_tree_is_not_one(work / ".git"))
+        others = [f"4b{nibble:x}{'0' * 37}" for nibble in range(16)]  # sixteen ids that begin as the empty tree's does, around it
+        for objects, planted in ((others, False), (others + [hive.EMPTY_TREE], True), (others[:9] + [hive.EMPTY_TREE], True),
+                                 ([hive.EMPTY_TREE] + others[9:], True), (others[:3] + [hive.EMPTY_TREE] + others[12:], True)):
+            with self.subTest(ids=len(objects), planted=planted):
+                files = self.write_pack([(sha, "blob", b"other bytes") for sha in objects])
+                self.assertEqual(hive.stored_empty_tree_is_not_one(work / ".git"), planted)
+                for file in files:
+                    file.unlink()
+        files = self.write_pack([(sha, "blob", b"x") for sha in others] + [(hive.EMPTY_TREE, "tree", b"")])
+        self.assertFalse(hive.stored_empty_tree_is_not_one(work / ".git"), "the folder that holds nothing, as it is, among others")
+        for file in files:
+            file.unlink()
+
     def test_no_commit_the_branch_holds_is_taken_into_a_candidate_whatever_it_looks_like(self):
         """submit makes its candidate anew at each run: the work, then its marker, on the project's commit. No commit the
         clone's branch holds is taken into it, not even one that looks like the tool's own: the commits a first submit
@@ -8232,6 +8352,16 @@ class TestTheWorkersGuide(unittest.TestCase):
                             f"a line the worker commands print begins with a keyword of the list: {call}")
         for model in json.loads((registry / "hive/projects/miniz.json").read_text())["models"]:
             self.assertIn(f"`{model}`", guide, "the guide lists the model identifiers the pilot's project keeps statistics for")
+
+    def test_the_guide_takes_the_two_public_clones_afresh_and_leaves_nothing_untracked_in_them(self):
+        """The tool and the tasks a worker runs on come from two clones under ~/.hive that an earlier run could have
+        written into. The guide's own commands take each afresh: the fetched commit's files, and nothing git does not
+        track beside them (a file left there would be read, or run, as the registry's)."""
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])
+        guide = (registry / ".claude/skills/bee-worker/SKILL.md").read_text(encoding="utf-8")
+        for folder in ("~/.hive/registre", "~/.hive/hive-state"):
+            self.assertIn(f"  git -C {folder} fetch --depth 1 origin main && git -C {folder} reset --hard FETCH_HEAD \\\n"
+                          f"    && git -C {folder} clean -ffdx --quiet\n", guide)
 
     def test_the_commands_the_guide_gives_are_ones_the_tool_takes(self):
         """A worker runs the commands as the guide writes them. Each command line of the guide, with a value in place
