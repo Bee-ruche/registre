@@ -79,6 +79,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import stat
 import struct
 import subprocess
@@ -1191,22 +1192,135 @@ def plain_ref(ref):
     return bool(HEAD_REF.match(ref)) and ".." not in ref and not ref.endswith(".lock") and "//" not in ref
 
 
-def fetch_heads(repo, url, heads, slot, allow_local=False):
-    """Fetches branches of one fork in ONE git command, with one time limit, into scratch refs, and returns the
-    listed commits it really got. heads: [(commit id, ref)]."""
+FETCH_SECONDS = 90  # how long one fetch of a fork may take
+FETCH_WEIGHTS = 4  # one fetch of a fork writes at most this many times what the project takes from one candidate (limits.history_bytes)
+FETCH_FLOOR = 1 << 20  # ... and never less than this, whatever the project's limit: git's own small files are written too
+FETCHED_BYTES = 4 << 30  # what the fetches of one run may leave in the hive's clone, all forks together
+
+
+class Heavy(HiveError):
+    """A fork sent more than the hive reads from one fork at once."""
+
+
+class Unfetched(HiveError):
+    """A fetch of a fork did not end well, for a reason the fetch does not tell: the fork, GitHub, or the network."""
+
+
+def fetch_bounded(repo, url, specs, most, allow_local=False):
+    """One « git fetch » of a fork's branches into the hive's clone, bounded in time and in bytes. Returns "got",
+    "failed" (git ended badly, or FETCH_SECONDS passed) or "heavy" (the fork sent more than `most` bytes).
+
+    In bytes: what a fetch brings arrives as one file (a pack: fetch.unpackLimit=1), and no program of the fetch may
+    write a file longer than `most` bytes: the kernel stops the one that tries. Whatever a fork holds, one fetch
+    writes no more. In time: git runs as a group of its own, and when it has ended or its time is up, every program
+    it started is stopped with it: none goes on reading the fork once the hive gave up. A fetch that did not end
+    well leaves nothing: what it had written is removed at once (swept), so that what a run leaves on the machine's
+    disk does not grow with what the forks hold."""
+    import resource  # (the hive's own machine is a Linux one; a worker's command must still start where this module is missing)
+
+    def bounds():  # (runs in the new process before git does: whatever git starts inherits both)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (most, most))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    command = ["git", *GIT_BASE, "-c", "fetch.unpackLimit=1", "-c", "transfer.unpackLimit=1", "-C", str(repo),
+               "fetch", "--no-tags", "--no-recurse-submodules", "--quiet", url, *specs]
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   env={**isolated_environment(), **transport(allow_local)}, start_new_session=True, preexec_fn=bounds)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise HiveError(f"git fetch: {type(e).__name__}") from e
+    deadline, ended = time.monotonic() + FETCH_SECONDS, None
+    try:
+        while ended is None and time.monotonic() < deadline:
+            ended = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)  # (git is not reaped yet)
+            if ended is None:
+                time.sleep(0.02)
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)  # (so the group's number is still git's own: no other process holds it)
+        except OSError:
+            pass
+        code = process.wait()
+    if ended is not None and code == 0:
+        return "got"
+    return "heavy" if swept(repo, most) else "failed"
+
+
+def swept(repo, most=None):
+    """Removes what a fetch that did not end well left in a repository's store: the files git writes under a name
+    of its own while they are not whole (« tmp_… »: in the store, among its packs, in its folders of loose
+    objects) and the folders it receives into (« incoming-… »). True if one of those files had reached `most`
+    bytes: the fetch was stopped by its bound in bytes. (No other git command runs on that repository meanwhile.)"""
+    objects, full = Path(repo, git(repo, "rev-parse", "--git-path", "objects").stdout.strip()), False
+    try:
+        folders = [objects, objects / "pack", *(Path(entry.path) for entry in os.scandir(objects) if re.fullmatch(r"[0-9a-f]{2}", entry.name))]
+    except OSError:
+        return full
+    for folder in folders:
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.name.startswith(("tmp_", "incoming-")):
+                continue
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+                else:
+                    full = full or (most is not None and entry.stat(follow_symlinks=False).st_size >= most)
+                    os.unlink(entry.path)
+            except OSError:
+                pass
+    return full
+
+
+def packs_weight(repo):
+    """What the packs of a repository's store weigh together: how the hive counts what its fetches left there (each
+    fetch leaves one pack)."""
+    try:
+        folder = Path(repo, git(repo, "rev-parse", "--git-path", "objects/pack").stdout.strip())
+        return sum(entry.stat(follow_symlinks=False).st_size for entry in os.scandir(folder) if entry.is_file(follow_symlinks=False))
+    except OSError:
+        return 0
+
+
+def fetch_heads(repo, url, heads, slot, allow_local=False, most=FETCH_WEIGHTS * DEFAULTS["limits"]["history_bytes"]):
+    """Fetches branches of one fork in ONE git command, bounded in time and in bytes (fetch_bounded), into scratch
+    refs, and returns the listed commits it really got: a branch that moved since it was listed brings another
+    commit, which is not taken. heads: [(commit id, ref)]. Raises Heavy when the fork sent more than `most` bytes,
+    Unfetched when the fetch did not end well for another reason: nothing of the fork is kept then."""
     wanted = [(sha, ref) for sha, ref in heads if plain_ref(ref)]
     if not wanted:
         return set()
     specs = [f"+{ref}:refs/hive/in/{slot}/{number_}" for number_, (_, ref) in enumerate(wanted)]
-    fetched = git(repo, "fetch", "--no-tags", "--no-recurse-submodules", "--quiet", url, *specs,
-                  check=False, timeout=90, env=transport(allow_local))
+    fetched = fetch_bounded(repo, url, specs, most, allow_local)
     got = set()
     for number_, (sha, _) in enumerate(wanted):
         scratch = f"refs/hive/in/{slot}/{number_}"
-        if fetched.returncode == 0 and git(repo, "rev-parse", "--verify", f"{scratch}^{{commit}}", check=False).stdout.strip() == sha:
+        if fetched == "got" and git(repo, "rev-parse", "--verify", f"{scratch}^{{commit}}", check=False).stdout.strip() == sha:
             got.add(sha)
         git(repo, "update-ref", "-d", scratch, check=False)
+    if fetched == "heavy":
+        raise Heavy("a fork sent more than the hive reads from one fork at once")
+    if fetched != "got":
+        raise Unfetched("git fetch did not end well")
     return got
+
+
+def listed_heads(repo, url, allow_local=False):
+    """The branches of a fork, as it lists them now: {commit id: branch} (one commit on several branches is one
+    commit), or None for a fork with more branches than the hive lists. The list is read no further than a list of
+    the most branches the hive lists can be long. Raises HiveError when the fork cannot be listed."""
+    listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=30, env=transport(allow_local))
+    if listed is None:
+        return None
+    heads = {}
+    for line in listed.decode("utf-8", errors="replace").splitlines():
+        sha, _, ref = line.partition("\t")
+        if is_sha(sha) and HEAD_REF.match(ref):
+            heads.setdefault(sha, ref)
+    return heads if len(heads) <= HEADS_PER_FORK_MAX else None
 
 
 def upstream_tips(repo):
@@ -1226,11 +1340,18 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
     (`known`, the list so far, brought up to date for each fork that was listed: see read_ignored); and, for each
     account whose fork GitHub listed, whether it was read whole (True: what it holds is known) or not (False). An
     account that is not in `reads` has no fork the hive reads (it was deleted, or the project bars the account).
+    A fork counts as read once the hive has listed it and its fetch ended well, or was stopped by its bound in
+    bytes, or failed while the fork's branches changed under it: what such a fork holds, or withholds, is its
+    owner's doing. It counts as not read, at no cost to its member, only when the hive could not list it, or when
+    its fetch failed on branches that stood still: then GitHub or the network may be the cause.
 
     A commit counts only in the fork of the member its marker names: the same commit pushed to someone else's fork
     is nothing there. One fork that fails or stalls never stops the others: each is read with one listing and one
-    fetch, both limited in time. A fork is read whole or not at all (heads_per_fork new branch tips at most). When the time allowed for all runs out, what is left waits for the next run, and
-    the forks are read in an order drawn anew each hour, which no fork can shift.
+    fetch, both limited in time, the fetch in bytes too (FETCH_WEIGHTS times what the project takes from one
+    candidate). A fork is read whole or not at all: heads_per_fork new branch tips at most, and no more bytes than
+    one fetch may write; beyond either, it holds nothing for the hive until it holds less. When the time allowed
+    for all runs out, or the room allowed for what the fetches leave (FETCHED_BYTES), what is left waits for the
+    next run, and the forks are read in an order drawn anew each hour, which no fork can shift.
 
     An ask may name the part of the project its member prefers. What the fork wrote there is compared with `parts`
     (the registry's own strings: project_parts) and goes no further than that comparison: the entry keeps the
@@ -1242,31 +1363,24 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                    key=lambda fork: hashlib.sha256(f"{hour}:{fork['repo_id']}".encode()).hexdigest())
     ignored = {str(fork["repo_id"]): list(known.get(str(fork["repo_id"]), ())) for fork in forks}  # forks that are gone drop out
     reads = {fork["id"]: False for fork in forks}  # an account that is not here has no fork the hive reads
+    most, held = max(FETCH_WEIGHTS * limits["history_bytes"], FETCH_FLOOR), packs_weight(repo)
     for fork in forks:
         if time.monotonic() - started > limits["discovery_seconds"]:
             log("discovery: time allowed used up; the forks left wait for the next run")
+            break
+        if packs_weight(repo) - held > FETCHED_BYTES:
+            log("discovery: room allowed for what the forks hold used up; the forks left wait for the next run")
             break
         try:
             if not eligible(fork, api, config, instant, accounts):
                 reads[fork["id"]] = True  # an account whose forks the hive does not read: it holds nothing for the hive
                 continue
             url = fork_url(api, fork["full_name"], allow_local)
-            # A fork's list of branches is read no further than a list of the most branches the hive lists can be long.
             try:
-                listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=30,
-                                    env=transport(allow_local))
+                heads = listed_heads(repo, url, allow_local)
             except HiveError:
                 continue
-            if listed is None:
-                log("discovery: a fork has more branches than the hive lists; it is not read")
-                reads[fork["id"]] = True  # its owner's doing: for the hive it holds nothing
-                continue
-            heads = {}
-            for line in listed.decode("utf-8", errors="replace").splitlines():
-                sha, _, ref = line.partition("\t")
-                if is_sha(sha) and HEAD_REF.match(ref):
-                    heads.setdefault(sha, ref)  # one commit on several branches is one commit
-            if len(heads) > HEADS_PER_FORK_MAX:
+            if heads is None:
                 log("discovery: a fork has more branches than the hive lists; it is not read")
                 reads[fork["id"]] = True  # its owner's doing: for the hive it holds nothing
                 continue
@@ -1284,7 +1398,24 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
             slot += 1
             missing = [(sha, ref) for sha, ref in fresh
                        if git(repo, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode != 0]
-            got = fetch_heads(repo, url, missing, slot, allow_local) if missing else set()
+            try:
+                got = fetch_heads(repo, url, missing, slot, allow_local, most) if missing else set()
+            except Heavy:
+                log("discovery: a fork holds more than the hive reads from one fork at once; it is not read until it holds less")
+                reads[fork["id"]] = True  # its owner's doing: for the hive it holds nothing
+                continue
+            except Unfetched:
+                # The fetch did not end well, and does not say why. The fork is listed again: if its branches are no
+                # longer those the fetch asked for, the fork changed while it was read, which is its owner's doing,
+                # and it counts as read (it holds nothing for the hive at this run). If they are the same, or the
+                # fork cannot be listed any more, the hive could not read it (GitHub, the network): it is not read,
+                # at no cost to its member.
+                try:
+                    reads[fork["id"]] = listed_heads(repo, url, allow_local) != heads
+                except HiveError:
+                    pass
+                log("discovery: one fork's fetch did not end well; " + ("it changed while it was read" if reads[fork["id"]] else "it is not read"))
+                continue
             found = []
             for sha, _ in fresh:
                 if (sha, _) in missing:
@@ -1305,7 +1436,9 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                                   "tier": marker["tier"], "deal": marker["deal"],
                                   "prefer": next((part for part in parts if part == marker["prefer"]), None)})
             entries.extend(found)
-            reads[fork["id"]] = all(sha in got for sha, _ in missing)
+            # The fetch ended well: the fork was read as it stood. A listed tip it did not bring is a branch that moved
+            # since the listing (its owner's doing): the commit that stands there now is listed at the next run.
+            reads[fork["id"]] = True
         except HiveError as error:
             log(f"discovery: one fork skipped ({error})")
     return entries, ignored, reads

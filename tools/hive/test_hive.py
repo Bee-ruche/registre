@@ -17,6 +17,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 from pathlib import Path
@@ -2737,17 +2738,187 @@ class TestSecondReview(Base):
     def test_a_fork_is_read_with_one_fetch_limited_in_time(self):
         for i in range(6):
             self.alice.fresh(f"b{i}").write("lib.c", LIB + f"int v{i};\n").commit().marker("toy-0001").push()
-        fetches, real = [], hive.git
+        fetches, real = [], hive.fetch_bounded
 
-        def spy(repo, *args, **options):
-            if args[0] == "fetch":
-                fetches.append(options.get("timeout"))
-            return real(repo, *args, **options)
+        def spy(repo, url, specs, most, *rest):
+            fetches.append((len(specs), most))
+            return real(repo, url, specs, most, *rest)
 
         config, tasks, ledger = self.w.load()
-        with mock.patch.object(hive, "git", side_effect=spy):
+        with mock.patch.object(hive, "fetch_bounded", side_effect=spy):
             entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
-        self.assertEqual((len(entries), fetches, reads), (6, [90], {101: True}), "six branches, one fetch, ninety seconds at most")
+        self.assertEqual((len(entries), fetches, reads, hive.FETCH_SECONDS), (6, [(6, 4 * (32 << 20))], {101: True}, 90),
+                         "six branches, one fetch: ninety seconds at most, and four times what the project takes from one candidate")
+
+    def test_a_fetch_of_a_fork_is_bounded_in_bytes_and_one_that_fails_leaves_nothing(self):
+        """What a fork holds is its owner's choice: a branch may hold gigabytes. One fetch of a fork writes no more
+        than four times what the project takes from one candidate (and no less than a floor): the kernel stops git
+        beyond. Such a fork holds nothing for the hive until it holds less (its owner's doing: it counts as read),
+        the others are served in the same run, and what the stopped fetch had written is gone from the hive's
+        clone. A fetch stopped by its time limit leaves nothing either, and its fork counts as not read."""
+        def store():
+            objects = Path(self.w.harvest, sh("git", "rev-parse", "--git-path", "objects", cwd=self.w.harvest).stdout.strip())
+            files = [Path(folder, name) for folder, _, names in os.walk(objects) for name in names]
+            return sum(f.stat().st_size for f in files), sorted(f.name for f in files if f.name.startswith("tmp_"))
+
+        bob = self.w.fork("bob", 102)
+        for number in range(40):  # (forty files of bytes that do not compress, none of them large: four megabytes together)
+            self.alice.write(f"src/bulk{number}.bin", os.urandom(100_000))
+        heavy = self.alice.commit().marker("toy-0002").push()
+        fine = bob.write("src/b.bin", os.urandom(600_000)).commit().marker("toy-0002").push()  # (under the floor: it is read)
+        self.w.set_config({"limits": {"history_bytes": 100_000}})
+        config, tasks, ledger = self.w.load()
+        self.assertEqual(max(hive.FETCH_WEIGHTS * 100_000, hive.FETCH_FLOOR), 1 << 20)
+        held, _ = store()
+        entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
+        self.assertEqual(([e["sha"] for e in entries], reads), ([fine], {101: True, 102: True}), "the heavy fork holds nothing, and it was read")
+        grown, left = store()
+        self.assertEqual((grown - held < 700_000, left), (True, []), "nothing of the four megabytes stays, under any name")
+        self.assertNotEqual(sh("git", "cat-file", "-e", heavy, cwd=self.w.harvest, check=False).returncode, 0)
+        # The same fetch with room enough brings the branch: the bound, and nothing else, stopped it.
+        branch = sh("git", "for-each-ref", "--format=%(refname)", "--points-at", heavy, "refs/heads", cwd=self.alice.bare).stdout.split()[0]
+        self.assertEqual(hive.fetch_heads(self.w.harvest, str(self.alice.bare), [(heavy, branch)], 7, allow_local=True, most=8 << 20), {heavy})
+        with self.assertRaises(hive.Heavy):
+            other = self.alice.fresh("more").write("src/more.bin", os.urandom(3 << 20)).commit().marker("toy-0002").push("more")
+            hive.fetch_heads(self.w.harvest, str(self.alice.bare), [(other, "refs/heads/more")], 8, allow_local=True, most=1 << 20)
+        self.assertEqual((store()[1], sh("git", "for-each-ref", "refs/hive", cwd=self.w.harvest).stdout), ([], ""), "no file and no scratch ref is left")
+        # Its time used up, a fetch is stopped and counts as failed: the fork is then not read (GitHub may be the cause).
+        with mock.patch.object(hive, "FETCH_SECONDS", 0):
+            self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/more:refs/hive/in/9/0"], 8 << 20, True), "failed")
+            entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
+        self.assertEqual((reads[101], store()[1]), (False, []))
+
+    def test_what_a_fetch_left_is_swept_and_every_program_it_started_is_stopped_with_it(self):
+        """swept removes the files git writes under a name of its own while they are not whole, wherever git writes
+        them, and the folders it receives into; it leaves every other file. And git runs as a group of its own: a
+        program it started (here a stand-in for git that leaves a child behind) is stopped when the fetch is."""
+        objects = Path(self.w.harvest, sh("git", "rev-parse", "--git-path", "objects", cwd=self.w.harvest).stdout.strip())
+        kept = sorted(str(Path(folder, name)) for folder, _, names in os.walk(objects) for name in names)
+        (objects / "ab").mkdir(exist_ok=True)
+        (objects / "incoming-x1/pack").mkdir(parents=True)
+        for name, size in (("pack/tmp_pack_a1", 4000), ("pack/tmp_idx_a2", 10), ("tmp_obj_a3", 10), ("ab/tmp_obj_a4", 10), ("incoming-x1/pack/p.pack", 10)):
+            (objects / name).write_bytes(b"x" * size)
+        self.assertEqual((hive.swept(self.w.harvest, 4001), sorted(str(Path(folder, name)) for folder, _, names in os.walk(objects) for name in names)),
+                         (False, kept))
+        (objects / "pack/tmp_pack_a1").write_bytes(b"x" * 4000)
+        self.assertEqual((hive.swept(self.w.harvest, 4000), (objects / "pack/tmp_pack_a1").exists()), (True, False), "a file that reached the bound")
+        # A program git started outlives git unless the whole group is stopped.
+        fake, real = Path(tempfile.mkdtemp(dir=self.tmp.name)), shutil.which("git")
+        (fake / "git").write_text(f"""#!/bin/sh
+for word in "$@"; do
+    if [ "$word" = fetch ]; then
+        sleep 30 &
+        echo $! > "{fake}/child"
+        wait
+    fi
+done
+exec {real} "$@"
+""")
+        os.chmod(fake / "git", 0o755)
+
+        def alive(pid):
+            try:
+                return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+            except OSError:
+                return False
+        with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), mock.patch.object(hive, "FETCH_SECONDS", 1):
+            self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/main:refs/hive/in/9/0"], 8 << 20, True), "failed")
+        child = int((fake / "child").read_text())
+        for _ in range(100):
+            if not alive(child):
+                break
+            time.sleep(0.05)
+        self.assertFalse(alive(child), "the program git started was stopped with it")
+
+    def test_a_fork_that_changes_while_it_is_read_counts_as_read_and_one_the_hive_could_not_read_does_not(self):
+        """A member whose fork is not read pays nothing for a deal that ends meanwhile: GitHub may be the cause. So
+        what a fork's owner can bring about is never « not read ». A branch that moves between the hive's listing
+        and its fetch, or one that is gone by then, is the owner's doing: the fork counts as read, and a deal that
+        ends then ends as any deal left without a candidate does (a wait, a deal counted). Only a fork the hive
+        could not list, or whose fetch failed on branches that stood still, is not read."""
+        real, config = hive.fetch_bounded, self.w.load()[0]
+
+        def discovered(before_the_fetch=None, fetch=None):
+            def bounded(*args):
+                if before_the_fetch is not None:
+                    before_the_fetch()
+                return (fetch or real)(*args)
+            with mock.patch.object(hive, "fetch_bounded", side_effect=bounded):
+                entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
+            return [entry["sha"] for entry in entries], reads
+
+        def moves():  # (the member's own push loop: a branch it changes all the time)
+            moves.count = getattr(moves, "count", 0) + 1
+            self.alice.fresh("noise").write("noise.txt", f"{moves.count}\n").commit(f"noise {moves.count}")
+            sh("git", "push", "--quiet", "--force", "origin", "HEAD:refs/heads/noise", cwd=self.alice.work)
+
+        candidate = self.alice.submit("toy-0001")
+        self.alice.fresh("noise").write("noise.txt", "0\n").commit("noise 0").push("noise")
+        self.assertEqual(discovered(moves), ([candidate], {101: True}), "a branch moved under the fetch: the fork was read as it stood")
+        moves()  # (a tip the hive has not read yet)
+        gone = lambda: sh("git", "push", "--quiet", "origin", ":refs/heads/noise", cwd=self.alice.work)  # noqa: E731
+        self.assertEqual(discovered(gone), ([], {101: True}), "a branch was gone by then: the fetch fails, and the fork had changed")
+        moves()
+        self.assertEqual(discovered(fetch=lambda *args: "failed"), ([], {101: False}), "the fetch failed on branches that stood still")
+        hidden = self.alice.bare.with_name("hidden")
+
+        def unlistable(*args):
+            self.alice.bare.rename(hidden)
+            return "failed"
+        self.assertEqual(discovered(fetch=unlistable), ([], {101: False}), "the fork cannot be listed any more")
+        hidden.rename(self.alice.bare)
+        self.assertEqual(discovered()[1], {101: True})
+
+    def test_a_member_cannot_choose_the_ending_that_costs_nothing(self):
+        """The deal of a member whose fork was not read when its time ran out stays open for a day more, then ends at
+        no cost (no wait, no deal counted). A member who keeps a branch moving under every fetch of the hive gets no
+        such ending: the deal ends when its time is up, as one left without a candidate."""
+        def lines(kind):
+            return [e for e in self.w.load()[2].events if e["type"] == kind and not str(e.get("run", "")).startswith("test")]
+
+        real, count = hive.fetch_bounded, [0]
+
+        def racing(*args):
+            count[0] += 1
+            self.alice.fresh("noise").write("noise.txt", f"{count[0]}\n").commit(f"noise {count[0]}")
+            sh("git", "push", "--quiet", "--force", "origin", "HEAD:refs/heads/noise", cwd=self.alice.work)
+            return real(*args)
+
+        self.alice.ready()
+        self.w.run()
+        deal = lines("deal")[-1]
+        self.alice.fresh("noise").write("noise.txt", "0\n").commit("noise 0").push("noise")
+        until, ended = hive.parse_iso(deal["until"]), None
+        for hour in range(1, 12):
+            stamp = hive.iso(until + hive.dt.timedelta(hours=hour, seconds=30))
+            shutil.rmtree(self.w.harvest)
+            sh("git", "clone", "--quiet", str(self.w.upstream), str(self.w.harvest), cwd=self.w.root)  # (a fresh clone, as each run's plan has)
+            with mock.patch.dict(os.environ, {"HIVE_NOW": stamp}), mock.patch.object(hive, "fetch_bounded", side_effect=racing):
+                self.w.run()
+            if lines("expired"):
+                ended = hour
+                break
+        config, _, ledger = self.w.load()
+        self.assertGreater(count[0], 0, "the branch did move under the hive's fetches")
+        self.assertEqual((lines("expired")[-1]["fault"], ended is not None and ended <= config["grace_hours"] + 1), (False, True),
+                         "the deal ended when its time was up, at the member's cost")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": stamp}):
+            standing = ledger.standing(101, hive.now(), config)
+        self.assertIsNotNone(standing[1], "and the member waits")
+
+    def test_what_the_fetches_of_one_run_leave_is_bounded(self):
+        """Each fetch that ends well leaves one pack in the hive's clone. Once the fetches of a run have left more
+        than a fixed room there, the forks that were not read yet wait for the next run: they are not read, and
+        the order in which forks are read is drawn anew each hour."""
+        bob = self.w.fork("bob", 102)
+        self.alice.submit("toy-0001")
+        bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        config, tasks, ledger = self.w.load()
+        with mock.patch.object(hive, "FETCHED_BYTES", 0):
+            entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
+        self.assertEqual((len(entries), sorted(reads.values())), (1, [False, True]), "one fork was read; the other waits")
+        entries, _, reads = hive.discover(self.w.harvest, config, self.w.api, set(), hive.now(), allow_local=True)
+        self.assertEqual((len(entries), sorted(reads.values())), (2, [True, True]))
 
     def test_the_judges_folders_are_removed(self):
         self.alice.submit("toy-0001", content=LIB + "/* ENVERR */\n")
@@ -4083,16 +4254,17 @@ class TestHostileData(Base):
         first = self.alice.push("plain-name")
         second = self.alice.write("lib.c", LIB + "int y;\n").commit().push("other-name")
         heads = [(first, "refs/heads/plain-name"), (second, "refs/heads/other-name"), ("0" * 40, "refs/heads/main")]
-        calls, real = [], hive.git
+        calls, real = [], hive.fetch_bounded
 
-        def counting(repo, *args, **options):
-            calls.extend(a for a in args[:1] if a == "fetch")
-            return real(repo, *args, **options)
+        def counting(*args):
+            calls.append("fetch")
+            return real(*args)
 
-        with mock.patch.object(hive, "git", side_effect=counting):
+        with mock.patch.object(hive, "fetch_bounded", side_effect=counting):
             got = hive.fetch_heads(self.w.harvest, str(self.alice.bare), heads, 1, allow_local=True)
         self.assertEqual((got, calls), ({first, second}, ["fetch"]), "one fetch for the fork; a branch that moved since is not taken")
-        self.assertEqual(hive.fetch_heads(self.w.harvest, str(self.alice.bare), [(first, "refs/heads/gone")], 2, allow_local=True), set())
+        with self.assertRaises(hive.Unfetched):  # (a branch that is gone: the fetch does not end well)
+            hive.fetch_heads(self.w.harvest, str(self.alice.bare), [(first, "refs/heads/gone")], 2, allow_local=True)
         self.assertEqual(sh("git", "for-each-ref", "refs/hive", cwd=self.w.harvest).stdout, "", "no scratch ref is left")
 
     def test_safe_text(self):

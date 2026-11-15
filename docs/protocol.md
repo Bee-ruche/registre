@@ -97,8 +97,16 @@ numeric id: it survives a change of login.
 A project can be **open by invitation**: its file lists the numeric ids of the accounts whose forks are read
 (`members.only`), and no other fork is. This is how a project starts, among people who are known.
 
-**A fork is read whole or not at all**: one with more new branch tips than the hive reads at once (30) is not read
-until it has fewer, and for the hive it then holds nothing.
+**A fork is read whole or not at all**: one with more new branch tips than the hive reads at once (30), or whose
+new branches hold more bytes than one fetch may write (four times what the project takes from one candidate: 128 MiB
+unless the project says otherwise), is not read until it holds less, and for the hive it then holds nothing. A fetch
+is bounded in time as well; one that does not end well leaves nothing on the hive's machine.
+
+**What a fork's owner can bring about is never « could not be read »**. A fork counts as read once the hive has
+listed its branches and its fetch ended well (a branch that moved since the listing is read at the next run), or was
+stopped by the bound above, or failed while the fork's branches changed under it. It counts as not read, at no cost
+to its member, only when the hive could not list it, or when its fetch failed on branches that stood still: then
+GitHub or the network may be the cause.
 
 ## How tasks are dealt
 
