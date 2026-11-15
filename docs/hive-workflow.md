@@ -82,8 +82,9 @@ Five things carry it:
    change when a pull request that a person reviewed changes that line, and at no other time. The file holds forty
    zeros in its place, which no checkout can find: the line is set, by a pull request of its own, to the commit of
    `main` that the founder accepted, after this file is on `main`. A new batch of tasks is such a pull request too.
-   The tests fail unless the commit named is one that `main`'s history holds: GitHub serves any commit of a
-   repository by its id, a pull request's included, so the id alone does not say that the commit was merged.
+   The tests fail unless the commit named is one that `main` itself has been at (the line of first parents of its
+   tip): GitHub serves any commit of a repository by its id, a pull request's included, and a commit inside a pull
+   request that was merged is in `main`'s history without ever having been its state.
 
 ## The file
 
@@ -112,7 +113,8 @@ Notes on the file:
   appear, that no job with an environment uses the common download action, the guards on the ref and on a
   cancelled run, the pins, the schedule. The test reads the file with one reader and GitHub with another: so every
   number and every yes-or-no of the file is written the one way every reader reads alike (`true`, `false`, plain
-  decimal digits), and the test fails on any other spelling.
+  decimal digits), and the test fails on any other spelling: a text that a tag turns into a number, a character
+  that is neither printable ASCII nor a line feed, a root key other than `on`, a 0 where a yes-or-no goes.
 - The project's token reaches git as a header of its requests to the project alone; the form it is sent in is
   masked in the run's log, like the token itself.
 - The page (`tools/hive/page.py`) is one more job after `apply`, without any right but to publish: it is not in

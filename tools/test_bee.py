@@ -24089,11 +24089,14 @@ class TestHiveWorkflow(unittest.TestCase):
 
     @staticmethod
     def pin_is_of_main(pin, repository=ROOT, main="refs/remotes/origin/main"):
-        """True if the commit the file names is forty zeros (no commit named yet) or a commit of main's history, as the
-        repository at hand holds it (the tests' checkout fetches every branch)."""
+        """True if the commit the file names is forty zeros (no commit named yet) or a commit main itself has been at:
+        one of the line of first parents of main's tip, as the repository at hand holds it (the tests' checkout fetches
+        every branch). A commit inside a pull request that was merged is in main's history and was never main's state:
+        nobody reviewed the registry as that commit alone holds it."""
         if pin == "0" * 40:
             return True
-        return subprocess.run(["git", "-C", str(repository), "merge-base", "--is-ancestor", pin, main], capture_output=True).returncode == 0
+        line = subprocess.run(["git", "-C", str(repository), "rev-list", "--first-parent", main], capture_output=True, text=True)
+        return line.returncode == 0 and pin in line.stdout.split()
 
     def test_the_commit_the_file_names_is_a_commit_of_main(self):
         """GitHub serves any commit of a repository's network by its id, a pull request's included, a fork's too. The
@@ -24110,6 +24113,17 @@ class TestHiveWorkflow(unittest.TestCase):
             git("commit", "--quiet", "--allow-empty", "-m", "a pull request's commit")
             proposed = git("rev-parse", "HEAD")
             self.assertEqual([self.pin_is_of_main(pin, folder) for pin in (merged, proposed, "1" * 40, "0" * 40)], [True, False, False, True])
+            # A pull request of two commits, merged as the registry merges them: its first commit is in main's history,
+            # and main was never at it.
+            git("checkout", "--quiet", "-b", "work", merged)
+            git("commit", "--quiet", "--allow-empty", "-m", "inside the pull request")
+            inside = git("rev-parse", "HEAD")
+            git("commit", "--quiet", "--allow-empty", "-m", "the pull request's last commit")
+            git("checkout", "--quiet", "--detach", merged)
+            git("merge", "--quiet", "--no-ff", "-m", "Merge pull request", "work")
+            tip = git("rev-parse", "HEAD")
+            git("update-ref", "refs/remotes/origin/main", tip)
+            self.assertEqual([self.pin_is_of_main(pin, folder) for pin in (tip, merged, inside)], [True, True, False])
 
     def test_every_number_and_every_yes_or_no_is_written_the_one_way_every_reader_reads_alike(self):
         """This class reads the file with a YAML 1.1 reader; GitHub's reader is not that one. A value that is not a text
@@ -24137,13 +24151,26 @@ class TestHiveWorkflow(unittest.TestCase):
                             found.append(node.value)
                     elif not re.fullmatch(r"true|false|0|[1-9][0-9]*|", node.value):  # (nothing written is nothing for every reader)
                         found.append(node.value)
+                elif node.style is not None and node.tag != "tag:yaml.org,2002:str":
+                    found.append(node.value)  # a text between quotes that a tag turns into a number or a yes-or-no
+            if any(not (c == "\n" or " " <= c <= "~") for c in text):
+                found.append("a character that is neither printable ASCII nor a line feed")  # (some readers end a line on others)
+            if not re.search(r"^on:", text, re.M):
+                found.append("the root key is not written « on »")
             return sorted(found)
 
         self.assertEqual(wrong(self.text), [])
         for spelling in ("timeout-minutes: 036", "cancel-in-progress: off", "timeout-minutes: 5:30", "timeout-minutes: 012", "x: 0o14", "x: 1e3",
-                         "x: ~", "x: yes", "x: True", "x: 1.5", "x: 2026-01-01", "x: null", "jobs: {a: {on: 1}}"):
+                         "x: ~", "x: yes", "x: True", "x: 1.5", "x: 2026-01-01", "x: null", "jobs: {a: {on: 1}}",
+                         'cancel-in-progress: !!bool "off"', 'timeout-minutes: !!int "3_30"', 'retention-days: !!int "0x3"',
+                         "run: |\n  one\u0085  two", "x: caf\u00e9"):
             with self.subTest(spelling=spelling):
-                self.assertNotEqual(wrong(spelling + "\n"), [], "a spelling two readers read differently")
+                self.assertNotEqual(wrong("on: {}\n" + spelling + "\n"), [], "a spelling two readers read differently")
+        self.assertNotEqual(wrong("true: {}\nx: 30\n"), [], "the root key")
+        # A yes-or-no is one by its kind, not by what it equals: 0 equals false and is not it.
+        self.assertIs(self.stream["concurrency"]["cancel-in-progress"], False)
+        kept = [step["with"]["persist-credentials"] for job in self.jobs.values() for step in job["steps"] if "persist-credentials" in step.get("with", {})]
+        self.assertEqual((len(kept), {type(value) for value in kept}, set(kept)), (6, {bool}, {False}))
         self.assertEqual(wrong('on: {schedule: [{cron: "17 * * * *"}], workflow_dispatch: }\nx: 30\ny: false\nz: "012"\nw: text\n'), [])
 
     def test_two_jobs_can_read_a_key_and_only_to_ask_for_a_token_of_one_repository(self):
