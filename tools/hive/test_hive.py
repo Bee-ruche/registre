@@ -841,6 +841,7 @@ class TestStructure(Base):
         with mock.patch.object(hive, "git", side_effect=no_merge):
             self.refused("too_many_files")
         self.assertIn("merge.renames=false", hive.GIT_BASE)
+        self.assertLessEqual({"gc.auto=0", "maintenance.auto=false"}, set(hive.GIT_BASE), "no command starts git's own housekeeping")
 
     def test_a_folder_that_git_would_not_have_written_that_way_is_refused(self):
         """The same entries, out of order or with a mode spelt another way, are another object: tools disagree about
@@ -930,14 +931,18 @@ class TestStructure(Base):
         self.alice.commit("and gone")
         heavy = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
         fine = self.w.fork("bob", 102).submit("toy-0001")
+        def packs():
+            return sorted(p.name for p in Path(self.w.harvest, ".git/objects/pack").iterdir())
+
         self.w.plan()  # (the plan's clone now holds both)
-        light, bulk = self.weight(fine), self.weight(heavy)
+        light, bulk, first = self.weight(fine), self.weight(heavy), packs()
         self.assertTrue(light < 20_000 < 300_000 < bulk, (light, bulk))
         self.w.set_config({"limits": {"history_bytes": bulk}})
         self.assertEqual([c["heavy"] for c in self.w.plan()["queue"]], [False, False], "exactly the limit is fine")
         self.w.set_config({"limits": {"history_bytes": bulk - 1}})
         made = self.w.plan()
-        self.assertEqual({c["sha"]: (c["heavy"], c["long"]) for c in made["queue"]}, {heavy: (True, False), fine: (False, False)})
+        self.assertEqual({c["sha"]: (c["heavy"], c["long"]) for c in made["queue"]}, {heavy: (True, False), fine: (False, False)},
+                         f"packs after the first plan: {first}; now: {packs()}; the heavy one weighed {bulk} and weighs {self.weight(heavy)}")
         self.assertNotIn("weight", made["queue"][0])
         listed = sh("git", "bundle", "list-heads", str(self.w.bundle), cwd=self.w.harvest).stdout
         self.assertEqual((fine in listed, heavy in listed), (True, False), "its commits stay in the plan's clone")

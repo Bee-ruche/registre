@@ -182,8 +182,10 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
-            "-c", "gc.auto=0", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true", "-c", "merge.renames=false",
-            "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
+            "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true",
+            "-c", "merge.renames=false", "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
+# (gc.auto, maintenance.auto: no command of the tool's starts git's own housekeeping, which goes on in a session of its
+# own after the command has returned and rewrites the store under the next one.)
 # Settings and places git would take from the environment: never, on the hive's side (two steps must derive the same
 # commit, from the repository each command names and from no other).
 GIT_SETTINGS_OF_THE_ENVIRONMENT = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG", "GIT_TEMPLATE_DIR", "GIT_DIR", "GIT_WORK_TREE",
@@ -1213,9 +1215,10 @@ def fetch_bounded(repo, url, specs, most, allow_local=False):
     In bytes: what a fetch brings arrives as one file (a pack: fetch.unpackLimit=1), and no program of the fetch may
     write a file longer than `most` bytes: the kernel stops the one that tries. Whatever a fork holds, one fetch
     writes no more. In time: git runs as a group of its own, and when it has ended or its time is up, every program
-    it started is stopped with it: none goes on reading the fork once the hive gave up. A fetch that did not end
-    well leaves nothing: what it had written is removed at once (swept), so that what a run leaves on the machine's
-    disk does not grow with what the forks hold."""
+    of that group is stopped with it: none goes on reading the fork once the hive gave up. And the fetch starts no
+    housekeeping of git's, which would leave the group and go on after it (--no-auto-maintenance, and GIT_BASE).
+    A fetch that did not end well leaves nothing: what it had written is removed at once (swept), so that what a
+    run leaves on the machine's disk does not grow with what the forks hold."""
     import resource  # (the hive's own machine is a Linux one; a worker's command must still start where this module is missing)
 
     def bounds():  # (runs in the new process before git does: whatever git starts inherits both)
@@ -1223,7 +1226,7 @@ def fetch_bounded(repo, url, specs, most, allow_local=False):
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
     command = ["git", *GIT_BASE, "-c", "fetch.unpackLimit=1", "-c", "transfer.unpackLimit=1", "-C", str(repo),
-               "fetch", "--no-tags", "--no-recurse-submodules", "--quiet", url, *specs]
+               "fetch", "--no-tags", "--no-recurse-submodules", "--no-auto-maintenance", "--quiet", url, *specs]
     try:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    env={**isolated_environment(), **transport(allow_local)}, start_new_session=True, preexec_fn=bounds)
@@ -1277,12 +1280,13 @@ def swept(repo, most=None):
 
 def packs_weight(repo):
     """What the packs of a repository's store weigh together: how the hive counts what its fetches left there (each
-    fetch leaves one pack)."""
+    fetch that ended well leaves one pack). A store that cannot be listed is an error, never a weight of nothing."""
     try:
         folder = Path(repo, git(repo, "rev-parse", "--git-path", "objects/pack").stdout.strip())
-        return sum(entry.stat(follow_symlinks=False).st_size for entry in os.scandir(folder) if entry.is_file(follow_symlinks=False))
-    except OSError:
-        return 0
+        with os.scandir(folder) as entries:
+            return sum(entry.stat(follow_symlinks=False).st_size for entry in entries if entry.is_file(follow_symlinks=False))
+    except OSError as error:
+        raise HiveError(f"the hive's clone could not be listed ({type(error).__name__})") from None
 
 
 def fetch_heads(repo, url, heads, slot, allow_local=False, most=FETCH_WEIGHTS * DEFAULTS["limits"]["history_bytes"]):
