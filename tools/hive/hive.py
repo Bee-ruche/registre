@@ -79,11 +79,13 @@ import re
 import secrets
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import zlib
 from pathlib import Path
 
 PROTOCOL = 1
@@ -351,11 +353,26 @@ def in_task_files(path, files):
     return any(path == f or (f.endswith("/") and path.startswith(f)) for f in files)
 
 
+# Code points that HFS+ does not count in a name (as git lists them): « .g<one of these>it » is « .git » there.
+HFS_IGNORED = frozenset(map(chr, (0x200C, 0x200D, 0x200E, 0x200F, *range(0x202A, 0x202F), *range(0x206A, 0x2070), 0xFEFF)))
+
+
+def reads_as_dot_git(name):
+    """True if a name (bytes) is one that some system reads as « .git »: in any case; with dots or spaces after it,
+    which Windows drops; before a « : », which names a stream of the same file on NTFS; as « git~1 », the short name
+    Windows gives it; or with code points among its letters that HFS+ does not count. A « \\ » parts a path on
+    Windows: a name that holds one is none this tool follows either."""
+    text = "".join(c for c in name.decode("utf-8", errors="surrogateescape") if c not in HFS_IGNORED)
+    stem = text.split(":", 1)[0].rstrip(" .").casefold()
+    return stem in (".git", "git~1") or "\\" in text
+
+
 def plain_path(path):
-    """A path the hive accepts to see changed: printable ASCII, relative, no empty, dot or .git component."""
+    """A path the hive accepts to see changed: printable ASCII, relative, no empty or dot component, and none that
+    some system reads as « .git » (reads_as_dot_git)."""
     if not path or len(path) > 200 or any(not (" " <= c <= "~") for c in path) or path != path.strip() or "\\" in path:
         return False
-    return all(part and part not in (".", "..") and part.lower() != ".git" for part in path.split("/"))
+    return all(part and part not in (".", "..") and not reads_as_dot_git(part.encode()) for part in path.split("/"))
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2842,6 +2859,68 @@ def first_bytes(path, most):
         os.close(descriptor)
 
 
+def inflated(data, most):
+    """The first `most` bytes that zlib data unpacks to, and whether the data ended there; (None, False) if it is not zlib."""
+    unpacker = zlib.decompressobj()
+    try:
+        out = unpacker.decompress(data, most + 1)
+    except zlib.error:
+        return None, False
+    return out[:most], unpacker.eof and len(out) <= most
+
+
+def stored_empty_tree_is_not_one(git_dir):
+    """True if the clone holds on disk, under the id of the empty tree, anything else than an empty tree. git knows
+    that tree by heart and never reads it from disk: no reading of this tool's (Objects) would ever meet what a file
+    of .git/objects holds under its id. A push does: it copies an object out of a pack as the bytes lie there, and
+    the repository that receives them takes the empty tree for held whatever came. So the two places git keeps an
+    object in are read here, as files: the loose object, and each pack's index (the form git has written since 2008;
+    another form is not read, and counts as not one). An alternate store is refused elsewhere (plain_clone)."""
+    name = bytes.fromhex(EMPTY_TREE)
+    loose = git_dir / "objects" / EMPTY_TREE[:2] / EMPTY_TREE[2:]
+    if os.path.lexists(loose) and inflated(first_bytes(loose, 4096), 64) != (b"tree 0\0", True):
+        return True
+    packs = git_dir / "objects" / "pack"
+    try:
+        indexes = sorted(entry for entry in os.listdir(packs) if entry.endswith(".idx"))
+    except OSError:
+        return False
+    for entry in indexes:
+        try:
+            with open(packs / entry, "rb") as index:
+                head = index.read(8 + 1024)
+                if len(head) != 8 + 1024 or head[:8] != b"\377tOc\0\0\0\2":
+                    return True
+                fanout = struct.unpack(">256I", head[8:])
+                low, high, total = (fanout[name[0] - 1] if name[0] else 0), fanout[name[0]], fanout[255]
+                found = None
+                while low < high:
+                    middle = (low + high) // 2
+                    index.seek(8 + 1024 + 20 * middle)
+                    held = index.read(20)
+                    if held == name:
+                        found = middle
+                        break
+                    low, high = (middle + 1, high) if held < name else (low, middle)
+                if found is None:
+                    continue
+                index.seek(8 + 1024 + 24 * total + 4 * found)
+                offset = struct.unpack(">I", index.read(4))[0]
+                if offset & 0x80000000:
+                    index.seek(8 + 1024 + 28 * total + 8 * (offset & 0x7fffffff))
+                    offset = struct.unpack(">Q", index.read(8))[0]
+            with open(packs / (entry[:-4] + ".pack"), "rb") as pack:
+                pack.seek(offset)
+                stored = pack.read(1)
+        except (OSError, struct.error):
+            return True
+        # In a pack an empty tree begins with one byte: a tree, of no byte, in one piece. (What follows is zlib's
+        # packing of no byte; a repository that receives anything else after such a byte refuses the pack.)
+        if stored[:1] != b"\x20":
+            return True
+    return False
+
+
 def kept_reference(name):
     """True if a reference is one a worker's clone holds: a branch, a remote's branch, a tag, or the stash (which
     « start » writes). git reads the others without being asked: refs/replace gives one object for another, refs/notes
@@ -2946,6 +3025,9 @@ def plain_clone():
                         ("info/grafts", "it rewrites its own history for git (.git/info/grafts)")):
         if os.path.lexists(git_dir / name):
             raise not_plain(found)
+    if stored_empty_tree_is_not_one(git_dir):
+        raise not_plain("it holds, under the id of the folder that holds nothing, an object that is not one (in .git/objects), which a "
+                        "push would carry as it lies")
     hooks = git_dir / "hooks"
     if os.path.lexists(hooks):
         if hooks.is_symlink() or not hooks.is_dir():
@@ -3136,6 +3218,24 @@ def rests_on(clone, tip, head, limits):
         if base is None:
             raise HiveError(NO_START)
         return base, commit_header(objects.held("commit", base))[0]
+
+
+def rules_as_named(clone, commit):
+    """Reads, as bytes this tool hashes itself (Objects), what git is about to follow of a commit: every folder of
+    its tree, and every .gitattributes file in it. git then reads the same objects by itself (« read-tree »,
+    « --attr-source »), from a store that whatever ran in the clone may have written to: a .gitattributes whose
+    bytes were swapped under its id would have git convert the files it stages (a line end, an encoding, the text
+    between « $Id » and « $ ») in a way the project never asked for, and nothing later would read that file again,
+    since no candidate changes it. An object that is not what its name says stops the command (NotPlain); one the
+    clone does not hold, or a tip too large to read, ends it with the sentence that says so."""
+    with Objects(clone) as objects:
+        entries, _ = tip_entries(objects, commit, time.monotonic() + PROOF_SECONDS)
+        for path, (kind, _, sha) in entries.items():
+            if kind == stat.S_IFREG and path.rpartition(b"/")[2] == b".gitattributes":
+                try:
+                    objects.read("blob", sha)
+                except TooLarge:
+                    raise HiveError("a .gitattributes file of the project is larger than this tool reads: stop, and tell the user") from None
 
 
 def candidate_tree(clone, base, files):
@@ -3492,6 +3592,22 @@ def said_again(args):
     return f"--login {args.login}" + (f" --fork {args.fork}" if args.fork is not None else "")
 
 
+def own_store(clone, folder):
+    """A repository of this tool's own, made now in an empty folder outside the clone, which holds nothing: what a
+    command writes there is all it holds. A push copies what it sends out of the store it is pushed from, as the
+    bytes lie there, and a clone's store is whatever ran in the clone left: a pack may hold any bytes under the id of
+    an object the push names. What is pushed from here is what this command wrote. The one setting of the clone that
+    a push to GitHub may need goes with it: the header in which a checkout keeps its token, which plain_clone took in
+    that one form (PLAIN_CONFIG). The machine's own settings (the user's credentials, a proxy) are read as for any
+    push (Clone.git)."""
+    git(folder, "init", "--quiet", "--template=", ".")
+    store = Clone(Path(folder), {})
+    for key, value in clone.settings.items():
+        if key.startswith("http."):
+            store.git("config", "--local", key, value)
+    return store
+
+
 def push(clone, url, source, branch):
     """Pushes one commit (or, with an empty source, a deletion) to one branch of the member's own fork, over what was
     there. To the address own_fork derived, never to a remote's name: a name is resolved through settings."""
@@ -3500,7 +3616,8 @@ def push(clone, url, source, branch):
                   f"{source}:refs/heads/{branch}", to=url, timeout=300)
     except HiveError as error:
         raise HiveError(f"the push to your fork did not land ({error}). Nothing else was pushed: run the command again; if it "
-                        "fails again, stop and tell the user to check that this machine may push to the fork") from None
+                        "fails again, stop and tell the user to check that this machine may push to the fork, and if it may, to "
+                        "take a fresh clone of the fork") from None
 
 
 def cmd_setup(args):
@@ -3548,7 +3665,13 @@ def cmd_setup(args):
     url = project_address(config, args.upstream_url)
     current = clone.settings.get("remote.upstream.url")
     if current is None:
-        clone.git("remote", "add", "upstream", url)
+        try:
+            clone.git("remote", "add", "upstream", url)
+        except HiveError:
+            # (a fetch rule of « upstream » without its address, or a remote written as git once wrote them, in
+            # .git/remotes or .git/branches: git takes the name for taken, at every run)
+            raise HiveError("this clone holds something named 'upstream' that is not a remote with an address: git cannot add the "
+                            "project's. Nothing was fetched: tell the user to take a fresh clone of the fork") from None
     elif not same_repository(current, url):
         raise HiveError("this clone already has an 'upstream' remote that is not the project: remove it or use a fresh clone")
     wanted = ("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", url, f"+refs/heads/{branch}:refs/remotes/upstream/{branch}")
@@ -3587,12 +3710,24 @@ def read_untrusted(path, most):
     """("ok", data), ("absent", None) or ("unreadable", None) for a JSON file of the hive's state, which a worker
     reads as it reads a stranger's: too large, not UTF-8, not JSON or nested too deep all come to « unreadable »."""
     try:
-        with open(path, "rb") as f:
-            raw = f.read(most + 1)
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except FileNotFoundError:
         return "absent", None
+    except OSError:  # (a link is not followed: the file is the state's own, or it is not read)
+        return "unreadable", None
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return "unreadable", None
+        raw = b""
+        while len(raw) <= most:
+            piece = os.read(descriptor, most + 1 - len(raw))
+            if not piece:
+                break
+            raw += piece
     except OSError:
         return "unreadable", None
+    finally:
+        os.close(descriptor)
     if len(raw) > most:
         return "unreadable", None
     try:
@@ -3837,20 +3972,28 @@ def place_inside(root, path):
     because a folder above it is missing, or is not a folder (a link is never followed). Raises NotPlain when the
     path is not one of a work tree at all: git reads an index whatever paths it holds, and the index is a file of
     .git that whatever ran in the clone may have written. A path that is absolute, or has an empty part, a « . »,
-    a « .. » or a « .git », leads out of the work tree or into the clone's own folders; nothing this tool removes
-    or empties is named by such a path."""
+    a « .. » or a name that some system reads as « .git » (reads_as_dot_git), leads out of the work tree or into the
+    clone's own folders; nothing this tool removes or empties is named by such a path. And whatever its name, a
+    place that IS the clone's .git (the same folder, as the system itself tells) is none of the work tree."""
     parts = path.split(b"/")
-    if any(part in (b"", b".", b"..") or part.lower() == b".git" for part in parts):
+    if any(part in (b"", b".", b"..") or reads_as_dot_git(part) for part in parts):
         raise not_plain("its index names a path that is not inside the work tree")
     place = os.fsencode(root)
-    for part in parts[:-1]:
+    try:
+        own = os.lstat(os.path.join(place, b".git"))
+    except OSError:
+        raise not_plain("its .git cannot be read") from None
+    for number, part in enumerate(parts):
         place = os.path.join(place, part)
         try:
-            if not stat.S_ISDIR(os.lstat(place).st_mode):
-                return None
+            entry = os.lstat(place)
         except OSError:
+            return None if number < len(parts) - 1 else place
+        if os.path.samestat(entry, own):
+            raise not_plain("its index names a path that is not inside the work tree")
+        if number < len(parts) - 1 and not stat.S_ISDIR(entry.st_mode):
             return None
-    return os.path.join(place, parts[-1])
+    return place
 
 
 def submodule_places(clone):
@@ -4049,7 +4192,14 @@ def cmd_start(args):
         # whose bytes those rules cannot convert (it is not in the encoding they name) would stop git: everything is then
         # set aside byte for byte, under no rule at all.
         aside = ("stash", "push", "--include-untracked", "--quiet", "--message", f"hive start {task['id']}: what the work tree held before")
-        if clone.git(*aside, env=who, literal=False, attributes=held, check=False).returncode != 0:
+        try:
+            rules_as_named(clone, held)  # (those rules are read first as bytes this tool hashes: a swapped one stops the command)
+            under_its_rules = True
+        except NotPlain:
+            raise
+        except HiveError:  # (a commit this clone does not hold whole, or one too large to read: under no rule at all)
+            under_its_rules = False
+        if not under_its_rules or clone.git(*aside, env=who, literal=False, attributes=held, check=False).returncode != 0:
             clone.git(*aside, env=who, literal=False, attributes=EMPTY_TREE)
         after = clone.git("rev-parse", "--verify", "--quiet", "refs/stash", check=False).stdout.strip()
         set_aside = set_aside_paths(clone, need_sha(after)) if after and after != before else 0
@@ -4089,9 +4239,9 @@ def cmd_start(args):
 def cmd_ready(args):
     """Volunteer side: asks the hive for a task, and pushes the ask itself. A commit of its own, on no branch of this
     clone: pushed (forced) to the fork's one asking branch, it replaces the previous ask and carries nothing else:
-    no file (its tree is the empty one) and no history (it has no parent), so that nothing this clone holds goes to
-    the fork with it. The hive reads its message, and « next » its date, which is this tool's own clock: how long the
-    ask has waited.
+    no file (its tree is the empty one) and no history (it has no parent). It is made in a store of this tool's own
+    and pushed from there (own_store), so that nothing this clone holds goes to the fork with it. The hive reads its
+    message, and « next » its date, which is this tool's own clock: how long the ask has waited.
 
     --prefer names the part of the project the user prefers, and comes from the user's prompt alone. It must be,
     exactly, one of the files the project's tasks name in the registry (project_parts): the ask then carries the
@@ -4124,12 +4274,16 @@ def cmd_ready(args):
     asked = now()
     lines = [f"Hive ready ({iso(asked)})", "", "Hive-Action: ready", f"Hive-Member: {login}", f"Hive-Tier: {args.tier}"] \
         + ([f"Hive-Prefer: {prefer}"] if prefer is not None else [])
-    commit = clone.commit(EMPTY_TREE, None, "\n".join(lines) + "\n", clone.identity(login, asked))
-    if args.no_push:
-        print(f"NOT-PUSHED {commit}: the ask is made and nothing was pushed; run the same command again without --no-push to make "
-              "the ask anew and push it")
-        return
-    push(clone, fork, commit, READY_BRANCH)
+    # The ask is made in a store of this tool's own and pushed from it: it needs nothing the clone holds, and nothing
+    # the clone holds can go with it (own_store).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+        store = own_store(clone, folder)
+        commit = store.commit(EMPTY_TREE, None, "\n".join(lines) + "\n", clone.identity(login, asked))
+        if args.no_push:
+            print(f"NOT-PUSHED {commit}: the ask is made and nothing was pushed; run the same command again without --no-push to "
+                  "make the ask anew and push it")
+            return
+        push(store, fork, commit, READY_BRANCH)
     print(f"ASKED {commit}")
     print("THEN: stop here. The hive deals at its next run (about an hour): the next run of this worker finds the task. If this "
           f"worker will not run again, take the ask back so that no task waits for it: hive.py ready --project {config['project']} "
@@ -4184,6 +4338,7 @@ def cmd_submit(args):
             detail = named_paths(objects, base_tree, outside)
         print(f"REFUSED (path_outside_task): {REASONS['path_outside_task']} {json.dumps(detail)}")
         sys.exit(1)
+    rules_as_named(clone, base)  # (what git follows below, read first as bytes this tool hashes)
     try:
         tree = candidate_tree(clone, base, task["files"])
     except NotPlain:
@@ -4235,7 +4390,7 @@ def cmd_submit(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = OneLineParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
     def hive_side(p):
@@ -4335,6 +4490,15 @@ def main(argv=None):
         sys.exit(3 if isinstance(error, NotPlain) else 2)
     finally:
         VOLUNTEER_SIDE = before
+
+
+class OneLineParser(argparse.ArgumentParser):
+    """A command line this tool cannot read ends as every other error does: one line, « hive: <sentence> », exit
+    code 2. (What the line quotes of the command line is made plain: safe_text.)"""
+
+    def error(self, message):
+        print(f"hive: {safe_text(message, 300)}", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
