@@ -6343,6 +6343,10 @@ class TestVolunteerSide(Volunteer):
             self.alice.write("src/new.c", "int by_alice;\n")
             code, text = self.submit("toy-0002", dealt, "--no-push")
             self.assertEqual((code, text), (1, 'REFUSED (path_outside_task): a changed path is outside the task\'s files {"paths": ["lib.c"], "files": 1}\n'), self.err)
+        # So are they when the tool cannot read the commit whole: the command ends on the same sentence, not on another.
+        with mock.patch.object(hive, "not_as_checked_out", side_effect=hive.HiveError("a commit this clone does not hold whole")):
+            self.one_line(self.begin("toy-0002", dealt), "the work tree still holds files an earlier run left, which git could not set aside or "
+                                                        "remove: tell the user")
         # The same holds when a checkout writes other bytes than the commit stores: here one line of the stored file
         # ends with LF, where the rule (« eol=crlf ») has a checkout write CR LF.
         moves_on(LIB + "int kept_with_one_lf;\n", first_line_end="\n")
