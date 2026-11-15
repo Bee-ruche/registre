@@ -865,6 +865,7 @@ class TestStructure(Base):
             self.refused("too_many_files")
         self.assertIn("merge.renames=false", hive.GIT_BASE)
         self.assertLessEqual({"gc.auto=0", "maintenance.auto=false"}, set(hive.GIT_BASE), "no command starts git's own housekeeping")
+        self.assertIn("pack.threads=1", hive.GIT_BASE, "git packs and unpacks on one thread: several candidates read together take what one takes")
 
     def test_a_folder_that_git_would_not_have_written_that_way_is_refused(self):
         """The same entries, out of order or with a mode spelt another way, are another object: tools disagree about
@@ -920,7 +921,7 @@ class TestStructure(Base):
         heavy = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
         sh("git", "repack", "-adf", "--window=50", cwd=self.alice.bare)  # the fork stores the candidate's files as differences
         fine = self.w.fork("bob", 102).submit("toy-0001")
-        self.w.set_config({"limits": {"history_bytes": 100_000}})
+        self.w.set_config({"limits": {"history_bytes": 100_000, "file_bytes": 400_000}})  # (files the project takes: weight alone is at stake)
         made = self.w.plan()
         stored = int(sh("git", "rev-list", "--objects", "--disk-usage", heavy, f"^{self.w.tip()}", cwd=self.w.harvest).stdout)
         self.assertLess(stored, 100_000, "as this clone stores them, the candidate's commits are light: the case this test is about")
@@ -942,9 +943,12 @@ class TestStructure(Base):
         with mock.patch.object(hive, "PACK_SECONDS", 0):  # git is stopped at once: as if it took too long
             self.assertEqual({hive.packed_weight(self.w.harvest, sha, self.w.tip(), 1 << 20) for sha in (slow, fine)}, {(1 << 20) + 1})
             real = hive.packed_weight
-            with mock.patch.object(hive, "packed_weight", side_effect=lambda repo, sha, tip, most: real(repo, sha, tip, most) if sha == slow else 1):
+            with mock.patch.object(hive, "packed_weight", side_effect=lambda repo, sha, tip, most: real(repo, sha, tip, most) if sha == slow else 1), \
+                    mock.patch.object(hive, "oversized", return_value=False):  # (the sizes are asked in time: the packing alone is too slow)
                 made = self.w.plan()
+            late = self.w.plan()  # and when git cannot even list a candidate's objects in time, it is taken as too large
         self.assertEqual({c["sha"]: c["heavy"] for c in made["queue"]}, {slow: True, fine: False}, "the plan goes on with the others")
+        self.assertEqual({c["sha"]: (c["large"], c["heavy"]) for c in late["queue"]}, {slow: (True, False), fine: (True, False)})
 
     def test_a_candidate_whose_commits_weigh_too_much_is_not_carried_to_the_other_steps(self):
         """What a candidate changes in the end may be one line, and its commits carry anything on the way: a file added
@@ -960,9 +964,9 @@ class TestStructure(Base):
         self.w.plan()  # (the plan's clone now holds both)
         light, bulk, first = self.weight(fine), self.weight(heavy), packs()
         self.assertTrue(light < 20_000 < 300_000 < bulk, (light, bulk))
-        self.w.set_config({"limits": {"history_bytes": bulk}})
+        self.w.set_config({"limits": {"history_bytes": bulk, "file_bytes": 400_000}})  # (a file the project takes: weight alone is at stake)
         self.assertEqual([c["heavy"] for c in self.w.plan()["queue"]], [False, False], "exactly the limit is fine")
-        self.w.set_config({"limits": {"history_bytes": bulk - 1}})
+        self.w.set_config({"limits": {"history_bytes": bulk - 1, "file_bytes": 400_000}})
         made = self.w.plan()
         self.assertEqual({c["sha"]: (c["heavy"], c["long"]) for c in made["queue"]}, {heavy: (True, False), fine: (False, False)},
                          f"packs after the first plan: {first}; now: {packs()}; the heavy one weighed {bulk} and weighs {self.weight(heavy)}")
@@ -2816,6 +2820,15 @@ class TestSecondReview(Base):
             only.write(f"src/bulk{number}.bin", os.urandom(100_000))
         only.commit().marker("toy-0002").push()
         self.assertEqual(hive.discover(alone.harvest, alone.load()[0], alone.api, set(), hive.now(), allow_local=True)[::2], ([], {101: True}))
+        # The fetch runs under the bound on git's memory too: a commit of two hundred megabytes (a few hundred kilobytes
+        # as it is sent) is fetched under the bound as it stands, and not under one set lower.
+        thick, _ = a_heavy_commit(self.alice.bare)
+        sh("git", "update-ref", "refs/heads/thick", thick, cwd=self.alice.bare)
+        with mock.patch.object(hive, "GIT_DATA_BYTES", 64 << 20):
+            self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/thick:refs/hive/in/9/1"], 8 << 20, True), "failed")
+        self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/thick:refs/hive/in/9/1"], 8 << 20, True), "got")
+        sh("git", "update-ref", "-d", "refs/hive/in/9/1", cwd=self.w.harvest)
+        sh("git", "update-ref", "-d", "refs/heads/thick", cwd=self.alice.bare)
         # Its time used up, a fetch is stopped and counts as failed: the fork is then not read (GitHub may be the cause).
         with mock.patch.object(hive, "FETCH_SECONDS", 0):
             self.assertEqual(hive.fetch_bounded(self.w.harvest, str(self.alice.bare), ["+refs/heads/more:refs/hive/in/9/0"], 8 << 20, True), "failed")
@@ -2986,6 +2999,79 @@ exec {real} "$@"
         with mock.patch.object(hive, "GIT_DATA_BYTES", 64 << 20):
             self.assertEqual(hive.git(self.w.harvest, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 128)
         path.unlink()
+
+    def test_a_candidate_whose_own_commits_hold_a_file_larger_than_the_project_takes_is_not_carried(self):
+        """A candidate's history is weighed as git packs it, and what it packs to says nothing of what its objects are
+        once read: a file added in one commit and removed in the next may be megabytes that pack to a few bytes. The
+        later steps read the candidates together, from one file. So the plan asks git the size of each object a
+        candidate's own commits add, and carries none that holds a file larger than the project takes: it is refused
+        for that file, and the others are judged."""
+        self.alice.write("src/zeros.txt", "0\n" * 2_500_000).commit("a file of five megabytes")
+        sh("git", "rm", "-q", "src/zeros.txt", cwd=self.alice.work)
+        self.alice.commit("and gone")
+        large = self.alice.write("src/n.c", "int n;\n").commit().marker("toy-0002").push()
+        fine = self.w.fork("bob", 102).submit("toy-0001")
+        made = self.w.plan()
+        self.assertLess(hive.packed_weight(self.w.harvest, large, self.w.tip(), 1 << 30), 100_000, "as git packs them, its commits weigh little")
+        self.assertEqual({c["sha"]: (c["large"], c["heavy"], c["long"]) for c in made["queue"]}, {large: (True, False, False), fine: (False, False, False)})
+        self.assertEqual([c["sha"] for c in hive.carried(made)], [fine])
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        self.assertEqual({o["sha"]: o.get("reason", o["result"]) for o in self.w.apply(verdicts)[0]}, {large: "file_too_big", fine: "accepted"})
+        # What « larger than the project takes » is: a file by limits.file_bytes; a folder or a commit by a bound of
+        # the tool's own; and no more objects than a number. What git cannot list is taken as too large.
+        tip, limits = made["tip"], self.w.load()[0]["limits"]  # (the tip the plan was made on)
+        self.assertEqual([hive.oversized(self.w.harvest, sha, tip, limits) for sha in (large, fine)], [True, False])
+        self.assertFalse(hive.oversized(self.w.harvest, large, tip, {**limits, "file_bytes": 5_000_000}))
+        self.assertTrue(hive.oversized(self.w.harvest, large, tip, {**limits, "file_bytes": 4_999_999}))
+        with mock.patch.object(hive, "HISTORY_OBJECTS", 3):
+            self.assertTrue(hive.oversized(self.w.harvest, fine, tip, limits), "more objects than the plan lists")
+        with mock.patch.object(hive, "HISTORY_OBJECT_BYTES", 100):
+            self.assertTrue(hive.oversized(self.w.harvest, fine, tip, limits), "a commit or a folder larger than the bound")
+        self.assertTrue(hive.oversized(self.w.harvest, "1" * 40, tip, limits), "commits git cannot list")
+        for bad in ({"large": "no"}, {"large": None}):
+            with self.subTest(bad=bad), self.assertRaises(hive.HiveError):
+                hive.read_plan({**made, "queue": [{**made["queue"][0], **bad}]}, self.w.load()[0])
+
+    def test_a_file_of_the_projects_own_is_as_large_as_the_project_made_it(self):
+        """The size asked before the merge is the candidate's doing only: a file the tip holds as the candidate does is
+        not measured, and a file of the project's own that is larger than a candidate's files may be is held to twice
+        what the project had where the candidate started."""
+        limits = {**self.w.load()[0]["limits"], "file_bytes": 2000}
+        self.w.upstream_commit("big.txt", "".join(f"line {i}\n" for i in range(1200)))  # (about 11 kB: larger than a candidate's file may be)
+        base = self.w.tip()
+        sh("git", "fetch", "--quiet", str(self.w.upstream), "main", cwd=self.alice.work)
+        sh("git", "checkout", "--quiet", "-B", "work", base, cwd=self.alice.work)
+        one_line = self.alice.write("big.txt", "".join(f"line {i}\n" for i in range(1200)).replace("line 7\n", "line seven\n")).commit("one line of it").push("one-line")
+        self.w.upstream_commit("big.txt", "".join(f"line {i}\n" for i in range(400)))  # (the project cuts it)
+        tip = self.w.tip()
+        sh("git", "fetch", "--quiet", str(self.w.upstream), "main", cwd=self.alice.work)
+        sh("git", "checkout", "--quiet", "-B", "same", tip, cwd=self.alice.work)
+        as_the_tip = self.alice.write("src/n.c", "int n;\n").commit("beside it").push("as-the-tip")
+        sh("git", "checkout", "--quiet", "-B", "grown", base, cwd=self.alice.work)
+        grown = self.alice.write("big.txt", "".join(f"line {i}\n" for i in range(4000))).commit("three times as large").push("grown")
+        sh("git", "fetch", "--quiet", "origin", cwd=self.w.harvest)
+        sh("git", "fetch", "--quiet", str(self.alice.bare), "+refs/heads/*:refs/remotes/alice/*", cwd=self.w.harvest)
+        for candidate, expected in ((one_line, None), (as_the_tip, None), (grown, "file_too_big")):
+            with self.subTest(candidate=candidate):
+                try:
+                    hive.merge_tree(self.w.harvest, tip, candidate, limits)
+                    refused = None
+                except hive.Refusal as refusal:
+                    refused = refusal.reason
+                self.assertEqual(refused, expected)
+        # A file the project itself made more than twice as large since: the candidate that holds it as the tip does
+        # (it took the project's own change) is not measured for it.
+        sh("git", "checkout", "--quiet", "-B", "took", base, cwd=self.alice.work)
+        self.w.upstream_commit("big.txt", "".join(f"row {i}\n" for i in range(4000)))
+        tip = self.w.tip()
+        took = self.alice.write("big.txt", "".join(f"row {i}\n" for i in range(4000))).commit("the project's own change, taken").push("took")
+        sh("git", "fetch", "--quiet", "origin", cwd=self.w.harvest)
+        sh("git", "fetch", "--quiet", str(self.alice.bare), "+refs/heads/*:refs/remotes/alice/*", cwd=self.w.harvest)
+        with self.assertRaises(hive.Refusal) as refusal:
+            hive.merge_tree(self.w.harvest, tip, grown, limits)
+        self.assertEqual(refusal.exception.reason, "file_too_big", "three times what the project had where it started, and not the tip's")
+        self.assertEqual(hive.merge_tree(self.w.harvest, tip, took, limits), hive.tree_of(self.w.harvest, tip))
 
     def test_what_the_fetches_of_one_run_leave_is_bounded(self):
         """Each fetch that ends well leaves one pack in the hive's clone. Once the fetches of a run have left more
@@ -6729,10 +6815,18 @@ class TestVolunteerSide(Volunteer):
         self.assertGreater(len(started), 60, "the five commands start git many times")
         self.assertEqual([what for what, how in started if how is not hive.bounded], [], "each of them under the bound")
         # Where the machine already allows git less, that is kept: a limit is lowered, never raised.
-        for allowed, given in ((1 << 30, 1 << 30), (hive.resource.RLIM_INFINITY, hive.GIT_DATA_BYTES), (8 << 30, hive.GIT_DATA_BYTES)):
-            with mock.patch.object(hive.resource, "getrlimit", return_value=(allowed, allowed)), mock.patch.object(hive.resource, "setrlimit") as set_to:
+        none, most, usual = hive.resource.RLIM_INFINITY, hive.GIT_DATA_BYTES, hive.GIT_STACK_BYTES
+        for data, stack, data_given, stack_given in (
+                ((1 << 30, 1 << 30), (none, none), (1 << 30, 1 << 30), (usual, none)),
+                ((none, none), (512 << 20, none), (most, most), (usual, none)),
+                ((8 << 30, 8 << 30), (usual, none), (most, most), (usual, none)),
+                ((1 << 30, none), (1 << 20, 4 << 20), (1 << 30, most), (1 << 20, 4 << 20)),  # (what is in force stays, though more is allowed)
+                ((1 << 30, 3 << 29), (none, 2 << 20), (1 << 30, 3 << 29), (2 << 20, 2 << 20))):
+            asked = lambda which, data=data, stack=stack: data if which == hive.resource.RLIMIT_DATA else stack  # noqa: E731
+            with mock.patch.object(hive.resource, "getrlimit", side_effect=asked), mock.patch.object(hive.resource, "setrlimit") as set_to:
                 hive.bounded()
-            self.assertEqual(set_to.call_args.args, (hive.resource.RLIMIT_DATA, (given, given)))
+            self.assertEqual([call.args for call in set_to.call_args_list],
+                             [(hive.resource.RLIMIT_DATA, data_given), (hive.resource.RLIMIT_STACK, stack_given)])
 
     def test_what_git_could_not_set_aside_is_never_written_over(self):
         """start forces its checkout, so that a file the project itself stores otherwise than its rules stops no one.

@@ -188,7 +188,10 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
             "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "advice.detachedHead=false", "-c", "core.quotePath=true",
-            "-c", "merge.renames=false", "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
+            "-c", "merge.renames=false", "-c", "pack.threads=1",
+            "-c", "i18n.commitEncoding=UTF-8")  # (a commit's id depends on the encoding its message declares)
+# (pack.threads: git packs and unpacks on one thread, so that reading several candidates together takes the memory that
+# reading the largest of them takes, and so that what a pack weighs does not depend on which thread came first.)
 # (gc.auto, maintenance.auto: no command of the tool's starts git's own housekeeping, which goes on in a session of its
 # own after the command has returned and rewrites the store under the next one.)
 # Settings and places git would take from the environment: never, on the hive's side (two steps must derive the same
@@ -269,6 +272,7 @@ def isolated_environment():
 VOLUNTEER_SIDE = False
 
 GIT_DATA_BYTES = 2 << 30  # the data memory one git of the tool's may take (measured: a clone of 58 MB needs less than a quarter of a GiB)
+GIT_STACK_BYTES = 8 << 20  # the stack of each thread of git's: the usual one (a larger one, counted for each thread, would use the bound up)
 
 
 def bounded():
@@ -278,10 +282,15 @@ def bounded():
     that leads back to itself): git would take them from the machine, and a run or a session with them. Beyond
     GIT_DATA_BYTES of data the kernel gives git no more, and git ends saying so: the command then goes on as after
     any git that failed. (The files git maps to read them are not counted: a large repository's packs do not stop
-    it. Where the machine already allows less, that is kept: a limit is lowered, never raised.)"""
-    allowed = resource.getrlimit(resource.RLIMIT_DATA)[1]
-    most = GIT_DATA_BYTES if allowed == resource.RLIM_INFINITY else min(allowed, GIT_DATA_BYTES)
-    resource.setrlimit(resource.RLIMIT_DATA, (most, most))
+    it. Where the machine already allows less, that is kept, for the limit in force and for the one above it: a
+    limit is lowered, never raised.)"""
+    def lowered(limit, most):
+        return most if limit == resource.RLIM_INFINITY else min(limit, most)
+
+    in_force, above = resource.getrlimit(resource.RLIMIT_DATA)
+    resource.setrlimit(resource.RLIMIT_DATA, (lowered(in_force, GIT_DATA_BYTES), lowered(above, GIT_DATA_BYTES)))
+    in_force, above = resource.getrlimit(resource.RLIMIT_STACK)
+    resource.setrlimit(resource.RLIMIT_STACK, (lowered(in_force, lowered(above, GIT_STACK_BYTES)), above))
 
 
 def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True, attributes=True):
@@ -904,12 +913,29 @@ def merge_tree(repo, tip, candidate, limits):
     # And no file larger than the project takes reaches git's merge, which reads whole, into memory, each file that
     # both sides changed: a candidate's history is weighed as git packs it, and a file of a few bytes there can be
     # one of gigabytes. Its size is asked of git (a few bytes read), for each file the candidate left changed.
-    most = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"])
-    for _, new_mode, _, new_sha, _ in changed:
-        if new_mode not in ("000000", TREE_MODE):
-            size = git(repo, "cat-file", "-s", need_sha(new_sha), check=False).stdout.strip()
-            if size.isdigit() and int(size) > most:  # (an entry git cannot size is another refusal's: check_structure)
-                raise Refusal("file_too_big")
+    # A file that the tip holds as the candidate does is not measured (the merge reads nothing of it), and a file of
+    # the project's own may be twice as large as the project had it where the candidate started: the project's own
+    # files are as large as the project made them.
+    most, files = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"]), [entry for entry in changed if entry[1] not in ("000000", TREE_MODE)]
+
+    def size_of(sha):
+        size = git(repo, "cat-file", "-s", need_sha(sha), check=False).stdout.strip()
+        return int(size) if size.isdigit() else None  # (an entry git cannot size is another refusal's: check_structure)
+
+    listed = git_raw(repo, "--literal-pathspecs", "ls-tree", "-z", tip, "--", *(path for _, _, _, _, path in files)) if files else None
+    if listed is not None and listed.returncode != 0:
+        raise HiveError("git ls-tree failed on the project's own tip")
+    on_the_tip = {}
+    for record in (listed.stdout.split(b"\0") if listed is not None else ()):
+        head, tab, name = record.partition(b"\t")
+        if tab and len(head.split()) == 3:
+            on_the_tip[name.decode("utf-8", errors="surrogateescape")] = head.split()[2].decode("ascii", errors="replace")
+    for old_mode, _, old_sha, new_sha, path in files:
+        if on_the_tip.get(path) == new_sha:
+            continue
+        size, before = size_of(new_sha), (size_of(old_sha) if old_mode not in ("000000", TREE_MODE) else None)
+        if size is not None and size > max(most, 2 * (before or 0)):
+            raise Refusal("file_too_big")
     merged = git(repo, "merge-tree", "--write-tree", "--no-messages", tip, candidate, check=False, attributes=False)
     tree = merged.stdout.split("\n", 1)[0].strip()
     if merged.returncode == 1:
@@ -1667,7 +1693,11 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
         # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
         # without being carried. A history that is too long is not packed to be weighed: it is refused already.
-        weight = 0 if candidate["long"] else packed_weight(repo, candidate["sha"], tip, config["limits"]["history_bytes"])
+        # Nor is one carried whose own commits hold an object larger than the project takes (oversized): a history is
+        # weighed as git packs it, and what it packs to says nothing of what its objects are once read. The later
+        # steps read the candidates together: each of them must be one that could be read alone.
+        candidate["large"] = not candidate["long"] and oversized(repo, candidate["sha"], tip, config["limits"])
+        weight = 0 if candidate["long"] or candidate["large"] else packed_weight(repo, candidate["sha"], tip, config["limits"]["history_bytes"])
         candidate["heavy"] = weight > config["limits"]["history_bytes"]
         # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for
         # the next run, where the oldest deal is first again (they are not weighed in this one). The first one is
@@ -1747,6 +1777,51 @@ PACK_SECONDS = 60  # how long git may take to pack one candidate's commits befor
 WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those it has not reached wait for the next run
 
 
+HISTORY_OBJECTS = 200_000  # how many objects a candidate's own commits may add, for the plan to carry them
+HISTORY_OBJECT_BYTES = 16 << 20  # how large a folder or a commit among them may be (a file: limits.file_bytes)
+
+
+def oversized(repo, sha, tip, limits):
+    """True if the candidate's own commits (those the project's tip does not hold) add a file larger than the
+    project takes from a candidate (limits.file_bytes), a folder or a commit larger than HISTORY_OBJECT_BYTES, or
+    more than HISTORY_OBJECTS objects; or if git cannot say so within PACK_SECONDS. The sizes are asked of git,
+    which reads a few bytes of each object for them: no object is read whole. Such a candidate is not carried to the
+    other steps and is refused as too heavy: a few bytes of a pack can be an object of gigabytes, and the steps that
+    read the candidates together would need, to read them, what no single fetch needed."""
+    command = ["git", *GIT_BASE, "-C", str(repo)]
+    try:
+        lister = subprocess.Popen([*command, "rev-list", "--objects", "--no-object-names", need_sha(sha), f"^{need_sha(tip)}"],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(),
+                                  preexec_fn=bounded)
+    except OSError:
+        return True
+    try:
+        sizer = subprocess.Popen([*command, "cat-file", "--batch-check=%(objecttype) %(objectsize)"], stdin=lister.stdout,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(), preexec_fn=bounded)
+    except OSError:
+        lister.kill()
+        lister.wait()
+        return True
+    lister.stdout.close()
+    alarm = threading.Timer(PACK_SECONDS, lambda: (lister.kill(), sizer.kill()))
+    alarm.start()
+    most, seen, large = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"]), 0, False
+    try:
+        for line in sizer.stdout:
+            kind, _, size = line.decode("ascii", errors="replace").strip().partition(" ")
+            seen += 1
+            if not size.isdigit() or kind not in ("blob", "tree", "commit", "tag") or seen > HISTORY_OBJECTS \
+                    or int(size) > (most if kind == "blob" else HISTORY_OBJECT_BYTES):
+                large = True
+                break
+        if large:
+            lister.kill(), sizer.kill()
+        sizer.stdout.close()
+        return (sizer.wait() != 0) | (lister.wait() != 0) | large
+    finally:
+        alarm.cancel()
+
+
 def packed_weight(repo, sha, tip, most):
     """What a candidate's own commits weigh in the file the plan hands over: the size of the pack git writes for them
     on the project's tip, with the very options the bundle uses, so that only the project's own objects serve as
@@ -1784,7 +1859,7 @@ def packed_weight(repo, sha, tip, most):
 
 def carried(plan_):
     """The plan's candidates whose commits are carried to the other steps: not those refused for their history alone."""
-    return [candidate for candidate in plan_["queue"] if not (candidate["long"] or candidate["heavy"])]
+    return [candidate for candidate in plan_["queue"] if not (candidate["long"] or candidate["heavy"] or candidate["large"])]
 
 
 def write_bundle(repo, plan_, path):
@@ -1839,7 +1914,8 @@ def read_plan(plan_, config):
     def candidate_ok(c):
         return (member_ok(c) and is_sha(c.get("sha")) and isinstance(c.get("login"), str) and LOGIN.match(c["login"])
                 and (c.get("model") is None or c["model"] in config["models"]) and stamp(c.get("deal"))
-                and type(c.get("declined")) is bool and type(c.get("long")) is bool and type(c.get("heavy")) is bool)
+                and type(c.get("declined")) is bool and type(c.get("long")) is bool and type(c.get("heavy")) is bool
+                and type(c.get("large")) is bool)
 
     def deal_ok(c):
         return (member_ok(c) and isinstance(c.get("member"), str) and bool(LOGIN.match(c["member"]))
@@ -1985,6 +2061,8 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
                 raise Refusal("too_many_commits", {"commits": config["limits"]["commits"] + 1})
             if entry["heavy"]:  # nor these, which the plan weighed
                 raise Refusal("history_too_big", {"bytes": config["limits"]["history_bytes"] + 1})
+            if entry["large"]:  # nor these: one of its own commits holds a file larger than the project takes
+                raise Refusal("file_too_big")
             if halt or broken or judged >= budget:
                 continue  # not tried in this run; oldest deal first: it is first at the next
             tree, figures, commit = derive(repo, tip, entry, task, config, instant)
