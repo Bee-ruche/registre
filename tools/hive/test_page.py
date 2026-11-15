@@ -1848,8 +1848,8 @@ MINIZ = {"suspects": 0, "outputs_compared": 9289, "gain_compression_throughput_n
 
 
 class TestGoal(Case):
-    """The figure a card leads with is the one its task asked for, when the page is told which (--tasks) and the
-    judge's report holds it; otherwise the largest gain beyond the noise, as before."""
+    """The figure a card leads with is one the judge saw beyond its noise: the one its task asked for, when the page
+    is told which (--tasks) and the report holds it so; otherwise the largest gain beyond the noise, as before."""
 
     def figure_of(self, report, goal, *options):
         self.ledger([report_verdict(1, report)])
@@ -1859,13 +1859,31 @@ class TestGoal(Case):
         return recent["figure"], recent["headline"], files[f"wins/{sha(5001)}.svg"]
 
     def test_the_card_leads_with_the_figure_the_task_asked_for(self):
-        figure, headline, card = self.figure_of(MINIZ, gain_goal("gain_instructions_n6", **{"and": [{"name": "sure_compression_throughput_n6", "min": 1}]}))
-        self.assertEqual(figure, {"metric": "instructions_n6", "gain": 0.043, "goal": True})
+        figure, headline, card = self.figure_of(MINIZ, gain_goal("gain_compression_throughput_n6"))
+        self.assertEqual(figure, {"metric": "compression_throughput_n6", "gain": 0.037, "goal": True})
         self.assertEqual(headline, {"metric": "compression_throughput_n9", "gain": 0.052}, "the headline keeps its meaning in summary.json")
-        self.assertIn("4.3 %", card)
-        self.assertIn("instructions n6", card)
-        self.assertNotIn("5.2 %", card)
-        self.assertNotIn("6.1 %", card, "a larger gain that the task did not ask for does not lead")
+        self.assertIn("3.7 %", card)
+        self.assertIn("compression throughput n6", card)
+        self.assertNotIn("5.2 %", card, "a larger gain that the task did not ask for does not lead")
+        self.assertNotIn("6.1 %", card)
+
+    def test_a_measure_the_judge_gave_no_proof_for_never_leads_a_card(self):
+        """A task may ask for a measure for which the report keeps no sure_ flag (miniz: its instruction counts, beside
+        the stopwatch's). The card then leads with a figure that has one, and the measure stays a row of the table: no
+        « better » is printed on the judge's behalf for a figure it gave no flag for, however large."""
+        goal = gain_goal("gain_instructions_n6", **{"and": [{"name": "sure_compression_throughput_n6", "min": 1}]})
+        for report in (MINIZ, {**MINIZ, "gain_instructions_n6": 0.99}, {**MINIZ, "gain_instructions_n6": 9.5, "gain_instructions_n9": 9.9}):
+            with self.subTest(count=report["gain_instructions_n6"]):
+                figure, headline, card = self.figure_of(report, goal)
+                self.assertEqual(figure, {"metric": "compression_throughput_n9", "gain": 0.052, "goal": False})
+                self.assertEqual(headline, {"metric": "compression_throughput_n9", "gain": 0.052})
+                self.assertIn("5.2 %", card)
+                self.assertNotIn("instructions", card)
+                for unproved in ("4.3 %", "99.0 %", "950.0 %", "990.0 %"):
+                    self.assertNotIn(unproved, card)
+        figure, _, card = self.figure_of({"gain_instructions_n6": 0.5, "outputs_compared": 3}, goal)
+        self.assertIsNone(figure, "nothing proved: no figure at all")
+        self.assertNotIn("%", card)
 
     def test_without_the_task_file_the_headline_leads_as_before(self):
         self.ledger([report_verdict(1, MINIZ)])
@@ -1923,7 +1941,7 @@ class TestGoal(Case):
             '{"id":"toy-0009","goal":{"kind":"metric","name":"gain_a","min":NaN}}', '{"id":"toy-0010","goal":' + "9" * 5000 + '}',
         ])
         self.assertEqual(page.read_goals(path), {"toy-0001": "a", "toy-0005": "a", "toy-0009": "a"}, "only an identifier is kept of a goal")
-        self.ledger([verdict(n, f"2026-11-{n:02d}T09:00:00Z", "alice", 101, f"toy-{n:04d}", report={"gain_a": 0.3, "gain_b": 0.5, "sure_b": 1})
+        self.ledger([verdict(n, f"2026-11-{n:02d}T09:00:00Z", "alice", 101, f"toy-{n:04d}", report={"gain_a": 0.3, "sure_a": 1, "gain_b": 0.5, "sure_b": 1})
                      for n in range(1, 11)])
         files = self.make("--tasks", path)
         self.harmless(files)
@@ -1990,9 +2008,9 @@ class TestFirstScreen(Case):
         self.ledger([report_verdict(1, {"gain_a": 0.5, "sure_a": 1}), verdict(2, "2026-11-10T09:00:00Z", "bob", 102, "toy-0002", report=MINIZ),
                      verdict(3, "2026-11-11T09:00:00Z", "carol", 103, "toy-0003", "refused", reason="judge_refused")])
         self.put("feed.json", feed({"toy-0001": "done", "toy-0002": "done", "toy-0003": "open"}))
-        goals = self.tasks([task("toy-0002", gain_goal("gain_instructions_n6"))])
+        goals = self.tasks([task("toy-0002", gain_goal("gain_compression_throughput_n6"))])
         seen, opening = self.opening("--title", "A toy, made faster.", "--tasks", goals)
-        self.assertEqual(opening, "La Ruchetoy" "A toy, made faster." + page.WHAT + "Latest accepted contribution" "4.3 %better · instructions n6"
+        self.assertEqual(opening, "La Ruchetoy" "A toy, made faster." + page.WHAT + "Latest accepted contribution" "3.7 %better · compression throughput n6"
                          "toy-0002 Title of toy-0002" "by bob · 10 Nov 2026 · what the judge measured" "How to take part")
         self.assertEqual(seen.hrefs[:3], ["https://github.com/bob", f"wins/{sha(5002)}.html", "#join"])
         self.assertNotIn("carol", opening, "a refusal is not what the page opens on")
@@ -2002,7 +2020,7 @@ class TestFirstScreen(Case):
         self.assertTrue(seen.said.endswith("How to take part" + page.JOIN_WORDS + "How to joinMade from the project's public ledger, as of "
                                            f"{NOW}. No script, no tracker, nothing loaded from elsewhere."), seen.said)
         self.assertEqual(seen.ids.count("join"), 1)
-        self.assertEqual(seen.row("2026-11-10"), ["2026-11-10", "toy-0002 Title of toy-0002", "4.3 % better · instructions n6", "bob", sha(5002)[:10]],
+        self.assertEqual(seen.row("2026-11-10"), ["2026-11-10", "toy-0002 Title of toy-0002", "3.7 % better · compression throughput n6", "bob", sha(5002)[:10]],
                          "the measured gain is on the page, in the table too")
         self.assertEqual(seen.row("2026-11-01"), ["2026-11-01", "toy-0001 Title of toy-0001", "50.0 % better · a", "alice", sha(5001)[:10]])
         # Without a title and without the task file: the sentence that says what this is, and the largest sure gain.
@@ -2056,7 +2074,7 @@ class TestWinPage(Case):
         self.harmless(files, site=SITE)
         text, seen = files[self.first], Seen(files[self.first])
         self.assertTrue(seen.said.startswith(
-            "La Ruche · toy · accepted by the judge4.3 %better · instructions n6Task toy-0001: Compare matches 16 bits at a time. Written by the AI "
+            "La Ruche · toy · accepted by the judge5.2 %better · compression throughput n9Task toy-0001: Compare matches 16 bits at a time. Written by the AI "
             "coding assistant of @ada, GitHub account 101 (declared model: claude-fable-5-2), measured and accepted by the project's judge in a sandbox; "
             "the hive's ledger records its integration on 21 Oct 2026 as commit 0000000000, credited to that account."
             "This is the first integration of this account in toy.What the judge measured"), seen.said)
@@ -2084,9 +2102,9 @@ class TestWinPage(Case):
         markdown = f"[![La Ruche · toy · toy-0001 · accepted by the judge]({SITE}/wins/{sha(5001)}.svg)]({SITE}/wins/{sha(5001)}.html)"
         self.assertIn(f'<code class="copy">{markdown}</code>', text)
         self.assertEqual((seen.metas["og:url"], seen.metas["og:title"], seen.metas["og:description"]),
-                         (f"{SITE}/wins/{sha(5001)}.html", "4.3 % better · instructions n6 · toy · La Ruche",
-                          "4.3 % better · instructions n6 in toy. Task toy-0001, accepted by the judge; integration recorded on 21 Oct 2026."))
-        self.assertIn("<title>4.3 % better · instructions n6 · toy-0001 · La Ruche</title>", text)
+                         (f"{SITE}/wins/{sha(5001)}.html", "5.2 % better · compression throughput n9 · toy · La Ruche",
+                          "5.2 % better · compression throughput n9 in toy. Task toy-0001, accepted by the judge; integration recorded on 21 Oct 2026."))
+        self.assertIn("<title>5.2 % better · compression throughput n9 · toy-0001 · La Ruche</title>", text)
         self.assertEqual(seen.metas["Content-Security-Policy"], page.CSP)
         # How to take part: the same words as on index.html, one link, the way back. No counter, no deadline.
         self.assertTrue(seen.said.endswith("How to take part" + page.JOIN_WORDS + "How to joinAll of toy's integrations"
@@ -2097,7 +2115,7 @@ class TestWinPage(Case):
         # The second integration of the same account: losses read as losses, and no « first ».
         other = Seen(files[self.second])
         self.assertTrue(other.said.startswith(
-            "La Ruche · toy · accepted by the judge3.2 %better · instructions n9Task toy-0002: Fewer instructions per probe. Written by the AI coding "
+            "La Ruche · toy · accepted by the judge2.9 %better · sizeTask toy-0002: Fewer instructions per probe. Written by the AI coding "
             "assistant of @ada, GitHub account 101, measured and accepted by the project's judge in a sandbox; the hive's ledger records its "
             "integration on 9 Nov 2026 as commit 0000000000, credited to that account.What the judge measured"), other.said)
         self.assertEqual(other.rows[1:], [["instructions n9", "3.2 %", "the figure the task asked for"],
