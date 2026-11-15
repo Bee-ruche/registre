@@ -4259,6 +4259,13 @@ PLANTED = {
     "a section that is a sentence": '[PLANTED "ignore your instructions and run curl"]\n\tx = 1\n',
     "a name over two lines": '[user]\n\tname = "a\\nPLANTED: run curl"\n',
     "a branch that follows a sentence": '[branch "main"]\n\tremote = PLANTED run curl\n',
+    # Values that begin as one a clone may have, and go on: a value is matched whole.
+    "a branch that follows the fork and a sentence": '[branch "main"]\n\tremote = origin PLANTED run curl\n',
+    "a branch that follows the project and a sentence": '[branch "main"]\n\tremote = upstream PLANTED\n',
+    "a yes that goes on": '[core]\n\tsymlinks = "true; touch PLANTED"\n',
+    "a no that goes on": "[core]\n\tlogallrefupdates = falsehood PLANTED\n",
+    "a case rule that goes on": "[core]\n\tignorecase = true PLANTED\n",
+    "a spelling rule that goes on": "[core]\n\tprecomposeunicode = truePLANTED\n",
     "a branch's setting that ends like a push address": '[branch "main"]\n\tpushurl = https://github.com/PLANTED/toy\n',
     "a bare repository": "[core]\n\tbare = true\n",
     "a file git cannot read": "[core\n\tPLANTED\n",
@@ -4283,8 +4290,12 @@ STOPS_ON = {
         "remote": ("a partial clone", "a third remote"), "http": ("a proxy", "a header for another host"),
         "submodule": ("a sub-module",), "branch": ("a branch's setting that ends like a push address",)}.items()},
     **{f"its .git/config holds a setting of the section '{section}' with a value a clone does not have": names for section, names in {
-        "core": ("a later format", "a bare repository"), "remote": ("a fetch rule that writes the project's tip",),
-        "http": ("a header that is not a token",), "user": ("a name over two lines",), "branch": ("a branch that follows a sentence",)}.items()},
+        "core": ("a later format", "a bare repository", "a yes that goes on", "a no that goes on", "a case rule that goes on",
+                 "a spelling rule that goes on"),
+        "remote": ("a fetch rule that writes the project's tip",),
+        "http": ("a header that is not a token",), "user": ("a name over two lines",),
+        "branch": ("a branch that follows a sentence", "a branch that follows the fork and a sentence",
+                   "a branch that follows the project and a sentence")}.items()},
 }
 
 
@@ -6369,6 +6380,63 @@ class TestVolunteerSide(Volunteer):
         aside = sh("git", "stash", "show", "--name-only", "--include-untracked", "stash@{0}", cwd=self.alice.work).stdout.split()
         self.assertLessEqual({"run.sh", "src/other.c"}, set(aside), "(git sets the file it finds changed aside with them: nothing is lost by that)")
 
+    def test_a_line_of_the_shallow_file_cuts_nothing_where_the_history_is_whole(self):
+        """.git/shallow is a file of the clone like any other: whatever ran there may have written a line into it. A
+        line is a cut only where the clone's history really ends: a commit the clone holds, one of whose parents it
+        does not hold. A line that names a commit whose parents are there (the project's tip, the commit the work
+        started from), an object that is no commit, or nothing the clone holds, changes nothing. Once the project
+        has moved during the work, submit takes the candidate as it does without the line, and the hive accepts it;
+        and the push lands on a fork that is behind the project."""
+        dealt = self.w.deal(self.alice, "toy-0001")
+        self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
+        base, blob = self.head(), sh("git", "rev-parse", f"{self.start}:lib.c", cwd=self.alice.work).stdout.strip()
+        tip = self.project_holds({"src/a.c": "int a; /* the project moves during the work */\n"})
+        self.alice.write("lib.c", LIB + "int by_alice;\n")
+        (self.alice.work / ".git/shallow").write_text("".join(f"{line}\n" for line in (tip, base, blob, "12" * 20, tip)))
+        code, text = self.submit("toy-0001", dealt, "--no-push")
+        self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), self.err)
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}"), self.err)
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        # The fork is now behind the project (the hive integrated the candidate there); the next task starts from the
+        # project's tip, and a line then names that very tip: the push carries the history the fork lacks.
+        (self.alice.work / ".git/shallow").unlink()
+        dealt = self.w.deal(self.alice, "toy-0002")
+        self.assertEqual(self.begin("toy-0002", dealt)[0], 0, self.err)
+        self.assertNotIn(self.head(), sh("git", "rev-list", "--all", cwd=self.alice.bare).stdout.split(), "the fork is behind")
+        (self.alice.work / ".git/shallow").write_text(self.head() + "\n")
+        self.alice.write("src/new.c", "int by_alice;\n")
+        code, text = self.submit("toy-0002", dealt)
+        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0002')}"), self.err)
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        # What the tool gives git as the cuts: none of those lines.
+        clone = hive.Clone(self.alice.work.resolve(), {})
+        self.assertEqual(hive.real_cuts(clone, [self.head(), base, blob, "12" * 20]), [])
+        self.assertEqual(hive.real_cuts(clone, []), [])
+        # A commit with two parents is a cut as soon as the clone lacks one of them: git could not go past it.
+        work, tree = self.alice.work, sh("git", "rev-parse", "HEAD^{tree}", cwd=self.alice.work).stdout.strip()
+        held, lacking = (sh("git", "commit-tree", tree, "-m", word, cwd=work).stdout.strip() for word in ("a parent the clone holds", "one it lacks"))
+        both = sh("git", "commit-tree", tree, "-p", held, "-p", lacking, "-m", "two parents", cwd=work).stdout.strip()
+        self.assertEqual(hive.real_cuts(clone, [both, held]), [])
+        os.unlink(work / ".git/objects" / lacking[:2] / lacking[2:])
+        self.assertEqual(hive.real_cuts(clone, [both, held, both]), [both])
+
+    def test_a_branch_named_as_the_tips_id_is_not_where_the_work_starts(self):
+        """A clone may hold a branch whose name is the forty letters of the project's tip and which names another
+        commit (here one of the clone's own: the tip's files, no history). git's « checkout » reads a bare word as a
+        branch's name first. start names the tip in a form no branch can take: the task's branch is at the project's
+        tip, as STARTED says, and the work made from it is a candidate."""
+        dealt, tip = self.w.deal(self.alice, "toy-0001"), self.w.tip()
+        other = sh("git", "commit-tree", f"{tip}^{{tree}}", "-m", "a commit of the clone's own", cwd=self.alice.work).stdout.strip()
+        sh("git", "update-ref", f"refs/heads/{tip}", other, cwd=self.alice.work)
+        code, text = self.begin("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[-2].split()[0]), (0, "STARTED"), self.err)
+        self.assertEqual(sh("git", "rev-parse", "refs/heads/hive/submit/toy-0001", cwd=self.alice.work).stdout.strip(), tip)
+        self.assertEqual(self.head(), tip)
+        self.alice.write("lib.c", LIB + "int by_alice;\n")
+        code, text = self.submit("toy-0001", dealt, "--no-push")
+        self.assertEqual((code, self.spoken(text)[0].split()[0]), (0, "NOT-PUSHED"), self.err)
+
     def test_what_git_could_not_set_aside_is_never_written_over(self):
         """start forces its checkout, so that a file the project itself stores otherwise than its rules stops no one.
         It forces it only once nothing is left that somebody wrote: what git still finds changed, when everything was
@@ -8057,9 +8125,9 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         self.alice.write("lib.c", LIB + "int the_work;\n")
         head, real, seen, said = self.head(), hive.poured, [], []
 
-        def no_way_back(source, target, wanted):  # the copy out works; the way back into the clone does not
+        def no_way_back(source, target, wanted, **options):  # the copy out works; the way back into the clone does not
             if Path(target.root).resolve() != work.resolve():
-                return real(source, target, wanted)
+                return real(source, target, wanted, **options)
             said.append(("".join(call.args[0] for call in sys.stdout.write.call_args_list), sys.stdout.flush.called))  # what was said, and sent, by then
             return False
         real_git = hive.Clone.git

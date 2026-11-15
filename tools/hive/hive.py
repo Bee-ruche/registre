@@ -2588,7 +2588,8 @@ _BRANCH, _YES_NO = r"[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", r"true|false"
 # name a program (filter.*, diff.*, merge.*, core.fsmonitor, core.sshCommand, core.hooksPath, credential.helper,
 # gpg.program, alias.*…), send a push elsewhere (remote.*.pushurl, url.*.insteadOf), turn other files into settings
 # (include.*, extensions.*) or fetch behind the worker's back (a partial clone, a sub-module).
-PLAIN_CONFIG = tuple((re.compile(key + r"\Z"), re.compile(value + r"\Z")) for key, value in (
+# (A name and a value are matched whole: where a pattern is a choice of words, each word is tied to the end.)
+PLAIN_CONFIG = tuple((re.compile(rf"(?:{key})\Z"), re.compile(rf"(?:{value})\Z")) for key, value in (
     # What « git clone » writes on every system; format 1 would turn « extensions.* » on.
     (r"core\.repositoryformatversion", r"0"),
     (r"core\.filemode", _YES_NO),
@@ -3707,16 +3708,18 @@ COPY_SECONDS = 900  # how long a copy of commits and their history, from a store
 SHALLOW_BYTES = 1 << 20  # the most of .git/shallow that is read: a clone cut short names a handful of commits there
 
 
-def poured(source, target, wanted):
+def poured(source, target, wanted, cuts=None):
     """Carries objects from one store to another: git packs them in `source` (the bytes as they lie there), and in
     `target` git unpacks what it receives, object by object: it works out what each one holds, hashes that, and
     writes it anew, as a file of its own, under the id its content gives. Nothing arrives as it lay: neither an
     object under another's id, nor the packed form of an object. `wanted`: the lines that say what to pack (commit
-    ids, « ^id » for what is left out). True if both ends ended well."""
+    ids, « ^id » for what is left out). cuts: the file git reads, in `source`, as the list of the commits its
+    history is cut at, in place of the source's own (.git/shallow). True if both ends ended well."""
     packing = receiving = None
     try:
         packing = subprocess.Popen(source.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, env=source.environment(), cwd=source.root)
+                                   stderr=subprocess.DEVNULL, env=source.environment(env=None if cuts is None else {"GIT_SHALLOW_FILE": cuts}),
+                                   cwd=source.root)
         receiving = subprocess.Popen(target.command("unpack-objects", "-q"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL, env=target.environment(), cwd=target.root)
         packing.stdout.close()
@@ -3734,6 +3737,28 @@ def poured(source, target, wanted):
                 process.wait()
 
 
+def real_cuts(clone, lines):
+    """Among the lines of the clone's .git/shallow (commit ids), those where its history really ends: a commit the
+    clone holds, read as bytes this tool hashes, one of whose parents it does not hold. That file is a file of .git
+    like any other: whatever ran in the clone may have written a line into it. A line that names a commit whose
+    parents are all there would cut, in the copy, a history that is whole: a candidate that starts from the
+    project's history would then seem to share none with it, or could not be pushed to a fork that is behind. Such
+    a line is no cut, nor is one that names no commit of the clone. A real cut is kept: beyond it the clone holds
+    nothing to copy."""
+    cuts = []
+    if not lines:
+        return cuts
+    with Objects(clone) as objects:
+        for line in dict.fromkeys(lines):
+            try:
+                raw = objects.read("commit", line)
+                if raw is not None and any(objects.read("commit", parent) is None for parent in commit_header(raw)[1]):
+                    cuts.append(line)
+            except NotPlain:  # (no commit, or not the bytes its name says: no cut; what the work rests on is checked as it is copied)
+                pass
+    return cuts
+
+
 def copied_out(clone, folder, *commits):
     """A store of this tool's own (own_store) that holds these commits and all they reach, copied out of the clone:
     the store in which a candidate is made, checked, and from which it is pushed. A clone's store is whatever ran in
@@ -3742,14 +3767,19 @@ def copied_out(clone, folder, *commits):
     it is pushed from. So nothing of a candidate is read by git in the clone's store. The project's commits are
     carried over (poured), and everything they reach is then asked for, there: what stood in the clone under the id
     of another object is here under its own id, reached by nothing; and the object whose place it took is missing,
-    which stops the command. Where the clone's history was cut short (.git/shallow), the copy's is cut at the same
-    commits, those of them that the copy holds."""
+    which stops the command. Where the clone's history really ends (real_cuts), the copy's is cut at the same
+    commits, those of them that the copy holds; no other line of the clone's .git/shallow reaches git, at either
+    end of the copy."""
     store = own_store(clone, folder)
     cut = first_bytes(clone.git_dir / "shallow", SHALLOW_BYTES + 1)
-    if len(cut) > SHALLOW_BYTES or not poured(clone, store, [need_sha(commit) for commit in commits]):
+    if len(cut) > SHALLOW_BYTES:
         raise NotPlain(NOT_COPIED)
-    # The cuts of the clone's history, as far as they name commits this copy holds: no other line of that file goes on.
-    named = [line for line in cut.decode("ascii", errors="replace").split("\n") if is_sha(line)]
+    named = real_cuts(clone, [line for line in cut.decode("ascii", errors="replace").split("\n") if is_sha(line)])
+    cuts = os.path.join(folder, ".git", "cuts-of-the-clone")
+    with open(cuts, "w", encoding="ascii") as f:
+        f.write("".join(f"{line}\n" for line in named))
+    if not poured(clone, store, [need_sha(commit) for commit in commits], cuts=cuts):
+        raise NotPlain(NOT_COPIED)
     if named:
         held = store.git("cat-file", "--batch-check", stdin="".join(f"{line}\n" for line in named), check=False).stdout.split("\n")
         (store.git_dir / "shallow").write_text("".join(f"{line}\n" for line, said in zip(named, held) if said.split()[1:2] == ["commit"]))
@@ -4409,7 +4439,9 @@ def cmd_start(args):
             pass
         if untracked(clone) or left:
             raise HiveError("the work tree still holds files an earlier run left, which git could not set aside or remove: tell the user")
-        clone.git("checkout", "--quiet", "--force", "-l", "-B", branch, tip, env=who)
+        # (The tip is named in a form no branch can take: « checkout » reads a bare word as a branch's name before it
+        # reads it as a commit's id, and a clone may hold a branch whose name is those forty letters.)
+        clone.git("checkout", "--quiet", "--force", "-l", "-B", branch, f"{need_sha(tip)}^{{commit}}", env=who)
         # git writes a file again only if the index says it changed, and the index is a file of .git like any other: it
         # may say of a file « do not look », or hold the size and the date of bytes an earlier run wrote. So the index is
         # made anew from the tip, and every file of the tip is written out again, under the tip's own rules.
