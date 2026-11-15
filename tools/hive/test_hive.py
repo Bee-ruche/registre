@@ -3284,8 +3284,12 @@ class TestDealing(Base):
         self.bob.write("notes.txt", "x\n").commit("Hive-Action: ready\nHive-Member: bob\n" + "padding\n" * 40)
         long_one = sh("git", "rev-parse", "HEAD", cwd=self.bob.work).stdout.strip()
         sh("git", "push", "--quiet", "origin", f"{long_one}:refs/heads/long", cwd=self.bob.work)
+        sh("git", "tag", "-a", "-m", "a tag", "named", long_one, cwd=self.bob.work)
+        tag = sh("git", "rev-parse", "named", cwd=self.bob.work).stdout.strip()
+        self.assertNotEqual(tag, long_one)
         with mock.patch.object(hive, "MESSAGE_BYTES", 300):
             self.assertIsNone(hive.commit_message(self.bob.work, long_one))
+            self.assertIsNone(hive.commit_message(self.bob.work, tag), "the size asked is the commit's own, whatever object names it")
             self.assertIsInstance(hive.commit_message(self.alice.bare, ask), str)
             made = self.w.plan()
         self.assertEqual([deal["member"] for deal in made["deals"]], ["alice"], "the long commit is no ask, whatever its lines say")
@@ -7658,6 +7662,19 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                 self.assertEqual((code, self.spoken(text)[0], fork_holds_payload()), (0, f"PUSHED {candidate}", False), self.err)
                 self.assertEqual(sh("git", "show", f"{candidate}:{path}", cwd=self.alice.bare).stdout, old)
                 self.assertEqual(sh("git", "fsck", "--no-dangling", cwd=self.alice.bare, check=False).returncode, 0)
+                # In the copy a candidate is pushed from, git wrote each object anew, as a file of its own: none is there
+                # as it lay in the clone, in a pack or otherwise.
+                with tempfile.TemporaryDirectory() as folder:
+                    here = os.getcwd()
+                    os.chdir(work)
+                    try:
+                        with mock.patch.object(hive, "LOCAL_REMOTES", True):
+                            store = hive.copied_out(hive.plain_clone(), folder, candidate)
+                    finally:
+                        os.chdir(here)
+                    self.assertEqual((sorted((store.git_dir / "objects/pack").glob("*")), sh("git", "cat-file", "-t", candidate, cwd=folder).stdout.strip()),
+                                     ([], "commit"))
+                    self.assertGreater(len(sh("git", "count-objects", cwd=folder).stdout.split()[0]), 0)
                 sh("git", "push", "--quiet", str(self.alice.bare), ":refs/heads/hive/submit/toy-0002", cwd=work)
         # A clone cut short (a session's checkout): its copy is cut at the same commits, and the candidate is pushed.
         zed = self.w.fork("zed", 107)
@@ -7672,6 +7689,18 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         (zed.work / "lib.c").write_text(LIB + "int by_zed;\n")
         code, text = self.run_cli("submit", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)
         self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001', zed)}"), self.err)
+        cuts = (zed.work / ".git/shallow").read_text()
+        with tempfile.TemporaryDirectory() as folder:  # (of the list of cuts, only the commits the copy holds go on)
+            (zed.work / ".git/shallow").write_text(cuts + "12" * 20 + "\n")
+            here = os.getcwd()
+            os.chdir(zed.work)
+            try:
+                with mock.patch.object(hive, "LOCAL_REMOTES", True):
+                    store = hive.copied_out(hive.plain_clone(), folder, self.fork_branch("hive/submit/toy-0001", zed))
+            finally:
+                os.chdir(here)
+                (zed.work / ".git/shallow").write_text(cuts)
+            self.assertEqual((store.git_dir / "shallow").read_text(), cuts)
         (zed.work / "lib.c").write_text(LIB + "int by_zed_again;\n")
         with mock.patch.object(hive, "SHALLOW_BYTES", 10):  # (a list of cuts longer than this tool reads is not copied in part)
             self.assertEqual((self.run_cli("submit", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)[0], self.err),

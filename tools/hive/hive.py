@@ -834,10 +834,11 @@ def commit_message(repo, sha):
     pushed, and a message of any length packs to almost nothing: what the hive reads of it, and holds in memory, does
     not grow with what the fork sends. The commit's size is asked first (git answers from the object's first bytes,
     without unpacking it); only one that fits is read."""
-    size = git(repo, "cat-file", "-s", need_sha(sha)).stdout.strip()
+    commit = f"{need_sha(sha)}^{{commit}}"  # (the commit itself: its size is the one asked, whatever the id names)
+    size = git(repo, "cat-file", "-s", commit).stdout.strip()
     if not size.isdigit() or int(size) > MESSAGE_BYTES:
         return None
-    raw = git(repo, "cat-file", "commit", need_sha(sha)).stdout
+    raw = git(repo, "cat-file", "commit", commit).stdout
     return raw.split("\n\n", 1)[1] if "\n\n" in raw else ""
 
 
@@ -3672,22 +3673,22 @@ def copied_out(clone, folder, commit):
     clone left; a pack there may hold any bytes under such an object's id, and the fork would keep them.
 
     So the candidate is not pushed from the clone. git packs it there (the bytes as they lie), and in the store of
-    this tool's own git unpacks what it receives: it hashes each object again and files it under the id its bytes
-    give. Then everything the commit reaches is asked for, there: what stood in the clone under the id of another
-    object is here under its own id, reached by nothing, and no push carries it; and the object whose place it took
-    is missing, which stops the command. Where the clone's history was cut short (.git/shallow), the copy's is cut at
-    the same commits, as a fetch would leave it."""
+    this tool's own git unpacks what it receives, object by object: it works out what each one holds, hashes that,
+    and writes it anew, as a file of its own, under the id its content gives. Nothing is kept as it lay in the
+    clone, neither an object under another's id nor the packed form of an object: what a push from here sends is
+    what git itself wrote here. Then everything the commit reaches is asked for, there: what stood in the clone
+    under the id of another object is here under its own id, reached by nothing, and no push carries it; and the
+    object whose place it took is missing, which stops the command. Where the clone's history was cut short
+    (.git/shallow), the copy's is cut at the same commits, those of them that the copy holds."""
     store = own_store(clone, folder)
     cut = first_bytes(clone.git_dir / "shallow", SHALLOW_BYTES + 1)
     if len(cut) > SHALLOW_BYTES:
         raise NotPlain(NOT_COPIED)
-    if cut:
-        (store.git_dir / "shallow").write_bytes(cut)
     packing = receiving = None
     try:
         packing = subprocess.Popen(clone.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root)
-        receiving = subprocess.Popen(store.command("index-pack", "--stdin"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
+        receiving = subprocess.Popen(store.command("unpack-objects", "-q"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL, env=store.environment(), cwd=store.root)
         packing.stdout.close()
         packing.stdin.write(f"{need_sha(commit)}\n".encode())
@@ -3702,7 +3703,14 @@ def copied_out(clone, folder, commit):
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait()
-    if ended != (0, 0) or store.git("rev-list", "--objects", "--quiet", need_sha(commit), check=False, timeout=COPY_SECONDS).returncode != 0:
+    if ended != (0, 0):
+        raise NotPlain(NOT_COPIED)
+    # The cuts of the clone's history, as far as they name commits this copy holds: no other line of that file goes on.
+    named = [line for line in cut.decode("ascii", errors="replace").split("\n") if is_sha(line)]
+    if named:
+        held = store.git("cat-file", "--batch-check", stdin="".join(f"{line}\n" for line in named), check=False).stdout.split("\n")
+        (store.git_dir / "shallow").write_text("".join(f"{line}\n" for line, said in zip(named, held) if said.split()[1:2] == ["commit"]))
+    if store.git("rev-list", "--objects", "--quiet", need_sha(commit), check=False, timeout=COPY_SECONDS).returncode != 0:
         raise NotPlain(NOT_COPIED)
     return store
 
