@@ -4094,8 +4094,6 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"UPSTREAM upstream/[A-Za-z0-9._/-]+",
     r"NOTE this fork holds (\.claude/settings\.json|\.claude/settings\.local\.json|\.mcp\.json|\.cursor) at its root: your tool may "
     r"already have run something from it\. Stop, and tell the user\.",
-    r"NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is needed for this task; begin the "
-    r"next one with hive\.py start, as always",
     rf"ASK: you hold no task\. If this worker runs at least every [0-9]+ hours, ask for one: hive\.py ready --project toy {WHOSE}",
     rf"ASK-UNANSWERED since {INSTANT}: the hive has not dealt you a task for 6 hours: stop, do not ask again in this run, tell the user",
     r"WAIT: the project is paused: the hive deals nothing and judges nothing for now",
@@ -4127,7 +4125,8 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"THEN: [0-9]+ file\(s\) and [0-9]+ changed line\(s\) are with the hive\. If this worker runs at least every [0-9]+ hours \(hourly "
     rf"is best\), ask for its next task now \(hive\.py ready --project toy {WHOSE}\): the hive deals it as soon as this candidate is "
     r"accepted; if it is refused, the ask stays and is served once the wait is over\. If it does not run that often, do not ask: a task "
-    r"dealt and left costs a wait\.",
+    r"dealt and left costs a wait\.( This clone's own branch could not be moved to the candidate, which is pushed all the same: nothing "
+    r"more is needed for this task\.)?",
     rf"ASKED {COMMIT}",
     r"WITHDRAWN",
     r"REFUSED \([a-z_]+\): [ -~]+ \{.*\}",
@@ -5526,23 +5525,39 @@ class TestVolunteerSide(Volunteer):
 
     def test_what_a_worker_command_takes_from_the_machine_and_what_it_does_not(self):
         """A worker's command runs git by its name, from the clone's folder, and gives it an environment of its own.
-        A PATH that holds an entry which is not a folder named from the root (an empty one, a dot) would have a
-        file of the clone run in git's place: the command does not start. Settings that the environment carries for
+        A PATH that holds an entry which is not a folder named from the root (an empty one, a dot), or a folder of
+        the clone itself, even through a link, would have a file of the clone run in git's place: the command does
+        not start. Settings that the environment carries for
         git (GIT_CONFIG_COUNT and its keys and values, GIT_CONFIG_PARAMETERS) go only to the commands that reach a
-        remote, where the user's credentials and a proxy live: never to the others. And a project file of the
+        remote, where the user's credentials and a proxy live; a command that reaches none takes no variable of
+        git's from the environment, and none takes one that names a place of git's. And a project file of the
         registry that is not what a project file is ends the command in one line."""
         before = self.work_tree()
-        for path in (":/usr/bin:/bin", "/usr/bin::/bin", ".:/usr/bin", "/usr/bin:bin", "/usr/bin:/bin:"):
+        work, aside = self.alice.work.resolve(), self.w.root / "a-link-to-the-clone"
+        aside.symlink_to(work / "tools", target_is_directory=True)
+        for path in (":/usr/bin:/bin", "/usr/bin::/bin", ".:/usr/bin", "/usr/bin:bin", "/usr/bin:/bin:", "/usr/bin:../beside", f"/usr/bin:{work}",
+                     f"{work}/tools/bin:/usr/bin", f"/usr/bin:/bin:{aside}"):
             with mock.patch.dict(os.environ, {"PATH": path}):
                 self.one_line(self.ready("--no-push"), hive.RELATIVE_PATH)
+        with mock.patch.dict(os.environ, {"PATH": f"{os.environ['PATH']}:{work.parent}:{work}-beside"}):  # (beside the clone, or above it: not in it)
+            self.assertEqual(self.ready("--no-push")[0], 0, self.err)
         self.assertEqual(self.work_tree(), before)
         clone = hive.Clone(self.alice.work.resolve(), {})
-        carried = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.fsmonitor", "GIT_CONFIG_VALUE_0": "true", "GIT_CONFIG_PARAMETERS": "'a.b=c'",
-                   "GIT_SHALLOW_FILE": "/nowhere"}
-        with mock.patch.dict(os.environ, carried), mock.patch.object(hive, "LOCAL_REMOTES", True):
+        settings = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.fsmonitor", "GIT_CONFIG_VALUE_0": "true", "GIT_CONFIG_PARAMETERS": "'a.b=c'"}
+        for_a_remote = {"GIT_ASKPASS": "/usr/bin/true", "GIT_SSL_CAINFO": "/nowhere.pem", "GIT_EXEC_PATH": "/usr/lib/git-core"}
+        places = {"GIT_SHALLOW_FILE": "/nowhere", "GIT_GRAFT_FILE": "/nowhere", "GIT_ATTR_SOURCE": "HEAD", "GIT_REPLACE_REF_BASE": "refs/x/",
+                  "GIT_TEMPLATE_DIR": "/nowhere", "GIT_OBJECT_DIRECTORY": "/nowhere", "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/nowhere",
+                  "GIT_NAMESPACE": "x", "GIT_DIR": "/nowhere", "GIT_INDEX_FILE": "/nowhere", "GIT_CONFIG": "/nowhere"}
+        with mock.patch.dict(os.environ, {**settings, **for_a_remote, **places, "GIT_EXTERNAL_DIFF": "x", "GIT_ICASE_PATHSPECS": "1"}), \
+                mock.patch.object(hive, "LOCAL_REMOTES", True):
             own, remote = clone.environment(), clone.environment(to=str(self.alice.bare))
-        self.assertEqual(([name for name in carried if name in own], [name for name in ("GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0") if name in remote]),
-                         ([], ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0"]))
+            mine = {name: value for name, value in own.items() if name.startswith("GIT_")}
+            self.assertEqual(clone.environment(env={"GIT_AUTHOR_NAME": "a"})["GIT_AUTHOR_NAME"], "a", "what the command itself gives is kept")
+        self.assertEqual(mine, {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "GIT_ATTR_NOSYSTEM": "1", "GIT_PAGER": "cat", "GIT_EDITOR": "true",
+                                "GIT_NO_REPLACE_OBJECTS": "1", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+        self.assertEqual((own["PATH"], own["HOME"]), (os.environ["PATH"], os.environ["HOME"]), "the rest of the environment is the machine's")
+        self.assertEqual(({name for name in {**settings, **for_a_remote} if name in remote}, [name for name in places if name in remote]),
+                         (set(settings) | set(for_a_remote), []))
         (Path(self.registry) / "hive/projects/zz.json").write_text('{"protocol": 1, "limits": 5}')
         self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (", begins=True)
         (Path(self.registry) / "hive/projects/zz.json").unlink()
@@ -7825,9 +7840,8 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                           "which sets the work aside; if start stops too, tell the user")
             code, text = self.submit("toy-0001", dealt)
         candidate = self.fork_branch("hive/submit/toy-0001")
-        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[1], self.head()),
-                         (0, f"PUSHED {candidate}", "NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is "
-                             "needed for this task; begin the next one with hive.py start, as always", head), self.err)
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(f"costs a wait.{hive.NOT_KEPT}"), len(self.spoken(text)), self.head()),
+                         (0, f"PUSHED {candidate}", True, 2, head), self.err)
         self.assertEqual(sh("git", "show", f"{candidate}:lib.c", cwd=self.alice.bare).stdout, LIB + "int the_work;\n")
         self.assertTrue(seen and all(rules == self.start for _, rules in seen), seen)
         # A branch of the clone that names something other than a commit (an annotated tag of it) cannot be moved by its
@@ -7837,7 +7851,21 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         sh("git", "tag", "-d", "named", cwd=work)
         self.alice.write("lib.c", LIB + "int the_work_again;\n")
         code, text = self.submit("toy-0001", dealt)
-        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[1].split()[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", "NOTE"), self.err)
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(hive.NOT_KEPT)), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", True), self.err)
+        # (And a candidate the clone takes ends on the plain line; an index git does not rewrite in time changes nothing.)
+        sh("git", "update-ref", "refs/heads/hive/submit/toy-0001", head, cwd=work)
+        self.alice.write("lib.c", LIB + "int the_work_once_more;\n")
+
+        asked = []
+
+        def no_answer(clone, *args, **options):
+            if args[0] == "read-tree" and Path(clone.git_dir).resolve() == (work / ".git").resolve():  # (the clone's own index, after the push)
+                asked.append(args)
+                raise hive.HiveError("git read-tree: timeout after 300 s")
+            return real_git(clone, *args, **options)
+        with mock.patch.object(hive.Clone, "git", no_answer):
+            code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith("costs a wait."), len(asked)), (0, f"PUSHED {self.head()}", True, 1), self.err)
         self.assertEqual(sh("git", "diff", "--cached", "--name-only", head, cwd=work).stdout, "", "and its index is left as it was")
 
     def test_what_the_clone_does_not_hold_and_what_its_packs_list_are_read_right(self):

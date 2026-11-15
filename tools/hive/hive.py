@@ -35,7 +35,6 @@ keyword is a value this file checked or a sentence of its own, never a text of t
   LOGIN <login>                   setup: the member the hive credits: the login given, which the origin agrees with
   UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
   NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
-                                  submit: the candidate is pushed, and the clone's own branch is not on it: go on
   ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
   ASK-UNANSWERED since <instant>: <sentence>
                                   next: your ask has waited six hours: stop, do not ask again, tell the user
@@ -186,6 +185,7 @@ GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", 
 GIT_SETTINGS_OF_THE_ENVIRONMENT = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG", "GIT_TEMPLATE_DIR", "GIT_DIR", "GIT_WORK_TREE",
                                    "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
                                    "GIT_NAMESPACE", "GIT_REPLACE_REF_BASE", "GIT_ATTR_SOURCE", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE")
+GIT_SETTINGS_CARRIED = ("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS")  # (settings themselves, with GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n>)
 GIT_ISOLATED = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0",
                 "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1"}
 
@@ -2638,10 +2638,11 @@ class Clone:
 
     def environment(self, to=None, env=None):
         """The environment of a git command on this clone: see git."""
-        environment = {key: value for key, value in os.environ.items() if key not in GIT_PLACES}
-        if to is None:  # (settings the environment carries are for reaching a remote: a proxy, a credential; never for the rest)
-            environment = {key: value for key, value in environment.items()
-                           if key not in GIT_SETTINGS_OF_THE_ENVIRONMENT and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))}
+        if to is None:  # (a command that reaches no remote takes no variable of git's from the environment: only this tool's own)
+            environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        else:  # (one that does keeps those a credential or a proxy may live in, the settings the environment carries included)
+            environment = {key: value for key, value in os.environ.items()
+                           if key not in GIT_SETTINGS_OF_THE_ENVIRONMENT or key in GIT_SETTINGS_CARRIED}
         environment.update({"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C", "GIT_ATTR_NOSYSTEM": "1",
                             "GIT_PAGER": "cat", "GIT_EDITOR": "true", "GIT_NO_REPLACE_OBJECTS": "1"})
         if to is None:
@@ -2657,12 +2658,12 @@ class Clone:
     def git(self, *args, to=None, stdin=None, check=True, timeout=300, env=None, raw=False, literal=True, attributes=None):
         """Runs git on this clone and on no other: its folders are named, not searched for. What a setting could
         turn into a program is switched off (GIT_BASE, GIT_WORKER), and the machine's own settings are not read,
-        nor those the environment carries for git (GIT_CONFIG_COUNT with its keys and values, GIT_CONFIG_PARAMETERS):
+        nor any variable of git's that the environment holds (the settings it carries, a place, a program's name):
         a filter that the machine's settings define and a .gitattributes of the work tree selects is not run,
         because for these commands no filter is defined anywhere (the clone's own settings define none:
         plain_clone). `to`: the address a command talks to, and the only case in which the machine's settings, and
-        the environment's, ARE read: the volunteer's credentials and proxy live there, and a fetch or a push
-        converts no file. raw: the
+        the environment's variables but those that name a place of git's, ARE read: the volunteer's credentials and
+        proxy live there, and a fetch or a push converts no file. raw: the
         input and the output are bytes (file names are bytes for git). literal=False: for a command given no path,
         whose own steps give git paths of their own (« stash » cleans the whole tree as « :/ », which a literal
         reading takes for a file of that name, and then removes nothing). attributes: the commit or the tree whose
@@ -2681,15 +2682,17 @@ class Clone:
     def identity(self, login, at=None):
         """Who commits, said outright for each commit (these commands read no setting of the machine, which is where
         a name usually lives): what the environment names, else the member's login and the address GitHub gives every
-        account for that purpose. Never the clone's own setting: git copies a committer's name into its logs, and
-        the clone's settings are whatever ran in the clone last. The hive copies none of it: an integrated commit
-        is authored by the fork's owner as GitHub names them."""
+        account for that purpose; and the date the environment gives, if it gives one. Never the clone's own
+        setting: git copies a committer's name into its logs, and the clone's settings are whatever ran in the clone
+        last. The hive copies none of it: an integrated commit is authored by the fork's owner as GitHub names them."""
         name = os.environ.get("GIT_AUTHOR_NAME") or login
         email = os.environ.get("GIT_AUTHOR_EMAIL") or f"{login}@users.noreply.github.com"
         who = {"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email, "GIT_COMMITTER_NAME": os.environ.get("GIT_COMMITTER_NAME") or name,
                "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL") or email}
         if at is not None:
             who["GIT_AUTHOR_DATE"] = who["GIT_COMMITTER_DATE"] = f"{int(at.timestamp())} +0000"
+        else:  # (a date the environment gives is said outright too: no other variable of git's goes from it to a commit)
+            who.update({key: os.environ[key] for key in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE") if os.environ.get(key)})
         return who
 
     def commit(self, tree, parent, message, who):
@@ -4428,9 +4431,9 @@ def cmd_submit(args):
 
     The push goes first. The clone's own branch is moved to the candidate after it, for the clone's own bookkeeping
     (the candidate's two commits are written into the clone for that): nothing that branch is, or cannot be made,
-    holds a checked candidate back. If the clone cannot take it, the candidate is pushed all the same and a NOTE
-    line says so; with --no-push, where the clone is all there is, the command ends in one line that says what to
-    do. A push that fails leaves the clone as it was."""
+    holds a checked candidate back. If the clone cannot take it, the candidate is pushed all the same and the
+    command's last line says so; with --no-push, where the clone is all there is, the command ends in one line that
+    says what to do. A push that fails leaves the clone as it was."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -4518,20 +4521,26 @@ def cmd_submit(args):
         # The clone's own index now says what the candidate holds (the work tree is not touched): git's later answers
         # about the work tree are read against this one.
         if kept:
-            clone.git("read-tree", marker, check=False)  # (a lock left on that index keeps git from writing it: « start » removes it)
+            try:  # (a lock left on that index keeps git from writing it: « start » removes it, and makes the index anew)
+                clone.git("read-tree", marker, check=False)
+            except HiveError:
+                pass
         if args.no_push:
             print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
                   "--no-push to make the candidate anew and push it")
             return
     print(f"PUSHED {marker}")
-    if not kept:
-        print("NOTE the candidate is pushed, and this clone's own branch could not be moved to it: nothing more is needed for this task; "
-              "begin the next one with hive.py start, as always")
+    not_kept = "" if kept else NOT_KEPT
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "
           f"every {hours} hours (hourly is best), ask for its next task now (hive.py ready --project {config['project']} "
           f"{said_again(args)}): the hive deals it as soon as this candidate is accepted; if it is refused, the ask stays and is served "
-          "once the wait is over. If it does not run that often, do not ask: a task dealt and left costs a wait.")
+          f"once the wait is over. If it does not run that often, do not ask: a task dealt and left costs a wait.{not_kept}")
+
+
+# What submit's last line adds when the candidate is pushed and the clone could not take it.
+NOT_KEPT = (" This clone's own branch could not be moved to the candidate, which is pushed all the same: nothing more is needed for "
+            "this task.")
 
 
 # A worker command removes files, runs git and pushes under its user's name; on a system where none of that was ever
@@ -4540,10 +4549,17 @@ ONLY_ON_LINUX = ("a worker's commands have been run and reviewed on Linux only: 
                  "or a cloud session, and tell the user")
 
 
-# git is run by its name, from the clone's folder: a PATH that holds an empty entry, « . » or any folder named from where
-# the command runs would have a file of the clone run in its place, on the host.
-RELATIVE_PATH = ("PATH holds an entry that is not a folder named from the root (an empty one, a dot, a relative one): a file of the "
-                 "clone could then be run in git's place. Nothing was run: tell the user to remove that entry")
+# git is run by its name, from the clone's folder: a PATH that holds an empty entry, « . », any folder named from where
+# the command runs, or a folder of the clone itself, would have a file of the clone run in its place, on the host.
+RELATIVE_PATH = ("PATH holds an entry that is not a folder named from the root (an empty one, a dot, a relative one), or one that lies "
+                 "in this clone: a file of the clone could then be run in git's place. Nothing was run: tell the user to remove that entry")
+
+
+def of_the_clone(entry):
+    """True if an entry of PATH is the folder a worker's command runs in (the clone's root) or lies below it,
+    once every link on the way is followed."""
+    here, place = os.path.realpath(os.getcwd()), os.path.realpath(entry)
+    return place == here or place.startswith(here.rstrip(os.sep) + os.sep)
 
 
 def main(argv=None):
@@ -4645,7 +4661,7 @@ def main(argv=None):
             raise HiveError(ONLY_ON_LINUX)
         if VOLUNTEER_SIDE:
             os.environ.setdefault("PATH", os.defpath)  # (no PATH at all: the system's own, written out, so that no program falls back on another)
-            if any(not os.path.isabs(entry) for entry in os.environ["PATH"].split(os.pathsep)):
+            if any(not os.path.isabs(entry) or of_the_clone(entry) for entry in os.environ["PATH"].split(os.pathsep)):
                 raise HiveError(RELATIVE_PATH)
         args.run(args)
     except HiveError as error:

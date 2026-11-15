@@ -65,7 +65,6 @@ PROJECT <id>                    setup: the hive's project this clone is a fork o
 LOGIN <login>                   setup: the member the hive credits: the login given, which the origin agrees with
 UPSTREAM <ref>                  setup: the project's branch as this clone fetched it (no command decides on it)
 NOTE <sentence>                 setup: the fork holds settings your tool may have run: stop, tell the user
-                                submit: the candidate is pushed, and the clone's own branch is not on it: go on
 ASK: <sentence>                 next: no task held, no ask waiting: ask for one (ready)
 ASK-UNANSWERED since <instant>: <sentence>
                                 next: your ask has waited six hours: stop, do not ask again, tell the user
