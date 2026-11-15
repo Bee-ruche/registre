@@ -4241,6 +4241,10 @@ class Volunteer(Base):
                 except SystemExit as e:
                     code = e.code
             self.err = "".join(c.args[0] for c in err.write.call_args_list)
+            # A command that ends on the line of the unforeseen has stopped on a fault of the tool itself: no test
+            # takes that for the refusal it was waiting for, unless it says it expects one (self.unforeseen).
+            if not getattr(self, "unforeseen", False):
+                self.assertNotIn("an error of the tool's own", self.err)
             return code, "".join(c.args[0] for c in out.write.call_args_list)
         finally:
             os.chdir(old)
@@ -5527,7 +5531,7 @@ class TestVolunteerSide(Volunteer):
         """What the tool did not foresee ends a worker's command as every error does: one line on the standard error,
         exit code 2, which says so and where. Never the tool's own trace: an agent reads what a command prints. (A run
         of the hive's own ends as it is: its log is read by its maintainers.)"""
-        before = self.work_tree()
+        before, self.unforeseen = self.work_tree(), True
         unforeseen = (r"\Ahive: this command stopped on an error of the tool's own \({kind}, line [1-9][0-9]* of hive\.py\): what it had done stays "
                       r"done\. Run nothing more for this task, and tell the user\n\Z")
         with mock.patch.object(hive, "hive_project", side_effect=ZeroDivisionError("x")), mock.patch.object(hive, "hive_projects", side_effect=ZeroDivisionError("x")):
@@ -5553,6 +5557,9 @@ class TestVolunteerSide(Volunteer):
         self.assertRegex(self.err, unforeseen.format(kind="TypeError"))
         self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing was pushed")
         own.write_text(kept)
+        self.unforeseen = False
+        with mock.patch.object(hive, "hive_project", side_effect=ZeroDivisionError("x")), self.assertRaises(AssertionError):
+            self.ready("--no-push")  # (and no other test takes that line for a refusal: the tests' own guard)
         with mock.patch.object(hive, "cmd_feed", side_effect=ZeroDivisionError("x")), self.assertRaises(ZeroDivisionError):
             hive.main(["feed", "--registry", self.registry, "--project", "toy", "--state", self.state_root])
 
