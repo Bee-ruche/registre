@@ -91,6 +91,11 @@ import traceback
 import zlib
 from pathlib import Path
 
+try:
+    import resource
+except ImportError:  # (no such module off Unix: a worker's command says where it runs before it starts any git: main)
+    resource = None
+
 PROTOCOL = 1
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 TASK_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}\Z")
@@ -263,6 +268,21 @@ def isolated_environment():
 # back holds none of git's words, so that no function that calls it can repeat them either.
 VOLUNTEER_SIDE = False
 
+GIT_DATA_BYTES = 2 << 30  # the data memory one git of the tool's may take (measured: a clone of 58 MB needs less than a quarter of a GiB)
+
+
+def bounded():
+    """Runs in each git the tool starts, on the hive's side and on a worker's, before git does: git is bounded in
+    memory as it is in time. What git is handed is a candidate's objects, or a store that is whatever ran in a
+    clone left, and a few bytes there can name gigabytes (a file of zeros, an object that declares a size, a pack
+    that leads back to itself): git would take them from the machine, and a run or a session with them. Beyond
+    GIT_DATA_BYTES of data the kernel gives git no more, and git ends saying so: the command then goes on as after
+    any git that failed. (The files git maps to read them are not counted: a large repository's packs do not stop
+    it. Where the machine already allows less, that is kept: a limit is lowered, never raised.)"""
+    allowed = resource.getrlimit(resource.RLIMIT_DATA)[1]
+    most = GIT_DATA_BYTES if allowed == resource.RLIM_INFINITY else min(allowed, GIT_DATA_BYTES)
+    resource.setrlimit(resource.RLIMIT_DATA, (most, most))
+
 
 def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=True, attributes=True):
     """Runs git on a repository, never through a shell, with hooks off; isolated from the machine's configuration
@@ -275,7 +295,7 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
     try:
         source = () if attributes is True else (f"--attr-source={EMPTY_TREE if attributes is False else need_sha(attributes)}",)
         result = subprocess.run(["git", *GIT_BASE, *source, "-C", str(repo), *args], input=stdin, capture_output=True, text=True,
-                                timeout=timeout, env=environment, errors="replace")
+                                timeout=timeout, env=environment, errors="replace", preexec_fn=bounded)
     except subprocess.TimeoutExpired as e:
         raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
     if VOLUNTEER_SIDE:
@@ -292,7 +312,7 @@ def git_capped(repo, *args, limit, timeout=300, env=None):
     the command is stopped there, so that what the hive reads does not grow with what a fork sends."""
     try:
         process = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                   stdin=subprocess.DEVNULL, env={**isolated_environment(), **(env or {})})
+                                   stdin=subprocess.DEVNULL, env={**isolated_environment(), **(env or {})}, preexec_fn=bounded)
     except OSError as e:
         raise HiveError(f"git {args[0]}: {type(e).__name__}") from e
     late = []
@@ -320,7 +340,7 @@ def git_raw(repo, *args, stdin=b"", timeout=120):
     finished process; raises HiveError only if it does not end in time."""
     try:
         return subprocess.run(["git", *GIT_BASE, "-C", str(repo), *args], input=stdin, capture_output=True, timeout=timeout,
-                              env=isolated_environment())
+                              env=isolated_environment(), preexec_fn=bounded)
     except subprocess.TimeoutExpired as e:
         raise HiveError(f"git {args[0]}: timeout after {timeout} s") from e
 
@@ -880,7 +900,16 @@ def merge_tree(repo, tip, candidate, limits):
     # What the candidate itself changed since it left the project's history is listed first, by the hive, up to the
     # limit: git's merge is never handed a tree that a few objects make huge. And the merge looks for no renames
     # (a search that reads whole folders): a candidate that moves a file the project changed meanwhile is a conflict.
-    changed_entries(repo, tree_of(repo, base.stdout.strip()), tree_of(repo, candidate), 4 * limits["files"] + 100)
+    changed = changed_entries(repo, tree_of(repo, base.stdout.strip()), tree_of(repo, candidate), 4 * limits["files"] + 100)
+    # And no file larger than the project takes reaches git's merge, which reads whole, into memory, each file that
+    # both sides changed: a candidate's history is weighed as git packs it, and a file of a few bytes there can be
+    # one of gigabytes. Its size is asked of git (a few bytes read), for each file the candidate left changed.
+    most = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"])
+    for _, new_mode, _, new_sha, _ in changed:
+        if new_mode not in ("000000", TREE_MODE):
+            size = git(repo, "cat-file", "-s", need_sha(new_sha), check=False).stdout.strip()
+            if size.isdigit() and int(size) > most:  # (an entry git cannot size is another refusal's: check_structure)
+                raise Refusal("file_too_big")
     merged = git(repo, "merge-tree", "--write-tree", "--no-messages", tip, candidate, check=False, attributes=False)
     tree = merged.stdout.split("\n", 1)[0].strip()
     if merged.returncode == 1:
@@ -900,7 +929,7 @@ def blob_bytes(repo, sha, limit):
         return None
     try:
         read = subprocess.run(["git", *GIT_BASE, "-C", str(repo), "cat-file", "blob", sha], capture_output=True, timeout=120,
-                              env=isolated_environment())
+                              env=isolated_environment(), preexec_fn=bounded)
     except subprocess.TimeoutExpired as e:
         raise HiveError("git cat-file: timeout after 120 s") from e
     if read.returncode != 0:
@@ -1110,7 +1139,7 @@ def materialize(repo, tree, target):
             raise HiveError(f"tree {tree[:12]}: an entry the hive does not write ({safe_text(path, 80)})")
         entries.append((mode, blob, path))
     reader = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), "cat-file", "--batch"], stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE, env=isolated_environment())
+                              stdout=subprocess.PIPE, env=isolated_environment(), preexec_fn=bounded)
     try:
         for mode, blob, path in entries:
             destination = target / path
@@ -1219,9 +1248,8 @@ def fetch_bounded(repo, url, specs, most, allow_local=False):
     housekeeping of git's, which would leave the group and go on after it (--no-auto-maintenance, and GIT_BASE).
     A fetch that did not end well leaves nothing: what it had written is removed at once (swept), so that what a
     run leaves on the machine's disk does not grow with what the forks hold."""
-    import resource  # (the hive's own machine is a Linux one; a worker's command must still start where this module is missing)
-
-    def bounds():  # (runs in the new process before git does: whatever git starts inherits both)
+    def bounds():  # (runs in the new process before git does: whatever git starts inherits them)
+        bounded()
         resource.setrlimit(resource.RLIMIT_FSIZE, (most, most))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -1727,7 +1755,8 @@ def packed_weight(repo, sha, tip, most):
     further than `most` + 1 bytes and never kept. Returns `most` + 1 for one that is heavier, that git cannot pack,
     or that takes it longer than PACK_SECONDS: such a candidate is not carried."""
     command = ["git", *GIT_BASE, "-C", str(repo), "pack-objects", "--stdout", "--thin", "--delta-base-offset", "--revs", "-q"]
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment())
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(),
+                               preexec_fn=bounded)
     alarm = threading.Timer(PACK_SECONDS, process.kill)
     alarm.start()
     weight = 0
@@ -2028,7 +2057,8 @@ def derives(repo, tip, config):
         identity = {"GIT_AUTHOR_NAME": ROBOT[0], "GIT_AUTHOR_EMAIL": ROBOT[1], "GIT_COMMITTER_NAME": ROBOT[0],
                     "GIT_COMMITTER_EMAIL": ROBOT[1]}
         probe = git(repo, "commit-tree", tree, "-p", tip, stdin="probe\n", env=identity).stdout.strip()
-        merged = merge_tree(repo, tip, probe, config["limits"])
+        # (The probe's own file is larger than a project takes from a candidate, on purpose: it is the hive's.)
+        merged = merge_tree(repo, tip, probe, {**config["limits"], "file_bytes": PROBE_BYTES})
         squash_commit(repo, merged, tip, {"id": "probe-0000", "title": "probe"}, {"login": "hive", "id": 0}, probe, now())
         return merged == tree
     except (HiveError, Refusal):
@@ -2798,20 +2828,6 @@ def same_repository(one, other):
     return (first[0].lower(), first[1].lower()) == (second[0].lower(), second[1].lower())
 
 
-GIT_DATA_BYTES = 2 << 30  # the data memory one git of a worker's command may take (measured: a clone of 58 MB needs less than a quarter of a GiB)
-
-
-def bounded():
-    """Runs in each git that a worker's command starts on the clone, before git does: git is bounded in memory as it
-    is in time. A store is whatever ran in the clone left, and a few bytes there can name gigabytes (an object that
-    declares a size, a pack that leads back to itself): git would take them from the machine, and a session's
-    memory with them. Beyond GIT_DATA_BYTES of data the kernel gives git no more, and git ends saying so: the
-    command then stops as on any git that failed. (The files git maps to read them are not counted: a large
-    repository's packs do not stop it.)"""
-    import resource  # (Linux, like the worker's commands themselves: main)
-    resource.setrlimit(resource.RLIMIT_DATA, (GIT_DATA_BYTES, GIT_DATA_BYTES))
-
-
 class Clone:
     """The fork's clone a worker command runs in: its folder, and its settings as plain_clone read them."""
 
@@ -3297,7 +3313,7 @@ def plain_clone():
     with tempfile.TemporaryDirectory() as nowhere:
         try:
             listed = subprocess.run(["git", "config", "--file", "-", "--no-includes", "--list", "--null"], input=raw, capture_output=True,
-                                    cwd=nowhere, timeout=60, env={"PATH": os.environ.get("PATH", os.defpath), "HOME": nowhere, "LC_ALL": "C",
+                                    cwd=nowhere, timeout=60, preexec_fn=bounded, env={"PATH": os.environ.get("PATH", os.defpath), "HOME": nowhere, "LC_ALL": "C",
                                                                   "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                                                                   "GIT_CEILING_DIRECTORIES": str(Path(nowhere).parent)})
         except (subprocess.TimeoutExpired, OSError) as error:

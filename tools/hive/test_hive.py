@@ -51,6 +51,24 @@ TASKS = [
 ]
 
 
+def a_heavy_commit(git_dir, megabytes=200):
+    """Writes, into a repository's store, a commit whose message is `megabytes` MiB of one letter (a few hundred
+    kilobytes on the disk, as any store may hold one) and returns its id: git must take that much memory to read it."""
+    header = (b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor t <t@example.invalid> 0 +0000\n"
+              b"committer t <t@example.invalid> 0 +0000\n\n")
+    size, piece = len(header) + (megabytes << 20), b"x" * (1 << 20)
+    name, packer = hashlib.sha1(b"commit %d\0" % size + header), zlib.compressobj(1)
+    stored = [packer.compress(b"commit %d\0" % size + header)]
+    for _ in range(megabytes):
+        name.update(piece)
+        stored.append(packer.compress(piece))
+    stored.append(packer.flush())
+    path = Path(git_dir) / "objects" / name.hexdigest()[:2] / name.hexdigest()[2:]
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(b"".join(stored))
+    return name.hexdigest(), path
+
+
 def sh(*command, cwd, check=True, stdin=None):
     return subprocess.run(command, cwd=cwd, env={**os.environ, **GIT_ENV, **QUIET_GIT}, check=check, capture_output=True, text=True, input=stdin)
 
@@ -2930,6 +2948,44 @@ exec {real} "$@"
         with mock.patch.dict(os.environ, {"HIVE_NOW": stamp}):
             standing = ledger.standing(101, hive.now(), config)
         self.assertIsNotNone(standing[1], "and the member waits")
+
+    def test_a_file_larger_than_the_project_takes_never_reaches_gits_merge_and_every_git_of_the_hives_is_bounded(self):
+        """A candidate's history is weighed as git packs it, and a file of a few bytes there can be one of gigabytes;
+        git's merge reads whole, into memory, each file that both sides changed, and the member chooses the commit of
+        the project its work starts from. So no file larger than the project takes reaches the merge: its size is
+        asked first, and the candidate is refused for it. And every git the hive's steps start runs under the bound
+        on its data memory: beyond, git ends saying so and the step goes on as after any git that failed."""
+        self.w.upstream_commit("lib.c", LIB + "int the_project_moves;\n")  # (the project changes the task's file: both sides did)
+        heavy = self.alice.write("lib.c", "0\n" * 2_500_000).commit().marker("toy-0001").push()
+        self.w.plan()
+        config, real, merges = self.w.load()[0], hive.git, []
+
+        def watched(repo, *args, **options):
+            merges.extend(word for word in args[:1] if word == "merge-tree")
+            return real(repo, *args, **options)
+        with mock.patch.object(hive, "git", side_effect=watched), self.assertRaises(hive.Refusal) as refusal:
+            hive.merge_tree(self.w.harvest, self.w.tip(), heavy, config["limits"])
+        self.assertEqual((refusal.exception.reason, merges), ("file_too_big", []), "git's merge was not started")
+        with mock.patch.object(hive, "git", side_effect=watched):
+            self.refused("file_too_big")
+        self.assertEqual(merges, [])
+        # Every git of the hive's steps, under the bound (the fetch of a fork under its own bounds, which hold this one).
+        self.w.fork("bob", 102).write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
+        started, popen = [], subprocess.Popen
+
+        def spied(command, *args, **options):
+            if command[0] == "git" and command[1] == "-c":  # (the hive's own: the tests' own git commands give git no setting)
+                started.append((" ".join(str(word) for word in command[-3:]), getattr(options.get("preexec_fn"), "__name__", "none")))
+            return popen(command, *args, **options)
+        with mock.patch.object(hive.subprocess, "Popen", side_effect=spied):
+            self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        self.assertGreater(len(started), 60)
+        self.assertEqual(sorted({how for _, how in started}), ["bounded", "bounds"], [what for what, how in started if how not in ("bounded", "bounds")])
+        sha, path = a_heavy_commit(Path(sh("git", "rev-parse", "--absolute-git-dir", cwd=self.w.harvest).stdout.strip()))
+        self.assertEqual(hive.git(self.w.harvest, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 0)
+        with mock.patch.object(hive, "GIT_DATA_BYTES", 64 << 20):
+            self.assertEqual(hive.git(self.w.harvest, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 128)
+        path.unlink()
 
     def test_what_the_fetches_of_one_run_leave_is_bounded(self):
         """Each fetch that ends well leaves one pack in the hive's clone. Once the fetches of a run have left more
@@ -6651,19 +6707,7 @@ class TestVolunteerSide(Volunteer):
         ends saying so, and the command stops as on any git that failed. Here the clone holds a commit of two
         hundred megabytes (a few hundred kilobytes on the disk): git reads it under the bound as it stands, and not
         under a bound set lower. And every git that the five commands start on the clone is started that way."""
-        header = (b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor t <t@example.invalid> 0 +0000\n"
-                  b"committer t <t@example.invalid> 0 +0000\n\n")
-        size, piece = len(header) + (200 << 20), b"x" * (1 << 20)
-        name, packer = hashlib.sha1(b"commit %d\0" % size + header), zlib.compressobj(1)
-        stored = [packer.compress(b"commit %d\0" % size + header)]
-        for _ in range(200):
-            name.update(piece)
-            stored.append(packer.compress(piece))
-        stored.append(packer.flush())
-        sha = name.hexdigest()
-        path = self.alice.work / ".git/objects" / sha[:2] / sha[2:]
-        path.parent.mkdir(exist_ok=True)
-        path.write_bytes(b"".join(stored))
+        sha, path = a_heavy_commit(self.alice.work / ".git")
         self.assertLess(path.stat().st_size, 1 << 20)
         clone = hive.Clone(self.alice.work.resolve(), {})
         self.assertEqual(clone.git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False).returncode, 0, "under the bound as it stands")
@@ -6675,16 +6719,20 @@ class TestVolunteerSide(Volunteer):
         started, real = [], subprocess.Popen
 
         def watched(command, *args, **options):
-            if any(str(word).startswith("--git-dir=") for word in command):
-                started.append((next(word for word in command if not str(word).startswith("-") and word != "git"
-                                     and not str(word).startswith(("core.", "protocol.", "gc.", "advice.", "merge.", "i18n."))), options.get("preexec_fn")))
+            if command[0] == "git":  # (on the clone, or on a store of the tool's own: a candidate's files are merged there)
+                started.append((" ".join(str(word) for word in command[-3:]), options.get("preexec_fn")))
             return real(command, *args, **options)
         self.alice.write("lib.c", LIB + "int by_alice;\n")
         with mock.patch.object(hive.subprocess, "Popen", side_effect=watched):
             for name, command in self.every_command():
                 command()
-        self.assertGreater(len(started), 40, "the five commands start git on the clone many times")
+        self.assertGreater(len(started), 60, "the five commands start git many times")
         self.assertEqual([what for what, how in started if how is not hive.bounded], [], "each of them under the bound")
+        # Where the machine already allows git less, that is kept: a limit is lowered, never raised.
+        for allowed, given in ((1 << 30, 1 << 30), (hive.resource.RLIM_INFINITY, hive.GIT_DATA_BYTES), (8 << 30, hive.GIT_DATA_BYTES)):
+            with mock.patch.object(hive.resource, "getrlimit", return_value=(allowed, allowed)), mock.patch.object(hive.resource, "setrlimit") as set_to:
+                hive.bounded()
+            self.assertEqual(set_to.call_args.args, (hive.resource.RLIMIT_DATA, (given, given)))
 
     def test_what_git_could_not_set_aside_is_never_written_over(self):
         """start forces its checkout, so that a file the project itself stores otherwise than its rules stops no one.
