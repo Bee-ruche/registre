@@ -3570,13 +3570,11 @@ class TestDealing(Base):
             self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], ["alice"], "the same ask, served at the next run")
         self.assertEqual(self.alice.bare and sh("git", "rev-parse", "refs/heads/hive/ready", cwd=self.alice.bare).stdout.strip(), ask)
 
-    def test_a_candidate_after_which_the_judge_stays_down_is_the_one_the_judging_stopped_on(self):
-        """When the judge fails on a candidate and then on the project's own tip, its machine is down: nothing more is
-        judged, and nobody is refused. If the machine was down from the start of the run, that is all: no candidate
-        is marked. If it had answered earlier in the run, the judging stopped on that candidate: it is marked for
-        the run, at no cost, and so goes after the others at the next one and cannot hold the judging at the same
-        place run after run; after as many such runs as the hive allows, it is refused, at no cost, and its task
-        is free again. The run says that its machine was down."""
+    def test_a_judge_that_fails_on_the_projects_tip_costs_nobody_anything_and_the_run_says_so(self):
+        """When the judge fails on a candidate and then on the project's own tip, nothing more is judged, and no
+        candidate pays for it: neither when the judge was down from the start of the run, nor when it had answered
+        for a candidate earlier in the run and fails from the next one on (which of the two left it failing, the
+        hive cannot tell). What was accepted before is integrated. The run says that its judge failed on the tip."""
         state = {"broken": False}
 
         def judge(base, candidate, task, tip, commit):
@@ -3599,16 +3597,12 @@ class TestDealing(Base):
         self.bob.attempt("toy-0002", first)
         second = self.hold(self.alice, "toy-0001")[0]
         self.alice.fresh("hive/submit/toy-0001").submit("toy-0001", content=LIB + "/* LEAVES THE JUDGE FAILING */\n", deal=second)
-        _, _, ledger = self.w.load()
-        # A machine that is down from the start: nobody is marked, whoever comes first.
         outcomes, down = run("12:00:00", broken=True)
         self.assertEqual(([(o["login"], o["result"]) for o in outcomes], down), ([("bob", "skipped"), ("alice", "skipped")], True))
         self.assertEqual((self.w.events(), self.w.load()[2].marks("toy-0001", self.alice.id, second)), ([], []))
-        # The machine answers for the first candidate, then fails from the second on: the second is the one it stopped on.
         outcomes, down = run("13:00:00")
-        self.assertEqual(([(o["login"], o["result"], o.get("kind")) for o in outcomes], down), ([("bob", "accepted", None), ("alice", "error", "none")], True))
-        self.assertEqual(self.w.load()[2].marks("toy-0001", self.alice.id, second), [("none", False)])
-        self.assertEqual(self.w.deals()["toy-0001"], ("alice", "live"), "marked, at no cost: its deal goes on")
+        self.assertEqual(([(o["login"], o["result"]) for o in outcomes], down), ([("bob", "accepted"), ("alice", "skipped")], True))
+        self.assertEqual((self.w.load()[2].marks("toy-0001", self.alice.id, second), self.w.deals()["toy-0001"]), ([], ("alice", "live")))
 
     def test_over_many_draws_a_kept_preference_gives_a_task_its_member_could_be_dealt_anyway_and_moves_nobodys_turn(self):
         """The invariant of the dealing, held over many keys on tasks that share files, differ in tier, are closed or

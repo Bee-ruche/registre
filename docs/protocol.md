@@ -236,10 +236,9 @@ the hive runs those git commands with an empty attribute source.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
   the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
   stops judging and no candidate pays for the breakdown. If it passes, the failure is counted against the deal,
-  whose candidate is judged again at the next run, three times at most. A machine that had answered earlier in the
-  run and fails from one candidate on stopped on that candidate: it is marked for the run, at no cost, and goes
-  after the others at the next one. A run whose machine was down ends as a failure once everything it could decide
-  is written, so that a person sees it.
+  whose candidate is judged again at the next run, three times at most. A run whose judge failed on the project's
+  own tip ends as a failure once everything it could decide is written, so that a person sees it: the machine may be
+  down, or the tip itself may no longer pass the project's check.
 - A task may add a goal on a figure of the judge's report (for instance a minimum gain), and a project may require
   a figure of every contribution. A goal must name a figure the project lists: a task whose goal could never be met
   is refused when the project is loaded.

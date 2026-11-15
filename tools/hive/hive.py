@@ -1896,7 +1896,7 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
     The judging has a total time allowed: no judgement is started that could end after `deadline` (on the
     monotonic clock), `longest` being what one judgement may take. And `save` is called after each answer, so that
     a judging step that is stopped leaves the answers it had."""
-    state = {"down": False, "works": {}, "answered": False, "machine": False}
+    state = {"down": False, "works": {}, "machine": False}
 
     def ask(tip, tree, task, commit, label):
         folder = Path(tempfile.mkdtemp(prefix="judge-", dir=workdir))
@@ -1920,7 +1920,6 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         mark = (tip, task["id"])
         if mark not in state["works"]:
             state["works"][mark] = ask(tip, tree_of(repo, tip), task, tip, "the project's tip against itself")["code"] == 0
-            state["answered"] = state["answered"] or state["works"][mark]
         return state["works"][mark]
 
     def verdict_of(entry, task, tip, tree, commit):
@@ -1936,17 +1935,12 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         answer = ask(tip, tree, task, commit, entry["sha"][:12])
         if answer["code"] == 2 and not machine_works(tip, task):
             state["down"] = state["machine"] = True
-            # A machine that was down from the start of the run is nobody's doing: the candidate is not the one the
-            # judging stopped on. One that had answered earlier in this run, and fails from this candidate on, stopped
-            # on it: the candidate stays among those the judging started on, so that it is marked for the run (at no
-            # cost), goes after the others at the next one, and cannot hold the judging at the same place run after run.
-            if started is not None and commit in started and not state["answered"]:
-                started.remove(commit)
+            if started is not None and commit in started:
+                started.remove(commit)  # the machine, not this candidate: it is not the one the judging stopped on
                 if save:
                     save(verdicts, started)
-            log("the judge fails on the project's own tip: its machine is down, nothing more is judged in this run")
+            log("the judge fails on the project's own tip: nothing more is judged in this run")
             return None
-        state["answered"] = state["answered"] or answer["code"] in (0, 1)
         verdicts[commit] = answer
         if save:
             save(verdicts, started or [])
@@ -2436,8 +2430,9 @@ def save_state(state_root, project, instant):
         git(state_root, "push", "--quiet", "origin", "HEAD", timeout=180)
 
 
-JUDGE_DOWN = ("the judge's machine was down in this run: it failed on the project's own tip. What was not judged waits for the next "
-              "run, and nobody is refused for it; if the next run says the same, the machine needs a person")
+JUDGE_DOWN = ("the judge failed on the project's own tip in this run: its machine is down, or the tip itself, as the last integrations "
+              "left it, no longer passes the project's own check. What was not judged waits for the next run, and nobody is refused "
+              "for it; if the next run says the same, a person must look at the machine and at the tip's last commits")
 
 
 def cmd_apply(args):
@@ -2464,7 +2459,7 @@ def cmd_apply(args):
     print(f"{sum(1 for o in outcomes if o['result'] == 'accepted')} integrated, tip {tip}")
     if handed.get("down") is True:
         # Everything this run could decide is written. The run still ends as a failure, so that a person sees it: a
-        # machine that fails on the project's own tip judges nothing, and nobody is refused for it.
+        # judge that fails on the project's own tip judges nothing, and nobody is refused for it.
         raise HiveError(JUDGE_DOWN)
 
 
