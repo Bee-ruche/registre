@@ -32,6 +32,11 @@ DEALT = "2026-11-12T11:00:"  # the minute the tests' own deals are written at: a
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
            "GIT_COMMITTER_EMAIL": "t@example.invalid", "GIT_AUTHOR_DATE": "2026-11-01T00:00:00Z",
            "GIT_COMMITTER_DATE": "2026-11-01T00:00:00Z", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+# The tests' own git commands start none of git's housekeeping: it goes on in a session of its own after the command
+# that started it has returned, and repacks a clone under the hive's next command. (The hive's own commands never start
+# it: GIT_BASE. A recent git starts it after a fetch as soon as a clone holds a few packs.)
+QUIET_GIT = {"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+             "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"}
 LIB = "".join(f"int f{i}(void) {{ return {i}; }}\n" for i in range(8))
 CONFIG = {"protocol": 1, "project": "toy", "repo": "Bee-ruche/toy", "branch": "main", "protected": ["tests/**"],
           "tasks": "hive/tasks/toy.jsonl", "limits": {"changed_lines": 50, "files": 3, "file_bytes": 2000, "commits": 5},
@@ -47,7 +52,7 @@ TASKS = [
 
 
 def sh(*command, cwd, check=True, stdin=None):
-    return subprocess.run(command, cwd=cwd, env={**os.environ, **GIT_ENV}, check=check, capture_output=True, text=True, input=stdin)
+    return subprocess.run(command, cwd=cwd, env={**os.environ, **GIT_ENV, **QUIET_GIT}, check=check, capture_output=True, text=True, input=stdin)
 
 
 def judge_by_content(base, candidate, task, tip, commit):
@@ -649,7 +654,7 @@ class TestIntegration(Base):
 
         def judge(base, candidate, task, tip, commit):
             def has(folder, *args):
-                return subprocess.run(["git", "-C", str(folder), *args], capture_output=True, env={**os.environ, **GIT_ENV})
+                return subprocess.run(["git", "-C", str(folder), *args], capture_output=True, env={**os.environ, **GIT_ENV, **QUIET_GIT})
             seen.append({"commit": has(base, "cat-file", "-e", f"{old}^{{commit}}").returncode,
                          "file": has(base, "cat-file", "blob", frozen).stdout,
                          "parent": has(base, "cat-file", "-e", f"{first}^{{commit}}").returncode == 0,
@@ -855,7 +860,7 @@ class TestStructure(Base):
                                                                     for name, sha in sorted(entries.items())))):
             with self.subTest(label):
                 src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
-                                     capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+                                     capture_output=True, check=True, env={**os.environ, **GIT_ENV, **QUIET_GIT}).stdout.decode().strip()
                 self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
                 self.refused("special_file", self.w.run())
         self.alice.write("src/z.c", "int z;\n").commit().marker("toy-0002").push()
@@ -1029,7 +1034,7 @@ class TestStructure(Base):
         raw = b"".join(b"100644 " + name.encode() + b"\0" + bytes.fromhex(value) for name, value in sorted(kept.items()))
         raw += b"100644 zz\0" + bytes.fromhex(inner)  # (the other way round, a folder entry naming a file, git will not even push)
         src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
-                             capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+                             capture_output=True, check=True, env={**os.environ, **GIT_ENV, **QUIET_GIT}).stdout.decode().strip()
         self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
         self.refused("special_file")
         self.assertEqual([e["type"] for e in self.w.events()], ["verdict"], "answered, not marked")
@@ -1081,7 +1086,7 @@ class TestStructure(Base):
                  for text in ("int harmless;\n", "int other;\n")]
         raw = b"".join(b"100644 twice.c\0" + bytes.fromhex(blob) for blob in blobs)
         src = subprocess.run(["git", "hash-object", "-t", "tree", "-w", "--stdin", "--literally"], cwd=self.alice.work, input=raw,
-                             capture_output=True, check=True, env={**os.environ, **GIT_ENV}).stdout.decode().strip()
+                             capture_output=True, check=True, env={**os.environ, **GIT_ENV, **QUIET_GIT}).stdout.decode().strip()
         self.crafted([f"040000 tree {src}\tsrc" if line.endswith("\tsrc") else line for line in self.listing("HEAD")], "toy-0002")
         self.refused("special_file")
 
@@ -2362,7 +2367,7 @@ class TestPromise(Base):
         message = f"toy-0001: Make f0 faster\n\nHive-Task: toy-0001\nHive-Member: mallory\nHive-Candidate: {self.candidate}\n"
         forged = {"GIT_COMMITTER_NAME": hive.ROBOT[0], "GIT_COMMITTER_EMAIL": hive.ROBOT[1], "GIT_AUTHOR_NAME": "mallory",
                   "GIT_AUTHOR_EMAIL": "666+mallory@users.noreply.github.com"}
-        subprocess.run(["git", "commit", "--quiet", "-m", message], cwd=self.w.seed, env={**os.environ, **GIT_ENV, **forged}, check=True)
+        subprocess.run(["git", "commit", "--quiet", "-m", message], cwd=self.w.seed, env={**os.environ, **GIT_ENV, **QUIET_GIT, **forged}, check=True)
         sh("git", "push", "--quiet", "origin", "main", cwd=self.w.seed)
         outcome = self.one(self.w.run())
         self.assertEqual((outcome["login"], outcome["sha"], outcome["result"]), ("alice", self.candidate, "accepted"))
@@ -2812,6 +2817,7 @@ class TestSecondReview(Base):
         (fake / "git").write_text(f"""#!/bin/sh
 for word in "$@"; do
     if [ "$word" = fetch ]; then
+        printf '%s\\n' "$@" > "{fake}/words"
         sleep 30 &
         echo $! > "{fake}/child"
         wait
@@ -2834,6 +2840,9 @@ exec {real} "$@"
                 break
             time.sleep(0.05)
         self.assertFalse(alive(child), "the program git started was stopped with it")
+        words = (fake / "words").read_text().split("\n")
+        self.assertLessEqual({"maintenance.auto=false", "gc.auto=0", "fetch.unpackLimit=1", "--no-auto-maintenance", "--no-tags"}, set(words),
+                             "the fetch starts no housekeeping of git's, which would go on after it, and what it brings arrives as one file")
 
     def test_a_fork_that_changes_while_it_is_read_counts_as_read_and_one_the_hive_could_not_read_does_not(self):
         """A member whose fork is not read pays nothing for a deal that ends meanwhile: GitHub may be the cause. So
@@ -5214,7 +5223,7 @@ class TestVolunteerSide(Volunteer):
             self.assertEqual(self.next(), (0, ASK), "a candidate's marker, this member's own, is not an ask")
             tree = sh("git", "rev-parse", "origin/main^{tree}", cwd=self.alice.work).stdout.strip()
             undated = subprocess.run(["git", "commit-tree", tree, "-p", "origin/main", "-m", "Hive ready\n\nHive-Action: ready\nHive-Member: alice"],
-                                     cwd=self.alice.work, env={**os.environ, **GIT_ENV, "GIT_COMMITTER_DATE": "@99999999999 +0000"},
+                                     cwd=self.alice.work, env={**os.environ, **GIT_ENV, **QUIET_GIT, "GIT_COMMITTER_DATE": "@99999999999 +0000"},
                                      check=True, capture_output=True, text=True).stdout.strip()
             sh("git", "push", "--quiet", "--force", "origin", f"{undated}:refs/heads/hive/ready", cwd=self.alice.work)
             self.assertEqual(self.next(), (0, ASK), "an ask whose date is more digits than the tool reads as a date")
