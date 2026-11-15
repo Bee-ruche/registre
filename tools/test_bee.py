@@ -24087,6 +24087,65 @@ class TestHiveWorkflow(unittest.TestCase):
         self.assertEqual(self.text.count(f'ref: "{self.PIN}"'), 4, "quoted: a commit id made of digits only must stay a text")
         self.assertEqual(len(re.findall(r"\bref\b\s*:", self.text)), 4, "no other ref: no branch, no tag, no second commit")
 
+    @staticmethod
+    def pin_is_of_main(pin, repository=ROOT, main="refs/remotes/origin/main"):
+        """True if the commit the file names is forty zeros (no commit named yet) or a commit of main's history, as the
+        repository at hand holds it (the tests' checkout fetches every branch)."""
+        if pin == "0" * 40:
+            return True
+        return subprocess.run(["git", "-C", str(repository), "merge-base", "--is-ancestor", pin, main], capture_output=True).returncode == 0
+
+    def test_the_commit_the_file_names_is_a_commit_of_main(self):
+        """GitHub serves any commit of a repository's network by its id, a pull request's included, a fork's too. The
+        registry commit the four jobs run must be one that main holds: one that was reviewed and merged."""
+        self.assertTrue(self.pin_is_of_main(self.PIN), "the pinned commit is not in main's history (or main was not fetched here)")
+        with tempfile.TemporaryDirectory() as folder:
+            def git(*words):
+                return subprocess.run(["git", "-C", folder, "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+            git("init", "--quiet", "-b", "main", ".")
+            git("commit", "--quiet", "--allow-empty", "-m", "on main")
+            merged = git("rev-parse", "HEAD")
+            git("update-ref", "refs/remotes/origin/main", merged)
+            git("commit", "--quiet", "--allow-empty", "-m", "a pull request's commit")
+            proposed = git("rev-parse", "HEAD")
+            self.assertEqual([self.pin_is_of_main(pin, folder) for pin in (merged, proposed, "1" * 40, "0" * 40)], [True, False, False, True])
+
+    def test_every_number_and_every_yes_or_no_is_written_the_one_way_every_reader_reads_alike(self):
+        """This class reads the file with a YAML 1.1 reader; GitHub's reader is not that one. A value that is not a text
+        is written the one way both read alike: « true » or « false », or a whole number in plain decimal digits. No
+        « off », no « 012 », no « 5:30 »: this class would read them as false, 10 and 330, and hold the file as
+        unchanged, while the run would do something else. And no plain text that a YAML 1.2 reader takes for a
+        number, a yes-or-no or nothing (« 0o14 », « 1e3 », « ~ »). The one exception is the key « on », which the file's
+        format requires and which this reader takes for a yes."""
+        later = re.compile(r"[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+|[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?"
+                           r"|[-+]?\.(inf|Inf|INF)|\.(nan|NaN|NAN)|null|Null|NULL|~|true|True|TRUE|false|False|FALSE")
+
+        def wrong(text):
+            root = yaml.compose(text, Loader=yaml.SafeLoader)
+            allowed = {id(key) for key, _ in root.value if key.value == "on"} if isinstance(root, yaml.MappingNode) else set()
+            found, waiting = [], [root]
+            while waiting:
+                node = waiting.pop()
+                if isinstance(node, yaml.MappingNode):
+                    waiting.extend(part for pair in node.value for part in pair)
+                elif isinstance(node, yaml.SequenceNode):
+                    waiting.extend(node.value)
+                elif node.style is None and id(node) not in allowed:  # a plain scalar: its kind is read from its spelling
+                    if node.tag == "tag:yaml.org,2002:str":
+                        if later.fullmatch(node.value):
+                            found.append(node.value)
+                    elif not re.fullmatch(r"true|false|0|[1-9][0-9]*|", node.value):  # (nothing written is nothing for every reader)
+                        found.append(node.value)
+            return sorted(found)
+
+        self.assertEqual(wrong(self.text), [])
+        for spelling in ("timeout-minutes: 036", "cancel-in-progress: off", "timeout-minutes: 5:30", "timeout-minutes: 012", "x: 0o14", "x: 1e3",
+                         "x: ~", "x: yes", "x: True", "x: 1.5", "x: 2026-01-01", "x: null", "jobs: {a: {on: 1}}"):
+            with self.subTest(spelling=spelling):
+                self.assertNotEqual(wrong(spelling + "\n"), [], "a spelling two readers read differently")
+        self.assertEqual(wrong('on: {schedule: [{cron: "17 * * * *"}], workflow_dispatch: }\nx: 30\ny: false\nz: "012"\nw: text\n'), [])
+
     def test_two_jobs_can_read_a_key_and_only_to_ask_for_a_token_of_one_repository(self):
         self.assertEqual({name: job.get("environment") for name, job in self.jobs.items()},
                          {"plan": None, "judge": None, "record": "hive-state", "apply": "hive-apply"})
