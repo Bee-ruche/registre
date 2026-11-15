@@ -3256,6 +3256,22 @@ class TestDealing(Base):
         self.alice.ready(prefer="src/")
         self.assertEqual(self.w.plan()["deals"], [], "no task it could be dealt: no deal, and nothing said")
 
+    def test_what_the_hive_reads_of_a_commit_does_not_grow_with_what_a_fork_sends(self):
+        """A fork's commit is whatever its owner pushed, and a message of any length packs to almost nothing. The plan
+        reads a commit's size before it reads the commit: one longer than a marker can be carries no marker, is not
+        read into memory, and is not read again at the next run. An ask of the ordinary length is read as before."""
+        ask = self.alice.ready()
+        self.bob.write("notes.txt", "x\n").commit("Hive-Action: ready\nHive-Member: bob\n" + "padding\n" * 40)
+        long_one = sh("git", "rev-parse", "HEAD", cwd=self.bob.work).stdout.strip()
+        sh("git", "push", "--quiet", "origin", f"{long_one}:refs/heads/long", cwd=self.bob.work)
+        with mock.patch.object(hive, "MESSAGE_BYTES", 300):
+            self.assertIsNone(hive.commit_message(self.bob.work, long_one))
+            self.assertIsInstance(hive.commit_message(self.alice.bare, ask), str)
+            made = self.w.plan()
+        self.assertEqual([deal["member"] for deal in made["deals"]], ["alice"], "the long commit is no ask, whatever its lines say")
+        self.assertIn(long_one, made["ignored"][str(self.bob.id + 1000)], "and it is not read again")
+        self.assertEqual(hive.read_marker(hive.commit_message(self.bob.work, long_one))["member"], "bob", "at the ordinary bound it is read")
+
     def test_what_a_fork_writes_as_its_preference_is_compared_with_the_registry_and_goes_no_further(self):
         """The registry's strings travel, never the fork's. A value that is not, exactly, a file the project's tasks
         name is no preference: the ask is served by the plain draw, and nothing of the value is in the plan, the

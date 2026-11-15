@@ -825,7 +825,17 @@ def read_marker(message):
             "prefer": found.get("Hive-Prefer") if action == "ready" else None}
 
 
+MESSAGE_BYTES = 64 * 1024  # a commit longer than this (its header and its message) carries no marker: a marker is a few lines
+
+
 def commit_message(repo, sha):
+    """A commit's message, or None if the commit is longer than MESSAGE_BYTES. A fork's commit is whatever its owner
+    pushed, and a message of any length packs to almost nothing: what the hive reads of it, and holds in memory, does
+    not grow with what the fork sends. The commit's size is asked first (git answers from the object's first bytes,
+    without unpacking it); only one that fits is read."""
+    size = git(repo, "cat-file", "-s", need_sha(sha)).stdout.strip()
+    if not size.isdigit() or int(size) > MESSAGE_BYTES:
+        return None
     raw = git(repo, "cat-file", "commit", need_sha(sha)).stdout
     return raw.split("\n\n", 1)[1] if "\n\n" in raw else ""
 
@@ -1236,7 +1246,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                 elif in_upstream(repo, sha):
                     mine.append(sha)
                     continue
-                marker = read_marker(commit_message(repo, sha))
+                message = commit_message(repo, sha)
+                marker = read_marker(message) if message is not None else None  # (a commit too long to be read: no marker)
                 if not marker:
                     mine.append(sha)
                 elif marker["member"].lower() != fork["login"].lower():
