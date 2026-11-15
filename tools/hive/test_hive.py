@@ -6763,6 +6763,12 @@ class TestVolunteerSide(Volunteer):
         (work / "link").write_bytes(b"lib.c")
         (work / "run.sh").write_text("#!/bin/sh\necho other\n")
         self.assertEqual(hive.not_as_checked_out(clone, commit, [b"link", b"run.sh", b"lib.c"]), [b"link", b"run.sh"])
+        # And a link where the commit holds a file is a change, though what it leads to holds the file's very bytes.
+        elsewhere = self.w.root / "the-same-bytes"
+        elsewhere.write_text(LIB)
+        os.unlink(work / "lib.c")
+        os.symlink(elsewhere, work / "lib.c")
+        self.assertEqual(hive.not_as_checked_out(clone, commit, [b"lib.c"]), [b"lib.c"])
 
     def test_a_step_of_gits_that_fails_on_the_way_ends_start_with_what_the_user_is_to_do(self):
         """What an earlier run left in .git may be more than this tool repairs: a branch below the task's own, where git
