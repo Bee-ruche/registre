@@ -242,11 +242,13 @@ class World:
         hive.record({**self.made, **changes}, config, tasks, ledger, self.state)
 
     def judge(self, judge=judge_by_content):
-        """Step 3, in its own clone: returns (verdicts, the judging step's own view of the outcomes)."""
+        """Step 3, in its own clone: returns (verdicts, the judging step's own view of the outcomes). What the step
+        says of its own run (was its machine down) is kept in self.notes."""
         sh("git", "fetch", "--quiet", "origin", cwd=self.bench)
         config, tasks, ledger = self.load()
         hive.read_bundle(self.bench, self.made, self.bundle)
-        verdicts, outcomes, self.started = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work)
+        self.notes = {}
+        verdicts, outcomes, self.started = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work, notes=self.notes)
         return json.loads(json.dumps(verdicts)), outcomes
 
     def sweep(self, judge=judge_by_content):
@@ -1351,7 +1353,7 @@ class TestMembers(Base):
         young = self.w.fork("young", 778, created="2026-10-01T00:00:00Z")
         young.submit("toy-0002", path="src/y.c", content="int y;\n")
         self.alice.submit("toy-0004", content=LIB + "/* FAST */\n")
-        listed, asked, real_git, real_user = [], [], hive.git, self.w.api.user
+        listed, asked, real_git, real_user = [], [], hive.git_capped, self.w.api.user
 
         def spy(repo, *args, **options):
             if args[0] == "ls-remote" and "--heads" in args:
@@ -1362,7 +1364,7 @@ class TestMembers(Base):
             asked.append(login)
             return real_user(login)
 
-        with mock.patch.object(hive, "git", side_effect=spy), mock.patch.object(self.w.api, "user", side_effect=asking):
+        with mock.patch.object(hive, "git_capped", side_effect=spy), mock.patch.object(self.w.api, "user", side_effect=asking):
             self.assertEqual(self.one(self.w.run())["login"], "alice")
             first = (sorted(set(listed)), sorted(set(asked)))
             listed.clear(), asked.clear()
@@ -2043,7 +2045,7 @@ class TestFirstReview(Base):
             hive.main(["judge", *common, "--repo", str(self.w.bench), *files, "--workdir", str(self.w.work), "--out", str(verdicts)])
             handed = json.loads(verdicts.read_text())
             self.assertEqual((sorted(handed), [v["code"] for v in handed["answers"].values()], handed["started"]),
-                             (["answers", "started"], [0], list(handed["answers"])))
+                             (["answers", "down", "started"], [0], list(handed["answers"])))
             self.assertEqual((self.w.tip(), self.w.events()), (self.start, []))
             apply = ["apply", *common, "--repo", str(self.w.writer), *files, "--verdicts", str(verdicts)]
             tampered.write_text(made.read_text().replace('"alice"', '"mallory"'))
@@ -2052,7 +2054,13 @@ class TestFirstReview(Base):
                 with self.assertRaises(SystemExit):
                     hive.main(wrong)
             self.assertEqual((self.w.tip(), self.w.events()), (self.start, []), "a plan that is not the published one is not applied")
-            hive.main([*apply, "--plan-sha256", digest])
+            # A judging step that says its machine was down: everything the run could decide is written, and the run
+            # still ends as a failure, in one line, so that a person sees it.
+            verdicts.write_text(json.dumps({**json.loads(verdicts.read_text()), "down": True}))
+            with self.assertRaises(SystemExit) as ended, mock.patch("sys.stderr") as said:
+                hive.main([*apply, "--plan-sha256", digest])
+            self.assertEqual((ended.exception.code, "".join(c.args[0] for c in said.write.call_args_list)), (2, f"hive: {hive.JUDGE_DOWN}\n"))
+            hive.main([*sign, str(made)])  # the recording step run again after the write step: the feed keeps the tip the run reached
         self.assertEqual(self.w.tip(), next(iter(json.loads(verdicts.read_text())["answers"])))
         self.assertEqual([(e["sha"], e["result"]) for e in self.w.events()], [(candidate, "accepted")])
         self.assertEqual(json.loads((self.w.state / "feed.json").read_text())["tip"], self.w.tip())
@@ -2796,13 +2804,13 @@ class TestDealing(Base):
 
     def unreadable(self, fork):
         """GitHub lists the fork, and git cannot read it."""
-        real = hive.git
+        real = hive.git_capped
 
-        def git(repo, *args, **options):
+        def git_capped(repo, *args, **options):
             if args[:2] == ("ls-remote", "--heads") and str(fork.bare) in args:
-                return subprocess.CompletedProcess(args, 128, "", "fatal: unable to access")
+                raise hive.HiveError("git ls-remote failed (128)")
             return real(repo, *args, **options)
-        return mock.patch.object(hive, "git", side_effect=git)
+        return mock.patch.object(hive, "git_capped", side_effect=git_capped)
 
     def standing(self, fork):
         config, _, ledger = self.w.load()
@@ -3256,6 +3264,18 @@ class TestDealing(Base):
         self.alice.ready(prefer="src/")
         self.assertEqual(self.w.plan()["deals"], [], "no task it could be dealt: no deal, and nothing said")
 
+    def test_what_the_hive_reads_of_a_forks_list_of_branches_is_bounded(self):
+        """A fork lists as many branches as its owner made. The plan reads that list no further than a list of the
+        most branches the hive lists can be long: a longer one is not read into memory, and its fork is not read."""
+        self.alice.ready()
+        self.bob.ready()
+        for number in range(6):
+            sh("git", "push", "--quiet", "origin", f"origin/main:refs/heads/more-{number}", cwd=self.bob.work)
+        with mock.patch.object(hive, "HEADS_PER_FORK_MAX", 4), mock.patch.object(hive, "HEAD_LINE_BYTES", 60):
+            made = self.w.plan()
+        self.assertEqual([deal["member"] for deal in made["deals"]], ["alice"], "a fork whose list is longer than the hive reads is not read")
+        self.assertEqual(sorted(deal["member"] for deal in self.w.plan()["deals"]), ["alice", "bob"], "at the ordinary bound it is")
+
     def test_what_the_hive_reads_of_a_commit_does_not_grow_with_what_a_fork_sends(self):
         """A fork's commit is whatever its owner pushed, and a message of any length packs to almost nothing. The plan
         reads a commit's size before it reads the commit: one longer than a marker can be carries no marker, is not
@@ -3506,6 +3526,85 @@ class TestDealing(Base):
         self.answered(self.alice, "toy-0001")
         with self.assertRaisesRegex(hive.HiveError, "does not bear out"):
             hive.deal_prefer(one, tasks, config, self.w.load()[2])
+
+    def test_the_step_that_records_run_again_after_the_write_step_leaves_what_that_step_decided(self):
+        """The recording step may be run again once the write step has run (a job run again). It then leaves what
+        that step decided: an ask that a conditional deal of this plan used stays used, so that it deals nothing
+        more, and the feed names the tip the run reached."""
+        dealt = self.hold(self.alice, "toy-0001")[0]
+        self.alice.attempt("toy-0001", dealt)
+        ask = self.alice.ready()
+        self.assertEqual([deal["asks"] for deal in self.w.plan()["conditional"]], [[ask]])
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        self.assertEqual(self.one(self.w.apply(verdicts)[0])["result"], "accepted")
+        tip, deals = self.w.tip(), self.lines("deal")
+        self.assertEqual((len(deals), ask in hive.read_ignored(self.w.state)["1101"], self.w.feed_file()["tip"]), (1, True, tip))
+        self.w.record()
+        self.assertEqual((ask in hive.read_ignored(self.w.state)["1101"], self.w.feed_file()["tip"]), (True, tip))
+        with self.at("13:00:00"):
+            self.assertEqual([self.w.plan()[kind] for kind in ("deals", "conditional")], [[], []], "the ask, used once, deals nothing more")
+            self.w.record()
+        self.assertEqual(self.lines("deal"), deals)
+
+    def test_a_task_kept_for_a_member_is_dealt_when_its_candidate_is_accepted_and_only_then(self):
+        """A member that asks while its candidate waits is dealt its next task in the same run when that candidate is
+        accepted. A candidate that the run refuses, even at no cost to its member (the hive never could answer it),
+        leaves the ask where it is: the member is dealt at a later run, as any asker."""
+        self.answered(self.alice, "toy-0003")
+        dealt = self.hold(self.alice, "toy-0002")[0]
+        sha = self.alice.write("src/a2.c", "int a;\n").commit().marker("toy-0002", deal=dealt).push()
+        hive.Ledger(self.w.state).append([{"type": "error", "kind": "none", "at": "2026-11-12T11:30:00Z", "run": f"r{number}", "task": "toy-0002",
+                                           "deal": dealt, "member_id": self.alice.id, "repo_id": 1101, "sha": sha} for number in range(6)])
+        ask = self.alice.ready()
+        self.assertEqual(len(self.w.plan()["conditional"]), 1)
+        self.w.record()
+        verdicts, _ = self.w.judge()
+        self.assertEqual([(o["result"], o.get("reason")) for o in self.w.apply(verdicts)[0]], [("refused", "not_answered")])
+        self.assertEqual((self.lines("deal"), hive.read_ignored(self.w.state).get("1101", [])), ([], []), "no deal, and the ask is not used")
+        with self.at("13:00:00"):
+            self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], ["alice"], "the same ask, served at the next run")
+        self.assertEqual(self.alice.bare and sh("git", "rev-parse", "refs/heads/hive/ready", cwd=self.alice.bare).stdout.strip(), ask)
+
+    def test_a_candidate_after_which_the_judge_stays_down_is_the_one_the_judging_stopped_on(self):
+        """When the judge fails on a candidate and then on the project's own tip, its machine is down: nothing more is
+        judged, and nobody is refused. If the machine was down from the start of the run, that is all: no candidate
+        is marked. If it had answered earlier in the run, the judging stopped on that candidate: it is marked for
+        the run, at no cost, and so goes after the others at the next one and cannot hold the judging at the same
+        place run after run; after as many such runs as the hive allows, it is refused, at no cost, and its task
+        is free again. The run says that its machine was down."""
+        state = {"broken": False}
+
+        def judge(base, candidate, task, tip, commit):
+            text = (candidate / "lib.c").read_text() if (candidate / "lib.c").exists() else ""
+            if "LEAVES THE JUDGE FAILING" in text:
+                state["broken"] = True
+            if state["broken"]:
+                return {"code": 2}
+            return {"code": 0, "report": {"gain": 0.0, "outputs_compared": 1}}
+
+        def run(clock, broken=False):
+            state["broken"] = broken
+            with self.at(clock):
+                self.w.plan()
+                self.w.record()
+                verdicts, _ = self.w.judge(judge)
+                return self.w.apply(verdicts)[0], self.w.notes["down"]
+
+        first = self.hold(self.bob, "toy-0002")[0]  # the older deal: judged first
+        self.bob.attempt("toy-0002", first)
+        second = self.hold(self.alice, "toy-0001")[0]
+        self.alice.fresh("hive/submit/toy-0001").submit("toy-0001", content=LIB + "/* LEAVES THE JUDGE FAILING */\n", deal=second)
+        _, _, ledger = self.w.load()
+        # A machine that is down from the start: nobody is marked, whoever comes first.
+        outcomes, down = run("12:00:00", broken=True)
+        self.assertEqual(([(o["login"], o["result"]) for o in outcomes], down), ([("bob", "skipped"), ("alice", "skipped")], True))
+        self.assertEqual((self.w.events(), self.w.load()[2].marks("toy-0001", self.alice.id, second)), ([], []))
+        # The machine answers for the first candidate, then fails from the second on: the second is the one it stopped on.
+        outcomes, down = run("13:00:00")
+        self.assertEqual(([(o["login"], o["result"], o.get("kind")) for o in outcomes], down), ([("bob", "accepted", None), ("alice", "error", "none")], True))
+        self.assertEqual(self.w.load()[2].marks("toy-0001", self.alice.id, second), [("none", False)])
+        self.assertEqual(self.w.deals()["toy-0001"], ("alice", "live"), "marked, at no cost: its deal goes on")
 
     def test_over_many_draws_a_kept_preference_gives_a_task_its_member_could_be_dealt_anyway_and_moves_nobodys_turn(self):
         """The invariant of the dealing, held over many keys on tasks that share files, differ in tier, are closed or

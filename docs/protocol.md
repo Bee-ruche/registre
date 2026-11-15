@@ -143,8 +143,8 @@ is public; someone holding another task on the same file could put that work int
 is dealt only when the others are free. A project whose tasks name separate files loses nothing; one whose tasks share a file does them one at a time.
 
 A member who pushes a candidate *and* an ask is dealt its next task **in the same run, when that candidate is
-accepted**: a worker that runs every hour and succeeds gets a task per run. If the candidate is refused, the ask
-stays, and is served once the wait is over.
+accepted**: a worker that runs every hour and succeeds gets a task per run. If the candidate is refused, whatever
+the reason and even at no cost to its member, the ask stays, and is served at a later run, once any wait is over.
 
 What ends a deal, and what it costs its member:
 
@@ -158,10 +158,11 @@ What ends a deal, and what it costs its member:
 
 **A deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is free. When
 the judge examined the candidate, the wait is two hours. When the task was held for nothing (no candidate, or one
-refused before the judge), it is two hours doubled at each such deal in a row, seven days at most; an acceptance
-clears both. A project also limits the deals an account is given in a day (5 by default), **not
-counting those whose candidate was accepted**: the limit bounds what an account can take and waste, never what it
-can contribute.
+refused before the judge), it is two hours doubled at each such deal since the member's last accepted candidate,
+seven days at most; an acceptance clears both, and nothing else does. A project also limits the deals an account
+is given in a day (5 by default), **not counting those whose candidate was accepted**: the limit bounds what an
+account can take and waste, never what it can contribute. (A deal whose candidate still waits for its answer
+counts until it is accepted.)
 
 So an account holds at most one task at a time, chosen by the hive, and one that takes tasks and leaves them is
 dealt fewer and fewer.
@@ -235,7 +236,10 @@ the hive runs those git commands with an empty attribute source.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
   the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
   stops judging and no candidate pays for the breakdown. If it passes, the failure is counted against the deal,
-  whose candidate is judged again at the next run, three times at most.
+  whose candidate is judged again at the next run, three times at most. A machine that had answered earlier in the
+  run and fails from one candidate on stopped on that candidate: it is marked for the run, at no cost, and goes
+  after the others at the next one. A run whose machine was down ends as a failure once everything it could decide
+  is written, so that a person sees it.
 - A task may add a goal on a figure of the judge's report (for instance a minimum gain), and a project may require
   a figure of every contribution. A goal must name a figure the project lists: a task whose goal could never be met
   is refused when the project is loaded.

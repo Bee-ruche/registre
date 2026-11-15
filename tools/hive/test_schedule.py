@@ -192,13 +192,13 @@ class Schedule:
         return {e["sha"] for e in self.w.events() if e["type"] == "verdict"}
 
     def unreadable(self, fork):
-        real = hive.git
+        real = hive.git_capped
 
-        def git(repo, *args, **options):
+        def git_capped(repo, *args, **options):
             if args[:2] == ("ls-remote", "--heads") and str(fork.bare) in args:
-                return subprocess.CompletedProcess(args, 128, "", "fatal: unable to access")
+                raise hive.HiveError("git ls-remote failed (128)")
             return real(repo, *args, **options)
-        return mock.patch.object(hive, "git", side_effect=git)
+        return mock.patch.object(hive, "git_capped", side_effect=git_capped)
 
     def promptly_dealt(self, before):
         """R1, second half, after a run in which nothing broke: an honest worker that was asking, held nothing, was
@@ -428,7 +428,8 @@ class TestTargetedSchedules(unittest.TestCase):
         that write hold its word before they use it. Over runs drawn at random, in which the project closes tasks
         under their holders, what was written after a push is lost, a push lands and the step is told it did not,
         and steps are run again, with asks that name a part of the project or none: the step that records never
-        refuses the plan just made, and no step ever says of such a plan that it is not the hive's."""
+        refuses the plan just made, and no step ever says of such a plan that it is not the hive's. And an ask is
+        used once: whatever is run again, no member is dealt two tasks on one ask."""
         real_push = hive.guarded_push
 
         def push_then_fail(*a, **k):
@@ -449,7 +450,19 @@ class TestTargetedSchedules(unittest.TestCase):
                 rng, s, hour = random.Random(seed), Sim(root), 12
                 forks = [s.w.fork(f"m{i}", 300 + i) for i in range(3)]
                 tasks_file, ledger_file = s.w.registry / "hive/tasks/toy.jsonl", s.w.state / "ledger.jsonl"
-                closed, pushed = set(), set()
+                closed, pushed, used = set(), set(), set()
+
+                def asks_used():
+                    """(member, the ask its fork holds) for each deal the runs wrote and this test has not seen yet."""
+                    fresh = []
+                    for e in s.w.load()[2].events:
+                        if e["type"] == "deal" and not str(e.get("run", "")).startswith("test") and (e["member"], e["at"]) not in used:
+                            used.add((e["member"], e["at"]))
+                            fork = next(fork for fork in forks if fork.login == e["member"])
+                            fresh.append((e["member"], th.sh("git", "rev-parse", "refs/heads/hive/ready", cwd=fork.bare).stdout.strip()))
+                    return fresh
+
+                dealt_on = []
                 for _ in range(10):
                     with mock.patch.dict(os.environ, {"HIVE_NOW": at(hour, -10)}):
                         held = {d["member_id"]: d for d in s.w.load()[2].deals().values() if d["state"] == "live"}
@@ -458,7 +471,7 @@ class TestTargetedSchedules(unittest.TestCase):
                             if deal and deal["at"] not in pushed and rng.random() < 0.8:
                                 pushed.add(deal["at"])
                                 s.push(fork, deal["task"], f"s{seed}h{hour}m{fork.id}", rng.choice(["ok", "ok", "REFUSE"]), deal=deal["at"])
-                            if rng.random() < 0.9:
+                            if rng.random() < 0.5:  # (an ask often stays where it is from one run to the next)
                                 fork.ready(prefer=rng.choice([None, "pool/p11.c", "pool/p11.c", "pool/p03.c"]))
                     if rng.random() < 0.4:  # the project closes a task, one that is held if any is
                         live = sorted(d["task"] for d in s.w.load()[2].deals().values() if d["state"] == "live")
@@ -476,12 +489,14 @@ class TestTargetedSchedules(unittest.TestCase):
                             with mock.patch.object(hive, "guarded_push", side_effect=push_then_fail):
                                 honest(lambda: s.w.apply(verdicts))
                         else:
-                            honest(lambda: s.w.apply(verdicts, checkpoint=lambda: saved.append(ledger_file.read_text())))
+                            honest(lambda: s.w.apply(verdicts, checkpoint=lambda: saved.append(ledger_file.read_text() if ledger_file.exists() else "")))
                         if fault == "lost" and saved:
                             ledger_file.write_text(saved[0])  # the pushes landed, and what was written after the promise is lost
                         if fault == "again":
                             honest(s.w.record)
                             honest(lambda: s.w.apply(verdicts))
+                    dealt_on += asks_used()
+                    self.assertEqual(len(dealt_on), len(set(dealt_on)), f"one ask dealt two tasks: {dealt_on}")
                     hour += rng.choice([1, 1, 2, 4])
         if "HIVE_PLAN_SEEDS" not in os.environ:
             self.assertGreater(kept, 3, "over these runs preferences were kept, too")

@@ -279,12 +279,12 @@ def git(repo, *args, stdin=None, check=True, timeout=300, env=None, isolated=Tru
     return result
 
 
-def git_capped(repo, *args, limit, timeout=300):
+def git_capped(repo, *args, limit, timeout=300, env=None):
     """The output (bytes) of a git command that lists one object of a candidate, or None if it is longer than `limit` bytes:
     the command is stopped there, so that what the hive reads does not grow with what a fork sends."""
     try:
         process = subprocess.Popen(["git", *GIT_BASE, "-C", str(repo), *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                   stdin=subprocess.DEVNULL, env=isolated_environment())
+                                   stdin=subprocess.DEVNULL, env={**isolated_environment(), **(env or {})})
     except OSError as e:
         raise HiveError(f"git {args[0]}: {type(e).__name__}") from e
     late = []
@@ -825,6 +825,7 @@ def read_marker(message):
             "prefer": found.get("Hive-Prefer") if action == "ready" else None}
 
 
+HEAD_LINE_BYTES = 512  # a line of a fork's list of branches: a commit id, a tab, a branch's name (HEAD_REF bounds the name)
 MESSAGE_BYTES = 64 * 1024  # a commit longer than this (its header and its message) carries no marker: a marker is a few lines
 
 
@@ -1211,11 +1212,18 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                 reads[fork["id"]] = True  # an account whose forks the hive does not read: it holds nothing for the hive
                 continue
             url = fork_url(api, fork["full_name"], allow_local)
-            listed = git(repo, "ls-remote", "--heads", url, check=False, timeout=30, env=transport(allow_local))
-            if listed.returncode != 0:
+            # A fork's list of branches is read no further than a list of the most branches the hive lists can be long.
+            try:
+                listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=30,
+                                    env=transport(allow_local))
+            except HiveError:
+                continue
+            if listed is None:
+                log("discovery: a fork has more branches than the hive lists; it is not read")
+                reads[fork["id"]] = True  # its owner's doing: for the hive it holds nothing
                 continue
             heads = {}
-            for line in listed.stdout.splitlines():
+            for line in listed.decode("utf-8", errors="replace").splitlines():
                 sha, _, ref = line.partition("\t")
                 if is_sha(sha) and HEAD_REF.match(ref):
                     heads.setdefault(sha, ref)  # one commit on several branches is one commit
@@ -1354,7 +1362,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     4. Each asker is dealt, among the open tasks that have no live deal and whose tier it takes, the one a draw
        gives it. Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
-       conditionally: its new deal is recorded, and its ask used, only if that candidate is answered in this run.
+       conditionally: its new deal is recorded, and its ask used, only if that candidate is accepted in this run.
     The draws use a key drawn AFTER the forks were read.
 
     A MEMBER MAY SAY WHICH PART OF THE PROJECT IT PREFERS, and the hive follows it only when that costs its rules
@@ -1887,7 +1895,7 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
     The judging has a total time allowed: no judgement is started that could end after `deadline` (on the
     monotonic clock), `longest` being what one judgement may take. And `save` is called after each answer, so that
     a judging step that is stopped leaves the answers it had."""
-    state = {"down": False, "works": {}}
+    state = {"down": False, "works": {}, "answered": False, "machine": False}
 
     def ask(tip, tree, task, commit, label):
         folder = Path(tempfile.mkdtemp(prefix="judge-", dir=workdir))
@@ -1911,6 +1919,7 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         mark = (tip, task["id"])
         if mark not in state["works"]:
             state["works"][mark] = ask(tip, tree_of(repo, tip), task, tip, "the project's tip against itself")["code"] == 0
+            state["answered"] = state["answered"] or state["works"][mark]
         return state["works"][mark]
 
     def verdict_of(entry, task, tip, tree, commit):
@@ -1925,21 +1934,27 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
                 save(verdicts, started)
         answer = ask(tip, tree, task, commit, entry["sha"][:12])
         if answer["code"] == 2 and not machine_works(tip, task):
-            state["down"] = True
-            if started is not None and commit in started:
-                started.remove(commit)  # the machine, not this candidate: it is not the one the judging stopped on
+            state["down"] = state["machine"] = True
+            # A machine that was down from the start of the run is nobody's doing: the candidate is not the one the
+            # judging stopped on. One that had answered earlier in this run, and fails from this candidate on, stopped
+            # on it: the candidate stays among those the judging started on, so that it is marked for the run (at no
+            # cost), goes after the others at the next one, and cannot hold the judging at the same place run after run.
+            if started is not None and commit in started and not state["answered"]:
+                started.remove(commit)
                 if save:
                     save(verdicts, started)
             log("the judge fails on the project's own tip: its machine is down, nothing more is judged in this run")
             return None
+        state["answered"] = state["answered"] or answer["code"] in (0, 1)
         verdicts[commit] = answer
         if save:
             save(verdicts, started or [])
         return answer
+    verdict_of.machine_down = lambda: state["machine"]  # (for the run's own account of itself: judge_plan)
     return verdict_of
 
 
-def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None):
+def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None, notes=None):
     """The step without any token: judges the plan's candidates and returns (verdicts, outcomes, started). What
     leaves it: a table from the id of each judged commit to the judge's answer, and the ids of the commits it
     started on (so that the one it was on, if it is stopped, can be told from those it never reached)."""
@@ -1953,9 +1968,11 @@ def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None):
         shutil.rmtree(probe, ignore_errors=True)
     verdicts, started = {}, []
     deadline = time.monotonic() + config["limits"]["judging_seconds"]
-    outcomes, _ = process(repo, plan_["tip"], plan_["queue"], config, tasks, ledger,
-                          judging(repo, judge, workdir, verdicts, config["judge"]["metrics"], deadline,
-                                  config["judge"].get("timeout_seconds", 3600), save, started, config["judge"]["history"]), instant)
+    verdict_of = judging(repo, judge, workdir, verdicts, config["judge"]["metrics"], deadline,
+                         config["judge"].get("timeout_seconds", 3600), save, started, config["judge"]["history"])
+    outcomes, _ = process(repo, plan_["tip"], plan_["queue"], config, tasks, ledger, verdict_of, instant)
+    if notes is not None:
+        notes["down"] = verdict_of.machine_down()  # the run's own account of itself: its machine failed on the project's tip
     return verdicts, outcomes, started
 
 
@@ -2067,9 +2084,20 @@ def record(plan_, config, tasks, ledger, state_folder):
     # the project's tip has not moved since, can say that it never did.
     ledger.append(settle(ledger, instant, {commit: True for commit, landed in plan_["landed"].items() if landed}, own=key))
     ledger.append(expired_lines(plan_) + deal_lines(plan_["deals"], key, config, tasks))
-    write_ignored(state_folder, plan_["ignored"])
+    # Run again once the write step has run, this step leaves what that step decided: an ask that a conditional deal
+    # of this plan used stays used (the ledger holds that deal's line for this run), and the feed names the tip the
+    # run reached (its last integration), not the one the plan started from.
+    ignored, tip = {fork: list(tips) for fork, tips in plan_["ignored"].items()}, plan_["tip"]
+    dealt = {(e.get("task"), e.get("member_id")) for e in ledger.events if e.get("type") == "deal" and e.get("run") == key}
+    for deal in plan_["conditional"]:
+        if (deal["task"], deal["member_id"]) in dealt:
+            ignored.setdefault(str(deal["repo_id"]), []).extend(deal["asks"])
+    for event in ledger.events:
+        if event.get("type") == "verdict" and event.get("run") == key and event.get("result") == "accepted" and is_sha(event.get("commit")):
+            tip = event["commit"]
+    write_ignored(state_folder, ignored)
     write_state(state_folder, "accounts.json", plan_["accounts"])
-    write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, plan_["tip"], plan_))
+    write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, tip, plan_))
     write_state(state_folder, "stats.json", build_stats(ledger))
 
 
@@ -2151,12 +2179,12 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     # The deals the plan found over are written here too, should the recording step not have run: a task is never
     # dealt (below) on the strength of an expiry the ledger does not hold.
     ledger.append(expired_lines(plan_))
-    answered, kept_deals = ledger.seen(), []
+    accepted, kept_deals = {e.get("sha") for e in ledger.events if e.get("type") == "verdict" and e.get("result") == "accepted"}, []
     for deal in plan_["conditional"]:
-        # Where the member stands NOW, with what this run answered: a candidate refused on a structural rule has
-        # just cost it a wait, and its ask stays for later.
+        # The task the plan kept for a member is dealt when its candidate is accepted (docs/protocol.md), and only
+        # then: a candidate refused, even at no cost to its member, leaves the ask where it is, for the next run.
         _, wait, today = ledger.standing(deal["member_id"], instant, config)
-        if all(sha in answered for sha in deal["after"]) and not wait and today < config["members"]["deals_per_day"]:
+        if all(sha in accepted for sha in deal["after"]) and not wait and today < config["members"]["deals_per_day"]:
             kept_deals.append(deal)
     ledger.append(deal_lines(kept_deals, run, config, tasks))
     if kept_deals:
@@ -2383,10 +2411,12 @@ def cmd_judge(args):
     judge = common_judge(args.registry, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
                          workdir=args.judge_workdir, timeout=settings.get("timeout_seconds", 3600))
     write_json(args.out, {"answers": {}, "started": []})
+    notes = {}
     verdicts, outcomes, started = judge_plan(
         args.repo, made, config, tasks, ledger, judge, args.workdir,
-        save=lambda answers, begun: write_state(Path(args.out).parent, Path(args.out).name, {"answers": answers, "started": begun}))
-    write_json(args.out, {"answers": verdicts, "started": started})
+        save=lambda answers, begun: write_state(Path(args.out).parent, Path(args.out).name, {"answers": answers, "started": begun}),
+        notes=notes)
+    write_json(args.out, {"answers": verdicts, "started": started, "down": notes.get("down") is True})
     print(f"{len(outcomes)} candidate(s), {len(verdicts)} judged, {sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
 
 
@@ -2403,6 +2433,10 @@ def save_state(state_root, project, instant):
         git(state_root, "pull", "--quiet", "--rebase", "origin", git(state_root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
             env=identity, timeout=180)
         git(state_root, "push", "--quiet", "origin", "HEAD", timeout=180)
+
+
+JUDGE_DOWN = ("the judge's machine was down in this run: it failed on the project's own tip. What was not judged waits for the next "
+              "run, and nobody is refused for it; if the next run says the same, the machine needs a person")
 
 
 def cmd_apply(args):
@@ -2427,6 +2461,10 @@ def cmd_apply(args):
     outcomes, tip = apply(args.repo, args.remote, made, handed.get("answers"), config, tasks, ledger, state, checkpoint=checkpoint,
                           started=handed.get("started") or ())
     print(f"{sum(1 for o in outcomes if o['result'] == 'accepted')} integrated, tip {tip}")
+    if handed.get("down") is True:
+        # Everything this run could decide is written. The run still ends as a failure, so that a person sees it: a
+        # machine that fails on the project's own tip judges nothing, and nobody is refused for it.
+        raise HiveError(JUDGE_DOWN)
 
 
 def cmd_feed(args):
@@ -3611,7 +3649,7 @@ def own_store(clone, folder):
     a push to GitHub may need goes with it: the header in which a checkout keeps its token, which plain_clone took in
     that one form (PLAIN_CONFIG). The machine's own settings (the user's credentials, a proxy) are read as for any
     push (Clone.git)."""
-    git(folder, "init", "--quiet", "--template=", ".")
+    git(folder, "init", "--quiet", "--template=", "--object-format=sha1", ".")  # (the ids of this protocol are SHA-1's)
     store = Clone(Path(folder), {})
     for key, value in clone.settings.items():
         if key.startswith("http."):
