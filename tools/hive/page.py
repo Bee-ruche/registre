@@ -396,7 +396,8 @@ def plain_file(path):
 
 def lines_of(f):
     """The lines of a file opened as bytes, one at a time, as text; None stands for a line longer than LINE_MAX,
-    of which no more than that many bytes are ever held at once."""
+    of which no more than that many bytes are ever held at once. A line ends at a line feed and at nothing else, and
+    its length is counted in bytes, the line feed included: so the hive writes its ledger."""
     while True:
         raw = f.readline(LINE_MAX + 1)
         if not raw:

@@ -5611,7 +5611,8 @@ class TestVolunteerSide(Volunteer):
             (work / "tools/bin" / name).write_text(f"#!/bin/sh\necho {name} >> '{ran}'\nexec '{own_programs}/{name}' \"$@\"\n")
             (work / "tools/bin" / name).chmod(0o755)
         for searched in ({"PATH": f"{work}/tools/bin:{os.environ['PATH']}"}, {"GIT_EXEC_PATH": "tools/bin"}, {"GIT_EXEC_PATH": f"{work}/tools/bin"},
-                         {"GIT_EXEC_PATH": str(aside / "bin")}, {"GIT_EXEC_PATH": ""}):
+                         {"GIT_EXEC_PATH": str(aside / "bin")}, {"GIT_EXEC_PATH": ""}, {"GIT_EXEC_PATH": "/nowhere:tools/bin"},
+                         {"GIT_EXEC_PATH": f"{own_programs}:{work}/tools/bin"}, {"GIT_EXEC_PATH": "/nowhere:."}):  # (git reads it as it reads PATH: a list)
             for name, run in self.every_command():
                 with self.subTest(command=name, searched=searched), mock.patch.dict(os.environ, searched):
                     self.one_line(run(), hive.RELATIVE_PATH)
@@ -7875,10 +7876,13 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "int the_work;\n")
-        head, real, seen = self.head(), hive.poured, []
+        head, real, seen, said = self.head(), hive.poured, [], []
 
         def no_way_back(source, target, wanted):  # the copy out works; the way back into the clone does not
-            return False if Path(target.root).resolve() == work.resolve() else real(source, target, wanted)
+            if Path(target.root).resolve() != work.resolve():
+                return real(source, target, wanted)
+            said.append(("".join(call.args[0] for call in sys.stdout.write.call_args_list), sys.stdout.flush.called))  # what was said, and sent, by then
+            return False
         real_git = hive.Clone.git
 
         def watched(clone, *args, **options):
@@ -7887,14 +7891,15 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             return real_git(clone, *args, **options)
         with mock.patch.object(hive, "poured", side_effect=no_way_back), mock.patch.object(hive.Clone, "git", watched):
             self.one_line(self.submit("toy-0001", dealt, "--no-push"),
-                          "the candidate could not be written into this clone (git unpack-objects failed): nothing was pushed. The same command "
-                          "without --no-push pushes the candidate all the same; otherwise start the task again (hive.py start), which sets the "
-                          "work aside; if start stops too, tell the user")
+                          "the candidate could not be written into this clone (git unpack-objects failed): nothing was pushed. Without --no-push, the "
+                          "same command pushes first and does not stop on this step; otherwise start the task again (hive.py start), which sets "
+                          "the work aside; if start stops too, tell the user")
             code, text = self.submit("toy-0001", dealt)
         candidate = self.fork_branch("hive/submit/toy-0001")
         self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(f"costs a wait.{hive.NOT_KEPT}"), len(self.spoken(text)), self.head()),
                          (0, f"PUSHED {candidate}", True, 2, head), self.err)
         self.assertEqual(sh("git", "show", f"{candidate}:lib.c", cwd=self.alice.bare).stdout, LIB + "int the_work;\n")
+        self.assertEqual(said, [("", False), (f"PUSHED {candidate}\n", True)], "PUSHED is said, and sent on, before the clone is written into")
         self.assertTrue(seen and all(rules == self.start for _, rules in seen), seen)
         # A branch of the clone that names something other than a commit (an annotated tag of it) cannot be moved by its
         # old value: the candidate is pushed all the same.
@@ -7930,12 +7935,36 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             return real_git(clone, *args, **options)
         with mock.patch.object(hive.Clone, "git", no_program):
             self.one_line(self.submit("toy-0001", dealt, "--no-push"),
-                          "the candidate could not be written into this clone (BlockingIOError): nothing was pushed. The same command without "
-                          "--no-push pushes the candidate all the same; otherwise start the task again (hive.py start), which sets the work "
+                          "the candidate could not be written into this clone (BlockingIOError): nothing was pushed. Without --no-push, the same command "
+                          "pushes first and does not stop on this step; otherwise start the task again (hive.py start), which sets the work "
                           "aside; if start stops too, tell the user")
             code, text = self.submit("toy-0001", dealt)
         self.assertEqual((code, self.spoken(text)[0], self.spoken(text)[-1].endswith(hive.NOT_KEPT), len(self.spoken(text)), self.head(), self.err),
                          (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", True, 2, head, ""))
+
+    def test_three_readings_of_the_tools_own_stop_where_they_say(self):
+        """What git is about to follow of a commit is read by the tool first: a .gitattributes file larger than the tool
+        reads ends the command in a sentence of its own, and an entry of that name that is not a file (a link) is no
+        rules file, and is not read as one. The commit the project's address announced is one the clone holds, or the
+        command says which step to run. And a file of the work tree is compared with the tip's bytes only if it is a
+        plain file: a pipe or a folder standing there is not the file, whatever the file should hold."""
+        clone, large = hive.Clone(self.alice.work.resolve(), {}), "* text\n" * 1000
+        as_link = self.planted_commit([self.start], {".gitattributes": ("120000", large)})
+        as_file = self.planted_commit([self.start], {"sub/.gitattributes": large})
+        with mock.patch.object(hive, "OBJECT_BYTES", 3000):
+            hive.rules_as_named(clone, as_link)
+            with self.assertRaises(hive.HiveError) as stopped:
+                hive.rules_as_named(clone, as_file)
+        self.assertEqual((str(stopped.exception), isinstance(stopped.exception, hive.NotPlain)),
+                         ("a .gitattributes file of the project is larger than this tool reads: stop, and tell the user", False))
+        with self.assertRaises(hive.HiveError) as stopped:
+            hive.rests_on(clone, "1" * 40, self.head(), {"commits": 5})
+        self.assertEqual(str(stopped.exception), hive.NOT_HELD)
+        pipe, empty, later = self.w.root / "a-pipe", self.w.root / "an-empty-file", hive.time.monotonic() + 60
+        os.mkfifo(pipe)
+        empty.write_bytes(b"")
+        self.assertEqual([hive.same_bytes(io.BytesIO(b""), place, later) for place in (pipe, self.w.root, empty, self.w.root / "nothing")],
+                         [False, False, True, False])
 
     def test_what_the_clone_does_not_hold_and_what_its_packs_list_are_read_right(self):
         """Two readings of the tool's own, each held by itself. An object the clone does not hold is said not held,

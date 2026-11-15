@@ -3452,9 +3452,10 @@ def same_bytes(stream, path, deadline):
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return False
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):  # (asked before the descriptor is read from: a folder cannot be)
+        os.close(descriptor)
+        return False
     with os.fdopen(descriptor, "rb") as file:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            return False
         while True:
             in_time(deadline)
             piece = stream.read(PIECE_BYTES)
@@ -4509,7 +4510,7 @@ def cmd_submit(args):
         # (The push goes first: nothing the clone's own branch is, or cannot be made, holds a checked candidate back.)
         if not args.no_push:
             push(store, fork, marker, branch)
-            print(f"PUSHED {marker}")  # (said at once: whatever the clone then does or cannot do, the candidate is with the hive)
+            print(f"PUSHED {marker}", flush=True)  # (said at once, and not kept back: whatever the clone then does, the candidate is with the hive)
         try:
             if not poured(store, clone, [marker, f"^{base}"]):
                 raise HiveError("git unpack-objects failed")
@@ -4521,7 +4522,7 @@ def cmd_submit(args):
         except Exception as error:  # (of any kind: a step git could not take, a program the machine could not start)
             if args.no_push:
                 raise HiveError(f"the candidate could not be written into this clone ({error if isinstance(error, HiveError) else type(error).__name__}): "
-                                f"nothing was pushed. The same command without --no-push pushes the candidate all the same; otherwise {restart}") from None
+                                f"nothing was pushed. Without --no-push, the same command pushes first and does not stop on this step; otherwise {restart}") from None
             kept = False
         # The clone's own index now says what the candidate holds (the work tree is not touched): git's later answers
         # about the work tree are read against this one.
@@ -4555,7 +4556,8 @@ ONLY_ON_LINUX = ("a worker's commands have been run and reviewed on Linux only: 
 
 # git is run by its name, from the clone's folder: a PATH that holds an empty entry, « . », any folder named from where
 # the command runs, or a folder of the clone itself, would have a file of the clone run in its place, on the host. So
-# would GIT_EXEC_PATH, where git looks for its own programs first, when the environment gives one.
+# would GIT_EXEC_PATH, where git looks for its own programs first, when the environment gives one: git reads it as
+# it reads PATH, as a list.
 RELATIVE_PATH = ("PATH (or GIT_EXEC_PATH) holds an entry that is not a folder named from the root (an empty one, a dot, a relative "
                  "one), or one that lies in this clone: a file of the clone could then be run in git's place. Nothing was run: tell the "
                  "user to remove that entry")
@@ -4670,7 +4672,7 @@ def main(argv=None):
             raise HiveError(ONLY_ON_LINUX)
         if VOLUNTEER_SIDE:
             os.environ.setdefault("PATH", os.defpath)  # (no PATH at all: the system's own, written out, so that no program falls back on another)
-            searched = os.environ["PATH"].split(os.pathsep) + [os.environ[name] for name in ("GIT_EXEC_PATH",) if name in os.environ]
+            searched = [entry for name in ("PATH", "GIT_EXEC_PATH") if name in os.environ for entry in os.environ[name].split(os.pathsep)]
             if any(not os.path.isabs(entry) or of_the_clone(entry) for entry in searched):
                 raise HiveError(RELATIVE_PATH)
         args.run(args)
