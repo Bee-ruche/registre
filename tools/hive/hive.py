@@ -3658,59 +3658,60 @@ def own_store(clone, folder):
     return store
 
 
-NOT_COPIED = ("STOP: what this clone holds could not be copied out whole for the push: an object the candidate reaches is missing from "
-              "it, or is not what its name says. Nothing was pushed. Do not push from this clone, and run no git command in it: tell "
-              "the user to take a fresh clone of the fork")
-COPY_SECONDS = 900  # how long the copy of a candidate and its history, out of the clone, may take
+NOT_COPIED = ("STOP: what this clone holds could not be copied out whole: an object the work rests on is missing from it, or is not "
+              "what its name says. Nothing was made or pushed. Do not push from this clone, and run no git command in it: tell the "
+              "user to take a fresh clone of the fork")
+COPY_SECONDS = 900  # how long a copy of commits and their history, from a store to another, may take
 SHALLOW_BYTES = 1 << 20  # the most of .git/shallow that is read: a clone cut short names a handful of commits there
 
 
-def copied_out(clone, folder, commit):
-    """A store of this tool's own (own_store) that holds `commit` and all it reaches, copied out of the clone: the
-    store a candidate is pushed from. A push copies the bytes of what it sends as they lie in the store it is pushed
-    from, for every object it sends, and it sends more than the candidate's own: any object the candidate names that
-    is not in the tree of the fork's tip, even one the fork holds already. A clone's store is whatever ran in the
-    clone left; a pack there may hold any bytes under such an object's id, and the fork would keep them.
-
-    So the candidate is not pushed from the clone. git packs it there (the bytes as they lie), and in the store of
-    this tool's own git unpacks what it receives, object by object: it works out what each one holds, hashes that,
-    and writes it anew, as a file of its own, under the id its content gives. Nothing is kept as it lay in the
-    clone, neither an object under another's id nor the packed form of an object: what a push from here sends is
-    what git itself wrote here. Then everything the commit reaches is asked for, there: what stood in the clone
-    under the id of another object is here under its own id, reached by nothing, and no push carries it; and the
-    object whose place it took is missing, which stops the command. Where the clone's history was cut short
-    (.git/shallow), the copy's is cut at the same commits, those of them that the copy holds."""
-    store = own_store(clone, folder)
-    cut = first_bytes(clone.git_dir / "shallow", SHALLOW_BYTES + 1)
-    if len(cut) > SHALLOW_BYTES:
-        raise NotPlain(NOT_COPIED)
+def poured(source, target, wanted):
+    """Carries objects from one store to another: git packs them in `source` (the bytes as they lie there), and in
+    `target` git unpacks what it receives, object by object: it works out what each one holds, hashes that, and
+    writes it anew, as a file of its own, under the id its content gives. Nothing arrives as it lay: neither an
+    object under another's id, nor the packed form of an object. `wanted`: the lines that say what to pack (commit
+    ids, « ^id » for what is left out). True if both ends ended well."""
     packing = receiving = None
     try:
-        packing = subprocess.Popen(clone.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, env=clone.environment(), cwd=clone.root)
-        receiving = subprocess.Popen(store.command("unpack-objects", "-q"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, env=store.environment(), cwd=store.root)
+        packing = subprocess.Popen(source.command("pack-objects", "--revs", "--stdout", "-q"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, env=source.environment(), cwd=source.root)
+        receiving = subprocess.Popen(target.command("unpack-objects", "-q"), stdin=packing.stdout, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, env=target.environment(), cwd=target.root)
         packing.stdout.close()
-        packing.stdin.write(f"{need_sha(commit)}\n".encode())
+        packing.stdin.write("".join(f"{line}\n" for line in wanted).encode())
         packing.stdin.close()
-        ended = (receiving.wait(timeout=COPY_SECONDS), packing.wait(timeout=COPY_SECONDS))
+        return (receiving.wait(timeout=COPY_SECONDS), packing.wait(timeout=COPY_SECONDS)) == (0, 0)
     except subprocess.TimeoutExpired:
         raise HiveError(f"git pack-objects: timeout after {COPY_SECONDS} s") from None
     except OSError:
-        ended = None
+        return False
     finally:
         for process in (packing, receiving):
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait()
-    if ended != (0, 0):
+
+
+def copied_out(clone, folder, *commits):
+    """A store of this tool's own (own_store) that holds these commits and all they reach, copied out of the clone:
+    the store in which a candidate is made, checked, and from which it is pushed. A clone's store is whatever ran in
+    the clone left: it may hold an object twice, once as it is and once as other bytes under the same id, and each
+    git command then reads the copy it meets first; and a push copies what it sends as the bytes lie in the store
+    it is pushed from. So nothing of a candidate is read by git in the clone's store. The project's commits are
+    carried over (poured), and everything they reach is then asked for, there: what stood in the clone under the id
+    of another object is here under its own id, reached by nothing; and the object whose place it took is missing,
+    which stops the command. Where the clone's history was cut short (.git/shallow), the copy's is cut at the same
+    commits, those of them that the copy holds."""
+    store = own_store(clone, folder)
+    cut = first_bytes(clone.git_dir / "shallow", SHALLOW_BYTES + 1)
+    if len(cut) > SHALLOW_BYTES or not poured(clone, store, [need_sha(commit) for commit in commits]):
         raise NotPlain(NOT_COPIED)
     # The cuts of the clone's history, as far as they name commits this copy holds: no other line of that file goes on.
     named = [line for line in cut.decode("ascii", errors="replace").split("\n") if is_sha(line)]
     if named:
         held = store.git("cat-file", "--batch-check", stdin="".join(f"{line}\n" for line in named), check=False).stdout.split("\n")
         (store.git_dir / "shallow").write_text("".join(f"{line}\n" for line, said in zip(named, held) if said.split()[1:2] == ["commit"]))
-    if store.git("rev-list", "--objects", "--quiet", need_sha(commit), check=False, timeout=COPY_SECONDS).returncode != 0:
+    if store.git("rev-list", "--objects", "--quiet", *(need_sha(commit) for commit in commits), check=False, timeout=COPY_SECONDS).returncode != 0:
         raise NotPlain(NOT_COPIED)
     return store
 
@@ -4408,9 +4409,10 @@ def cmd_submit(args):
     is taken for the candidate, whatever it looks like. Then it shows, by its own reading, that
     the candidate starts from the project's history and changes only the task's files (candidate_proof), checks it
     as the hive will, on the tip the project's own address gives during the command (check_structure), and only
-    then moves the branch and pushes to the member's own fork, from a store of its own into which the candidate was
-    copied, each object hashed again (copied_out). A refusal leaves every branch where it was, and pushes nothing;
-    so does --no-push, once every check has passed. A refusal names a path only if the project's own
+    then moves the branch and pushes to the member's own fork. All of it is done in a store of the tool's own, into
+    which the project's commits were copied, each object written anew (copied_out): the staging, the commits, the
+    checks and the push read nothing of the clone's own store. A refusal leaves every branch where it was, and
+    pushes nothing; so does --no-push, once every check has passed. A refusal names a path only if the project's own
     commit holds it (named_paths)."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
@@ -4430,7 +4432,6 @@ def cmd_submit(args):
     if not ONE_LINE.match(title) or MARKER_LINE.match(title):
         raise HiveError("--message: one plain line (200 characters at most) that says what you changed")
     address = project_address(config, args.upstream_url)
-    root = str(clone.root)
     restart = "start the task again (hive.py start), which sets the work aside; if start stops too, tell the user"
     head = in_words(lambda: clone.git("rev-parse", "--verify", "HEAD^{commit}").stdout.strip(),
                     f"git cannot say which commit this clone is on: {restart}")
@@ -4446,52 +4447,56 @@ def cmd_submit(args):
             detail = named_paths(objects, base_tree, outside)
         print(f"REFUSED (path_outside_task): {REASONS['path_outside_task']} {json.dumps(detail)}")
         sys.exit(1)
-    rules_as_named(clone, base)  # (what git follows below, read first as bytes this tool hashes)
-    try:
-        tree = candidate_tree(clone, base, task["files"])
-    except NotPlain:
-        raise
-    except HiveError as error:
-        if not str(error).startswith("git "):
-            raise
-        # Why git could not: a folder of the project's commit that this clone does not hold, or holds under a name
-        # its bytes do not hash to. Read here as bytes, which says which; otherwise, one sentence of the tool's own.
-        with Objects(clone) as objects:
-            tip_entries(objects, base, time.monotonic() + PROOF_SECONDS)
-        raise HiveError(f"git could not make the candidate's tree ({error}): {restart}") from None
     who = clone.identity(login)
     lines = [f"Hive submit: {args.task}", "", f"Hive-Task: {args.task}", "Hive-Action: submit", f"Hive-Deal: {args.deal}",
              f"Hive-Member: {login}"] + ([f"Hive-Model: {args.model}"] if args.model else [])
-    # The candidate is made anew at each run, on the project's commit: the work, then the marker, on no branch until
-    # every check below has passed. No commit the clone's branch held is taken into it, not even one that looks like
-    # this tool's own: run again after a push that did not land, or after --no-push, submit makes the same candidate
-    # again, out of the same files, under a new date.
-    work = base if tree == base_tree else clone.commit(tree, base, title + "\n", who)
-    marker = clone.commit(tree, work, "\n".join(lines) + "\n", who)
-    try:
-        candidate_proof(clone, tip, marker, task, config["limits"])
-        figures = check_structure(root, tree_of(root, tip), merge_tree(root, tip, work, config["limits"]), task, config)
-    except Refusal as refusal:
-        print(f"REFUSED ({refusal.reason}): {REASONS[refusal.reason]} {json.dumps(refusal.detail)}")
-        sys.exit(1)
-    if marker != head:
-        # The branch HEAD names is moved by its own name, and HEAD itself when it names a commit: never a reference
-        # that another one would lead to. (The branch's log names who moved it.)
-        named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
-        moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
-        clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
-    # The clone's own index now says what the candidate holds (the work tree is not touched): the candidate was made
-    # in an index of the tool's own, and git's later answers about the work tree are read against this one.
-    clone.git("read-tree", marker, check=False)  # (a lock left on that index keeps git from writing it: « start » removes it)
     branch = SUBMIT_BRANCH.format(task=task["id"])
-    if args.no_push:
-        print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without --no-push "
-              "to make the candidate anew and push it")
-        return
-    # The candidate is pushed from a store of this tool's own, into which it was copied object by object, each hashed
-    # again: nothing goes to the fork as it lies in the clone's store (copied_out).
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
-        push(copied_out(clone, folder, marker), fork, marker, branch)
+        # The candidate is made in a store of this tool's own, which holds the project's two commits (the one the work
+        # rests on, the tip) and all they reach, each object written there anew (copied_out). git stages the task's
+        # files there, from the clone's work tree, under rules it reads there; the commits are made there, checked
+        # there, and pushed from there. Nothing of it is read by git in the clone's own store.
+        store = copied_out(clone, folder, base, tip)
+        staging = Clone(clone.root, {})  # git's folder is the store's; the files are those of the clone's work tree
+        staging.git_dir = store.git_dir
+        try:
+            tree = candidate_tree(staging, base, task["files"])
+        except NotPlain:
+            raise
+        except HiveError as error:
+            if not str(error).startswith("git "):
+                raise
+            raise HiveError(f"git could not make the candidate's tree ({error}): {restart}") from None
+        # The candidate is made anew at each run, on the project's commit: the work, then the marker. No commit the
+        # clone's branch held is taken into it, not even one that looks like this tool's own: run again after a push
+        # that did not land, or after --no-push, submit makes the same candidate again, out of the same files, under
+        # a new date.
+        work = base if tree == base_tree else store.commit(tree, base, title + "\n", who)
+        marker = store.commit(tree, work, "\n".join(lines) + "\n", who)
+        own = str(store.root)
+        try:
+            candidate_proof(store, tip, marker, task, config["limits"])
+            figures = check_structure(own, tree_of(own, tip), merge_tree(own, tip, work, config["limits"]), task, config)
+        except Refusal as refusal:
+            print(f"REFUSED ({refusal.reason}): {REASONS[refusal.reason]} {json.dumps(refusal.detail)}")
+            sys.exit(1)
+        # The candidate's own objects go to the clone, each written there anew, so that the clone's branch can be
+        # moved to it: the branch HEAD names, by its own name, and HEAD itself when it names a commit: never a
+        # reference that another one would lead to. (The branch's log names who moved it.)
+        if not poured(store, clone, [marker, f"^{base}"]):
+            raise HiveError(f"the candidate could not be written into this clone: {restart}")
+        if marker != head:
+            named = clone.git("symbolic-ref", "--quiet", "HEAD", check=False).stdout.strip()
+            moved = named if re.fullmatch(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}", named) and ".." not in named else "HEAD"
+            clone.git("update-ref", "--no-deref", "-m", f"hive submit {task['id']}", moved, marker, head, env=who)
+        # The clone's own index now says what the candidate holds (the work tree is not touched): git's later answers
+        # about the work tree are read against this one.
+        clone.git("read-tree", marker, check=False)  # (a lock left on that index keeps git from writing it: « start » removes it)
+        if args.no_push:
+            print(f"NOT-PUSHED {marker}: the candidate is committed and nothing was pushed; run the same command again without "
+                  "--no-push to make the candidate anew and push it")
+            return
+        push(store, fork, marker, branch)
     print(f"PUSHED {marker}")
     hours = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     print(f"THEN: {figures['files']} file(s) and {figures['lines']} changed line(s) are with the hive. If this worker runs at least "

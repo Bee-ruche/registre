@@ -7657,9 +7657,16 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
                 self.assertEqual((fork_holds_payload(), self.fork_branch("hive/submit/toy-0002")), (False, None), "nothing was pushed")
                 for file in files:
                     file.unlink()
-                code, text = self.submit("toy-0002", dealt)
+                real_push, pushed_from = hive.push, []
+
+                def watched(store, *more):
+                    pushed_from.append(Path(store.root).resolve())
+                    return real_push(store, *more)
+                with mock.patch.object(hive, "push", side_effect=watched):
+                    code, text = self.submit("toy-0002", dealt)
                 candidate = self.fork_branch("hive/submit/toy-0002")
                 self.assertEqual((code, self.spoken(text)[0], fork_holds_payload()), (0, f"PUSHED {candidate}", False), self.err)
+                self.assertEqual((len(pushed_from), work.resolve() in pushed_from), (1, False), "the push goes from the tool's own store, never from the clone")
                 self.assertEqual(sh("git", "show", f"{candidate}:{path}", cwd=self.alice.bare).stdout, old)
                 self.assertEqual(sh("git", "fsck", "--no-dangling", cwd=self.alice.bare, check=False).returncode, 0)
                 # In the copy a candidate is pushed from, git wrote each object anew, as a file of its own: none is there
@@ -7706,26 +7713,42 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
             self.assertEqual((self.run_cli("submit", *common, "--task", "toy-0001", "--deal", dealt, cwd=zed.work)[0], self.err),
                              (3, f"hive: {hive.NOT_COPIED}\n"))
 
-    def test_the_rules_git_follows_for_a_candidate_are_read_first_as_bytes_the_tool_hashes(self):
+    def test_a_candidate_is_made_under_the_projects_rules_as_the_tools_own_store_holds_them(self):
         """To make a candidate, git reads the project's commit by itself: its folders, and the .gitattributes files that
-        tell it how to store a file (a line end, an encoding, the text between « $Id » and « $ »). It reads them from
-        the clone's store, without hashing them. A .gitattributes whose bytes were swapped under its id, after start
-        showed the work tree, would have git store the task's files in a way the project never asked for: bytes the
-        work tree never showed, pushed under the member's name, and no later check reads that file, since no
-        candidate changes it. submit reads those objects first, as bytes it hashes itself: it stops, and nothing is
-        made or pushed."""
+        tell it how to store a file (a line end, an encoding, the text between « $Id » and « $ »). In a clone, those
+        are whatever its store holds: a file whose bytes were swapped under its id, or a second copy of an object,
+        of other bytes, beside the true one, which one git command may read while another reads the first. So git
+        makes no candidate in the clone's store. The project's commits are copied to a store of the tool's own, each
+        object written anew under the id its content gives, and the candidate is staged, committed and checked there:
+        the rules git follows are the project's, or the command stops; never other rules."""
         dealt, work = self.w.deal(self.alice, "toy-0001"), self.alice.work
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "int the_work;\n")
         blob = sh("git", "rev-parse", f"{self.start}:.gitattributes", cwd=work).stdout.strip()
-        true, head = self.object_bytes(blob), self.head()
-        self.write_object(blob, "blob", b"*.c working-tree-encoding=UTF-16LE\n")
-        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), f"hive: {hive.NOT_AS_NAMED}\n"))
+        true, head, other = self.object_bytes(blob), self.head(), b"*.c working-tree-encoding=UTF-16LE\n"
+        stop = f"hive: {hive.NOT_COPIED}\n"
+
+        def pushed():
+            candidate = self.fork_branch("hive/submit/toy-0001")
+            return candidate and sh("git", "show", f"{candidate}:lib.c", cwd=self.alice.bare).stdout
+
+        # The file's bytes swapped under its id.
+        self.write_object(blob, "blob", other)
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), stop))
         self.assertEqual((self.head(), self.fork_branches()), (head, ["refs/heads/main"]), "no commit and no push")
         self.write_object(blob, *true)
+        # Two copies of it: the clone's objects in one pack, as a clone from GitHub holds them, and a second pack that
+        # lists other bytes under the same id. Whichever copy a git command meets first, the candidate is the
+        # project's rules' or there is none.
+        sh("git", "repack", "-a", "-d", "-q", cwd=work)
+        files = self.write_pack([(blob, "blob", other)])
         code, text = self.submit("toy-0001", dealt)
-        self.assertEqual((code, self.spoken(text)[0]), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}"), self.err)
-        self.assertEqual(sh("git", "show", f"{self.fork_branch('hive/submit/toy-0001')}:lib.c", cwd=self.alice.bare).stdout, LIB + "int the_work;\n")
+        self.assertIn((code, self.err if code else ""), ((3, stop), (0, "")), text)
+        self.assertIn(pushed(), (None, LIB + "int the_work;\n"), "never the task's file as other rules would store it")
+        for file in files:
+            file.unlink()
+        code, text = self.submit("toy-0001", dealt)
+        self.assertEqual((code, self.spoken(text)[0], pushed()), (0, f"PUSHED {self.fork_branch('hive/submit/toy-0001')}", LIB + "int the_work;\n"), self.err)
 
     def test_no_commit_the_branch_holds_is_taken_into_a_candidate_whatever_it_looks_like(self):
         """submit makes its candidate anew at each run: the work, then its marker, on the project's commit. No commit the
@@ -7798,7 +7821,7 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         true = {name: self.object_bytes(name) for name in (ours, planted)}
         self.write_object(ours, "tree", self.object_bytes(theirs)[1])
         self.assertEqual(sh("git", "diff-tree", "-r", "--name-only", ours, theirs, cwd=work).stdout, "", "git itself reads the file as the project's tree")
-        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), self.NOT_AS_NAMED), "a folder")
+        self.assertEqual((self.submit("toy-0001", dealt), self.err), ((3, ""), f"hive: {hive.NOT_COPIED}\n"), "a folder")
         self.write_object(ours, *true[ours])
         self.write_object(planted, "commit", true[planted][1].replace(b"a commit of the clone's own", b"other words under the same name"))
         self.assertEqual(sh("git", "log", "-1", "--format=%s", "HEAD^", cwd=work).stdout, "other words under the same name\n", "git itself reads it")
@@ -7970,7 +7993,8 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         (self.alice.work / ".git/objects" / folder[:2] / folder[2:]).unlink()
         not_held = "this clone does not hold an object that the work rests on: run hive.py setup, then start the task again (hive.py start); " \
                    "if this happens again, tell the user"
-        self.one_line(self.submit("toy-0002", dealt), not_held)
+        self.assertEqual((self.submit("toy-0002", dealt), self.err), ((3, ""), f"hive: {hive.NOT_COPIED}\n"),
+                         "a folder the clone does not hold: what the work rests on cannot be copied out whole")
         self.write_object(folder, *kept)
         clone = hive.Clone(self.alice.work.resolve(), {})
         config, tasks, _ = hive.hive_project(self.registry, "toy")
@@ -8037,19 +8061,27 @@ class TestWhatTheCloneCannotMakeTheToolSayOrMove(Volunteer):
         command and its code, no branch moved, nothing pushed. Planted here, to make one fail: a commit-graph (the
         file in which git keeps the parents it once read) that gives the project's commit a parent that is no
         commit's place; git stops on it with words of its own. The same function, outside a worker command, repeats
-        what git said."""
+        what git said. (Since a candidate is made in a store of the tool's own, the failure is brought about here by
+        standing in for git; the planted file itself no longer reaches a candidate's checks.)"""
         dealt = self.w.deal(self.alice, "toy-0001")
         self.alice.write("lib.c", LIB + "int honest;\n")
-        before = self.head()
+        before, real, words = self.head(), hive.subprocess.run, "fatal: words of git's own, which quote a file of the clone"
+
+        def fails(command, **options):  # the hive's own road to git (« -C »), asked for a commit's tree
+            if "-C" in command and any(str(word).endswith("^{tree}") for word in command):
+                return subprocess.CompletedProcess(command, 128, "", words + "\n")
+            return real(command, **options)
+        with mock.patch.object(hive.subprocess, "run", side_effect=fails):
+            self.one_line(self.submit("toy-0001", dealt), "git rev-parse failed (128)")
+            self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
+            with self.assertRaises(hive.HiveError) as hive_side:
+                hive.tree_of(self.alice.work, self.start)
+        self.assertEqual(str(hive_side.exception), f"git rev-parse failed (128): {words}")
+        # A file in which git keeps what it once worked out of the commits (their parents), planted in the clone, is read
+        # by no step of a candidate: the candidate is made and checked in a store of the tool's own.
         self.commit_graph(parents={self.start: 12345})
-        said = sh("git", "rev-list", "--count", "HEAD", cwd=self.alice.work, check=False)
-        words = said.stderr.strip()  # (a version of git words it in its own way: « fatal: invalid parent position 12345 »)
-        self.assertTrue(said.returncode != 0 and "12345" in words, f"git itself stops on the planted file, with words of its own: {said}")
-        self.one_line(self.submit("toy-0001", dealt), f"git rev-list failed ({said.returncode})")
-        self.assertEqual((self.head(), self.fork_branches()), (before, ["refs/heads/main"]))
-        with self.assertRaises(hive.HiveError) as hive_side:
-            hive.merge_tree(self.alice.work, self.start, before, hive.DEFAULTS["limits"])
-        self.assertEqual(str(hive_side.exception), f"git rev-list failed ({said.returncode}): {words}")
+        self.assertNotEqual(sh("git", "rev-list", "--count", "HEAD", cwd=self.alice.work, check=False).returncode, 0, "git itself stops on it")
+        self.assertEqual(self.submit("toy-0001", dealt)[1].split()[0], "PUSHED", self.err)
 
     def test_whichever_git_fails_and_whatever_it_says_none_of_it_is_printed(self):
         """Every git command a worker command runs, by whichever function, is made to fail in its turn, with words on
