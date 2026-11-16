@@ -1951,6 +1951,67 @@ class TestGoal(Case):
         figures = {r["task"]: r["figure"]["metric"] for r in self.summary(files)["recent"]}
         self.assertEqual(figures, {"toy-0001": "a", "toy-0005": "a", "toy-0009": "a", **{f"toy-{n:04d}": "b" for n in (2, 3, 4, 6, 7, 8, 10)}})
 
+    def project(self, judge):
+        """Writes a project's file as the registry keeps one (hive/projects/<project>.json) and returns its path."""
+        path = self.root / "registry-project.json"
+        path.write_bytes(judge if isinstance(judge, bytes) else json.dumps({"protocol": 1, "project": "toy", "judge": judge}).encode())
+        return str(path)
+
+    def test_only_a_measure_whose_proof_the_project_takes_leads_a_card(self):
+        """A project keeps flags it does not take as proofs (miniz keeps the one of its memory figure, and takes the
+        stopwatch's four). Told which proofs the project takes (--project), the page leads a card, a title and the
+        opening line with one of those measures only; the others stay rows of the table. Without that file the page
+        cannot tell, and leads as before."""
+        report = {**MINIZ, "gain_max_memory_kb": 0.3, "sure_max_memory_kb": 1, "worse_max_memory_kb": 0}
+        goal = gain_goal("gain_instructions_n6", **{"and": [{"name": "sure_compression_throughput_n6", "min": 1}]})
+        self.ledger([report_verdict(1, report)])
+        tasks = self.tasks([task("toy-0001", goal)])
+        kept = {"metrics": sorted(report), "confirm": ["sure_compression_throughput_n6", "sure_compression_throughput_n9"]}
+        told, untold = self.make("--tasks", tasks, "--project", self.project(kept)), self.make("--tasks", tasks)
+        self.harmless(told)
+        self.assertEqual(self.summary(untold)["recent"][0]["figure"], {"metric": "max_memory_kb", "gain": 0.3, "goal": False})
+        recent = self.summary(told)["recent"][0]
+        self.assertEqual((recent["figure"], recent["headline"]), ({"metric": "compression_throughput_n9", "gain": 0.052, "goal": False},
+                                                                  {"metric": "compression_throughput_n9", "gain": 0.052}))
+        card, win = told[f"wins/{sha(5001)}.svg"], told[f"wins/{sha(5001)}.html"]
+        self.assertIn("5.2 %", card)
+        self.assertNotIn("30.0 %", card)
+        self.assertIn("<title>5.2 % better · compression throughput n9 · toy-0001 · La Ruche</title>", win)
+        self.assertIn("30.0 %", win, "the measure is still a row of the table")
+        # The task's own figure leads when its proof is one the project takes, and not otherwise.
+        own = self.tasks([task("toy-0001", gain_goal("gain_max_memory_kb"))])
+        self.assertEqual(self.summary(self.make("--tasks", own))["recent"][0]["figure"], {"metric": "max_memory_kb", "gain": 0.3, "goal": True})
+        self.assertEqual(self.summary(self.make("--tasks", own, "--project", self.project(kept)))["recent"][0]["figure"],
+                         {"metric": "compression_throughput_n9", "gain": 0.052, "goal": False})
+        own = self.tasks([task("toy-0001", gain_goal("gain_compression_throughput_n6"))])
+        self.assertEqual(self.summary(self.make("--tasks", own, "--project", self.project(kept)))["recent"][0]["figure"],
+                         {"metric": "compression_throughput_n6", "gain": 0.037, "goal": True})
+        # A project that takes no proof: no figure leads anything. A proof named in no usable way is no proof.
+        for judge in ({"metrics": sorted(report)}, {"confirm": []}, {"confirm": ["sure_", "sure_<script>", "gain_max_memory_kb", 5, None, "max_memory_kb"]}):
+            with self.subTest(judge=judge):
+                files = self.make("--project", self.project(judge))
+                self.harmless(files)
+                self.assertEqual((self.summary(files)["recent"][0]["figure"], self.summary(files)["recent"][0]["headline"]), (None, None))
+                self.assertNotIn("%", files[f"wins/{sha(5001)}.svg"])
+        self.assertEqual(page.read_proofs(self.project(kept)), {"compression_throughput_n6", "compression_throughput_n9"})
+
+    def test_a_project_file_that_cannot_be_read_stops_the_tool(self):
+        self.ledger([report_verdict(1, MINIZ)])
+        for path in (str(self.root / "nowhere.json"), str(self.root)):
+            with self.subTest(path=path[-24:]):
+                self.assertEqual(self.make("--project", path, code=2), {})
+        fine = json.dumps({"judge": {"confirm": ["sure_a"]}}).encode()
+        for written in (b"{not json", b"[]", b'"judge"', b'{"judge": []}', b'{"judge": {"confirm": "sure_a"}}', b'{"judge": {"confirm": {"sure_a": 1}}}',
+                        b'{"judge": {"confirm": null}}', fine + b" " * page.PROJECT_BYTES, b"[" * 100000):
+            with self.subTest(written=written[:40]):  # (each is written when it is tried: they share one name)
+                self.assertEqual(self.make("--project", self.project(written), code=2), {})
+        self.assertFalse(self.out.exists(), "a refused argument writes nothing")
+        self.assertEqual(page.read_proofs(self.project(fine + b" " * (page.PROJECT_BYTES - len(fine)))), {"a"}, "exactly the bound is read")
+        self.assertEqual(page.read_proofs(self.project(b"{}")), set(), "a file that names no judge takes no proof")
+        link = self.root / "link.json"
+        link.symlink_to(self.project({"confirm": ["sure_a"]}))
+        self.assertEqual(self.make("--project", str(link), code=2), {}, "a link is not followed")
+
     def test_a_task_file_that_cannot_be_read_stops_the_tool_and_an_empty_one_does_not(self):
         self.ledger([report_verdict(1, MINIZ)])
         self.assertEqual(self.make("--tasks", str(self.root / "nowhere.jsonl"), code=2), {})

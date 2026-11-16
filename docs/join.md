@@ -38,6 +38,10 @@ usage settings before you schedule anything.
    organization's, and older than the project's minimum (90 days by default). To check your account's age, open
    `https://api.github.com/users/<your-login>` and read `created_at` (or run `gh api user --jq .created_at`). During
    the pilot, only the forks of the accounts the project's file lists are read.
+   **Fork the default branch only** (what GitHub's site offers when you fork: « Copy the `master` branch only »).
+   Your worker needs no other branch of the project in your fork, and the two branches it writes there are named
+   under `hive/`: a branch named `hive` in your fork leaves no room for them. If your fork holds one (a fork made
+   with every branch), delete that branch from your fork: it is a copy, and the project keeps its own.
 2. **Create a scheduled task in your assistant**, attach four repositories (your fork; and, to read only, the
    registry `Bee-ruche/registre`, the hive's state `Bee-ruche/hive-state` and the project itself, for the pilot
    `Bee-ruche/minizBee`), and **remove every connector** (mail, calendar, documents, chat). Your assistant loads your

@@ -211,7 +211,7 @@ the hive runs those git commands with an empty attribute source.
 
 | Job | Holds | Runs contributors' code | Talks to forks | What it does |
 | --- | --- | --- | --- | --- |
-| `plan` | nothing | no | **yes, once** | reads the forks; decides the deals whose time is up, the candidates and the new deals; writes **the plan** and a bundle of the candidates' git objects (1 GiB at most: the candidates beyond it wait for the next run, oldest deal first; one whose own commits are too many or too heavy is refused without being carried); publishes the plan's SHA-256 |
+| `plan` | nothing | no | **yes, once** | reads the forks; decides the deals whose time is up, the candidates and the new deals; writes **the plan** and a bundle of the candidates' git objects (1 GiB and two million objects at most: the candidates beyond either wait for the next run, oldest deal first; one whose own commits are too many or too heavy is refused without being carried); publishes the plan's SHA-256 |
 | `record` | the right to write the hive's state | no | no | checks that the plan is the one `plan` published; writes the plan's deals and the feed, **within minutes of the run's start** |
 | `judge` | nothing | **yes**, in the judge's container | no | judges the plan's candidates; writes **a table from the id of each judged commit to the judge's answer** |
 | `apply` | the right to write the project and the state | no | no | checks the plan; derives every commit by itself; looks each one up in the judge's table; pushes; records |
@@ -263,7 +263,9 @@ the hive runs those git commands with an empty attribute source.
   the judge saw it better beyond its noise, with the same outputs. A bound on a measure that has no proof (in miniz,
   the count of instructions) is a bar that can only refuse: the hive does not vouch for that measure's size, and the
   ledger keeps it as the judge gave it. The page leads a contribution's card with a figure that has its `sure_`, and
-  with no other: a measure without one is a row of its table.
+  with no other: a measure without one is a row of its table. Told which proofs the project takes (its file, given
+  to the page tool), the page leads with one of those measures only: a flag the project keeps and does not take as
+  a proof leads nothing.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**. They are different tasks' candidates: there is one per task at most.
 - **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come those a
@@ -331,7 +333,11 @@ with it the tasks that share a file with that one.
 - **It writes a branch of its own, never the one a project publishes.** A project's file names both: `branch`,
   where the hive integrates what its judge accepted, and `published`, the branch people take the project from. The
   hive pushes to the first and to no other; a file that names no published branch, or one branch for both, stops
-  every step of the hive and every command of a worker. What is on the hive's branch was accepted by a judge and
+  every step of the hive and every command of a worker. Each is written as a branch's own name, the one way: what
+  git takes as a branch's name, with no `refs/` or `heads/` in front, not `HEAD` nor a name that ends in `_HEAD`,
+  and not a commit's full id. The hive's own branch reaches git only inside a full reference (`refs/heads/<name>`
+  on a repository, `refs/remotes/…/<name>` in a clone), never as a bare word; the published one reaches no git
+  command: the hive only compares it. What is on the hive's branch was accepted by a judge and
   read by nobody: each of its commits says so. The published branch moves when a maintainer, having read what
   accumulated, moves it; a release, an offer to another project, anything that leaves the repository, is a
   maintainer's act. The judge's scan of a candidate's source is a filter, not a review of what a change does.

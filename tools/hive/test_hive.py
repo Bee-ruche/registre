@@ -948,7 +948,7 @@ class TestStructure(Base):
             self.assertEqual({hive.packed_weight(self.w.harvest, sha, self.w.tip(), 1 << 20) for sha in (slow, fine)}, {(1 << 20) + 1})
             real = hive.packed_weight
             with mock.patch.object(hive, "packed_weight", side_effect=lambda repo, sha, tip, most: real(repo, sha, tip, most) if sha == slow else 1), \
-                    mock.patch.object(hive, "oversized", return_value=False):  # (the sizes are asked in time: the packing alone is too slow)
+                    mock.patch.object(hive, "counted", return_value=(False, 1)):  # (the sizes are asked in time: the packing alone is too slow)
                 made = self.w.plan()
             late = self.w.plan()  # and when git cannot even list a candidate's objects in time, it is taken as too large
         self.assertEqual({c["sha"]: c["heavy"] for c in made["queue"]}, {slow: True, fine: False}, "the plan goes on with the others")
@@ -1004,6 +1004,34 @@ class TestStructure(Base):
         self.assertEqual(sorted(e["sha"] for e in self.w.events() if e["type"] == "verdict"), sorted(shas))
         self.assertGreaterEqual(hive.BUNDLE_BYTES, 2 * hive.DEFAULTS["limits"]["history_bytes"])
         self.assertLessEqual(2 * hive.BUNDLE_BYTES, 2 << 30, "what the steps with a key accept to take (the workflow's own figure)")
+
+    def test_the_objects_carried_to_the_other_steps_have_a_bound_too_and_the_rest_waits(self):
+        """The steps that read the candidates read them together, and what git needs for a pack grows with the number
+        of its objects, however small: the plan sums the objects of the candidates it carries, and those beyond the
+        bound wait for the next run, oldest deal first. The first is always carried; one that is not carried at all
+        (too long, too heavy, too large) counts for nothing."""
+        shas = [self.w.fork("bob", 102).submit("toy-0001"), self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n"),
+                self.w.fork("dave", 104).submit("toy-0005", path="run.sh", content="#!/bin/sh\n# faster\n")]
+        self.w.plan()
+        tip, limits = self.w.tip(), self.w.load()[0]["limits"]
+        counts = sorted(hive.counted(self.w.harvest, sha, tip, limits) for sha in shas)
+        self.assertEqual([large for large, _ in counts], [False] * 3)
+        objects = [seen for _, seen in counts]
+        self.assertGreater(objects[0], 2, "a candidate adds commits, folders and files")
+        self.assertEqual(hive.oversized(self.w.harvest, shas[0], tip, limits), False, "and the yes or no is the same function's")
+        with mock.patch.object(hive, "BUNDLE_OBJECTS", objects[1] + objects[2]):  # room for any two of them, never for the three
+            first = self.w.plan()
+            self.assertEqual(len(first["queue"]), 2, "the third waits: it is not in this plan at all")
+            with mock.patch.object(hive, "BUNDLE_OBJECTS", 0), mock.patch.object(hive, "write_bundle"):
+                self.assertEqual(len(self.w.plan()["queue"]), 1, "the first is always carried")
+            with mock.patch.object(hive, "counted", return_value=(True, 10 ** 9)), mock.patch.object(hive, "write_bundle"):
+                self.assertEqual([c["large"] for c in self.w.plan()["queue"]], [True] * 3, "what is not carried counts for nothing")
+            answered = [r["sha"] for r in self.w.run()]
+            self.assertEqual((len(answered), set(answered) <= set(first_two := {c["sha"] for c in first["queue"]})), (2, True))
+            later = [r["sha"] for r in self.w.run()]
+            self.assertEqual(later, sorted(set(shas) - first_two), "the one that waited is answered at the next run, and it alone")
+        self.assertEqual(sorted(e["sha"] for e in self.w.events() if e["type"] == "verdict"), sorted(shas))
+        self.assertEqual((hive.BUNDLE_OBJECTS, hive.HISTORY_OBJECTS), (2_000_000, 200_000), "ten candidates of the most objects one may add")
 
     def test_the_plan_spends_a_bounded_time_weighing_and_what_it_has_not_weighed_waits(self):
         """Weighing a candidate is packing it: slow ones, one after the other, must not take the plan's whole time.
@@ -4384,12 +4412,24 @@ class TestProjectSettings(Base):
         self.assertEqual((config["branch"], config["published"]), ("main", "stable"))
         for wrong in ({"published": "main"}, {"published": "MAIN"}, {"branch": "stable"}, {"branch": "Stable"}, {"published": None},
                       {"published": ""}, {"published": 1}, {"published": ["stable"]}, {"published": "-x"}, {"published": "a..b"},
-                      {"published": "st able"}, {"published": "stable\n"}, {"branch": None}, {"branch": 3}):
+                      {"published": "st able"}, {"published": "stable\n"}, {"branch": None}, {"branch": 3},
+                      # a name that reads as something else than a branch's own name, or that git does not take as one
+                      {"published": "refs/heads/main"}, {"published": "heads/main"}, {"published": "Refs/heads/main"}, {"published": "HEAD"},
+                      {"published": "FETCH_HEAD"}, {"published": "x/HEAD"}, {"published": "x/orig_head"}, {"published": "0" * 40}, {"published": "A" * 40}, {"published": "stable.lock"},
+                      {"published": "x.lock/y"}, {"published": "stable."}, {"published": "stable/"}, {"published": "a//b"}, {"published": "x/.y"},
+                      {"branch": "refs/heads/stable"}, {"branch": "heads/stable"}, {"branch": "HEAD"}, {"branch": "main.lock"}, {"branch": "main/"},
+                      {"branch": "a//b"}, {"branch": "1" * 40}):
             self.w.set_config(wrong)
             with self.subTest(wrong=wrong):
                 for load in (lambda: hive.load_config(path), lambda: hive.project_of(step), lambda: hive.hive_project(self.w.registry, "toy")):
                     with self.assertRaisesRegex(hive.HiveError, "published|branch"):
                         load()
+        for fine in ({"branch": "hive", "published": "main"}, {"branch": "release/2.x", "published": "trunk"}, {"branch": "a.b-c_d/e", "published": "v1"},
+                     {"branch": "heads-up", "published": "refsheet"}, {"branch": "0" * 39, "published": "headless"},
+                     {"branch": "go-ahead", "published": "ahead"}):
+            self.w.set_config(fine)
+            with self.subTest(fine=fine):
+                self.assertEqual({key: hive.load_config(path)[key] for key in fine}, fine)
         raw = {key: value for key, value in CONFIG.items() if key != "published"}
         path.write_text(json.dumps(raw))
         with self.assertRaisesRegex(hive.HiveError, "published: the branch people take the project from"):

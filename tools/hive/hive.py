@@ -430,10 +430,10 @@ def load_config(path):
         raise HiveError(f"{path}: project: a lower-case identifier")
     if not (isinstance(config.get("repo"), str) and REPO_NAME.match(config["repo"])):
         raise HiveError(f"{path}: repo: owner/name")
-    if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
+    if not plain_branch(config["branch"]):
         raise HiveError("the project's branch is not a plain branch name")
     published = config.get("published")
-    if not (isinstance(published, str) and REVISION.match(published) and ".." not in published):
+    if not plain_branch(published):
         raise HiveError(f"{path}: published: the branch people take the project from, which the hive never writes")
     if config["branch"].casefold() == published.casefold():
         raise HiveError(f"{path}: branch: the hive writes a branch of its own, never the one the project publishes ({published})")
@@ -475,6 +475,20 @@ def condition_ok(condition, metrics, nested=True):
     return bool(bounds) and condition.get("name") in metrics \
         and all(isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) for b in bounds) \
         and isinstance(more, list) and (not more or nested) and all(condition_ok(c, metrics, nested=False) for c in more)
+
+
+def plain_branch(name):
+    """True for a branch's own name, written the one way: what git itself takes as a branch's name (no part that
+    starts with a dot or ends with « .lock », no two dots or two slashes in a row, no dot or slash at the end), whose
+    first part is not « refs » or « heads » (a full reference written short), whose last part is not HEAD nor a name
+    that ends in _HEAD, and which is not a commit's full id (forty hexadecimal digits). load_config compares the two
+    names that pass as texts, whatever the letter case. The hive's own branch reaches git only inside a full reference
+    (refs/heads/<name> on a repository, refs/remotes/…/<name> in a clone), never as a bare word; the published one
+    reaches no git command."""
+    return (isinstance(name, str) and bool(REVISION.match(name)) and ".." not in name and "//" not in name
+            and not name.endswith(("/", ".")) and not any(part.startswith(".") or part.endswith(".lock") for part in name.split("/"))
+            and name.split("/")[0].lower() not in ("refs", "heads") and not is_sha(name.lower())
+            and not (name.split("/")[-1].upper() == "HEAD" or name.split("/")[-1].upper().endswith("_HEAD")))
 
 
 def check_goals(config, tasks):
@@ -1695,7 +1709,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     # failed on (one that breaks the judging delays the others once).
     queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
-    carried, within, weighing_until = 0, [], time.monotonic() + WEIGH_SECONDS
+    carried, listed, within, weighing_until = 0, 0, [], time.monotonic() + WEIGH_SECONDS
     for candidate in queue:
         if within and time.monotonic() >= weighing_until:
             break  # the plan's own time: what it has not weighed waits, oldest deal first at the next run
@@ -1708,16 +1722,19 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         # Nor is one carried whose own commits hold an object larger than the project takes (oversized): a history is
         # weighed as git packs it, and what it packs to says nothing of what its objects are once read. The later
         # steps read the candidates together: each of them must be one that could be read alone.
-        candidate["large"] = not candidate["long"] and oversized(repo, candidate["sha"], tip, config["limits"])
+        candidate["large"], objects = (False, 0) if candidate["long"] else counted(repo, candidate["sha"], tip, config["limits"])
         weight = 0 if candidate["long"] or candidate["large"] else packed_weight(repo, candidate["sha"], tip, config["limits"]["history_bytes"])
         candidate["heavy"] = weight > config["limits"]["history_bytes"]
-        # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for
-        # the next run, where the oldest deal is first again (they are not weighed in this one). The first one is
-        # always carried.
+        # What the plan carries to the other steps is bounded as a whole, in bytes and in objects: the candidates
+        # beyond a bound wait for the next run, where the oldest deal is first again (they are not weighed in this
+        # one). The first one is always carried. The objects are counted because the steps that read the candidates
+        # read them together, and what git needs to write or read a pack grows with the number of its objects,
+        # however small each of them is.
         weight = 0 if candidate["heavy"] else weight
-        if within and carried + weight > BUNDLE_BYTES:
+        objects = 0 if candidate["heavy"] or candidate["large"] else objects
+        if within and (carried + weight > BUNDLE_BYTES or listed + objects > BUNDLE_OBJECTS):
             break
-        carried += weight
+        carried, listed = carried + weight, listed + objects
         within.append(candidate)
     if len(within) < len(queue):
         log(f"the candidates' file is full, or the time to weigh them is used up: {len(queue) - len(within)} candidate(s) wait for the next run")
@@ -1791,31 +1808,38 @@ WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those 
 
 HISTORY_OBJECTS = 200_000  # how many objects a candidate's own commits may add, for the plan to carry them
 HISTORY_OBJECT_BYTES = 16 << 20  # how large a folder or a commit among them may be (a file: limits.file_bytes)
+BUNDLE_OBJECTS = 10 * HISTORY_OBJECTS  # how many objects the plan carries to the other steps at most, all candidates together
 
 
 def oversized(repo, sha, tip, limits):
-    """True if the candidate's own commits (those the project's tip does not hold) add a file larger than the
-    project takes from a candidate (limits.file_bytes), a folder or a commit larger than HISTORY_OBJECT_BYTES, or
-    more than HISTORY_OBJECTS objects; or if git cannot say so within PACK_SECONDS. The sizes are asked of git,
-    which reads a few bytes of each object for them: no object is read whole. Such a candidate is not carried to the
-    other steps and is refused as too heavy: a few bytes of a pack can be an object of gigabytes, and the steps that
-    read the candidates together would need, to read them, what no single fetch needed."""
+    """True if the candidate's own commits cannot be carried to the other steps (counted)."""
+    return counted(repo, sha, tip, limits)[0]
+
+
+def counted(repo, sha, tip, limits):
+    """(too large, objects) of the candidate's own commits (those the project's tip does not hold). Too large: they
+    add a file larger than the project takes from a candidate (limits.file_bytes), a folder or a commit larger than
+    HISTORY_OBJECT_BYTES, or more than HISTORY_OBJECTS objects; or git cannot say so within PACK_SECONDS. The sizes
+    are asked of git, which reads a few bytes of each object for them: no object is read whole. Such a candidate is
+    not carried to the other steps and is refused as too heavy: a few bytes of a pack can be an object of gigabytes,
+    and the steps that read the candidates together would need, to read them, what no single fetch needed. Objects:
+    how many they add, which the plan sums over the candidates it carries (BUNDLE_OBJECTS)."""
     command = ["git", *GIT_BASE, "-C", str(repo)]
     try:
         lister = subprocess.Popen([*command, "rev-list", "--objects", "--no-object-names", need_sha(sha), f"^{need_sha(tip)}"],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(),
                                   preexec_fn=bounded)
     except OSError:
-        return True
+        return True, 0
     try:
         sizer = subprocess.Popen([*command, "cat-file", "--batch-check=%(objecttype) %(objectsize)"], stdin=lister.stdout,
                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(), preexec_fn=bounded)
     except OSError:
         lister.kill()
         lister.wait()
-        return True
+        return True, 0
     lister.stdout.close()
-    alarm = threading.Timer(PACK_SECONDS, lambda: (lister.kill(), sizer.kill()))
+    alarm, began = threading.Timer(PACK_SECONDS, lambda: (lister.kill(), sizer.kill())), time.monotonic()
     alarm.start()
     most, seen, large = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"]), 0, False
     try:
@@ -1829,7 +1853,9 @@ def oversized(repo, sha, tip, limits):
         if large:
             lister.kill(), sizer.kill()
         sizer.stdout.close()
-        return (sizer.wait() != 0) | (lister.wait() != 0) | large
+        # (Past its time by the clock, it is too large whether or not the alarm had fired yet: the answer does not
+        # depend on which of the two came first.)
+        return bool((sizer.wait() != 0) | (lister.wait() != 0) | large) or time.monotonic() - began >= PACK_SECONDS, seen
     finally:
         alarm.cancel()
 
