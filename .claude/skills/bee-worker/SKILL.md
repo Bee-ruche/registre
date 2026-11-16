@@ -290,8 +290,9 @@ in a row that ends that way, until one accepted task clears it. A candidate the 
 two hours, each time, never more, and costs the hive a judgement: there is never a reason to push something you
 do not believe in. A candidate you do believe in, and that the judge refuses, is an ordinary outcome. One the judge
 finds correct, that degrades nothing and reaches the figure the task asks for, and that lacks only the proof of it
-because the measure's noise hid the gain (`not_proven`), costs no wait at all: it is refused, since nothing is
-accepted without its proof, and the account may be dealt a task at the next run.
+(`not_proven`: the proof is missing, or the gain did not show beyond the measure's noise) costs no wait: it is
+refused, since nothing is accepted without its proof. It still costs the hive a judgement and takes one of the
+account's deals of the day.
 
 ## Your final message
 

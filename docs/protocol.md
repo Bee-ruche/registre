@@ -160,7 +160,7 @@ What ends a deal, and what it costs its member:
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
 | the judge examined its candidate and refused it (`judge_refused`, `goal_not_met`, `requirement_not_met`) | a wait of two hours, each time, never doubled: a refusal there is ordinary, on tasks that ask for a measured gain |
-| the judge examined its candidate, found it correct, nothing degraded and the figure the task asks for reached, and only the proof of it is missing: the measure's noise hid the gain (`not_proven`) | **no wait**: the work was done, and a measure's noise is not the member's doing. It is still a deal that did not end in an acceptance: it counts in the day's limit and in the member's class |
+| the judge examined its candidate, found it correct, nothing degraded and the figure the task asks for reached, and only the proof of it is missing or did not come out beyond the measure's noise (`not_proven`) | **no wait**: the hive does not charge a member for what its own stopwatch could not tell. It cost the hive a judgement all the same, and it is a deal that did not end in an acceptance: it counts in the day's limit and in the member's class |
 | its candidate is refused before the judge could examine it: on a structural rule, because it does not merge or changes nothing, after three failures that are its own (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait that doubles |
 | its time is up and the fork holds no candidate | the same wait that doubles |
 | the hive could not answer it in six runs for no fault of the candidate's (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
@@ -168,7 +168,8 @@ What ends a deal, and what it costs its member:
 **A deal that does not end in an accepted candidate costs something**, so that no way of ending a deal is free: a
 wait, or, for a candidate that lacks a proof alone, its place in the day's limit. When the judge examined the
 candidate, the wait is two hours; there is none when the candidate is correct, reaches the task's own figure and
-lacks only a proof that stayed in the noise (`not_proven`). When the task was held for nothing (no candidate, or one
+lacks only a proof (`not_proven`): the hive cannot tell a gain the noise hid from no gain, so it neither accepts
+nor charges. When the task was held for nothing (no candidate, or one
 refused before the judge), it is two hours doubled at each such deal since the member's last accepted candidate,
 seven days at most; an acceptance clears both, and nothing else does. A project also limits the deals an account
 is given in a day (5 by default), **not counting those whose candidate was accepted**: the limit bounds what an
@@ -302,8 +303,8 @@ What makes them hold:
 - **One holder per task.** There is no order to decide among members, no instant to trust, and nothing a member
   can push that changes what another member's candidate is worth.
 - **A task is held for a bounded time.** Three hours and one of grace, by one account, which then waits: two
-  hours if the judge examined and refused its candidate (nothing if all the candidate lacked was a proof that
-  stayed in the measure's noise), twice as long each time if it held the task for nothing.
+  hours if the judge examined and refused its candidate (nothing if all the candidate lacked was a proof),
+  twice as long each time if it held the task for nothing.
   A candidate that waits to be judged keeps its task: that is the hive's delay, not the member's.
 - **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
   recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive

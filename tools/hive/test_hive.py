@@ -764,7 +764,7 @@ class TestIntegration(Base):
         self.assertEqual(ledger.standing(101, hive.now(), config), (2, None, 1))
         self.assertEqual(self.w.feed_file()["wait"], {}, "the feed tells the worker of no wait")
         self.assertEqual((self.w.feed()["toy-0004"]["status"], self.w.feed()["toy-0004"]["refused_for"]), ("open", {"not_proven": 1}))
-        self.assertIn("did not come out of the measure's noise", hive.REASONS["not_proven"])
+        self.assertIn("is missing or did not come out beyond the measure's noise", hive.REASONS["not_proven"])
         self.w.fork("bob", 102).submit("toy-0004")
         for gain, sure in ((0.012, 1), ):
             self.assertEqual(self.one(self.w.run(judge(gain, sure)))["reason"], "goal_not_met", "the task's own figure is short")
@@ -3628,6 +3628,22 @@ class TestDealing(Base):
         with self.at("14:00:00"):
             self.w.run()
             self.assertEqual([d["member"] for d in self.lines("deal")], ["alice"], "once the wait is over, it is")
+
+    def test_a_candidate_short_of_a_proof_alone_gets_no_next_task_in_the_same_run_and_one_at_the_next(self):
+        """No wait is not an acceptance: the task the plan kept for the member is dealt in the same run only when its
+        candidate is accepted. Refused for a proof alone, the member's ask stays, and the very next run serves it."""
+        def judge(*a):
+            return {**judge_by_content(*a), "report": {"gain": 0.05, "sure_gain": 0, "outputs_compared": 12}}
+
+        dealt, = self.hold(self.alice, "toy-0004")  # its goal: a gain of 2 %, proved
+        self.alice.submit("toy-0004", deal=dealt)
+        ask = self.alice.ready()
+        self.assertEqual([d["member"] for d in self.w.plan()["conditional"]], ["alice"], "kept for after the judging")
+        self.assertEqual(self.one(self.w.run(judge))["reason"], "not_proven")
+        self.assertEqual((self.lines("deal"), self.standing(self.alice)[:2]), ([], (2, None)), "no deal in this run, and no wait")
+        self.assertNotIn(ask, hive.read_ignored(self.w.state).get("1101", []), "its ask is not used")
+        self.w.run(judge)
+        self.assertEqual([d["member"] for d in self.lines("deal")], ["alice"], "the next run, an hour or a minute later, deals it a task")
 
     def test_a_task_freed_by_an_expiry_is_never_dealt_without_the_expiry_being_recorded(self):
         """The recording step did not run (it was stopped): the write step, which deals a member its next task once

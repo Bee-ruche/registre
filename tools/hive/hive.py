@@ -115,7 +115,7 @@ VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still lo
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
 JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the judge examined the candidate: a real attempt
-NEAR_REASONS = ("not_proven",)  # examined, correct, the task's own figure reached: only a proof stayed in the measure's noise
+NEAR_REASONS = ("not_proven",)  # examined, correct, the task's own figure reached: only a proof is missing or short
 MEASURED_REASONS = ("goal_not_met", "requirement_not_met", "not_proven")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
@@ -186,8 +186,8 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "not_answered": "the hive spent six runs on this deal's candidates without an answer, for no fault it can pin on them",
     "requirement_not_met": "correct, but a figure the project requires of every contribution is not met",
     "goal_not_met": "correct, but the task's goal is not met",
-    "not_proven": "correct, and the figure the task asks for is reached, but the proof the project takes of it did not come out of the "
-                  "measure's noise: the account waits for nothing",
+    "not_proven": "correct, and the figure the task asks for is reached, but the proof the project takes of it is missing or did not "
+                  "come out beyond the measure's noise: the account waits for nothing",
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
@@ -693,9 +693,11 @@ class Ledger:
           - a candidate the judge examined and refused (JUDGED_REASONS): the first wait (two hours), each time. The
             judge's time went to real work, and a refusal there is ordinary, on tasks that ask for a measured gain;
           - but a candidate that is correct, degrades nothing and reaches the task's own figure, and lacks only a
-            proof that stayed in the measure's noise (NEAR_REASONS), costs NO wait: the work was done, and a measure's
-            noise is not the member's doing. It is still a deal that did not end in an acceptance: it counts in the
-            day's limit, which is what bounds the judge's time an account can take, and in the member's class;
+            proof (missing, or not beyond the measure's noise: NEAR_REASONS), costs NO wait: the hive does not charge a
+            member for what its own stopwatch could not tell. The hive cannot tell a real gain the noise hid from no
+            gain at all, and the figure reached may be one a candidate can flatter: so it is still a deal that did not
+            end in an acceptance, it cost a judgement, and it counts in the day's limit, which is the bound on the
+            judge's time an account can take, and in the member's class;
           - a deal held for nothing (no candidate in time, or a candidate refused before the judge could examine
             it): the same wait, doubled at each such deal in a row, until an acceptance.
           What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork it could
