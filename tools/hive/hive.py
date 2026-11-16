@@ -430,10 +430,10 @@ def load_config(path):
         raise HiveError(f"{path}: project: a lower-case identifier")
     if not (isinstance(config.get("repo"), str) and REPO_NAME.match(config["repo"])):
         raise HiveError(f"{path}: repo: owner/name")
-    if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
+    if not plain_branch(config["branch"]):
         raise HiveError("the project's branch is not a plain branch name")
     published = config.get("published")
-    if not (isinstance(published, str) and REVISION.match(published) and ".." not in published):
+    if not plain_branch(published):
         raise HiveError(f"{path}: published: the branch people take the project from, which the hive never writes")
     if config["branch"].casefold() == published.casefold():
         raise HiveError(f"{path}: branch: the hive writes a branch of its own, never the one the project publishes ({published})")
@@ -475,6 +475,18 @@ def condition_ok(condition, metrics, nested=True):
     return bool(bounds) and condition.get("name") in metrics \
         and all(isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) for b in bounds) \
         and isinstance(more, list) and (not more or nested) and all(condition_ok(c, metrics, nested=False) for c in more)
+
+
+def plain_branch(name):
+    """True for a branch's own name, written the one way: what git itself takes as a branch's name (no part that
+    starts with a dot or ends with « .lock », no two dots or two slashes in a row, no dot or slash at the end), and
+    nothing that reads as something else than that branch: not a full reference (« refs/… », « heads/… »), not one of
+    git's own names for a commit (HEAD and the like), not what looks like a commit's id. Two names that pass are the
+    same branch only if they are the same text, whatever the letter case (load_config compares them so)."""
+    return (isinstance(name, str) and bool(REVISION.match(name)) and ".." not in name and "//" not in name
+            and not name.endswith(("/", ".")) and not any(part.startswith(".") or part.endswith(".lock") for part in name.split("/"))
+            and name.split("/")[0].lower() not in ("refs", "heads") and not is_sha(name.lower())
+            and not (name.split("/")[-1].upper() == "HEAD" or name.split("/")[-1].upper().endswith("_HEAD")))
 
 
 def check_goals(config, tasks):

@@ -4583,12 +4583,24 @@ class TestProjectSettings(Base):
         self.assertEqual((config["branch"], config["published"]), ("main", "stable"))
         for wrong in ({"published": "main"}, {"published": "MAIN"}, {"branch": "stable"}, {"branch": "Stable"}, {"published": None},
                       {"published": ""}, {"published": 1}, {"published": ["stable"]}, {"published": "-x"}, {"published": "a..b"},
-                      {"published": "st able"}, {"published": "stable\n"}, {"branch": None}, {"branch": 3}):
+                      {"published": "st able"}, {"published": "stable\n"}, {"branch": None}, {"branch": 3},
+                      # a name that reads as something else than a branch's own name, or that git does not take as one
+                      {"published": "refs/heads/main"}, {"published": "heads/main"}, {"published": "Refs/heads/main"}, {"published": "HEAD"},
+                      {"published": "FETCH_HEAD"}, {"published": "x/HEAD"}, {"published": "x/orig_head"}, {"published": "0" * 40}, {"published": "A" * 40}, {"published": "stable.lock"},
+                      {"published": "x.lock/y"}, {"published": "stable."}, {"published": "stable/"}, {"published": "a//b"}, {"published": "x/.y"},
+                      {"branch": "refs/heads/stable"}, {"branch": "heads/stable"}, {"branch": "HEAD"}, {"branch": "main.lock"}, {"branch": "main/"},
+                      {"branch": "a//b"}, {"branch": "1" * 40}):
             self.w.set_config(wrong)
             with self.subTest(wrong=wrong):
                 for load in (lambda: hive.load_config(path), lambda: hive.project_of(step), lambda: hive.hive_project(self.w.registry, "toy")):
                     with self.assertRaisesRegex(hive.HiveError, "published|branch"):
                         load()
+        for fine in ({"branch": "hive", "published": "main"}, {"branch": "release/2.x", "published": "trunk"}, {"branch": "a.b-c_d/e", "published": "v1"},
+                     {"branch": "heads-up", "published": "refsheet"}, {"branch": "0" * 39, "published": "headless"},
+                     {"branch": "go-ahead", "published": "ahead"}):
+            self.w.set_config(fine)
+            with self.subTest(fine=fine):
+                self.assertEqual({key: hive.load_config(path)[key] for key in fine}, fine)
         raw = {key: value for key, value in CONFIG.items() if key != "published"}
         path.write_text(json.dumps(raw))
         with self.assertRaisesRegex(hive.HiveError, "published: the branch people take the project from"):
