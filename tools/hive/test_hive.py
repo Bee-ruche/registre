@@ -260,7 +260,7 @@ class World:
         config, tasks, ledger = self.load()
         made = hive.plan(self.harvest, hive.tip_of(self.harvest, config), config, tasks, ledger, self.api, self.state, allow_local=True)
         self.bundle.unlink(missing_ok=True)
-        hive.hand_over(self.harvest, made, self.bundle, config)  # as the command does: written, and read back
+        hive.write_bundle(self.harvest, made, self.bundle)
         self.made = json.loads(json.dumps(made))
         return self.made
 
@@ -995,7 +995,7 @@ class TestStructure(Base):
         with mock.patch.object(hive, "BUNDLE_BYTES", weights[1] + weights[2]):  # room for any two of them, never for the three
             first = self.w.plan()
             self.assertEqual(len(first["queue"]), 2, "the third waits: it is not in this plan at all")
-            with mock.patch.object(hive, "BUNDLE_BYTES", 0), mock.patch.object(hive, "hand_over"):
+            with mock.patch.object(hive, "BUNDLE_BYTES", 0), mock.patch.object(hive, "write_bundle"):
                 self.assertEqual(len(self.w.plan()["queue"]), 1, "the first is always carried")
             answered = [r["sha"] for r in self.w.run()]
             self.assertEqual((len(answered), set(answered) <= set(first_two := {c["sha"] for c in first["queue"]})), (2, True))
@@ -1022,9 +1022,9 @@ class TestStructure(Base):
         with mock.patch.object(hive, "BUNDLE_OBJECTS", objects[1] + objects[2]):  # room for any two of them, never for the three
             first = self.w.plan()
             self.assertEqual(len(first["queue"]), 2, "the third waits: it is not in this plan at all")
-            with mock.patch.object(hive, "BUNDLE_OBJECTS", 0), mock.patch.object(hive, "hand_over"):
+            with mock.patch.object(hive, "BUNDLE_OBJECTS", 0), mock.patch.object(hive, "write_bundle"):
                 self.assertEqual(len(self.w.plan()["queue"]), 1, "the first is always carried")
-            with mock.patch.object(hive, "counted", return_value=(True, 10 ** 9)), mock.patch.object(hive, "hand_over"):
+            with mock.patch.object(hive, "counted", return_value=(True, 10 ** 9)), mock.patch.object(hive, "write_bundle"):
                 self.assertEqual([c["large"] for c in self.w.plan()["queue"]], [True] * 3, "what is not carried counts for nothing")
             answered = [r["sha"] for r in self.w.run()]
             self.assertEqual((len(answered), set(answered) <= set(first_two := {c["sha"] for c in first["queue"]})), (2, True))
@@ -1032,91 +1032,6 @@ class TestStructure(Base):
             self.assertEqual(later, sorted(set(shas) - first_two), "the one that waited is answered at the next run, and it alone")
         self.assertEqual(sorted(e["sha"] for e in self.w.events() if e["type"] == "verdict"), sorted(shas))
         self.assertEqual((hive.BUNDLE_OBJECTS, hive.HISTORY_OBJECTS), (2_000_000, 200_000), "ten candidates of the most objects one may add")
-
-    def three_candidates(self):
-        return [self.w.fork("bob", 102).submit("toy-0001"), self.w.fork("carol", 103).submit("toy-0002", path="src/c.c", content="int c;\n"),
-                self.w.fork("dave", 104).submit("toy-0005", path="run.sh", content="#!/bin/sh\n# faster\n")]
-
-    def test_a_set_the_plan_cannot_carry_together_never_reaches_the_other_steps(self):
-        """The plan reads the candidates' file back before it hands it over, as the later steps will read it. A set
-        that cannot be written or read together is carried by halves: the first half goes on, the others wait for
-        the next run, and no run meets the same set again. Nobody is refused for it."""
-        shas, real_read, real_write = self.three_candidates(), hive.read_bundle, hive.write_bundle
-
-        def two_at_most(real):
-            def step(repo, plan_, path, timeout=900):
-                if len(hive.carried(plan_)) > 2:
-                    raise hive.HiveError("git bundle: the three of them need more than this machine gives")
-                return real(repo, plan_, path, timeout=timeout)
-            return step
-
-        for name, real in (("read_bundle", real_read), ("write_bundle", real_write)):
-            with self.subTest(fails=name), mock.patch.object(hive, name, side_effect=two_at_most(real)):
-                made = self.w.plan()
-                self.assertEqual((len(made["queue"]), [c["large"] for c in made["queue"]]), (2, [False, False]), "the first half is carried, as it is")
-                listed = sh("git", "bundle", "list-heads", str(self.w.bundle), cwd=self.w.harvest).stdout
-                self.assertEqual(sorted(sha for sha in shas if sha in listed), sorted(c["sha"] for c in made["queue"]), "and the file holds it, and no other")
-                self.assertEqual(hive.file_sha256(self.w.bundle), made["bundle_sha256"])
-        self.assertEqual(list(self.w.bundle.parent.glob("hive-read-*")), [], "the store the file was read into is gone")
-        with mock.patch.object(hive, "read_bundle", side_effect=two_at_most(real_read)):
-            first = [(r["sha"], r["result"]) for r in self.w.run()]
-            second = [(r["sha"], r["result"]) for r in self.w.run()]
-        self.assertEqual((len(first), len(second), sorted(sha for sha, _ in first + second)), (2, 1, sorted(shas)), "two runs answer the three")
-        self.assertEqual({result for _, result in first + second}, {"accepted"})
-
-    def test_a_candidate_the_plan_cannot_carry_even_alone_is_refused_and_the_others_go_on(self):
-        """One candidate whose commits cannot be written to the file or read from it, alone: when the hive's machine
-        does as much for the project's own tip, that candidate is not carried and is refused as too large; the others
-        are answered at the following runs. When the machine itself fails, nobody is refused and the plan fails."""
-        shas, real = self.three_candidates(), hive.read_bundle
-        self.w.plan()
-        culprit = self.w.made["queue"][0]["sha"]
-
-        def never_this_one(repo, plan_, path, timeout=900):
-            if culprit in [c["sha"] for c in hive.carried(plan_)]:
-                raise hive.HiveError("git bundle unbundle failed (128)")
-            return real(repo, plan_, path, timeout=timeout)
-
-        with mock.patch.object(hive, "read_bundle", side_effect=never_this_one):
-            with mock.patch.object(hive, "derives", return_value=False), self.assertRaisesRegex(hive.HiveError, "its machine is the cause"):
-                self.w.plan()
-            made = self.w.plan()
-            self.assertEqual([(c["sha"], c["large"]) for c in made["queue"]], [(culprit, True)], "alone, and not carried")
-            self.assertFalse(self.w.bundle.exists(), "no file: nothing is carried in this plan")
-            self.assertEqual(made["bundle_sha256"], "")
-            answers = [[(r["sha"], r.get("reason", r["result"])) for r in self.w.run()] for _ in range(3)]
-        self.assertEqual(answers[0], [(culprit, "file_too_big")])
-        self.assertEqual(sorted(answers[1]), sorted((sha, "accepted") for sha in shas if sha != culprit), "the two that waited: together, they read")
-        self.assertEqual(answers[2], [])
-
-    def test_the_plan_spends_a_bounded_time_on_the_candidates_file_and_then_tries_the_first_alone(self):
-        shas = self.three_candidates()
-        with mock.patch.object(hive, "BUNDLE_SECONDS", 0):
-            made = self.w.plan()
-        self.assertEqual((len(made["queue"]), made["queue"][0]["large"], bool(made["bundle_sha256"])), (1, False, True), "the first alone, carried")
-        self.assertIn(made["queue"][0]["sha"], shas)
-        with mock.patch.object(hive, "BUNDLE_SECONDS", 0), mock.patch.object(hive, "ALONE_SECONDS", 0):
-            made = self.w.plan()
-        self.assertEqual([c["large"] for c in made["queue"]], [True], "no time even for the first alone: it is not carried")
-        self.assertEqual((hive.BUNDLE_SECONDS, hive.ALONE_SECONDS), (600, 120), "within the plan job's own half hour")
-
-    def test_the_candidates_file_is_read_back_whole_in_a_store_of_its_own(self):
-        """read_back reads the very file, with the command the later steps use, into a store that is thrown away: a
-        file cut short, or one that is not the plan's, is not handed over; and the plan's clone gets nothing from it."""
-        self.three_candidates()
-        made = self.w.plan()
-        packs = sorted(p.name for p in (self.w.harvest / ".git/objects/pack").glob("*"))
-        hive.read_back(self.w.harvest, made, self.w.bundle)
-        self.assertEqual(sorted(p.name for p in (self.w.harvest / ".git/objects/pack").glob("*")), packs, "nothing is written to the plan's clone")
-        self.assertEqual(list(self.w.bundle.parent.glob("hive-read-*")), [])
-        whole = self.w.bundle.read_bytes()
-        self.w.bundle.write_bytes(whole[:len(whole) - 40])
-        with self.assertRaisesRegex(hive.HiveError, "the bundle is not the plan's"):
-            hive.read_back(self.w.harvest, made, self.w.bundle)
-        with self.assertRaises(hive.HiveError):  # the same bytes cut short, under the digest of what is there: git itself refuses it
-            hive.read_back(self.w.harvest, {**made, "bundle_sha256": hive.file_sha256(self.w.bundle)}, self.w.bundle)
-        self.assertEqual(list(self.w.bundle.parent.glob("hive-read-*")), [], "and the store is gone when the reading fails too")
-        hive.read_back(self.w.harvest, {**made, "queue": []}, self.w.bundle)  # nothing carried: nothing to read
 
     def test_the_plan_spends_a_bounded_time_weighing_and_what_it_has_not_weighed_waits(self):
         """Weighing a candidate is packing it: slow ones, one after the other, must not take the plan's whole time.
@@ -1135,19 +1050,10 @@ class TestStructure(Base):
         self.assertLessEqual(hive.DEFAULTS["limits"]["discovery_seconds"] + hive.WEIGH_SECONDS, 25 * 60,
                              "reading the forks and weighing the candidates fit in the plan's job (30 minutes in the workflow)")
 
-    def test_a_file_of_candidates_heavier_than_the_plan_measured_is_not_handed_over(self):
-        """The file weighs at most twice what the plan measured: the steps that take it accept no more. One heavier
-        than that is not written for them; the plan then carries fewer, and a candidate whose file is heavier alone
-        is not carried at all."""
-        sha = self.w.fork("bob", 102).submit("toy-0001")
-        made = self.w.plan()
-        self.assertEqual([c["large"] for c in made["queue"]], [False])
-        with mock.patch.object(hive, "BUNDLE_BYTES", 100):
-            with self.assertRaisesRegex(hive.HiveError, "heavier than the plan measured"):
-                hive.write_bundle(self.w.harvest, dict(made), self.w.bundle)
-            made = self.w.plan()
-        self.assertEqual([(c["sha"], c["large"]) for c in made["queue"]], [(sha, True)])
-        self.assertEqual((self.w.bundle.exists(), made["bundle_sha256"]), (False, ""))
+    def test_a_file_of_candidates_heavier_than_the_plan_measured_stops_the_plan(self):
+        self.w.fork("bob", 102).submit("toy-0001")
+        with mock.patch.object(hive, "BUNDLE_BYTES", 100), self.assertRaisesRegex(hive.HiveError, "heavier than the plan measured"):
+            self.w.plan()
 
     def test_a_history_exactly_as_long_as_the_limit_is_fine(self):
         for i in range(4):
