@@ -335,8 +335,9 @@ with it the tasks that share a file with that one.
   hive pushes to the first and to no other; a file that names no published branch, or one branch for both, stops
   every step of the hive and every command of a worker. Each is written as a branch's own name, the one way: what
   git takes as a branch's name, with no `refs/` or `heads/` in front, not `HEAD` nor a name that ends in `_HEAD`,
-  and not a commit's full id; the hive hands git each of them as a full reference (`refs/heads/<name>`), never as
-  a bare word. What is on the hive's branch was accepted by a judge and
+  and not a commit's full id. The hive's own branch reaches git only inside a full reference (`refs/heads/<name>`
+  on a repository, `refs/remotes/…/<name>` in a clone), never as a bare word; the published one reaches no git
+  command: the hive only compares it. What is on the hive's branch was accepted by a judge and
   read by nobody: each of its commits says so. The published branch moves when a maintainer, having read what
   accumulated, moves it; a release, an offer to another project, anything that leaves the repository, is a
   maintainer's act. The judge's scan of a candidate's source is a filter, not a review of what a change does.

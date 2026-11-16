@@ -482,8 +482,9 @@ def plain_branch(name):
     starts with a dot or ends with « .lock », no two dots or two slashes in a row, no dot or slash at the end), whose
     first part is not « refs » or « heads » (a full reference written short), whose last part is not HEAD nor a name
     that ends in _HEAD, and which is not a commit's full id (forty hexadecimal digits). load_config compares the two
-    names that pass as texts, whatever the letter case; the hive hands git each of them as a full reference
-    (refs/heads/<name>), never as a bare word."""
+    names that pass as texts, whatever the letter case. The hive's own branch reaches git only inside a full reference
+    (refs/heads/<name> on a repository, refs/remotes/…/<name> in a clone), never as a bare word; the published one
+    reaches no git command."""
     return (isinstance(name, str) and bool(REVISION.match(name)) and ".." not in name and "//" not in name
             and not name.endswith(("/", ".")) and not any(part.startswith(".") or part.endswith(".lock") for part in name.split("/"))
             and name.split("/")[0].lower() not in ("refs", "heads") and not is_sha(name.lower())
