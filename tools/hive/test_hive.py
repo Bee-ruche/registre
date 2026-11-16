@@ -7315,6 +7315,26 @@ class TestTheStepsAsTheWorkflowRunsThem(Base):
         self.assertEqual([(e["member"], e["result"]) for e in self.w.events() if e["type"] == "verdict"], [("bob", "accepted")])
         self.assertEqual(printed.split()[-1], self.w.tip(), "the project's branch is at the commit the step says")
 
+    def test_a_path_made_whole_names_what_the_system_would_have_opened(self):
+        """Only the front of a path changes: no « .. » is folded and no link followed, a whole path stays as it is, and
+        an empty one, which names nothing, stays empty."""
+        folder = self.w.root / "here"
+        (folder / "real/deep").mkdir(parents=True)
+        os.symlink(folder / "real/deep", folder / "link")
+        here = os.getcwd()
+        os.chdir(folder)
+        try:
+            self.assertEqual(hive.whole("a/b"), str(folder / "a/b"))
+            self.assertEqual(hive.whole("link/.."), str(folder) + "/link/..", "left to the system, which goes up from where the link leads")
+            self.assertTrue(os.path.samefile(hive.whole("link/.."), folder / "real"))
+            self.assertEqual(hive.whole("/x/../y"), "/x/../y")
+            args = hive.argparse.Namespace(repo="project", judge_workdir="", remote="origin", out=None, state="/s", tip="t")
+            hive.whole_paths(args)
+            self.assertEqual(vars(args), {"repo": str(folder / "project"), "judge_workdir": "", "remote": "origin", "out": None, "state": "/s",
+                                          "tip": "t"}, "paths only, and only those that name something")
+        finally:
+            os.chdir(here)
+
     def test_the_candidates_file_is_written_and_read_where_the_caller_named_it_whatever_folder_git_runs_in(self):
         """The two functions by themselves, given a relative path as a command once handed it to them."""
         self.w.fork("bob", 102).submit("toy-0001")

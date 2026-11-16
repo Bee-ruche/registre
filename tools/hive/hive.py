@@ -1907,7 +1907,7 @@ def write_bundle(repo, plan_, path):
     shas = [candidate["sha"] for candidate in carried(plan_)]
     if not shas:
         return
-    path = os.path.abspath(path)  # git runs inside `repo` and reads a relative path from there: the caller's folder is meant
+    path = whole(path)  # git runs inside `repo` and reads a relative path from there: the caller's folder is meant
     refs = []
     try:
         for number, sha in enumerate(shas):
@@ -1926,13 +1926,20 @@ def read_bundle(repo, plan_, path):
     """Brings the plan's candidates into this clone from the plan's own file, checked against the plan."""
     if not carried(plan_):
         return
-    path = os.path.abspath(path)  # (as in write_bundle: the file the caller named, whatever folder git runs in)
+    path = whole(path)  # (as in write_bundle: the file the caller named, whatever folder git runs in)
     if not plan_["bundle_sha256"] or file_sha256(path) != plan_["bundle_sha256"]:
         raise HiveError("the bundle is not the plan's")
     git(repo, "bundle", "unbundle", str(path), timeout=900)
     for candidate in carried(plan_):
         if git(repo, "cat-file", "-e", f"{need_sha(candidate['sha'])}^{{commit}}", check=False).returncode != 0:
             raise HiveError("the bundle lacks one of the plan's candidates")
+
+
+def whole(path):
+    """The same file or folder, named from the root: the path as it was given, after the folder this process runs in
+    when it is relative. Nothing else of it changes (no « .. » is folded, no link followed), so it names what the
+    system itself would have opened."""
+    return os.path.join(os.getcwd(), path)
 
 
 def file_sha256(path):
@@ -4981,8 +4988,8 @@ def whole_paths(args):
     workflow's lines), and it runs git and the judge from other folders. Every path the step was given is made whole
     once, here, before anything runs: no program then reads one of them from another folder than the step's own."""
     for name in HIVE_PATHS:
-        if isinstance(getattr(args, name, None), str):
-            setattr(args, name, os.path.abspath(getattr(args, name)))
+        if isinstance(getattr(args, name, None), str) and getattr(args, name):  # (an empty one stays empty: it names nothing)
+            setattr(args, name, whole(getattr(args, name)))
 
 
 def main(argv=None):
