@@ -271,7 +271,9 @@ the hive runs those git commands with an empty attribute source.
   the judge saw it better beyond its noise, with the same outputs. A bound on a measure that has no proof (in miniz,
   the count of instructions) is a bar that can only refuse: the hive does not vouch for that measure's size, and the
   ledger keeps it as the judge gave it. The page leads a contribution's card with a figure that has its `sure_`, and
-  with no other: a measure without one is a row of its table.
+  with no other: a measure without one is a row of its table. Told which proofs the project takes (its file, given
+  to the page tool), the page leads with one of those measures only: a flag the project keeps and does not take as
+  a proof leads nothing.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**. They are different tasks' candidates: there is one per task at most.
 - **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come those a

@@ -17,7 +17,8 @@ accepted, and how many dealt candidates wait for the judge (from the feed's deal
                           project that asks preferred and what the hive did, three measures
   wins/<commit>.svg       a card for every integration, named by the integrated commit's 40-hex id: the task, the
                           member, the date and one figure beyond the judge's noise: the one the task asked for when
-                          --tasks says which and the report holds it so, else the largest gain beyond the noise
+                          --tasks says which and the report holds it so, else the largest gain beyond the noise;
+                          with --project, only a measure whose proof the project takes (judge.confirm) leads
   wins/<commit>.html      the permanent page of that integration, where its card leads: everything the judge
                           measured, how to check it without trusting the page, the card and how to show it
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
@@ -210,17 +211,21 @@ def direction(gain, sure, worse):
     return "better" if gain > 0 else "worse" if gain < 0 else ""
 
 
-def headline(report):
+def headline(report, proofs=None):
     """{"metric": name, "gain": fraction} from a verdict's report, or None. Among the keys gain_<name> whose value is
     a number (not a boolean, not a string) above zero and at most GAIN_MAX, whose sibling sure_<name> is the number
     1 and whose sibling worse_<name> is not (direction()), the largest gain wins (a tie goes to the first name in
     alphabetical order). A gain that would show as 0.0 % is no figure. Nothing is computed from a string; <name> must
-    be an identifier."""
+    be an identifier. `proofs` (read_proofs): when the page was told which proofs the project takes, only a measure
+    whose proof is one of them can be the headline; a sure_ flag the project keeps and does not take as a proof
+    leads nothing."""
     if not isinstance(report, dict):
         return None
     best = None
     for key, value in report.items():
         if not isinstance(key, str) or not key.startswith("gain_") or not matching(key[5:], METRIC):
+            continue
+        if proofs is not None and key[5:] not in proofs:
             continue
         if type(value) not in (int, float) or flag(report, "sure_" + key[5:]) != 1:
             continue
@@ -258,7 +263,7 @@ def flag(report, key):
     return int(value) if type(value) in (int, float) and value in (0, 1) else ODD
 
 
-def read_report(report, goal=None):
+def read_report(report, goal=None, proofs=None):
     """What the page keeps of an accepted verdict's report; every value is a number checked here, every name an
     identifier, and nothing else of the report goes further.
 
@@ -267,7 +272,8 @@ def read_report(report, goal=None):
                  between -GAIN_MAX and GAIN_MAX; sure and worse are the report's sure_<metric> and worse_<metric>
                  (1, 0, or None when the report has no such number); goal marks the task's own figure. The goal's row
                  comes first, then the rows beyond the noise, then the others; at most MEASURES_MAX are kept
-      figure     the figure a card leads with, {"metric", "gain", "goal"}: one whose sure_ flag is 1, and no other.
+      figure     the figure a card leads with, {"metric", "gain", "goal"}: one whose sure_ flag is 1, and no other;
+                 and, when the page was told which proofs the project takes (`proofs`), one of those measures only.
                  The task's own (`goal`, the <metric> its goal names) when the report holds it, it shows above
                  0.0 %, it is not marked worse and its sure_ flag is 1; otherwise the headline, with goal False;
                  None when there is neither. A measure for which the report keeps no sure_ flag (miniz keeps none
@@ -275,7 +281,7 @@ def read_report(report, goal=None):
       outputs    outputs_compared when it is a whole number above zero; suspects, when it is a whole number
     """
     report = report if isinstance(report, dict) else {}
-    best, rows = headline(report), []
+    best, rows = headline(report, proofs), []
     for key, value in report.items():
         if not isinstance(key, str) or not key.startswith("gain_") or not matching(key[5:], METRIC):
             continue
@@ -285,7 +291,8 @@ def read_report(report, goal=None):
                      "worse": flag(report, "worse_" + key[5:]), "goal": goal is not None and key[5:] == goal})
     rows.sort(key=lambda row: (not row["goal"], row["sure"] != 1 and row["worse"] != 1, -row["gain"], row["metric"]))
     asked = rows[0] if rows and rows[0]["goal"] else None
-    if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" and asked["sure"] == 1:
+    if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" and asked["sure"] == 1 \
+            and (proofs is None or asked["metric"] in proofs):
         figure = {"metric": asked["metric"], "gain": asked["gain"], "goal": True}
     else:
         figure = None if best is None else {**best, "goal": False}
@@ -361,6 +368,29 @@ def read_tasks(path):
     return goals, asked
 
 
+PROJECT_BYTES = 1 << 20  # what the page reads of a project's file, at most
+
+
+def read_proofs(path):
+    """{<measure>} for each proof the project takes (the sure_<measure> of its judge.confirm), from the registry's file
+    of the project (hive/projects/<project>.json). It is the hive's own file, trusted as the task file is, and read
+    with the same care: a plain file under that very name, no more than PROJECT_BYTES of it, and of it only
+    identifiers are kept. A project that takes no proof gives an empty set: no figure then leads anything. Raises
+    PageError when the file cannot be read or is not a project's file: it was named on the command line."""
+    try:
+        with plain_file(path) as f:
+            raw = f.read(PROJECT_BYTES + 1)
+        data = json.loads(raw) if len(raw) <= PROJECT_BYTES else None
+        judge = data.get("judge", {}) if isinstance(data, dict) else None
+        confirm = judge.get("confirm", []) if isinstance(judge, dict) else None
+        if not isinstance(confirm, list):
+            raise ValueError("not a project's file")
+    except (OSError, ValueError, RecursionError):
+        raise PageError("--project: the project's file in the registry (hive/projects/<project>.json)") from None
+    names = (matching(name[5:], METRIC) for name in confirm if isinstance(name, str) and name.startswith("sure_"))
+    return {name for name in names if name is not None}
+
+
 def read_goals(path):
     """{task id: metric}: the first half of read_tasks()."""
     return read_tasks(path)[0]
@@ -427,12 +457,12 @@ def read_json(folder, name):
         return None
 
 
-def read_ledger(folder, goals=None):
+def read_ledger(folder, goals=None, proofs=None):
     """(the ledger's lines as the page uses them, in order (clean_event); how many lines the ledger holds; how many
     of them are not JSON objects). Unlike the hive, the page goes on when a line is broken: it shows what it can
     read, and says how many lines it could not. Each line is cleaned as it is read, and only what the page uses of it
     is kept: what the reading costs follows the number of lines, not what a line was filled with. The ledger is read
-    only if it is a plain file under its own name (plain_file). `goals`: see clean_event."""
+    only if it is a plain file under its own name (plain_file). `goals`, `proofs`: see clean_event."""
     events, lines, skipped = [], 0, 0
     try:
         with plain_file(Path(folder) / "ledger.jsonl") as f:
@@ -447,7 +477,7 @@ def read_ledger(folder, goals=None):
                 if not isinstance(value, dict):
                     skipped += 1
                     continue
-                event = clean_event(value, goals)
+                event = clean_event(value, goals, proofs)
                 if event is not None:
                     events.append(event)
     except FileNotFoundError:
@@ -457,10 +487,11 @@ def read_ledger(folder, goals=None):
     return events, lines, skipped
 
 
-def clean_event(raw, goals=None):
+def clean_event(raw, goals=None, proofs=None):
     """One ledger line as the page uses it, every field checked again, or None if the line says nothing usable.
     A field that does not match its pattern becomes None (shown as « unknown », never linked). `goals` is
-    read_goals()'s: the figure each task asked for, when the page was told."""
+    read_goals()'s: the figure each task asked for, when the page was told. `proofs` is read_proofs()'s: the
+    measures whose proof the project takes, when the page was told; only one of them leads a card (read_report)."""
     kind, at = raw.get("type"), instant_of(raw.get("at"))
     if not isinstance(kind, str) or at is None:
         return None
@@ -489,7 +520,7 @@ def clean_event(raw, goals=None):
         # A candidate refused for a figure keeps what the judge measured: the line's report is read as an accepted
         # line's is. A line written before that rule has none, and so has any other refusal: nothing is read of them.
         if result == "refused" and event["reason"] in MEASURED and isinstance(raw.get("report"), dict):
-            event["measured"] = read_report(raw["report"], (goals or {}).get(task))
+            event["measured"] = read_report(raw["report"], (goals or {}).get(task), proofs)
         if candidate is not None:
             event["marks"].append(("candidate", candidate))
         if result == "accepted":
@@ -497,7 +528,7 @@ def clean_event(raw, goals=None):
             # writes, accepted without « judged » or without a whole commit id, is still read field by field, as
             # every line is: an integration of its member, not in what the judge judged; without a commit id it has
             # no card and no page, since nothing is linked or named on a guess.)
-            event.update(read_report(raw.get("report"), (goals or {}).get(task)), changed=read_changed(raw.get("figures")))
+            event.update(read_report(raw.get("report"), (goals or {}).get(task), proofs), changed=read_changed(raw.get("figures")))
             if event["commit"] is not None:
                 event["marks"].append(("commit", event["commit"]))
     return event
@@ -590,17 +621,19 @@ def rate(part, whole):
     return round(part / whole, 4) if whole else None
 
 
-def collect(state, now, tasks=None):
+def collect(state, now, tasks=None, project=None):
     """Everything the page shows, as plain data (it is also summary.json). Members are counted by account id and
     named by the login of their latest event; only members with an integration are named at all. `tasks` is the path
     of the registry's task file of the project, or None: it says which figure each task asked for (read_goals).
+    `project` is the path of the registry's file of the project, or None: it says which proofs the project takes, and
+    a card then leads with one of those measures only (read_proofs).
 
     Nobody is ranked. The members are every account with an accepted contribution, in the alphabetical order of their
     logins (case ignored; then the accounts without a login, by number), each with the number of its accepted
     contributions and nothing else: what was refused is counted for the project and for a model (model_rows), and
     added up for no person, here or in any file (the public ledger still names the member of every answer)."""
     goals, asked = read_tasks(tasks) if tasks is not None else ({}, {})
-    usable, lines, skipped = read_ledger(state, goals)
+    usable, lines, skipped = read_ledger(state, goals, read_proofs(project) if project is not None else None)
     # A line dated after `now` says nothing yet: the page is made for that instant, and its latest contribution is never
     # one from the future. Then each answer is read once (once()). Both are said on the standard error and in the files.
     dated = [event for event in usable if event["at"] <= now]
@@ -1754,6 +1787,8 @@ def main(argv=None):
     parser.add_argument("--repo-url", help="https://github.com/owner/name: integrations then link to their commit")
     parser.add_argument("--tasks", help="the project's task file in the registry (hive/tasks/<project>.jsonl): a card then leads with "
                                         "the figure its task asked for, when the judge saw it beyond its noise")
+    parser.add_argument("--project", help="the project's file in the registry (hive/projects/<project>.json): a card then leads only "
+                                          "with a measure whose proof the project takes (judge.confirm)")
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--join", action="store_true", help="the join page is join.html, beside index.html")
     where.add_argument("--join-url", help=f"the join page's address on github.com (default: {DEFAULT_JOIN_URL})")
@@ -1777,7 +1812,7 @@ def main(argv=None):
         if not Path(args.state).is_dir():
             raise PageError("--state: the folder of one project's state")
         join = LOCAL_JOIN if args.join else Link(args.join_url or DEFAULT_JOIN_URL)
-        files = render(collect(args.state, now, args.tasks), plain(args.title, 160), args.repo_url, join, args.site_url)
+        files = render(collect(args.state, now, args.tasks, args.project), plain(args.title, 160), args.repo_url, join, args.site_url)
         write(args.out, files)
     except PageError as error:
         print(f"page: {hive.safe_text(error, 400)}", file=sys.stderr)
