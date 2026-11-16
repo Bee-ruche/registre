@@ -1907,6 +1907,7 @@ def write_bundle(repo, plan_, path):
     shas = [candidate["sha"] for candidate in carried(plan_)]
     if not shas:
         return
+    path = whole(path)  # git runs inside `repo` and reads a relative path from there: the caller's folder is meant
     refs = []
     try:
         for number, sha in enumerate(shas):
@@ -1925,12 +1926,20 @@ def read_bundle(repo, plan_, path):
     """Brings the plan's candidates into this clone from the plan's own file, checked against the plan."""
     if not carried(plan_):
         return
+    path = whole(path)  # (as in write_bundle: the file the caller named, whatever folder git runs in)
     if not plan_["bundle_sha256"] or file_sha256(path) != plan_["bundle_sha256"]:
         raise HiveError("the bundle is not the plan's")
     git(repo, "bundle", "unbundle", str(path), timeout=900)
     for candidate in carried(plan_):
         if git(repo, "cat-file", "-e", f"{need_sha(candidate['sha'])}^{{commit}}", check=False).returncode != 0:
             raise HiveError("the bundle lacks one of the plan's candidates")
+
+
+def whole(path):
+    """The same file or folder, named from the root: the path as it was given, after the folder this process runs in
+    when it is relative. Nothing else of it changes (no « .. » is folded, no link followed), so it names what the
+    system itself would have opened."""
+    return os.path.join(os.getcwd(), path)
 
 
 def file_sha256(path):
@@ -4971,6 +4980,18 @@ def of_the_clone(entry):
     return place == here or place.startswith(here.rstrip(os.sep) + os.sep)
 
 
+HIVE_PATHS = ("registry", "state", "repo", "out", "bundle", "plan", "workdir", "judge_workdir", "verdicts")
+
+
+def whole_paths(args):
+    """A step of the hive is run from one folder, with files and folders named by paths relative to it (the
+    workflow's lines), and it runs git and the judge from other folders. Every path the step was given is made whole
+    once, here, before anything runs: no program then reads one of them from another folder than the step's own."""
+    for name in HIVE_PATHS:
+        if isinstance(getattr(args, name, None), str) and getattr(args, name):  # (an empty one stays empty: it names nothing)
+            setattr(args, name, whole(getattr(args, name)))
+
+
 def main(argv=None):
     parser = OneLineParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -5073,6 +5094,8 @@ def main(argv=None):
             searched = [entry for name in ("PATH", "GIT_EXEC_PATH") if name in os.environ for entry in os.environ[name].split(os.pathsep)]
             if any(not os.path.isabs(entry) or of_the_clone(entry) for entry in searched):
                 raise HiveError(RELATIVE_PATH)
+        else:
+            whole_paths(args)
         args.run(args)
     except HiveError as error:
         print(f"hive: {safe_text(error, 400)}", file=sys.stderr)

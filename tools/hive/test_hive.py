@@ -7235,6 +7235,123 @@ class TestVolunteerSide(Volunteer):
         self.assertFalse(self.w.state.parent.exists())
 
 
+class TestTheStepsAsTheWorkflowRunsThem(Base):
+    """The hourly workflow runs each step from one folder and names every file and folder by a path relative to it
+    (.github/workflows/hive.yml): `--repo project --out plan.json --bundle candidates.bundle`, and so on. The tool runs
+    git inside the project's clone, and git reads a relative path from the folder it runs in: so every path a step is
+    given is made whole once, when the step starts, and no program reads it from another folder than that one."""
+
+    def job(self, name):
+        """A job's folder, as the workflow makes it: the registry and the state under those names, and a clone of the
+        project of its own, which knows the candidates through the plan's file only."""
+        folder = self.w.root / "jobs" / name
+        (folder / "taken").mkdir(parents=True)
+        os.symlink(self.w.registry, folder / "registry")
+        os.symlink(self.w.state.parent, folder / "state")
+        sh("git", "clone", "--quiet", str(self.w.upstream), "project", cwd=folder)
+        return folder
+
+    def step(self, folder, *argv):
+        """A step, run from its job's folder with the workflow's own words; returns what it printed."""
+        real_plan, real_apply, here = hive.plan, hive.apply, os.getcwd()
+        seen = {}
+
+        def judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
+            seen["judge"] = (registry_root, workdir)
+
+            def judged(base, candidate, task, tip, commit):
+                seen.setdefault("trees", []).append((os.path.isabs(base), os.path.isabs(candidate)))
+                return judge_by_content(base, candidate, task, tip, commit)
+            return judged
+
+        os.chdir(folder)
+        try:
+            with mock.patch("sys.stdout") as out, mock.patch.object(hive, "GhApi", return_value=self.w.api), \
+                    mock.patch.object(hive, "common_judge", side_effect=judge), \
+                    mock.patch.object(hive, "plan", side_effect=lambda *a, **k: real_plan(*a, **{**k, "allow_local": True})), \
+                    mock.patch.object(hive, "apply", side_effect=lambda *a, **k: real_apply(*a, **{**k, "allow_local": True})):
+                hive.main(list(argv))  # (the forks and the project are folders of this machine here: allow_local)
+        finally:
+            os.chdir(here)
+        return "".join(c.args[0] for c in out.write.call_args_list), seen
+
+    def test_a_run_with_a_candidate_goes_through_the_four_steps_with_the_workflows_relative_paths(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/hive.yml").read_text()
+        for words in ("--repo project --out plan.json --bundle candidates.bundle", "--plan taken/plan/plan.json",
+                      "--bundle taken/candidates/candidates.bundle --workdir work", "--judge-workdir judge-work --out verdicts.json",
+                      "--verdicts taken/verdicts/verdicts.json", "mkdir -p work judge-work"):
+            self.assertIn(words, workflow, "the words this test runs are the workflow's own")
+        sha = self.w.fork("bob", 102).submit("toy-0001", content=LIB + "/* FAST */\n")
+        common = ("--registry", "registry", "--project", "toy", "--state", "state")
+        plan, record, judge, write = (self.job(name) for name in ("plan", "record", "judge", "apply"))
+
+        printed, _ = self.step(plan, "plan", *common, "--repo", "project", "--out", "plan.json", "--bundle", "candidates.bundle")
+        digest = re.fullmatch(r"plan_sha256=([0-9a-f]{64})\n", printed).group(1)
+        self.assertTrue((plan / "candidates.bundle").is_file(), "the candidates' file is where the workflow's next line takes it")
+        self.assertFalse((plan / "project/candidates.bundle").exists(), "and not inside the project's clone, where git runs")
+        self.assertEqual([c["sha"] for c in json.loads((plan / "plan.json").read_text())["queue"]], [sha])
+        for job in (record, judge, write):  # what the workflow's artifacts carry from one job to the next
+            (job / "taken/plan").mkdir()
+            shutil.copy(plan / "plan.json", job / "taken/plan/plan.json")
+        for job in (judge, write):
+            (job / "taken/candidates").mkdir()
+            shutil.copy(plan / "candidates.bundle", job / "taken/candidates/candidates.bundle")
+
+        self.step(record, "record", *common, "--plan", "taken/plan/plan.json", "--plan-sha256", digest)
+        (judge / "work").mkdir(), (judge / "judge-work").mkdir()  # (the workflow's own line, before the judging)
+        printed, seen = self.step(judge, "judge", *common, "--repo", "project", "--plan", "taken/plan/plan.json",
+                                  "--bundle", "taken/candidates/candidates.bundle", "--workdir", "work", "--judge-workdir", "judge-work",
+                                  "--out", "verdicts.json")
+        self.assertEqual(printed, "1 candidate(s), 1 judged, 1 accepted\n")
+        self.assertEqual(seen["judge"], (str(judge / "registry"), str(judge / "judge-work")), "the judge is given whole paths too")
+        self.assertFalse((judge / "project/work").exists(), "the judging's own folder is the job's, not one inside the clone")
+        self.assertEqual(set(seen["trees"]), {(True, True)}, "and the trees it judges are named by whole paths")
+        (write / "taken/verdicts").mkdir()
+        shutil.copy(judge / "verdicts.json", write / "taken/verdicts/verdicts.json")
+
+        printed, _ = self.step(write, "apply", *common, "--repo", "project", "--plan", "taken/plan/plan.json", "--plan-sha256", digest,
+                               "--bundle", "taken/candidates/candidates.bundle", "--verdicts", "taken/verdicts/verdicts.json")
+        self.assertRegex(printed, r"^1 integrated, tip [0-9a-f]{40}\n$")
+        self.assertEqual([(e["member"], e["result"]) for e in self.w.events() if e["type"] == "verdict"], [("bob", "accepted")])
+        self.assertEqual(printed.split()[-1], self.w.tip(), "the project's branch is at the commit the step says")
+
+    def test_a_path_made_whole_names_what_the_system_would_have_opened(self):
+        """Only the front of a path changes: no « .. » is folded and no link followed, a whole path stays as it is, and
+        an empty one, which names nothing, stays empty."""
+        folder = self.w.root / "here"
+        (folder / "real/deep").mkdir(parents=True)
+        os.symlink(folder / "real/deep", folder / "link")
+        here = os.getcwd()
+        os.chdir(folder)
+        try:
+            self.assertEqual(hive.whole("a/b"), str(folder / "a/b"))
+            self.assertEqual(hive.whole("link/.."), str(folder) + "/link/..", "left to the system, which goes up from where the link leads")
+            self.assertTrue(os.path.samefile(hive.whole("link/.."), folder / "real"))
+            self.assertEqual(hive.whole("/x/../y"), "/x/../y")
+            args = hive.argparse.Namespace(repo="project", judge_workdir="", remote="origin", out=None, state="/s", tip="t")
+            hive.whole_paths(args)
+            self.assertEqual(vars(args), {"repo": str(folder / "project"), "judge_workdir": "", "remote": "origin", "out": None, "state": "/s",
+                                          "tip": "t"}, "paths only, and only those that name something")
+        finally:
+            os.chdir(here)
+
+    def test_the_candidates_file_is_written_and_read_where_the_caller_named_it_whatever_folder_git_runs_in(self):
+        """The two functions by themselves, given a relative path as a command once handed it to them."""
+        self.w.fork("bob", 102).submit("toy-0001")
+        made = self.w.plan()
+        here, folder = os.getcwd(), self.w.root / "elsewhere"
+        folder.mkdir()
+        os.chdir(folder)
+        try:
+            hive.write_bundle(self.w.harvest, made, "file.bundle")
+            self.assertTrue((folder / "file.bundle").is_file())
+            self.assertFalse((self.w.harvest / "file.bundle").exists())
+            sh("git", "fetch", "--quiet", "origin", cwd=self.w.bench)
+            hive.read_bundle(self.w.bench, made, "file.bundle")
+        finally:
+            os.chdir(here)
+
+
 class TestTheHivesBranchIsNotTheDefaultOne(Volunteer):
     """A project as the hive now asks for one: its repository's default branch is the one it publishes, the hive's own
     branch is another, the two hold different things, and a member's fork holds the default branch only (a fork copies
