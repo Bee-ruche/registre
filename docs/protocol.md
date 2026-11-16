@@ -243,9 +243,17 @@ the hive runs those git commands with an empty attribute source.
   container without network, and the verdict is derived on the host. Code 0 is correct, 1 a refusal, 2 a failure
   to judge.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
-  the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
-  stops judging and no candidate pays for the breakdown. If it passes, the failure is counted against the deal,
-  whose candidate is judged again at the next run, three times at most. A run whose judge failed on the project's
+  the hive asks it about the project's own tip against itself. If that fails too, the machine is down and the run
+  stops judging. When nothing in that run had shown the machine working, no candidate pays for the breakdown,
+  however many runs it lasts: no mark, no place lost. When the machine had worked earlier in the same run (it
+  answered about another candidate, or about the tip) and fails right after one candidate, the judging stopped on
+  that candidate: it is marked as not answered in that run, which costs it nothing (which candidate left the
+  machine failing, the hive cannot tell). And the run that follows one whose machine was down asks about the tip
+  first, before any candidate: if that fails, nothing is tried and nobody is marked; if it passes, the machine
+  works in that run. So a candidate after which the judge's machine fails cannot hold the first place run after run
+  with nobody judged behind it: it is marked, tried after the others, and its deal is closed at no cost after six
+  runs without an answer. If the tip passes, the failure is counted
+  against the deal, whose candidate is judged again at the next run, three times at most. A run whose judge failed on the project's
   own tip ends as a failure once everything it could decide is written, so that a person sees it: the machine may be
   down, or the tip itself may no longer pass the project's check.
 - **A measure accepts no candidate alone, whatever the project and whatever its judge.** A judge gives measures (a
@@ -403,6 +411,8 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   member, an ask that was used, a submit that is not a candidate). Only what is still at a tip of that fork is
   kept: what one fork pushes never costs another its entries.
 - `accounts.json`: when each account that owns a fork was created, asked of GitHub once.
+- `machine.json`: whether the last run's judge failed on the project's own tip; the next judging then asks about
+  the tip before any candidate.
 
 A task the judge keeps refusing asks for a stronger worker: the feed gives a `hint` that rises by one for every
 three different members refused, among those the judge has accepted something from. It is a hint for people;
