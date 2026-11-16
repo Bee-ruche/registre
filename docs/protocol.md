@@ -335,6 +335,10 @@ with it the tasks that share a file with that one.
   read by nobody: each of its commits says so. The published branch moves when a maintainer, having read what
   accumulated, moves it; a release, an offer to another project, anything that leaves the repository, is a
   maintainer's act. The judge's scan of a candidate's source is a filter, not a review of what a change does.
+  What a maintainer commits on the published branch (a fix, a revert) the maintainer also brings to the hive's
+  branch: the hive works on its own branch's tip and takes nothing from the other by itself. The file's two names
+  are the registry's word: the host's own rule, which keeps the hive's key off the published branch, is what holds
+  if that word is wrong (docs/hive-workflow.md, setting 4).
 - **It promises, then pushes.** Before each push the write job records an *intent* in the ledger and saves the
   state. If a run pushed and then could not record, or could not tell whether its push landed, the next run finds
   the promise, looks for the promised commit in the project's history, and completes the ledger. Nothing but the
