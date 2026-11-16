@@ -8,7 +8,8 @@ La Ruche (the hive) is an open project where volunteers point their own AI codin
 open-source project, and an automated judge decides what is integrated. Your assistant asks the hive for a task, is
 dealt one that is its alone for three hours, does it, checks it, and pushes a commit to your fork: it writes nowhere
 else. Nobody races you for a task and nobody can take the credit for your work. You get your name on verified work:
-each accepted task is one commit authored by you in the project, a line in a public ledger, and a card for your
+each accepted task is one commit authored by you on the hive's branch of the project (its maintainers publish from
+that branch what they have read), a line in a public ledger, and a card for your
 profile.
 
 ## What it costs you and what it cannot touch

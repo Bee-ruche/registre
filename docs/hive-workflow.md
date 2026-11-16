@@ -72,8 +72,10 @@ Five things carry it:
    gives its secrets to any job that names it, in any workflow, on any ref it accepts: this setting, and not the
    text of one workflow file, is what decides who can read a key. **To make before the keys are entered, or
    right after.**
-4. **Each hosted project's branch**: pushes allowed to the integration identity and the maintainers, force pushes
-   blocked, no required pull request for the identity.
+4. **Each hosted project's two branches.** On the hive's own branch (`branch` in the project's file: `hive` for
+   miniz), pushes allowed to the integration identity and the maintainers, force pushes blocked, no required pull
+   request for the identity. On the branch the project publishes (`published`: `master` for miniz), no push by the
+   integration identity at all. The hive's own branch is made once, by a maintainer, from the published one.
 5. **The repository variable `HIVE_PROJECTS`** (for instance `miniz`): the run does nothing while it is empty, in
    addition to each project's own `"paused": true`.
 6. **Actions settings**: workflows may not approve pull requests; artifacts kept a few days.

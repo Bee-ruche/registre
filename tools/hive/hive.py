@@ -105,6 +105,7 @@ HEAD_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}\Z")
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}\Z")  # an identifier, never a sentence
 MARKER_LINE = re.compile(r"(Hive-Task|Hive-Action|Hive-Member|Hive-Model|Hive-Tier|Hive-Deal|Hive-Prefer): (.{1,200})\Z")
 METRIC = re.compile(r"[a-z][a-z0-9_]{0,59}\Z")
+PROOF = "sure_"  # how a proof is named: sure_<measure>, 1 when the judge saw the gain beyond its noise, else 0
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 JUDGE_ATTEMPTS = 3  # a deal whose candidates fail the judge, or the hive's own reading, this many times is answered: judge_failed
 RUN_KEY = re.compile(r"[0-9a-f]{32}\Z")
@@ -429,6 +430,13 @@ def load_config(path):
         raise HiveError(f"{path}: project: a lower-case identifier")
     if not (isinstance(config.get("repo"), str) and REPO_NAME.match(config["repo"])):
         raise HiveError(f"{path}: repo: owner/name")
+    if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
+        raise HiveError("the project's branch is not a plain branch name")
+    published = config.get("published")
+    if not (isinstance(published, str) and REVISION.match(published) and ".." not in published):
+        raise HiveError(f"{path}: published: the branch people take the project from, which the hive never writes")
+    if config["branch"].casefold() == published.casefold():
+        raise HiveError(f"{path}: branch: the hive writes a branch of its own, never the one the project publishes ({published})")
     if not isinstance(config.get("tasks"), str):
         raise HiveError(f"{path}: tasks: the path of the project's tasks file")
     if not isinstance(config.get("check", ""), str):
@@ -449,8 +457,10 @@ def load_config(path):
     if not (isinstance(judge["require"], list) and all(condition_ok(c, judge["metrics"]) for c in judge["require"])):
         raise HiveError(f"{path}: judge.require: conditions on figures listed in judge.metrics")
     judge.setdefault("confirm", [])
-    if not (isinstance(judge["confirm"], list) and all(isinstance(m, str) and m in judge["metrics"] for m in judge["confirm"])):
-        raise HiveError(f"{path}: judge.confirm: figures listed in judge.metrics (a goal on a figure must hold one of them)")
+    if not (isinstance(judge["confirm"], list)
+            and all(isinstance(m, str) and m in judge["metrics"] and m.startswith(PROOF) for m in judge["confirm"])):
+        raise HiveError(f"{path}: judge.confirm: the judge's proofs the project takes: figures listed in judge.metrics and named "
+                        f"{PROOF}<measure> (every goal on a figure must hold one of them)")
     judge.setdefault("history", [])
     if not (isinstance(judge["history"], list) and len(judge["history"]) <= 16 and all(is_sha(c) for c in judge["history"])):
         raise HiveError(f"{path}: judge.history: the commits of the project's own history its judge reads by id (full ids)")
@@ -469,17 +479,19 @@ def condition_ok(condition, metrics, nested=True):
 
 def check_goals(config, tasks):
     """A goal names figures the judge gives: a task whose goal could never be met is a mistake to fix, not to run.
-    Where the project lists figures that confirm a gain (judge.confirm), a goal on a figure holds one of them, with a
-    minimum of 1 or more: a gain measured another way is then seen by two independent measures, never by that one alone."""
-    confirm = config["judge"].get("confirm") or []
+    A goal on a figure holds one of the judge's proofs the project takes (judge.confirm), with a minimum of 1 or more:
+    a measure accepts no candidate alone, whatever the project and whatever its judge. A project that takes no proof
+    has goals of the kind « correct » only."""
+    confirm = config["judge"]["confirm"]
     for task in tasks.values():
         goal = task.get("goal") or {"kind": "correct"}
         if goal.get("kind") == "correct":
             continue
         if goal.get("kind") != "metric" or not condition_ok(goal, config["judge"]["metrics"]):
             raise HiveError(f"task {task['id']}: goal: « correct », or « metric » on a figure listed in the project's judge.metrics")
-        if confirm and not any(c.get("name") in confirm and c.get("min", 0) >= 1 for c in [goal, *goal.get("and", [])]):
-            raise HiveError(f"task {task['id']}: goal: it must hold one of the project's judge.confirm figures, with a minimum of 1 or more")
+        if not any(c.get("name") in confirm and c.get("min", 0) >= 1 for c in [goal, *goal.get("and", [])]):
+            raise HiveError(f"task {task['id']}: goal: it must hold one of the judge's proofs the project takes (judge.confirm), with a "
+                            "minimum of 1 or more; a project that lists none takes goals of the kind « correct » only")
 
 
 def load_tasks(path):
@@ -2557,8 +2569,9 @@ def build_stats(ledger):
 def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
     """The common judge (tools/judge/judge.py) as a judge function: code 0 correct, 1 refused, 2 failure to judge.
     The report it returns holds numbers only: the figures report.py publishes (suspects, outputs_compared) and, for
-    each of the judge's metrics, gain_<metric>, sure_<metric> (1 when the gain is beyond the noise, else 0) and
-    worse_<metric> (1 when it is degraded beyond the noise, else 0)."""
+    each of the judge's metrics, gain_<metric>, worse_<metric> (1 when it is degraded beyond the noise, else 0) and,
+    for the measures of the report's « metrics », sure_<metric> (1 when the gain is beyond the noise, else 0):
+    judge_figures."""
     judge_py, report_py = Path(registry_root) / "tools/judge/judge.py", Path(registry_root) / "tools/judge/report.py"
 
     def run(base, candidate, task, tip, commit):
@@ -2585,19 +2598,26 @@ def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeou
 
 
 def judge_figures(published, report_path):
-    """Numbers out of the common judge's answer: report.py's whole numbers, and each metric's gain."""
+    """Numbers out of the common judge's answer: report.py's whole numbers, and each metric's gain.
+
+    sure_<metric> is given for the measures of the report's « metrics » (the stopwatch's, and what the judge reads
+    of the outputs). A count made by a tool that runs the program inside itself (the report's « instructions ») gives
+    a gain and a worse_, and no sure_, under whatever name the project's plug-in gave it. Which of the sure_ figures
+    are proofs is the project's to say (judge.confirm): those the judged program cannot bear upon."""
     figures = {name: int(published[name]) for name in ("suspects", "outputs_compared")
                if re.fullmatch(r"0|[1-9][0-9]{0,15}", published.get(name, ""))}
     try:
         with open(report_path, encoding="utf-8") as f:
             report = json.load(f)
-        metrics = {**(report.get("metrics") or {}), **(report.get("instructions") or {})}
-        for name, metric in metrics.items():
-            key = re.sub(r"[^a-z0-9]+", "_", str(name).lower()).strip("_")[:50]
-            if key and isinstance(metric, dict) and number(metric.get("gain")):
-                figures[f"gain_{key}"] = metric["gain"]
-                figures[f"sure_{key}"] = 1 if metric.get("beyond_noise") is True else 0
-                figures[f"worse_{key}"] = 1 if metric.get("degradation_beyond_noise") is True else 0
+        for family, proves in ((report.get("metrics") or {}, True), (report.get("instructions") or {}, False)):
+            for name, metric in family.items():
+                key = re.sub(r"[^a-z0-9]+", "_", str(name).lower()).strip("_")[:50]
+                if key and isinstance(metric, dict) and number(metric.get("gain")):
+                    figures[f"gain_{key}"] = metric["gain"]
+                    figures[f"worse_{key}"] = 1 if metric.get("degradation_beyond_noise") is True else 0
+                    figures.pop(f"{PROOF}{key}", None)
+                    if proves:
+                        figures[f"{PROOF}{key}"] = 1 if metric.get("beyond_noise") is True else 0
     except (OSError, ValueError, AttributeError, TypeError):
         pass  # no figure beyond report.py's: a goal on a gain is then not met
     return figures

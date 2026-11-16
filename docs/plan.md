@@ -199,7 +199,7 @@ protocol is kept only if it moves them the right way.
 | --- | --- | --- | --- |
 | Whose repository | the hive's | its maintainers' | anyone's |
 | Who judges | the hive's judge | the hive's judge or the project's CI | nobody at the hive |
-| What happens to accepted work | integrated by the hive | **offered**: kept on a branch the maintainers pull from, at the rate they set. The hive never opens a pull request on its own | whatever the volunteer does with it |
+| What happens to accepted work | integrated by the hive, on a branch of its own; the project's maintainers publish from it what they have read | **offered**: kept on a branch the maintainers pull from, at the rate they set. The hive never opens a pull request on its own | whatever the volunteer does with it |
 | The hive answers for | the judge, the credit, the legality | the judge and the credit | the worker's loop and its limits, nothing else |
 | State | **built** (protocol) | **planned** (phase 4), only with the maintainers' written agreement | **not built**: the worker's commands take only a fork of a project the registry declares |
 
@@ -601,8 +601,8 @@ What the builder adds to make it permanent (proposals, the founder's to change):
   does the same for that project once the workflow names a commit that holds it.
 - **Taking a commit back**: stop the hive (above); close the commit's task (`"closed": true` in the tasks file;
   add a new task if the work is still wanted) and move the workflow's line to the commit that closes it; then
-  revert the commit on the project's branch (a revert commit, rather than moving the branch back), and start
-  again. The hive never undoes a maintainer's commit: it only ever adds to the tip it judged, and leaves a branch
+  revert the commit on the hive's branch of the project (a revert commit, rather than moving the branch back), and
+  on the published branch too if it was already published, and start again. The hive never undoes a maintainer's commit: it only ever adds to the tip it judged, and leaves a branch
   that moved. But the ledger still says the task is done, and an integration whose record was still pending would
   be pushed again if its task were open: hence the task first.
 - **A ban** names the account's numeric id; it holds through a change of login. Like every setting, it acts once
@@ -653,8 +653,10 @@ volunteer-computing projects have done for decades).
 
 1. **Merge this work**: a pull request from `claude/inspiring-dijkstra-7b7hjk` to `main` (the builder opens none
    without being asked).
-2. **The repository settings** the private report lists, and for each hosted project: its branch writable only by
-   the hive's integration identity and the maintainers, force pushes blocked.
+2. **The repository settings** the private report lists, and for each hosted project two branches
+   (docs/hive-workflow.md, setting 4): the hive's own, writable only by the hive's integration identity and the
+   maintainers, force pushes blocked; and the one the project publishes, which the integration identity may not
+   push at all.
 3. **Two integration identities** (done on 13 November 2026): two GitHub Apps, one that can write the state's own
    repository (`Bee-ruche/hive-state`, public) and one that can write the hosted projects' branches, each key in
    an environment of the registry that accepts the branch `main` only. The hourly workflow is

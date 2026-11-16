@@ -2,8 +2,9 @@
  "protocol": 1,
  "project": "miniz",
  "repo": "Bee-ruche/minizBee",
- "branch": "master",
- "paused": true,
+ "branch": "hive",
+ "published": "master",
+ "paused": false,
  "tasks": "hive/tasks/miniz.jsonl",
  "check": "bee/tests/lancer.sh",
  "protected": [
@@ -14,7 +15,7 @@
   "examples/**"
  ],
  "members": {
-  "only": []
+  "only": [72140]
  },
  "models": [
   "claude-fable-5-2",

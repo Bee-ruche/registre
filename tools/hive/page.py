@@ -16,8 +16,8 @@ accepted, and how many dealt candidates wait for the judge (from the feed's deal
                           (and, for the candidates refused for a figure, what the judge measured), the parts of the
                           project that asks preferred and what the hive did, three measures
   wins/<commit>.svg       a card for every integration, named by the integrated commit's 40-hex id: the task, the
-                          member, the date and one figure the judge measured: the one the task asked for when --tasks
-                          says which and the report holds it, else the largest gain beyond the noise
+                          member, the date and one figure beyond the judge's noise: the one the task asked for when
+                          --tasks says which and the report holds it so, else the largest gain beyond the noise
   wins/<commit>.html      the permanent page of that integration, where its card leads: everything the judge
                           measured, how to check it without trusting the page, the card and how to show it
   members/<id>.svg        a card for each member with at least one integration, named by the account's numeric id
@@ -267,10 +267,11 @@ def read_report(report, goal=None):
                  between -GAIN_MAX and GAIN_MAX; sure and worse are the report's sure_<metric> and worse_<metric>
                  (1, 0, or None when the report has no such number); goal marks the task's own figure. The goal's row
                  comes first, then the rows beyond the noise, then the others; at most MEASURES_MAX are kept
-      figure     the figure a card leads with, {"metric", "gain", "goal"}: the task's own (`goal`, the <metric> its
-                 goal names) when the report holds it, it shows above 0.0 %, it is not marked worse, and its sure_
-                 flag is 1 or the report keeps none for it (a project lists the flags it keeps: miniz keeps none for
-                 its instruction counts); otherwise the headline, with goal False; None when there is neither
+      figure     the figure a card leads with, {"metric", "gain", "goal"}: one whose sure_ flag is 1, and no other.
+                 The task's own (`goal`, the <metric> its goal names) when the report holds it, it shows above
+                 0.0 %, it is not marked worse and its sure_ flag is 1; otherwise the headline, with goal False;
+                 None when there is neither. A measure for which the report keeps no sure_ flag (miniz keeps none
+                 for its instruction counts) is a row of `measures`, and never the figure
       outputs    outputs_compared when it is a whole number above zero; suspects, when it is a whole number
     """
     report = report if isinstance(report, dict) else {}
@@ -284,8 +285,7 @@ def read_report(report, goal=None):
                      "worse": flag(report, "worse_" + key[5:]), "goal": goal is not None and key[5:] == goal})
     rows.sort(key=lambda row: (not row["goal"], row["sure"] != 1 and row["worse"] != 1, -row["gain"], row["metric"]))
     asked = rows[0] if rows and rows[0]["goal"] else None
-    if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" \
-            and (asked["sure"] == 1 or "sure_" + asked["metric"] not in report):
+    if asked is not None and shows(asked["gain"]) and direction(asked["gain"], asked["sure"], asked["worse"]) == "better" and asked["sure"] == 1:
         figure = {"metric": asked["metric"], "gain": asked["gain"], "goal": True}
     else:
         figure = None if best is None else {**best, "goal": False}
@@ -1313,7 +1313,7 @@ def repo_name(repo_url):
 
 
 def render_win(project, win, repo_url=None):
-    """The card of one integration (wins/<commit>.svg): the figure the judge measured (read_report()'s lead figure),
+    """The card of one integration (wins/<commit>.svg): a figure beyond the judge's noise (read_report()'s lead figure),
     what was compared, the task, who, when, the commit, and one line that says what La Ruche is. Every value is a
     checked field or a constant of this file; the title is the task's, from the hive's feed."""
     wide, pad = 440, 24
@@ -1753,7 +1753,7 @@ def main(argv=None):
     parser.add_argument("--title", default="", help="one line saying what the project is, shown under its name")
     parser.add_argument("--repo-url", help="https://github.com/owner/name: integrations then link to their commit")
     parser.add_argument("--tasks", help="the project's task file in the registry (hive/tasks/<project>.jsonl): a card then leads with "
-                                        "the figure its task asked for")
+                                        "the figure its task asked for, when the judge saw it beyond its noise")
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--join", action="store_true", help="the join page is join.html, beside index.html")
     where.add_argument("--join-url", help=f"the join page's address on github.com (default: {DEFAULT_JOIN_URL})")
