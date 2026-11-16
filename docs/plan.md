@@ -199,7 +199,7 @@ protocol is kept only if it moves them the right way.
 | --- | --- | --- | --- |
 | Whose repository | the hive's | its maintainers' | anyone's |
 | Who judges | the hive's judge | the hive's judge or the project's CI | nobody at the hive |
-| What happens to accepted work | integrated by the hive | **offered**: kept on a branch the maintainers pull from, at the rate they set. The hive never opens a pull request on its own | whatever the volunteer does with it |
+| What happens to accepted work | integrated by the hive, on a branch of its own; the project's maintainers publish from it what they have read | **offered**: kept on a branch the maintainers pull from, at the rate they set. The hive never opens a pull request on its own | whatever the volunteer does with it |
 | The hive answers for | the judge, the credit, the legality | the judge and the credit | the worker's loop and its limits, nothing else |
 | State | **built** (protocol) | **planned** (phase 4), only with the maintainers' written agreement | **not built**: the worker's commands take only a fork of a project the registry declares |
 

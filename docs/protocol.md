@@ -259,7 +259,10 @@ the hive runs those git commands with an empty attribute source.
   of them, and has no `sure_` figure under any name. Among those figures a project takes as proofs the ones the
   judged program cannot bear upon (the processor time the kernel reads, what the judge itself reads of the
   outputs), and its maintainers answer for that choice. What a project requires of every candidate
-  (`judge.require`) can only refuse. The page leads a contribution's card with a figure that has its `sure_`, and
+  (`judge.require`) can only refuse. **What the hive vouches for in an accepted contribution is its proof**: that
+  the judge saw it better beyond its noise, with the same outputs. A bound on a measure that has no proof (in miniz,
+  the count of instructions) is a bar that can only refuse: the hive does not vouch for that measure's size, and the
+  ledger keeps it as the judge gave it. The page leads a contribution's card with a figure that has its `sure_`, and
   with no other: a measure without one is a row of its table.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**. They are different tasks' candidates: there is one per task at most.
@@ -325,6 +328,13 @@ with it the tasks that share a file with that one.
 
 ## How the hive writes
 
+- **It writes a branch of its own, never the one a project publishes.** A project's file names both: `branch`,
+  where the hive integrates what its judge accepted, and `published`, the branch people take the project from. The
+  hive pushes to the first and to no other; a file that names no published branch, or one branch for both, stops
+  every step of the hive and every command of a worker. What is on the hive's branch was accepted by a judge and
+  read by nobody: each of its commits says so. The published branch moves when a maintainer, having read what
+  accumulated, moves it; a release, an offer to another project, anything that leaves the repository, is a
+  maintainer's act. The judge's scan of a candidate's source is a filter, not a review of what a change does.
 - **It promises, then pushes.** Before each push the write job records an *intent* in the ledger and saves the
   state. If a run pushed and then could not record, or could not tell whether its push landed, the next run finds
   the promise, looks for the promised commit in the project's history, and completes the ledger. Nothing but the
@@ -423,7 +433,8 @@ hour and the fork's own number, which adding forks to the list does not shift.
 
 ## A project's files
 
-- `hive/projects/<project>.json` in the registry: the repository, its branch, the protected paths, the limits,
+- `hive/projects/<project>.json` in the registry: the repository, the hive's own branch in it (`branch`) and the
+  branch the project publishes (`published`, which the hive never writes), the protected paths, the limits,
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
   (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the

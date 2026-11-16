@@ -41,7 +41,7 @@ LIB = "".join(f"int f{i}(void) {{ return {i}; }}\n" for i in range(8))
 # The toy's judge gives a measure (gain) and a proof of it (sure_gain): a goal on a figure holds a proof.
 JUDGE = {"metrics": ["gain", "sure_gain", "outputs_compared"], "confirm": ["sure_gain"]}
 PROVED_GAIN = {"kind": "metric", "name": "gain", "min": 0.02, "and": [{"name": "sure_gain", "min": 1}]}
-CONFIG = {"protocol": 1, "project": "toy", "repo": "Bee-ruche/toy", "branch": "main", "protected": ["tests/**"],
+CONFIG = {"protocol": 1, "project": "toy", "repo": "Bee-ruche/toy", "branch": "main", "published": "stable", "protected": ["tests/**"],
           "tasks": "hive/tasks/toy.jsonl", "limits": {"changed_lines": 50, "files": 3, "file_bytes": 2000, "commits": 5},
           "models": ["claude-fable-5-2"], "judge": JUDGE}
 TASKS = [
@@ -4373,6 +4373,36 @@ class TestProjectFiles(unittest.TestCase):
 
 
 class TestProjectSettings(Base):
+    def test_the_hive_writes_a_branch_of_its_own_never_the_one_a_project_publishes(self):
+        """A project's file names the branch people take the project from (published), and the hive's own branch is
+        another: what the judge accepted is on the hive's branch, and what a project publishes moves only by its
+        maintainers. A file that names no published branch, or one branch for both, stops every step of the hive and
+        every command of a worker; and an accepted candidate is pushed to the hive's branch and to no other."""
+        path = self.w.registry / "hive/projects/toy.json"
+        step = hive.argparse.Namespace(registry=str(self.w.registry), project="toy", state=str(self.w.state.parent))
+        config = hive.project_of(step)[0]
+        self.assertEqual((config["branch"], config["published"]), ("main", "stable"))
+        for wrong in ({"published": "main"}, {"published": "MAIN"}, {"branch": "stable"}, {"branch": "Stable"}, {"published": None},
+                      {"published": ""}, {"published": 1}, {"published": ["stable"]}, {"published": "-x"}, {"published": "a..b"},
+                      {"published": "st able"}, {"published": "stable\n"}, {"branch": None}, {"branch": 3}):
+            self.w.set_config(wrong)
+            with self.subTest(wrong=wrong):
+                for load in (lambda: hive.load_config(path), lambda: hive.project_of(step), lambda: hive.hive_project(self.w.registry, "toy")):
+                    with self.assertRaisesRegex(hive.HiveError, "published|branch"):
+                        load()
+        raw = {key: value for key, value in CONFIG.items() if key != "published"}
+        path.write_text(json.dumps(raw))
+        with self.assertRaisesRegex(hive.HiveError, "published: the branch people take the project from"):
+            hive.project_of(step)
+        path.write_text(json.dumps({key: value for key, value in raw.items() if key != "branch"} | {"published": "main"}))
+        with self.assertRaisesRegex(hive.HiveError, "branch: the hive writes a branch of its own"):
+            hive.project_of(step)  # the branch a file does not name is « main »: it cannot be the published one either
+        self.w.set_config({})
+        self.alice.submit("toy-0001")
+        self.assertEqual(self.one(self.w.run())["result"], "accepted")
+        heads = sh("git", "for-each-ref", "--format=%(refname)", "refs/heads", cwd=self.w.upstream).stdout.split()
+        self.assertEqual(heads, ["refs/heads/main"], "the hive pushed to its own branch, and made no other")
+
     def test_a_projects_dealing_settings_are_checked_when_it_is_loaded(self):
         path = self.w.registry / "hive/projects/toy.json"
         for wrong in ({"deal_hours": 0}, {"deal_hours": "3"}, {"deal_hours": 2.5}, {"deal_hours": True}, {"grace_hours": -1},

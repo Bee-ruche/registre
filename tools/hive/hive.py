@@ -430,6 +430,13 @@ def load_config(path):
         raise HiveError(f"{path}: project: a lower-case identifier")
     if not (isinstance(config.get("repo"), str) and REPO_NAME.match(config["repo"])):
         raise HiveError(f"{path}: repo: owner/name")
+    if not (isinstance(config["branch"], str) and REVISION.match(config["branch"]) and ".." not in config["branch"]):
+        raise HiveError("the project's branch is not a plain branch name")
+    published = config.get("published")
+    if not (isinstance(published, str) and REVISION.match(published) and ".." not in published):
+        raise HiveError(f"{path}: published: the branch people take the project from, which the hive never writes")
+    if config["branch"].casefold() == published.casefold():
+        raise HiveError(f"{path}: branch: the hive writes a branch of its own, never the one the project publishes ({published})")
     if not isinstance(config.get("tasks"), str):
         raise HiveError(f"{path}: tasks: the path of the project's tasks file")
     if not isinstance(config.get("check", ""), str):
