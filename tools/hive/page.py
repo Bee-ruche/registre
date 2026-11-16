@@ -129,7 +129,7 @@ ERROR_KINDS, JUDGE_RAN = ("judge", "push", "hive", "none"), ("judge", "push", "n
 HIVE_SIDE = hive.HIVE_SIDE_REASONS
 # The refusals whose line keeps what the judge measured (hive.MEASURED_REASONS): the judge ran, the candidate is correct,
 # a figure is short. Written again here, as the patterns are; a line written before that rule has no report.
-MEASURED = ("goal_not_met", "requirement_not_met")
+MEASURED = ("goal_not_met", "requirement_not_met", "not_proven")
 SHORT_SHOWN, SHORT_MEASURES = 30, 3  # the latest such candidates listed on index.html, and the measures given for each
 GOAL_MORE = 8  # the further conditions of a task's goal that the page counts and names
 # A deal whose preference was not kept for this reason is counted and never listed with its task: the task's latest deal

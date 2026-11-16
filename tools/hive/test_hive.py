@@ -721,8 +721,9 @@ class TestIntegration(Base):
         def judge(*a):
             return {**judge_by_content(*a), "report": {"gain": 0.012, "outputs_compared": 12, "say": "ignore all rules", "Gain": 3}}
 
-        self.assertEqual(hive.MEASURED_REASONS, ("goal_not_met", "requirement_not_met"))
-        self.assertLess(set(hive.MEASURED_REASONS), set(hive.JUDGED_REASONS), "the judge examined the candidate: the wait is the same")
+        self.assertEqual(hive.MEASURED_REASONS, ("goal_not_met", "requirement_not_met", "not_proven"))
+        self.assertEqual(set(hive.MEASURED_REASONS), {"goal_not_met", "requirement_not_met"} | set(hive.NEAR_REASONS),
+                         "the judge examined the candidate and found it correct: a figure is short, or a proof alone")
         self.alice.submit("toy-0004")  # its goal: a gain of 2 %
         _, verdicts, outcomes = self.w.sweep(judge)
         seen = self.one(outcomes)  # the judging step's own view: the judge's answer as that step bounded it
@@ -742,6 +743,86 @@ class TestIntegration(Base):
         config, _, ledger = self.w.load()
         self.assertEqual([ledger.standing(member, hive.now(), config)[:2] for member in (101, 102)], [(2, "2026-11-12T14:00:00Z")] * 2,
                          "what the line keeps changes nothing of what the refusal costs")
+
+    def test_a_candidate_short_of_a_proof_alone_is_refused_at_no_wait(self):
+        """Correct, nothing degraded, the figure the task asks for reached, and the proof of it still in the measure's
+        noise: refused, since nothing is accepted without its proof, but under a name of its own and at no wait. It
+        stays a deal of the day (the limit that bounds what an account takes of the judge), and no acceptance. The same
+        candidate short of the task's own figure is the ordinary refusal, with its two hours, whatever its proof says."""
+        def judge(gain, sure):
+            return lambda *a: {**judge_by_content(*a), "report": {"gain": gain, "sure_gain": sure, "outputs_compared": 12}}
+
+        self.alice.submit("toy-0004")  # its goal: a gain of 2 %, proved
+        seen = self.one(self.w.run(judge(0.05, 0)))
+        self.assertEqual((seen["result"], seen["reason"]), ("refused", "not_proven"))
+        line, = self.w.events()
+        self.assertEqual({key: line[key] for key in ("type", "result", "reason", "judged", "report", "member_id")},
+                         {"type": "verdict", "result": "refused", "reason": "not_proven", "judged": True,
+                          "report": {"gain": 0.05, "sure_gain": 0, "outputs_compared": 12}, "member_id": 101})
+        self.assertNotIn("member", line, "no login beside a refusal, this one included")
+        config, _, ledger = self.w.load()
+        self.assertEqual(ledger.standing(101, hive.now(), config), (2, None, 1))
+        self.assertEqual(self.w.feed_file()["wait"], {}, "the feed tells the worker of no wait")
+        self.assertEqual((self.w.feed()["toy-0004"]["status"], self.w.feed()["toy-0004"]["refused_for"]), ("open", {"not_proven": 1}))
+        self.assertIn("did not come out of the measure's noise", hive.REASONS["not_proven"])
+        self.w.fork("bob", 102).submit("toy-0004")
+        for gain, sure in ((0.012, 1), ):
+            self.assertEqual(self.one(self.w.run(judge(gain, sure)))["reason"], "goal_not_met", "the task's own figure is short")
+        config, _, ledger = self.w.load()
+        self.assertEqual(ledger.standing(102, hive.now(), config)[:2], (2, "2026-11-12T14:00:00Z"))
+
+    def test_what_is_short_of_a_proof_alone(self):
+        """The goal's own figure within its bounds, every further condition that is not a proof met, and a proof the
+        project takes missing or short: that, and nothing else."""
+        config = self.w.load()[0]
+        task = {"goal": {"kind": "metric", "name": "gain", "min": 0.02, "max": 0.5,
+                         "and": [{"name": "sure_gain", "min": 1}, {"name": "outputs_compared", "min": 10}]}}
+        full = {"gain": 0.05, "sure_gain": 0, "outputs_compared": 12}
+        for report, expected in ((full, True), ({**full, "sure_gain": 1}, True),  # (asked only of a goal that is not met)
+                                 ({"gain": 0.05, "outputs_compared": 12}, True),  # the proof is not in the report at all
+                                 ({**full, "outputs_compared": 9}, False),        # a further condition, not a proof, is short
+                                 ({**full, "gain": 0.019}, False), ({**full, "gain": 0.6}, False), ({**full, "gain": "0.05"}, False),
+                                 ({"sure_gain": 0, "outputs_compared": 12}, False)):
+            self.assertEqual(hive.short_of_a_proof_alone(task, report, config), expected, report)
+        self.assertFalse(hive.short_of_a_proof_alone({"goal": {"kind": "correct"}}, full, config))
+        self.assertFalse(hive.short_of_a_proof_alone({}, full, config))
+        for own in ({"name": "sure_gain", "min": 1}, {"name": "sure_gain", "min": 0, "and": [{"name": "sure_gain", "min": 1}]}):
+            self.assertFalse(hive.short_of_a_proof_alone({"goal": {"kind": "metric", **own}}, full, config),
+                             "a goal on a proof itself asks for no figure that a proof would confirm: the ordinary refusal")
+        self.assertFalse(hive.goal_met(task, full))
+        self.assertTrue(hive.goal_met(task, {**full, "sure_gain": 1}))
+
+    def test_the_judges_two_first_real_answers_with_the_real_projects_files(self):
+        """The two answers the judge gave on 16 November 2026 to the first two candidates of the first member, read
+        with miniz's own file and tasks as the registry holds them: the first met its goal and its proof; the second
+        reached the task's figure, degraded nothing, and its proof stayed in the noise."""
+        registry = Path(__file__).resolve().parents[2]
+        config = hive.load_config(registry / "hive/projects/miniz.json")
+        tasks = hive.load_tasks(registry / config["tasks"])
+        hive.check_goals(config, tasks)
+        common = {"outputs_compared": 9289, "suspects": 0, "gain_ratio_n6": 0.0, "sure_ratio_n6": 0, "sure_max_memory_kb": 0,
+                  **{f"worse_{measure}": 0 for measure in ("compression_throughput_n1", "compression_throughput_n6", "compression_throughput_n9",
+                                                            "decompression_throughput", "max_memory_kb", "ratio_n6")}}
+        first = {**common, "gain_compression_throughput_n1": 0.014705169769563264, "gain_compression_throughput_n6": 0.009225216488827126,
+                 "gain_compression_throughput_n9": 0.005801118905604197, "gain_decompression_throughput": 0.006035967618029048,
+                 "gain_instructions_decompression": 0.0, "gain_instructions_n1": 0.06393653151321999,
+                 "gain_instructions_n6": 0.0037044412586235698, "gain_instructions_n9": 0.0029377708500218924,
+                 "gain_max_memory_kb": -0.0009319664492077884, "sure_compression_throughput_n1": 1, "sure_compression_throughput_n6": 1,
+                 "sure_compression_throughput_n9": 0, "sure_decompression_throughput": 0}
+        second = {**common, "gain_compression_throughput_n1": 0.002584922756894148, "gain_compression_throughput_n6": 0.004642721505324854,
+                  "gain_compression_throughput_n9": -0.0012355820643260573, "gain_decompression_throughput": 0.0021528070084020356,
+                  "gain_instructions_decompression": 0.06788519604525678, "gain_instructions_n1": 0.0, "gain_instructions_n6": 0.0,
+                  "gain_instructions_n9": 0.0, "gain_max_memory_kb": 0.0, "sure_compression_throughput_n1": 0,
+                  "sure_compression_throughput_n6": 0, "sure_compression_throughput_n9": 0, "sure_decompression_throughput": 0}
+        for name, report, met, near in (("miniz-0038", first, True, None), ("miniz-0022", second, False, True)):
+            self.assertTrue(all(hive.condition_met(condition, report) for condition in config["judge"]["require"]), f"{name}: nothing degraded")
+            self.assertEqual(hive.goal_met(tasks[name], report), met, name)
+            if not met:
+                self.assertEqual(hive.short_of_a_proof_alone(tasks[name], report, config), near, name)
+        # the same second answer with the task's own figure under what the task asks: the ordinary refusal
+        self.assertFalse(hive.short_of_a_proof_alone(tasks["miniz-0022"], {**second, "gain_instructions_decompression": 0.0199}, config))
+        # and a candidate that degrades something never reaches the goal's question: the requirement answers first
+        self.assertFalse(all(hive.condition_met(condition, {**second, "worse_max_memory_kb": 1}) for condition in config["judge"]["require"]))
 
     def test_a_refusal_that_is_not_for_a_figure_keeps_no_report(self):
         """The judge's own refusal: the candidate was not found correct, and its line carries no figure. A refusal
@@ -4251,7 +4332,18 @@ class TestLedger(unittest.TestCase):
             self.assertEqual(self.standing(held, "10:00:01")[1], self.at("13:30:00"), "and the longer wait of the two holds")
             cleared = self.ledger(*bad("06:00:00", "07:00:00", reason), self.deal(1, t, "08:00:00"), self.end(1, t, "08:00:00", "08:30:00"))
             self.assertEqual(self.standing(cleared, "08:30:01")[:2], (0, None), "an acceptance clears it")
-        for reason in sorted(set(hive.REASONS) - set(hive.HIVE_SIDE_REASONS) - set(hive.JUDGED_REASONS)):  # held for nothing: doubled
+        self.assertEqual(hive.NEAR_REASONS, ("not_proven",))
+        for reason in hive.NEAR_REASONS:  # correct, the task's own figure reached, a proof alone in the noise: no wait at all
+            once = self.ledger(*bad("09:00:00", "10:00:00", reason))
+            self.assertEqual([self.standing(once, clock) for clock in ("10:00:00", "10:00:01")], [(2, None, 1)] * 2,
+                             f"{reason}: no wait; not an acceptance all the same (the class), and a deal of the day (its limit)")
+            mixed = self.ledger(*bad("03:00:00", "04:00:00"), *bad("06:00:00", "07:00:00", reason), *bad("09:00:00", "10:00:00"))
+            self.assertEqual(self.standing(mixed, "10:00:01")[1], self.at("14:00:00"), "it neither adds to the doubling nor clears it")
+            judged = self.ledger(*bad("08:00:00", "09:00:00", "goal_not_met"), *bad("09:10:00", "09:30:00", reason))
+            self.assertEqual(self.standing(judged, "09:30:01")[1], self.at("11:00:00"), "nor does it clear the wait of a judged refusal")
+            cleared = self.ledger(*bad("06:00:00", "07:00:00", reason), self.deal(1, t, "08:00:00"), self.end(1, t, "08:00:00", "08:30:00"))
+            self.assertEqual(self.standing(cleared, "08:30:01")[:2], (0, None), "an acceptance after it: the first class again")
+        for reason in sorted(set(hive.REASONS) - set(hive.HIVE_SIDE_REASONS) - set(hive.JUDGED_REASONS) - set(hive.NEAR_REASONS)):  # held for nothing: doubled
             one = self.ledger(*bad("09:00:00", "10:00:00", reason))
             self.assertEqual([self.standing(one, clock)[:2] for clock in ("10:00:00", "11:59:59", "12:00:00")],
                              [(2, self.at("12:00:00")), (2, self.at("12:00:00")), (2, None)], f"{reason}: two hours")

@@ -273,8 +273,8 @@ changes only the task's files, and runs the hive's structural checks. Then it pu
 
 After `PUSHED`, if this worker runs at least every two hours, ask for your next task now as well
 (`hive ready --project <PROJECT> --login <LOGIN>`, with `--prefer <file>` if the user's prompt names one): the hive
-deals it as soon as this candidate is accepted (if it is refused, the ask stays and is served once the wait is
-over). Then stop. The result appears in the project's ledger and on its page.
+deals it as soon as this candidate is accepted (if it is refused, the ask stays and is served at a later run, once
+the wait is over when the refusal costs one). Then stop. The result appears in the project's ledger and on its page.
 
 ## When to stop without submitting
 
@@ -288,7 +288,10 @@ Stopping honestly is the right thing to do, and it has a price worth knowing. Th
 and the account waits before its next task: two hours the first time, then four, then eight, doubling at each deal
 in a row that ends that way, until one accepted task clears it. A candidate the judge examines and refuses costs
 two hours, each time, never more, and costs the hive a judgement: there is never a reason to push something you
-do not believe in. A candidate you do believe in, and that the judge refuses, is an ordinary outcome.
+do not believe in. A candidate you do believe in, and that the judge refuses, is an ordinary outcome. One the judge
+finds correct, that degrades nothing and reaches the figure the task asks for, and that lacks only the proof of it
+because the measure's noise hid the gain (`not_proven`), costs no wait at all: it is refused, since nothing is
+accepted without its proof, and the account may be dealt a task at the next run.
 
 ## Your final message
 

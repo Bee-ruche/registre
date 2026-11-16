@@ -883,7 +883,7 @@ class TestRefusals(Case):
     def test_only_a_refusal_for_a_figure_has_its_report_read(self):
         """judge_refused, a refusal before the judge and what the hive's own side ended keep no figure in the ledger: a
         line of theirs that held one all the same is read as the others of its reason, and none of it is shown."""
-        self.assertEqual((page.MEASURED, hive.MEASURED_REASONS), (("goal_not_met", "requirement_not_met"),) * 2)
+        self.assertEqual((page.MEASURED, hive.MEASURED_REASONS), (("goal_not_met", "requirement_not_met", "not_proven"),) * 2)
         data, seen, _ = self.short_of_a_figure()
         self.assertEqual([item["task"] for item in data["short_of_a_figure"]], ["toy-0002", "toy-0001"])
         for reason in sorted(set(hive.REASONS) - set(page.MEASURED)):
