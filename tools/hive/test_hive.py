@@ -7195,6 +7195,63 @@ class TestVolunteerSide(Volunteer):
         self.assertFalse(self.w.state.parent.exists())
 
 
+class TestTheHivesBranchIsNotTheDefaultOne(Volunteer):
+    """A project as the hive now asks for one: its repository's default branch is the one it publishes, the hive's own
+    branch is another, the two hold different things, and a member's fork holds the default branch only (a fork copies
+    no more). A worker's whole round starts from the hive's branch, the hive integrates on it, and the published
+    branch does not move."""
+    config = {"branch": "hive", "published": "main"}
+
+    def setUp(self):
+        super().setUp()
+        seed = self.w.seed
+        sh("git", "checkout", "-q", "-b", "hive", cwd=seed)  # made once by a maintainer, from the published branch
+        (seed / "src/a.c").write_text("int a; /* on the hive's branch only */\n")
+        sh("git", "commit", "-qam", "what the hive integrated", cwd=seed)
+        sh("git", "push", "-q", "origin", "hive", cwd=seed)
+        self.hive_tip = sh("git", "rev-parse", "HEAD", cwd=seed).stdout.strip()
+        sh("git", "checkout", "-q", "main", cwd=seed)
+        (seed / "AGENTS.md").write_text("on the published branch only\n")
+        sh("git", "commit", "-qam", "what a maintainer published", cwd=seed)
+        sh("git", "push", "-q", "origin", "main", cwd=seed)
+        self.published_tip = sh("git", "rev-parse", "HEAD", cwd=seed).stdout.strip()
+
+    def heads(self, repository):
+        listed = sh("git", "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads", cwd=repository).stdout.splitlines()
+        return dict(line.split() for line in listed)
+
+    def test_a_whole_round_starts_from_the_hives_branch_integrates_on_it_and_leaves_the_published_one(self):
+        self.assertEqual(sh("git", "symbolic-ref", "HEAD", cwd=self.w.upstream).stdout.strip(), "refs/heads/main", "the default branch is the published one")
+        self.assertEqual(self.heads(self.w.upstream), {"refs/heads/main": self.published_tip, "refs/heads/hive": self.hive_tip})
+        self.assertNotIn("refs/heads/hive", self.fork_branches(), "the fork holds the default branch only")
+        code, text = self.setup("--project", "toy")
+        self.assertEqual((code, self.err), (0, ""))
+        self.assertIn("UPSTREAM upstream/hive\n", text)
+        fetched = sh("git", "for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/upstream", cwd=self.alice.work).stdout.split()
+        self.assertEqual(fetched, ["refs/remotes/upstream/hive", self.hive_tip], "setup fetches the hive's branch, and no other")
+        self.w.run()
+        self.assertEqual(self.ready()[0], 0)
+        self.w.run()
+        (task, _), = self.w.dealt_by_runs()
+        code, text = self.begin(task, NOW)
+        self.assertEqual((code, self.err), (0, ""))
+        self.assertIn(f" at {self.hive_tip}\n", text)
+        self.assertEqual(sh("git", "rev-parse", "HEAD^{commit}", cwd=self.alice.work).stdout.strip(), self.hive_tip, "the work starts from the hive's tip")
+        self.assertEqual((self.alice.work / "src/a.c").read_text(), "int a; /* on the hive's branch only */\n")
+        self.assertNotEqual((self.alice.work / "AGENTS.md").read_text(), "on the published branch only\n")
+        self.alice.write(*(("src/n.c", "int n;\n") if task == "toy-0002" else ("lib.c", LIB + "/* FAST */\n")))
+        self.assertEqual(self.submit(task, NOW, "--message", "The work")[0], 0, self.err)
+        self.assertEqual([r["result"] for r in self.w.run()], ["accepted"])
+        after = self.heads(self.w.upstream)
+        self.assertEqual(sorted(after), ["refs/heads/hive", "refs/heads/main"], "the hive made no branch")
+        self.assertEqual(after["refs/heads/main"], self.published_tip, "the published branch did not move")
+        self.assertNotEqual(after["refs/heads/hive"], self.hive_tip, "the hive's branch moved")
+        self.assertEqual(sh("git", "rev-parse", f"{after['refs/heads/hive']}^", cwd=self.w.upstream).stdout.strip(), self.hive_tip,
+                         "by one commit, on the tip that was judged")
+        self.assertEqual(sh("git", "merge-base", "--is-ancestor", self.published_tip, after["refs/heads/hive"], cwd=self.w.upstream, check=False).returncode, 1,
+                         "and what the published branch alone held is not in it")
+
+
 class TestTheWorkersClone(Volunteer):
     """Project code that ran in the fork's clone, even in the sandbox, may have written into .git. Every worker command
     first checks that the clone's own git settings are the ones a clone has, without running anything of the clone."""
