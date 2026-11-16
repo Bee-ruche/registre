@@ -1695,7 +1695,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     # failed on (one that breaks the judging delays the others once).
     queue.sort(key=lambda c: (c["declined"], rank[c["sha"]], c["deal"], draw(key, c["sha"])))
     queue = queue[:config["limits"]["queue"]]
-    carried, within, weighing_until = 0, [], time.monotonic() + WEIGH_SECONDS
+    carried, listed, within, weighing_until = 0, 0, [], time.monotonic() + WEIGH_SECONDS
     for candidate in queue:
         if within and time.monotonic() >= weighing_until:
             break  # the plan's own time: what it has not weighed waits, oldest deal first at the next run
@@ -1708,16 +1708,19 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         # Nor is one carried whose own commits hold an object larger than the project takes (oversized): a history is
         # weighed as git packs it, and what it packs to says nothing of what its objects are once read. The later
         # steps read the candidates together: each of them must be one that could be read alone.
-        candidate["large"] = not candidate["long"] and oversized(repo, candidate["sha"], tip, config["limits"])
+        candidate["large"], objects = (False, 0) if candidate["long"] else counted(repo, candidate["sha"], tip, config["limits"])
         weight = 0 if candidate["long"] or candidate["large"] else packed_weight(repo, candidate["sha"], tip, config["limits"]["history_bytes"])
         candidate["heavy"] = weight > config["limits"]["history_bytes"]
-        # What the plan carries to the other steps is bounded as a whole: the candidates beyond the bound wait for
-        # the next run, where the oldest deal is first again (they are not weighed in this one). The first one is
-        # always carried.
+        # What the plan carries to the other steps is bounded as a whole, in bytes and in objects: the candidates
+        # beyond a bound wait for the next run, where the oldest deal is first again (they are not weighed in this
+        # one). The first one is always carried. The objects are counted because the steps that read the candidates
+        # read them together, and what git needs to write or read a pack grows with the number of its objects,
+        # however small each of them is.
         weight = 0 if candidate["heavy"] else weight
-        if within and carried + weight > BUNDLE_BYTES:
+        objects = 0 if candidate["heavy"] or candidate["large"] else objects
+        if within and (carried + weight > BUNDLE_BYTES or listed + objects > BUNDLE_OBJECTS):
             break
-        carried += weight
+        carried, listed = carried + weight, listed + objects
         within.append(candidate)
     if len(within) < len(queue):
         log(f"the candidates' file is full, or the time to weigh them is used up: {len(queue) - len(within)} candidate(s) wait for the next run")
@@ -1791,31 +1794,38 @@ WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those 
 
 HISTORY_OBJECTS = 200_000  # how many objects a candidate's own commits may add, for the plan to carry them
 HISTORY_OBJECT_BYTES = 16 << 20  # how large a folder or a commit among them may be (a file: limits.file_bytes)
+BUNDLE_OBJECTS = 10 * HISTORY_OBJECTS  # how many objects the plan carries to the other steps at most, all candidates together
 
 
 def oversized(repo, sha, tip, limits):
-    """True if the candidate's own commits (those the project's tip does not hold) add a file larger than the
-    project takes from a candidate (limits.file_bytes), a folder or a commit larger than HISTORY_OBJECT_BYTES, or
-    more than HISTORY_OBJECTS objects; or if git cannot say so within PACK_SECONDS. The sizes are asked of git,
-    which reads a few bytes of each object for them: no object is read whole. Such a candidate is not carried to the
-    other steps and is refused as too heavy: a few bytes of a pack can be an object of gigabytes, and the steps that
-    read the candidates together would need, to read them, what no single fetch needed."""
+    """True if the candidate's own commits cannot be carried to the other steps (counted)."""
+    return counted(repo, sha, tip, limits)[0]
+
+
+def counted(repo, sha, tip, limits):
+    """(too large, objects) of the candidate's own commits (those the project's tip does not hold). Too large: they
+    add a file larger than the project takes from a candidate (limits.file_bytes), a folder or a commit larger than
+    HISTORY_OBJECT_BYTES, or more than HISTORY_OBJECTS objects; or git cannot say so within PACK_SECONDS. The sizes
+    are asked of git, which reads a few bytes of each object for them: no object is read whole. Such a candidate is
+    not carried to the other steps and is refused as too heavy: a few bytes of a pack can be an object of gigabytes,
+    and the steps that read the candidates together would need, to read them, what no single fetch needed. Objects:
+    how many they add, which the plan sums over the candidates it carries (BUNDLE_OBJECTS)."""
     command = ["git", *GIT_BASE, "-C", str(repo)]
     try:
         lister = subprocess.Popen([*command, "rev-list", "--objects", "--no-object-names", need_sha(sha), f"^{need_sha(tip)}"],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(),
                                   preexec_fn=bounded)
     except OSError:
-        return True
+        return True, 0
     try:
         sizer = subprocess.Popen([*command, "cat-file", "--batch-check=%(objecttype) %(objectsize)"], stdin=lister.stdout,
                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=isolated_environment(), preexec_fn=bounded)
     except OSError:
         lister.kill()
         lister.wait()
-        return True
+        return True, 0
     lister.stdout.close()
-    alarm = threading.Timer(PACK_SECONDS, lambda: (lister.kill(), sizer.kill()))
+    alarm, began = threading.Timer(PACK_SECONDS, lambda: (lister.kill(), sizer.kill())), time.monotonic()
     alarm.start()
     most, seen, large = limits.get("file_bytes", DEFAULTS["limits"]["file_bytes"]), 0, False
     try:
@@ -1829,7 +1839,9 @@ def oversized(repo, sha, tip, limits):
         if large:
             lister.kill(), sizer.kill()
         sizer.stdout.close()
-        return (sizer.wait() != 0) | (lister.wait() != 0) | large
+        # (Past its time by the clock, it is too large whether or not the alarm had fired yet: the answer does not
+        # depend on which of the two came first.)
+        return bool((sizer.wait() != 0) | (lister.wait() != 0) | large) or time.monotonic() - began >= PACK_SECONDS, seen
     finally:
         alarm.cancel()
 
@@ -1874,10 +1886,11 @@ def carried(plan_):
     return [candidate for candidate in plan_["queue"] if not (candidate["long"] or candidate["heavy"] or candidate["large"])]
 
 
-def write_bundle(repo, plan_, path):
+def write_bundle(repo, plan_, path, timeout=900):
     """The candidates' objects in one file, for the steps that never talk to a fork; records its SHA-256 in the plan.
-    No file when there is no candidate. A file heavier than twice what the plan measured is the hive's own failure,
-    said loudly: the steps that take it accept no more."""
+    No file when there is no candidate. A file heavier than twice what the plan measured is not one to hand over:
+    the steps that take it accept no more (hand_over then carries fewer)."""
+    plan_["bundle_sha256"] = ""
     shas = [candidate["sha"] for candidate in carried(plan_)]
     if not shas:
         return
@@ -1886,7 +1899,7 @@ def write_bundle(repo, plan_, path):
         for number, sha in enumerate(shas):
             refs.append(f"refs/hive/plan/{number}")
             git(repo, "update-ref", refs[-1], need_sha(sha))
-        git(repo, "bundle", "create", str(path), *refs, f"^{need_sha(plan_['tip'])}", timeout=900)
+        git(repo, "bundle", "create", str(path), *refs, f"^{need_sha(plan_['tip'])}", timeout=timeout)
     finally:
         for ref in refs:
             git(repo, "update-ref", "-d", ref, check=False)
@@ -1895,16 +1908,84 @@ def write_bundle(repo, plan_, path):
     plan_["bundle_sha256"] = file_sha256(path)
 
 
-def read_bundle(repo, plan_, path):
+def read_bundle(repo, plan_, path, timeout=900):
     """Brings the plan's candidates into this clone from the plan's own file, checked against the plan."""
     if not carried(plan_):
         return
     if not plan_["bundle_sha256"] or file_sha256(path) != plan_["bundle_sha256"]:
         raise HiveError("the bundle is not the plan's")
-    git(repo, "bundle", "unbundle", str(path), timeout=900)
+    git(repo, "bundle", "unbundle", str(path), timeout=timeout)
     for candidate in carried(plan_):
         if git(repo, "cat-file", "-e", f"{need_sha(candidate['sha'])}^{{commit}}", check=False).returncode != 0:
             raise HiveError("the bundle lacks one of the plan's candidates")
+
+
+BUNDLE_SECONDS = 600  # how long the plan spends, in all, writing the candidates' file and reading it back
+ALONE_SECONDS = 2 * PACK_SECONDS  # and how long on the first candidate alone, once that time is used up
+
+
+def read_back(repo, plan_, path, timeout=900):
+    """Reads the candidates' file as a later step will: with the same command, under the same bounds, into a store
+    of its own that is thrown away. That store sees the plan's clone, so the project's own objects, which the file
+    leans on, are there; the file is read whole all the same, every object of it. A file this cannot read is one
+    the later steps could not read either."""
+    if not carried(plan_):
+        return
+    folder = tempfile.mkdtemp(prefix="hive-read-", dir=os.path.dirname(os.path.abspath(path)))
+    try:
+        git(folder, "init", "--quiet", "--bare", ".")
+        objects = git(repo, "rev-parse", "--path-format=absolute", "--git-path", "objects").stdout.strip()
+        Path(folder, "objects/info/alternates").write_text(objects + "\n", encoding="utf-8")
+        read_bundle(folder, plan_, path, timeout=timeout)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def hand_over(repo, plan_, path, config):
+    """Writes the candidates' file and reads it back (write_bundle, read_back), so that what the plan hands to the
+    later steps is a file that was written and read once already, under their bounds. A set of candidates that
+    cannot be written or read together then never reaches the steps that would fail on it for everyone, run after
+    run: A RUN NEVER MEETS AGAIN A SET IT COULD NOT CARRY.
+
+    When the file cannot be written or read, the plan carries fewer: the first half of those it carried, and the
+    others wait for the next run, oldest deal first, as those beyond the plan's bounds do (they leave this plan). A
+    candidate that cannot be written or read alone is not carried at all and is refused as too large (process): but
+    only if the hive's own machine, here and now, does as much for the project's tip (derives); if it does not, the
+    machine is the cause, nobody is refused, and the plan fails, loudly. All of it within one time (BUNDLE_SECONDS):
+    past it the first candidate alone is tried (ALONE_SECONDS), and the others wait."""
+    deadline, alone = time.monotonic() + BUNDLE_SECONDS, False
+    while True:
+        try:
+            if os.path.lexists(path):
+                os.unlink(path)
+            if not carried(plan_):  # nothing to hand over: no file, and no time needed
+                plan_["bundle_sha256"] = ""
+                return
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise HiveError("the time to write and read the candidates' file is used up")
+            write_bundle(repo, plan_, path, timeout=max(1, int(left)))
+            read_back(repo, plan_, path, timeout=max(1, int(deadline - time.monotonic())))
+            return
+        except HiveError as error:
+            plan_["bundle_sha256"] = ""
+            got = carried(plan_)
+            if not got:
+                raise
+            if len(got) == 1:
+                if not derives(repo, plan_["tip"], config):
+                    raise HiveError("the candidates' file cannot be written or read, and the hive cannot derive the project's own tip "
+                                    "either: its machine is the cause, nothing is planned") from error
+                got[0]["large"] = True
+                log(f"{got[0]['sha'][:12]}: its commits cannot be written to the candidates' file or read from it ({error}): it is not carried")
+                continue
+            late = deadline - time.monotonic() <= 0
+            keep = 1 if late else (len(got) + 1) // 2
+            left_out = {candidate["sha"] for candidate in got[keep:]}
+            plan_["queue"] = [candidate for candidate in plan_["queue"] if candidate["sha"] not in left_out]
+            log(f"the candidates' file could not be written or read ({error}): {len(left_out)} candidate(s) wait for the next run")
+            if late and not alone:
+                deadline, alone = time.monotonic() + ALONE_SECONDS, True
 
 
 def file_sha256(path):
@@ -2667,7 +2748,7 @@ def cmd_plan(args):
         write_json(args.out, {"protocol": PROTOCOL, "project": config["project"], "paused": True})
     else:
         made = plan(args.repo, tip_of(args.repo, config), config, tasks, ledger, GhApi(), state)
-        write_bundle(args.repo, made, args.bundle)
+        hand_over(args.repo, made, args.bundle, config)
         write_json(args.out, made)
         print(f"{len(made['queue'])} candidate(s), {len(made['deals'])} deal(s), {len(made['conditional'])} kept for after "
               f"the judging, {len(made['expiries'])} deal(s) whose time is up", file=sys.stderr)
