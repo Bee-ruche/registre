@@ -115,7 +115,8 @@ VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still lo
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
 JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the judge examined the candidate: a real attempt
-MEASURED_REASONS = ("goal_not_met", "requirement_not_met")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
+NEAR_REASONS = ("not_proven",)  # examined, correct, the task's own figure reached: only a proof is missing or short
+MEASURED_REASONS = ("goal_not_met", "requirement_not_met", "not_proven")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
 HIVE_SIDE_REASONS = ("not_answered", "task_closed")  # the hive's or the project's doing: no cost at all
 ACTIONS = ("ready", "submit")
 # Why a preference is not kept, in the order plan decides them. One word for a member that never had a deal come to an end and
@@ -185,6 +186,8 @@ REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "not_answered": "the hive spent six runs on this deal's candidates without an answer, for no fault it can pin on them",
     "requirement_not_met": "correct, but a figure the project requires of every contribution is not met",
     "goal_not_met": "correct, but the task's goal is not met",
+    "not_proven": "correct, and the figure the task asks for is reached, but the proof the project takes of it is missing or did not "
+                  "come out beyond the measure's noise: the account waits for nothing",
 }
 ROBOT = ("La Ruche", "ruche@users.noreply.github.com")
 GIT_BASE = ("-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
@@ -689,6 +692,12 @@ class Ledger:
           candidate costs a wait, so that no way of ending a deal is free:
           - a candidate the judge examined and refused (JUDGED_REASONS): the first wait (two hours), each time. The
             judge's time went to real work, and a refusal there is ordinary, on tasks that ask for a measured gain;
+          - but a candidate that is correct, degrades nothing and reaches the task's own figure, and lacks only a
+            proof (missing, or not beyond the measure's noise: NEAR_REASONS), costs NO wait: the hive does not charge a
+            member for what its own stopwatch could not tell. The hive cannot tell a real gain the noise hid from no
+            gain at all, and the figure reached may be one a candidate can flatter: so it is still a deal that did not
+            end in an acceptance, it cost a judgement, and it counts in the day's limit, which is the bound on the
+            judge's time an account can take, and in the member's class;
           - a deal held for nothing (no candidate in time, or a candidate refused before the judge could examine
             it): the same wait, doubled at each such deal in a row, until an acceptance.
           What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork it could
@@ -707,6 +716,7 @@ class Ledger:
                 ends.append((e["at"], "fault" if e.get("fault") else "penalty"))
             elif e.get("type") == "verdict" and e.get("deal"):
                 ends.append((e["at"], "accepted" if e.get("result") == "accepted" else "judged" if e.get("reason") in JUDGED_REASONS
+                             else "near" if e.get("reason") in NEAR_REASONS
                              else "fault" if e.get("reason") in HIVE_SIDE_REASONS else "penalty"))
         streak, last, judged = 0, None, None
         for at, kind in ends:
@@ -2049,6 +2059,19 @@ def goal_met(task, report):
     return goal.get("kind") == "correct" or (goal.get("kind") == "metric" and condition_met(goal, report))
 
 
+def short_of_a_proof_alone(task, report, config):
+    """True if the judge's figures reach everything the task's goal asks but its proofs: the goal's own figure is
+    within its bounds, and so is every further condition that is not one of the proofs the project takes
+    (judge.confirm). Asked only of a goal that is not met, it then says what is missing is a proof, and nothing else.
+    The project's requirements were met before the goal is looked at (nothing is degraded)."""
+    goal = task.get("goal") or {}
+    if goal.get("kind") != "metric" or goal.get("name") in config["judge"]["confirm"]:
+        return False
+    own = {key: value for key, value in goal.items() if key != "and"}
+    others = [condition for condition in goal.get("and", ()) if condition["name"] not in config["judge"]["confirm"]]
+    return condition_met(own, report) and all(condition_met(condition, report) for condition in others)
+
+
 DETAIL_KEYS = ("lines", "files", "bytes", "commits")
 
 
@@ -2129,7 +2152,7 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             if not all(condition_met(condition, verdict["report"]) for condition in config["judge"]["require"]):
                 raise Refusal("requirement_not_met")
             if not goal_met(task, verdict["report"]):
-                raise Refusal("goal_not_met")
+                raise Refusal("not_proven" if short_of_a_proof_alone(task, verdict["report"], config) else "goal_not_met")
             outcome["result"] = "accepted"
             done.add(entry["task"])
             tip = commit

@@ -160,12 +160,16 @@ What ends a deal, and what it costs its member:
 | --- | --- |
 | its candidate is accepted | none; it clears any wait |
 | the judge examined its candidate and refused it (`judge_refused`, `goal_not_met`, `requirement_not_met`) | a wait of two hours, each time, never doubled: a refusal there is ordinary, on tasks that ask for a measured gain |
+| the judge examined its candidate, found it correct, nothing degraded and the figure the task asks for reached, and only the proof of it is missing or did not come out beyond the measure's noise (`not_proven`) | **no wait**: the hive does not charge a member for what its own stopwatch could not tell. It cost the hive a judgement all the same, and it is a deal that did not end in an acceptance: it counts in the day's limit and in the member's class |
 | its candidate is refused before the judge could examine it: on a structural rule, because it does not merge or changes nothing, after three failures that are its own (`judge_failed`) or three pushes the project's repository declined (`push_refused`) | a wait that doubles |
 | its time is up and the fork holds no candidate | the same wait that doubles |
 | the hive could not answer it in six runs for no fault of the candidate's (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
-**A deal that does not end in an accepted candidate costs a wait**, so that no way of ending a deal is free. When
-the judge examined the candidate, the wait is two hours. When the task was held for nothing (no candidate, or one
+**A deal that does not end in an accepted candidate costs something**, so that no way of ending a deal is free: a
+wait, or, for a candidate that lacks a proof alone, its place in the day's limit. When the judge examined the
+candidate, the wait is two hours; there is none when the candidate is correct, reaches the task's own figure and
+lacks only a proof (`not_proven`): the hive cannot tell a gain the noise hid from no gain, so it neither accepts
+nor charges. When the task was held for nothing (no candidate, or one
 refused before the judge), it is two hours doubled at each such deal since the member's last accepted candidate,
 seven days at most; an acceptance clears both, and nothing else does. A project also limits the deals an account
 is given in a day (5 by default), **not counting those whose candidate was accepted**: the limit bounds what an
@@ -191,6 +195,7 @@ it**: exactly what would land.
 | `too_many_files`, `too_large`, `file_too_big`, `line_too_long` | the project's size limits, among them the length of an added line. The hive lists what a candidate changes itself, folder by folder, and stops past the limit; no file is read before the entries are counted: what a candidate costs to refuse does not grow with what it sends, however many paths a few objects describe. A file larger than `file_bytes` is refused before the candidate is merged on the project's tip (git's merge reads whole each file that both sides changed), and a candidate one of whose own commits holds such a file, even removed since, is not carried to the judging at all: the plan asks git the size of each object those commits add. This holds whatever the project's own files weigh: a candidate whose commits bring a file larger than `file_bytes` is refused even where that file is the project's own, so a task on such a file waits until the project raises its limit |
 | `stored_otherwise` | a changed file is not stored as the project's own rules store it (its `.gitattributes`: line ends, an encoding): once integrated, git would find it changed in every clone, where nobody changed it. The hive asks git, as a checkout does |
 | `judge_refused`, `goal_not_met`, `requirement_not_met` | the judge refused; the candidate is correct but misses the task's goal; or it misses a figure the project requires of every contribution |
+| `not_proven` | the candidate is correct, degrades nothing and reaches the figure the task's goal asks for, but a proof the project takes of it (`judge.confirm`) is missing or short: everything the goal asks is there except its proofs. Nothing is accepted without its proof, and nothing is held against the member: no wait |
 | `judge_failed` | three times the judge failed on this deal's candidates (it ran out of time, for instance), or the hive could not derive them, while both worked on the project itself |
 | `push_refused` | the project's repository declined the commit (a rule on what may be pushed there), three times |
 | `not_answered` | the hive spent six runs on this deal's candidates without an answer, for no fault it can pin on them (see "What holds over time") |
@@ -298,7 +303,8 @@ What makes them hold:
 - **One holder per task.** There is no order to decide among members, no instant to trust, and nothing a member
   can push that changes what another member's candidate is worth.
 - **A task is held for a bounded time.** Three hours and one of grace, by one account, which then waits: two
-  hours if the judge examined and refused its candidate, twice as long each time if it held the task for nothing.
+  hours if the judge examined and refused its candidate (nothing if all the candidate lacked was a proof),
+  twice as long each time if it held the task for nothing.
   A candidate that waits to be judged keeps its task: that is the hive's delay, not the member's.
 - **Not being answered never keeps a place.** Each run the hive spends on a candidate without an answer is
   recorded as a *mark*: the judge failed on it (`judge`), the project's repository declined it (`push`), the hive
@@ -387,7 +393,7 @@ In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
   accepted one adds its member's login, the integrated commit, what the hive counted of the change (`figures`) and
   the judge's figures the project lists (`report`). A refused one adds its reason code and `detail` (whole numbers
   under the hive's own keys), and no login on the line. **A candidate refused for a figure (`goal_not_met`,
-  `requirement_not_met`: the judge ran, the candidate is correct, a figure is short) keeps the same `report` as an
+  `requirement_not_met`, `not_proven`: the judge ran, the candidate is correct, a figure or a proof is short) keeps the same `report` as an
   accepted one**, the same numbers bounded the same way: how far it fell short is what its member needs to know,
   and whoever is dealt the task next. `judge_refused` and every refusal before the judge carry none. A refusal's
   line written before this rule has no `report`; it stays valid, and whatever reads the ledger takes both.
