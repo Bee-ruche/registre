@@ -276,8 +276,7 @@ class World:
         config, tasks, ledger = self.load()
         hive.read_bundle(self.bench, self.made, self.bundle)
         self.notes = {}
-        verdicts, outcomes, self.started = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work, notes=self.notes,
-                                                           tip_first=hive.judge_was_down(self.state))  # as the command does
+        verdicts, outcomes, self.started = hive.judge_plan(self.bench, self.made, config, tasks, ledger, judge, self.work, notes=self.notes)
         return json.loads(json.dumps(verdicts)), outcomes
 
     def sweep(self, judge=judge_by_content):
@@ -294,8 +293,7 @@ class World:
         made = {**self.made, **changes}
         hive.read_bundle(self.writer, hive.read_plan(made, config)[1], self.bundle)  # as the command does: the plan first
         return hive.apply(self.writer, "origin", made, verdicts, config, tasks, ledger, self.state, allow_local=True,
-                          checkpoint=checkpoint, started=self.started if started is None else started,
-                          down=getattr(self, "notes", {}).get("down") is True)  # as the command does: the judging step's own account
+                          checkpoint=checkpoint, started=self.started if started is None else started)
 
     def run(self, judge=judge_by_content):
         """One whole run; returns what the write step decided."""
@@ -539,78 +537,9 @@ class TestIntegration(Base):
         for _ in range(hive.UNANSWERED_RUNS + 2):
             self.assertEqual([o["result"] for o in self.w.run(down)], ["skipped", "skipped"])
             self.assertEqual(self.w.started, [], "the judging step does not say it stopped on a candidate")
-            self.assertTrue(hive.judge_was_down(self.w.state), "and the state says so, for the next run")
         self.assertEqual(self.w.events(), [])
-        self.assertEqual(len(calls), 2 + hive.UNANSWERED_RUNS + 1,
-                         "one candidate and one check of the machine in the first run; then the check alone, before any candidate")
+        self.assertEqual(len(calls), 2 * (hive.UNANSWERED_RUNS + 2), "one candidate and one check of the machine per run")
         self.assertEqual(sorted(o["result"] for o in self.w.run()), ["accepted", "accepted"], "judged once the machine is back")
-        self.assertFalse(hive.judge_was_down(self.w.state))
-        self.assertEqual(len(judge_by_content.seen), 3, "the tip first, since the last run was down; then the two candidates")
-
-    def test_a_candidate_after_which_the_judges_machine_fails_does_not_hold_the_first_place(self):
-        """A candidate that leaves the judge's machine failing, for the rest of the run, on everything, the project's
-        own tip included. It is the oldest deal, so the first tried, and the judging stops on it at every run: left as
-        it was, nobody behind it would ever be judged. The run after one whose machine was down asks about the tip
-        first: it passes, the candidate is tried, the tip fails after it, and the judging is said to have stopped on
-        that candidate: a mark that costs nothing. It is then tried after the others, who are judged; and after six
-        such runs its deal is closed at no cost to its member."""
-        bob = self.w.fork("bob", 102)
-        self.w.deal(self.alice, "toy-0001", at="2026-11-12T10:30:00Z")  # the oldest deal: the first tried
-        breaker = self.alice.submit("toy-0001", content=LIB + "/* BREAKS */\n")
-        fine = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
-        machine = {"broken": False}
-
-        def judge(base, candidate, task, tip, commit):
-            text = (candidate / "lib.c").read_text() if (candidate / "lib.c").exists() else ""
-            if "BREAKS" in text:
-                machine["broken"] = True
-            if machine["broken"]:
-                raise OSError("no container runtime")
-            return {"code": 0, "report": {"gain": 0.0, "sure_gain": 0, "outputs_compared": 12}}
-
-        def run():
-            machine["broken"] = False  # each run has a machine of its own
-            return {o["sha"]: (o["result"], o.get("kind") or o.get("reason")) for o in self.w.run(judge)}
-
-        self.assertEqual([c["sha"] for c in self.w.plan()["queue"]], [breaker, fine], "the oldest deal first")
-        self.assertEqual(run(), {breaker: ("skipped", None), fine: ("skipped", None)})
-        self.assertEqual(self.w.events(), [], "nothing showed the machine working in that run: nobody is marked")
-        second = run()
-        self.assertEqual(second, {breaker: ("error", "none"), fine: ("skipped", None)}, "the tip passed first: the judging stopped on the breaker")
-        third = run()
-        self.assertEqual(third, {fine: ("accepted", None), breaker: ("error", "none")}, "marked, it is tried after the others: they are judged")
-        for _ in range(hive.UNANSWERED_RUNS - 2):
-            self.assertEqual(run(), {breaker: ("error", "none")})
-        self.assertEqual(run(), {breaker: ("refused", "not_answered")}, "six runs without an answer: closed, and never tried again")
-        self.assertEqual(run(), {})
-        self.assertEqual([e["result"] for e in self.w.events() if e["type"] == "verdict"], ["accepted", "refused"])
-        config, _, ledger = self.w.load()
-        self.assertEqual(ledger.standing(self.alice.id, hive.now(), config)[1], None, "at no cost to its member: no wait")
-
-    def test_a_judge_that_answered_and_then_fails_stopped_on_the_candidate_it_was_on(self):
-        """No run before this one was down, so the tip is not asked first: that the machine works is read from the
-        answer it gave for the candidate before. The one it then fails on, the tip failing after it, is marked as not
-        answered, at no cost; what was accepted before it is integrated."""
-        bob = self.w.fork("bob", 102)
-        self.w.deal(bob, "toy-0002", at="2026-11-12T10:30:00Z")  # the oldest deal: the first tried
-        fine = bob.write("src/b.c", "int b;\n").commit().marker("toy-0002").push()
-        breaker = self.alice.submit("toy-0001", content=LIB + "/* BREAKS */\n")
-        machine, asked = {"broken": False}, []
-
-        def judge(base, candidate, task, tip, commit):
-            asked.append(commit == tip)
-            text = (candidate / "lib.c").read_text() if (candidate / "lib.c").exists() else ""
-            machine["broken"] = machine["broken"] or "BREAKS" in text
-            if machine["broken"]:
-                raise OSError("no container runtime")
-            return {"code": 0, "report": {"gain": 0.0, "sure_gain": 0, "outputs_compared": 12}}
-
-        self.assertFalse(hive.judge_was_down(self.w.state))
-        outcomes = {o["sha"]: (o["result"], o.get("kind")) for o in self.w.run(judge)}
-        self.assertEqual(outcomes, {fine: ("accepted", None), breaker: ("error", "none")})
-        self.assertEqual(asked, [False, False, True], "one candidate, the other, then the tip against itself: never the tip first")
-        self.assertTrue(hive.judge_was_down(self.w.state))
-        self.assertEqual(self.w.load()[2].marks("toy-0001", self.alice.id, self.w.deal(self.alice, "toy-0001")), [("none", False)])
 
     def test_a_candidate_the_judging_stopped_on_six_times_ends_at_no_cost_to_its_member(self):
         """The judging job was stopped while on it, run after run: nothing says that is the candidate's doing."""
@@ -3971,7 +3900,7 @@ class TestDealing(Base):
         self.assertEqual(sorted(self.one(self.lines("deal"))), ["at", "member", "member_id", "repo_id", "run", "task", "type", "until"])
         self.assertEqual(hive.read_ignored(self.w.state), {"1101": [ask]}, "the ask was served")
         written = {path.name: path.read_text() for path in self.w.state.iterdir()}
-        self.assertEqual(sorted(written), ["accounts.json", "feed.json", "ignored.json", "ledger.jsonl", "machine.json", "stats.json"])
+        self.assertEqual(sorted(written), ["accounts.json", "feed.json", "ignored.json", "ledger.jsonl", "stats.json"])
         for name, text in {**written, "the plan": json.dumps(self.w.made), "the log": logged.getvalue()}.items():
             self.assertNotRegex(text, "(?i)all-rules|prefer", name)
 
@@ -4227,11 +4156,9 @@ class TestDealing(Base):
 
     def test_a_judge_that_fails_on_the_projects_tip_costs_nobody_anything_and_the_run_says_so(self):
         """When the judge fails on a candidate and then on the project's own tip, nothing more is judged, and no
-        candidate pays for it: neither when the judge was down from the start of the run (nobody is marked at all),
-        nor when it had answered earlier in the run and fails from one candidate on. Which of the two left it failing,
-        the hive cannot tell: the one the judging stopped on is marked as not answered in that run, at no cost, and is
-        tried after the others at the next. What was accepted before is integrated. The run says that its judge
-        failed on the tip."""
+        candidate pays for it: neither when the judge was down from the start of the run, nor when it had answered
+        for a candidate earlier in the run and fails from the next one on (which of the two left it failing, the
+        hive cannot tell). What was accepted before is integrated. The run says that its judge failed on the tip."""
         state = {"broken": False}
 
         def judge(base, candidate, task, tip, commit):
@@ -4258,12 +4185,8 @@ class TestDealing(Base):
         self.assertEqual(([(o["login"], o["result"]) for o in outcomes], down), ([("bob", "skipped"), ("alice", "skipped")], True))
         self.assertEqual((self.w.events(), self.w.load()[2].marks("toy-0001", self.alice.id, second)), ([], []))
         outcomes, down = run("13:00:00")
-        self.assertEqual(([(o["login"], o["result"], o.get("kind")) for o in outcomes], down),
-                         ([("bob", "accepted", None), ("alice", "error", "none")], True))
-        self.assertEqual((self.w.load()[2].marks("toy-0001", self.alice.id, second), self.w.deals()["toy-0001"]),
-                         ([("none", False)], ("alice", "live")), "a mark that is no strike; the deal lives")
-        config, _, ledger = self.w.load()
-        self.assertEqual(ledger.standing(self.alice.id, hive.now(), config)[1], None, "and no wait")
+        self.assertEqual(([(o["login"], o["result"]) for o in outcomes], down), ([("bob", "accepted"), ("alice", "skipped")], True))
+        self.assertEqual((self.w.load()[2].marks("toy-0001", self.alice.id, second), self.w.deals()["toy-0001"]), ([], ("alice", "live")))
 
     def test_over_many_draws_a_kept_preference_gives_a_task_its_member_could_be_dealt_anyway_and_moves_nobodys_turn(self):
         """The invariant of the dealing, held over many keys on tasks that share files, differ in tier, are closed or

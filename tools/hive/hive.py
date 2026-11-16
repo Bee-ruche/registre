@@ -813,13 +813,6 @@ def write_ignored(folder, mapping):
     write_state(folder, "ignored.json", {k: sorted(set(v)) for k, v in mapping.items() if v})
 
 
-def judge_was_down(folder):
-    """True if the last run that wrote the state said its judge failed on the project's own tip (machine.json). The
-    next judging then asks the judge about the tip first, before any candidate."""
-    data = read_state(folder, "machine.json", {})
-    return isinstance(data, dict) and data.get("down") is True
-
-
 def accounts_ok(data):
     return isinstance(data, dict) and all(isinstance(k, str) and FORK_ID.match(k) and (v == "" or stamp(v)) for k, v in data.items())
 
@@ -2280,30 +2273,18 @@ def with_history(repo, folder, commits):
             raise HiveError(f"judge.history: commit {commit[:12]} could not be copied for the judge")
 
 
-def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, save=None, started=None, history=(), tip_first=False):
+def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, save=None, started=None, history=()):
     """The judging step's verdict_of: writes the two trees to disk, runs the judge, removes them, and keeps the
     answer under the judged commit's id. Whatever the judge function throws is a failure to judge (code 2).
 
     A failure is the candidate's doing only if the machine works: when the judge fails on a candidate, it is asked
-    about the project's own tip against itself. If that fails too, the machine is down now, and nothing more is
-    judged in this run. Nobody is refused for it, and what is said of the candidate it stopped on is read from the
-    run itself:
-    - nothing in this run showed the machine working before that candidate: the machine, not the candidate. Nothing
-      is answered and nobody is marked, however many runs it lasts;
-    - the machine worked earlier in this run (it answered about another candidate, or about the tip), and fails on
-      the tip right after this candidate: the judging stopped on it. It stays among those the step started on, which
-      the write step marks as not answered in this run: a mark that costs nothing, puts the candidate after the
-      others at the next run, and closes its deal at no cost after UNANSWERED_RUNS of them (process). Which
-      candidate left the machine failing, this one or one before it, the hive cannot tell: so no cost.
-    So that a candidate after which the judge's machine fails cannot hold the first place run after run, with nobody
-    judged behind it: the run that follows one whose machine was down (`tip_first`) asks about the project's tip
-    before any candidate. If that fails, the machine is still down: nothing is tried and nobody is marked. If it
-    passes, the machine works in this run, and the candidate it then stops on is marked.
+    about the project's own tip against itself. If that fails too, the machine is down: nothing is answered, nothing
+    more is judged in this run, and no candidate is refused for the breakdown.
 
     The judging has a total time allowed: no judgement is started that could end after `deadline` (on the
     monotonic clock), `longest` being what one judgement may take. And `save` is called after each answer, so that
     a judging step that is stopped leaves the answers it had."""
-    state = {"down": False, "works": {}, "machine": False, "worked": False, "asked_first": not tip_first}
+    state = {"down": False, "works": {}, "machine": False}
 
     def ask(tip, tree, task, commit, label):
         folder = Path(tempfile.mkdtemp(prefix="judge-", dir=workdir))
@@ -2335,13 +2316,6 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
             log("the time allowed for judging is used up: what is left waits for the next run")
         if state["down"]:
             return None
-        if not state["asked_first"]:  # the last run's machine was down: the tip first, before any candidate
-            state["asked_first"] = True
-            if ask(tip, tree_of(repo, tip), task, tip, "the project's tip against itself, before any candidate")["code"] != 0:
-                state["down"] = state["machine"] = True
-                log("the judge still fails on the project's own tip: nothing is judged in this run")
-                return None
-            state["worked"] = True
         if started is not None:
             started.append(commit)  # said before the judge runs: if the judging stops here, this is the one it was on
             if save:
@@ -2349,14 +2323,12 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
         answer = ask(tip, tree, task, commit, entry["sha"][:12])
         if answer["code"] == 2 and not machine_works(tip, task):
             state["down"] = state["machine"] = True
-            if not state["worked"] and started is not None and commit in started:
+            if started is not None and commit in started:
                 started.remove(commit)  # the machine, not this candidate: it is not the one the judging stopped on
                 if save:
                     save(verdicts, started)
-            log("the judge fails on the project's own tip: nothing more is judged in this run" + (
-                "; it worked earlier in this run, and stopped on this candidate" if state["worked"] else ""))
+            log("the judge fails on the project's own tip: nothing more is judged in this run")
             return None
-        state["worked"] = True  # it answered, or it answers about the tip: the machine works
         verdicts[commit] = answer
         if save:
             save(verdicts, started or [])
@@ -2365,7 +2337,7 @@ def judging(repo, judge, workdir, verdicts, metrics, deadline=None, longest=0, s
     return verdict_of
 
 
-def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None, notes=None, tip_first=False):
+def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None, notes=None):
     """The step without any token: judges the plan's candidates and returns (verdicts, outcomes, started). What
     leaves it: a table from the id of each judged commit to the judge's answer, and the ids of the commits it
     started on (so that the one it was on, if it is stopped, can be told from those it never reached)."""
@@ -2380,7 +2352,7 @@ def judge_plan(repo, plan_, config, tasks, ledger, judge, workdir, save=None, no
     verdicts, started = {}, []
     deadline = time.monotonic() + config["limits"]["judging_seconds"]
     verdict_of = judging(repo, judge, workdir, verdicts, config["judge"]["metrics"], deadline,
-                         config["judge"].get("timeout_seconds", 3600), save, started, config["judge"]["history"], tip_first)
+                         config["judge"].get("timeout_seconds", 3600), save, started, config["judge"]["history"])
     outcomes, _ = process(repo, plan_["tip"], plan_["queue"], config, tasks, ledger, verdict_of, instant)
     if notes is not None:
         notes["down"] = verdict_of.machine_down()  # the run's own account of itself: its machine failed on the project's tip
@@ -2512,7 +2484,7 @@ def record(plan_, config, tasks, ledger, state_folder):
     write_state(state_folder, "stats.json", build_stats(ledger))
 
 
-def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, allow_local=False, checkpoint=None, started=(), down=False):
+def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, allow_local=False, checkpoint=None, started=()):
     """The only step that writes to the project. It takes the candidates from the plan (the hive's own first step),
     derives every commit by itself, and takes from the judging step the judge's answer for each commit id it derived
     and which commits it started on. So a judging step that was taken over can lie about a candidate or stay silent
@@ -2605,9 +2577,6 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
         write_ignored(state_folder, ignored)
     write_state(state_folder, "feed.json", build_feed(config, tasks, ledger, reached, plan_))
     write_state(state_folder, "stats.json", build_stats(ledger))
-    # What the judging step said of its own machine in this run (`down`: it failed on the project's own tip), kept for
-    # the next run's judging, which then asks about the tip before any candidate (judging).
-    write_state(state_folder, "machine.json", {"down": down is True})
     if checkpoint:
         checkpoint()
     if failure:
@@ -2837,7 +2806,7 @@ def cmd_judge(args):
     verdicts, outcomes, started = judge_plan(
         args.repo, made, config, tasks, ledger, judge, args.workdir,
         save=lambda answers, begun: write_state(Path(args.out).parent, Path(args.out).name, {"answers": answers, "started": begun}),
-        notes=notes, tip_first=judge_was_down(state))
+        notes=notes)
     write_json(args.out, {"answers": verdicts, "started": started, "down": notes.get("down") is True})
     print(f"{len(outcomes)} candidate(s), {len(verdicts)} judged, {sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
 
@@ -2882,7 +2851,7 @@ def cmd_apply(args):
         handed = {}  # the judging step left nothing readable: no answer, and nobody is marked for it
     handed = handed if isinstance(handed, dict) else {}
     outcomes, tip = apply(args.repo, args.remote, made, handed.get("answers"), config, tasks, ledger, state, checkpoint=checkpoint,
-                          started=handed.get("started") or (), down=handed.get("down") is True)
+                          started=handed.get("started") or ())
     print(f"{sum(1 for o in outcomes if o['result'] == 'accepted')} integrated, tip {tip}")
     if handed.get("down") is True:
         # Everything this run could decide is written. The run still ends as a failure, so that a person sees it: a
