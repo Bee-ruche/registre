@@ -6,7 +6,8 @@ wrote it had reviewed it, with `tools/test_bee.py` listing its permissions
 (`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has never run.** On
 `main` it starts every hour and all four jobs are skipped, as long as the repository variable `HIVE_PROJECTS` is
 empty; and the commit of the registry it checks out is the one its file names: forty zeros until 16 November
-2026, then the commit `main` reached by pull request 372, for the founder's own first run. A pull request of its
+2026, then the commit `main` reached by pull request 372, for the founder's own first run, and from the same day the
+one reached by pull request 375, which holds the correction that run called for. A pull request of its
 own changes that line (setting 7 below). What could not be tried is listed at the end.*
 
 ## What it must guarantee
