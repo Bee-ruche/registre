@@ -23896,7 +23896,7 @@ class TestHiveWorkflow(unittest.TestCase):
     UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2: the writer tools/hive/artifact.py reads
     DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
     APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
-    PIN = "dfdbe837f0f8fec98b6be01993c24d7691257ae0"  # the one commit of the registry every job runs (forty zeros name none)
+    PIN = "a89e36102b43a939aaeec0562bd8a8def73c3ffa"  # the one commit of the registry every job runs (forty zeros name none)
     REGISTRY = {"uses": CHECKOUT, "with": {"path": "registry", "ref": PIN, "persist-credentials": False}}
     STATE_CHECKOUT = {"uses": CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "token": "${{ steps.state.outputs.token }}"}}
     TAKE = "python3 registry/tools/hive/artifact.py take"
