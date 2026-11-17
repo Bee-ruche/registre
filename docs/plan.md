@@ -547,7 +547,7 @@ assistant that can read a repository and run commands can use it.
 | --- | --- | --- |
 | A task's files (judged work) | any eligible member's worker | the protocol; the judge decides |
 | A project's tasks, limits, bans, its pause | the project's maintainers | a reviewed change to `hive/projects/` and `hive/tasks/` in the registry, then the workflow's line moved to that commit (6.3) |
-| Stopping the hive at once | the founder and the registry's administrators | the repository variable `HIVE_PROJECTS`, emptied (6.3) |
+| Stopping the hive at once | the founder and the registry's administrators | the repository variables that start each project's run (`HIVE_PROJECTS`, `HIVE_CJSON`), emptied (6.3) |
 | Tests, judges, CI, agent instruction files, the hive's own files in a project | maintainers only | a pull request approved by a second identity; never the protocol |
 | The collector and the worker's guide | the builder, then the maintainers | section 6.2 |
 | The rules | the council | as today |
@@ -596,9 +596,10 @@ What the builder adds to make it permanent (proposals, the founder's to change):
   ([docs/hive-workflow.md](hive-workflow.md), setting 7): the hive's code, a project's settings (its pause, its
   bans, its limits) and its tasks. A change to any of them acts from the day a pull request moves that line to a
   commit that holds it, and not before.
-- **The stop button**: empty the repository variable `HIVE_PROJECTS` and cancel the run in flight. Both act at
+- **The stop button**: empty the repository variable that starts each project's run (`HIVE_PROJECTS` for the
+  first project, `HIVE_CJSON` for the second: one variable per run) and cancel the runs in flight. Both act at
   once, without a pull request: nothing more is read, judged or integrated. `"paused": true` in a project's file
-  does the same for that project once the workflow names a commit that holds it.
+  does the same for that project once its workflow names a commit that holds it.
 - **Taking a commit back**: stop the hive (above); close the commit's task (`"closed": true` in the tasks file;
   add a new task if the work is still wanted) and move the workflow's line to the commit that closes it; then
   revert the commit on the hive's branch of the project (a revert commit, rather than moving the branch back), and

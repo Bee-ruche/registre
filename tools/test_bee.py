@@ -24018,7 +24018,8 @@ class TestHiveWorkflow(unittest.TestCase):
 
     def test_no_other_workflow_names_the_hives_environments_or_keys(self):
         """An environment gives its keys to any job that names it, in any workflow of a branch it accepts: the two
-        environments accept `main` only (a setting), and on `main` this file alone names them. Every file of the folder
+        environments accept `main` only (a setting), and on `main` the hive's own runs alone name them (FILES: one
+        file for each project, each held by this class or a subclass of it). Every file of the folder
         is read, whatever its name ends with (the list of them is held by test_the_workflows_security_is_unchanged). And
         no job of any workflow, this one included, is another repository's workflow: a workflow that is called runs with
         its caller's rights, and its text is not in this repository for a test or a reviewer to read."""
@@ -24047,6 +24048,26 @@ class TestHiveWorkflow(unittest.TestCase):
                 assert len(keys) == len(set(map(repr, keys))), f"a key twice in one mapping: {keys}"
                 return super().construct_mapping(node, deep)
         return Once
+
+    def test_the_texts_that_say_how_to_stop_the_hive_name_every_runs_switch(self):
+        """Each project's run has a switch of its own, a repository variable. Whoever stops the hive follows a text:
+        the three that say how name the switch of every run, so that none is left running."""
+        switches = set()
+        for name in self.FILES:
+            text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            found = set(re.findall(r"\bvars\.([A-Z_]+)", re.sub(r"(?m)#.*$", "", text)))
+            self.assertEqual(len(found), 1, f"{name}: one switch, and no other variable of the repository")
+            switches |= found
+        self.assertEqual(len(switches), len(self.FILES), "a switch of its own for each run")
+        self.assertIn(self.SWITCH, switches)
+        workflow = (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8")
+        plan = (ROOT / "docs/plan.md").read_text(encoding="utf-8")
+        stops = [re.search(r"(?s)- \*\*To stop the hive\*\*.*?(?=\n- )", workflow), re.search(r"(?m)^\| Stopping the hive at once \|.*$", plan),
+                 re.search(r"(?s)- \*\*The stop button\*\*.*?(?=\n- )", plan)]
+        for found in stops:
+            self.assertIsNotNone(found, "a text that says how to stop the hive was renamed: this test must follow it")
+            for switch in sorted(switches):
+                self.assertIn(f"`{switch}`", found.group(0), "a run's switch is missing from a text that says how to stop the hive")
 
     def test_nothing_is_set_for_a_whole_job_or_for_the_whole_run(self):
         """A key, a token or a variable reaches a step through that step's own lines, where the test above reads it: the run, a

@@ -103,7 +103,9 @@ Five things carry it:
 
 [`.github/workflows/hive.yml`](../.github/workflows/hive.yml) is the run, and the only text of it: this document
 explains it and does not repeat it. One project per workflow file: `miniz` is written in full where a name is
-needed. `HIVE_PROJECTS` is a switch, not a list the run reads: the run does nothing while it is empty.
+needed. `HIVE_PROJECTS` is a switch, not a list the run reads: the run does nothing while it is empty. The second
+project's run is a file of its own, [`hive-cjson.yml`](../.github/workflows/hive-cjson.yml), the same text for
+another project, with its own switch (setting 8 above).
 
 Notes on the file:
 
@@ -116,10 +118,12 @@ Notes on the file:
   to write to the registry.
 - `judge` holds no key, so it may unpack the plan's archives with the common action; `record` and `apply` use
   `tools/hive/artifact.py` (tests: `tools/hive/test_artifact.py`), with the run's own read-only token.
-- **To stop the hive**: cancel the run in flight (its `apply` then does not run), and empty `HIVE_PROJECTS` for the
-  runs to come: both take effect at once, and neither needs a pull request. A project's `"paused": true` stops
-  it too, but only from the day the workflow file names a commit of the registry that holds it: a run reads the
-  registry at the commit the file names, not at `main`.
+- **To stop the hive**: cancel every run in flight (its `apply` then does not run), and empty the switch of each
+  project's run for the runs to come: `HIVE_PROJECTS` for the first project's (`hive.yml`) and `HIVE_CJSON` for
+  the second's (`hive-cjson.yml`). Both take effect at once, and neither needs a pull request. Emptying one
+  switch stops that project's run and no other. A project's `"paused": true` stops it too, but only from the
+  day its workflow file names a commit of the registry that holds it: a run reads the registry at the commit
+  the file names, not at `main`.
 - The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): the four jobs
   are held word for word (whoever changes a line of one changes the test in the same commit, in sight of a
   reviewer), and the rules they obey are stated beside them: which jobs name an environment, where a secret may
