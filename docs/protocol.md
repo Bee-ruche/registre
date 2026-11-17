@@ -390,7 +390,9 @@ the ledger.
 
 ## The ledger and the feed
 
-In the hive's state repository (`Bee-ruche/hive-state`), one folder per project:
+In the hive's state repository (`Bee-ruche/hive-state`), one folder per project. A project's run writes its own
+folder and no other, so two projects' runs never conflict: a push that finds the repository moved takes what the
+other run saved and pushes again, a bounded number of times. In each folder:
 
 - `ledger.jsonl`: append-only, one JSON object per line: `deal`, `expired`, `verdict`, `error` (a mark, with its
   kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`; each carries the key of

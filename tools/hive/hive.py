@@ -442,8 +442,8 @@ def load_config(path):
         raise HiveError(f"{path}: published: the branch people take the project from, which the hive never writes")
     if config["branch"].casefold() == published.casefold():
         raise HiveError(f"{path}: branch: the hive writes a branch of its own, never the one the project publishes ({published})")
-    if not isinstance(config.get("tasks"), str):
-        raise HiveError(f"{path}: tasks: the path of the project's tasks file")
+    if config.get("tasks") != f"hive/tasks/{config['project']}.jsonl":  # as its state: one place, which bears its name
+        raise HiveError(f"{path}: tasks: the project's own tasks file (hive/tasks/{config['project']}.jsonl)")
     if not isinstance(config.get("check", ""), str):
         raise HiveError(f"{path}: check: the project's own quick check, one command line")
     for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 1)):
@@ -2786,6 +2786,8 @@ def write_json(path, data):
 
 def project_of(args):
     registry = Path(args.registry)
+    if not isinstance(args.project, str) or not PROJECT_ID.match(args.project):  # it becomes a file's name
+        raise HiveError("--project: a project's identifier (lower-case letters, digits, dashes)")
     config = load_config(registry / "hive/projects" / f"{args.project}.json")
     tasks = load_tasks(registry / config["tasks"])
     check_goals(config, tasks)
@@ -2862,6 +2864,9 @@ def cmd_judge(args):
     print(f"{len(outcomes)} candidate(s), {len(verdicts)} judged, {sum(1 for o in outcomes if o['result'] == 'accepted')} accepted")
 
 
+STATE_PUSHES = 6  # how many times a run pushes its state when other projects' runs keep saving theirs first
+
+
 def save_state(state_root, project, instant):
     """Commits and pushes the project's folder of the state repository (the ledger, the feed): the hive's memory."""
     git(state_root, "add", "--all", "--", project)
@@ -2870,11 +2875,24 @@ def save_state(state_root, project, instant):
     identity = {"GIT_AUTHOR_NAME": ROBOT[0], "GIT_AUTHOR_EMAIL": ROBOT[1], "GIT_COMMITTER_NAME": ROBOT[0],
                 "GIT_COMMITTER_EMAIL": ROBOT[1]}
     git(state_root, "commit", "--quiet", "-m", f"hive: {project} {iso(instant)}", "--", project, env=identity)
-    if git(state_root, "push", "--quiet", "origin", "HEAD", check=False, timeout=180).returncode != 0:
-        # Another project's run saved its own folder meanwhile: take it, and push again.
-        git(state_root, "pull", "--quiet", "--rebase", "origin", git(state_root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
-            env=identity, timeout=180)
-        git(state_root, "push", "--quiet", "origin", "HEAD", timeout=180)
+    branch = git(state_root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    for again in range(STATE_PUSHES):
+        if again:
+            time.sleep(min(2 ** (again - 1), 30))
+        if git(state_root, "push", "--quiet", "origin", "HEAD", check=False, timeout=180).returncode == 0:
+            return
+        # Another project's run may have saved its own folder meanwhile: take it, and push again. Each run writes its
+        # own folder only, so taking the other's never conflicts.
+        mine = git(state_root, "rev-parse", "HEAD").stdout.strip()
+        git(state_root, "pull", "--quiet", "--rebase", "origin", branch, env=identity, timeout=180)
+        if git(state_root, "rev-parse", "HEAD").stdout.strip() == mine:
+            # Nothing had moved there: the refusal is not another run's doing, and pushing again and again changes
+            # nothing. Once more, and git's own words if it is refused.
+            git(state_root, "push", "--quiet", "origin", "HEAD", timeout=180)
+            return
+    raise HiveError(f"the state repository moved before each of this run's {STATE_PUSHES} pushes: the state of {project} is "
+                    "committed here and not saved there. Other projects' runs save theirs at the same moment, far more often "
+                    "than they should: a person must look at them")
 
 
 JUDGE_DOWN = ("the judge failed on the project's own tip in this run: its machine is down, or the tip itself, as the last integrations "
