@@ -2328,6 +2328,87 @@ class TestFirstReview(Base):
         self.assertIn("toy/ledger.jsonl", log)
         self.assertNotIn("other.txt", log)
 
+    def test_a_state_another_projects_run_keeps_saving_first_is_pushed_again_a_bounded_number_of_times(self):
+        """Every project's run saves its own folder of one state repository. A push that finds the repository moved
+        takes what the other run saved and pushes again, a bounded number of times, waiting a little longer each
+        time; past the bound the step fails in one line that says whose state is not saved. A push refused while
+        nothing moved there is not another run's doing: it is tried once more and no more, and git's words are said."""
+        def a_race(times):
+            root = Path(tempfile.mkdtemp(prefix="state-race-", dir=self.w.root))
+            origin, mine, theirs = root / "state.git", root / "mine", root / "theirs"
+            sh("git", "init", "--quiet", "--bare", "-b", "hive-state", str(origin), cwd=root)
+            for clone in (mine, theirs):
+                sh("git", "clone", "--quiet", str(origin), str(clone), cwd=root)
+            (theirs / "other").mkdir()
+            (theirs / "other/ledger.jsonl").write_text("0\n")
+            sh("git", "add", "--all", cwd=theirs)
+            sh("git", "commit", "--quiet", "-m", "theirs", cwd=theirs)
+            sh("git", "push", "--quiet", "origin", "HEAD", cwd=theirs)
+            sh("git", "pull", "--quiet", "origin", "hive-state", cwd=mine)
+            (mine / "toy").mkdir()
+            (mine / "toy/ledger.jsonl").write_text("{}\n")
+            pushes, waits, real = [], [], hive.git
+
+            def racing(repo, *args, **named):
+                if Path(repo) == mine and args[0] == "push":
+                    pushes.append(args)
+                    if len(pushes) <= times:  # the other project's run saves its own folder just before
+                        with open(theirs / "other/ledger.jsonl", "a") as f:
+                            f.write(f"{len(pushes)}\n")
+                        sh("git", "commit", "--quiet", "--all", "-m", "theirs again", cwd=theirs)
+                        sh("git", "pull", "--quiet", "--rebase", "origin", "hive-state", cwd=theirs)
+                        sh("git", "push", "--quiet", "origin", "HEAD", cwd=theirs)
+                return real(repo, *args, **named)
+
+            with mock.patch.object(hive, "transport", return_value={"GIT_ALLOW_PROTOCOL": "file"}), \
+                    mock.patch.dict(os.environ, {"GIT_ALLOW_PROTOCOL": "file"}), mock.patch.object(hive, "git", racing), \
+                    mock.patch.object(hive.time, "sleep", waits.append):
+                try:
+                    hive.save_state(mine, "toy", hive.now())
+                    said = None
+                except hive.HiveError as error:
+                    said = str(error)
+
+            def there(path):
+                return sh("git", "show", f"hive-state:{path}", cwd=origin, check=False).stdout
+            return said, len(pushes), waits, there("toy/ledger.jsonl"), there("other/ledger.jsonl")
+
+        self.assertEqual(hive.STATE_PUSHES, 6)
+        self.assertEqual(a_race(0), (None, 1, [], "{}\n", "0\n"))
+        self.assertEqual(a_race(1), (None, 2, [1], "{}\n", "0\n1\n"))
+        self.assertEqual(a_race(5), (None, 6, [1, 2, 4, 8, 16], "{}\n", "0\n1\n2\n3\n4\n5\n"), "saved at the last push the bound allows, "
+                         "and nothing of the other project's is lost")
+        said, pushes, waits, mine, theirs = a_race(6)
+        self.assertEqual((pushes, waits, mine, theirs), (6, [1, 2, 4, 8, 16], "", "0\n1\n2\n3\n4\n5\n6\n"))
+        self.assertEqual(said, "the state repository moved before each of this run's 6 pushes: the state of toy is committed here and not "
+                               "saved there. Other projects' runs save theirs at the same moment, far more often than they should: a "
+                               "person must look at them")
+        # refused, and nothing moved there (a right withdrawn, a rule): two pushes, no wait, git's own failure
+        root = Path(tempfile.mkdtemp(prefix="state-refused-", dir=self.w.root))
+        origin, state = root / "state.git", root / "state"
+        sh("git", "init", "--quiet", "--bare", "-b", "hive-state", str(origin), cwd=root)
+        sh("git", "clone", "--quiet", str(origin), str(state), cwd=root)
+        (state / "toy").mkdir()
+        (state / "toy/ledger.jsonl").write_text("{}\n")
+        with mock.patch.object(hive, "transport", return_value={"GIT_ALLOW_PROTOCOL": "file"}), \
+                mock.patch.dict(os.environ, {"GIT_ALLOW_PROTOCOL": "file"}):
+            hive.save_state(state, "toy", hive.now())  # the branch exists there
+            (state / "toy/ledger.jsonl").write_text("{}\n{}\n")
+            pushes, waits, real = [], [], hive.git
+
+            def refused(repo, *args, **named):
+                if args[0] != "push":
+                    return real(repo, *args, **named)
+                pushes.append(args)
+                if named.get("check", True):
+                    raise hive.HiveError("git push failed (1): refused")
+                return subprocess.CompletedProcess(args, 1, "", "refused")
+
+            with mock.patch.object(hive, "git", refused), mock.patch.object(hive.time, "sleep", waits.append), \
+                    self.assertRaisesRegex(hive.HiveError, r"git push failed \(1\): refused\Z"):
+                hive.save_state(state, "toy", hive.now())
+        self.assertEqual((len(pushes), waits), (2, []))
+
 
 class TestPromise(Base):
     """The hive promises before it pushes (an « intent » in its own ledger): a run that pushed and could not record
@@ -7651,6 +7732,31 @@ class TestTwoProjectsInOneHive(Base):
             self.v.load()  # and the hive's own steps refuse it too: two files never write one project's state
         with self.assertRaisesRegex(hive.HiveError, r"port\.json: project: the file's own name \(port\)"):
             hive.project_of(hive.argparse.Namespace(registry=str(self.v.registry), project="port", state=str(self.v.state.parent)))
+
+    def test_a_projects_name_is_an_identifier_and_its_tasks_file_bears_it(self):
+        """The hive's hourly steps take the project's name from their command line and make a file's name of it: an
+        identifier, as for a worker's commands, or the step stops before it reads anything. And a project's tasks
+        file is the one that bears its name, in the registry's folder for them: a project's file names no other
+        file of the machine, and no other project's tasks."""
+        for wrong in ("../projects/port", "port/../port", "/etc/passwd", "Port", "port.json", "", "port ", "po rt", "-port", "port-", None, 7):
+            with self.subTest(wrong=wrong), self.assertRaises(hive.HiveError) as refused:
+                hive.project_of(hive.argparse.Namespace(registry=str(self.v.registry), project=wrong, state=str(self.v.state.parent)))
+            self.assertEqual(str(refused.exception), "--project: a project's identifier (lower-case letters, digits, dashes)")
+        step = hive.argparse.Namespace(registry=str(self.v.registry), project="port", state=str(self.v.state.parent))
+        self.assertEqual(hive.project_of(step)[0]["tasks"], "hive/tasks/port.jsonl")
+        file = self.v.registry / "hive/projects/port.json"
+        whole = json.loads(file.read_text())
+        for wrong in ("hive/tasks/toy.jsonl", "hive/tasks/../tasks/port.jsonl", "./hive/tasks/port.jsonl", "hive/tasks/port.json",
+                      str(self.v.registry / "hive/tasks/port.jsonl"), "/etc/passwd", "../outside.jsonl", "tasks/port.jsonl", "", None,
+                      ["hive/tasks/port.jsonl"], "hive/tasks/Port.jsonl"):
+            file.write_text(json.dumps({**whole, "tasks": wrong}))
+            with self.subTest(wrong=wrong):
+                for load in (lambda: hive.load_config(file), lambda: hive.project_of(step), lambda: hive.hive_project(self.v.registry, "port")):
+                    with self.assertRaisesRegex(hive.HiveError, r"port\.json: tasks: the project's own tasks file \(hive/tasks/port\.jsonl\)\Z"):
+                        load()
+        file.write_text(json.dumps({key: value for key, value in whole.items() if key != "tasks"}))
+        with self.assertRaisesRegex(hive.HiveError, r"tasks: the project's own tasks file"):
+            hive.load_config(file)
 
     def test_a_candidate_the_judge_cannot_run_does_not_end_the_judging_of_the_others(self):
         """A kind of judge answers 0 for the project's tip judged against itself. The base asks it that after a
