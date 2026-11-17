@@ -431,6 +431,8 @@ def load_config(path):
         config[key] = {**DEFAULTS[key], **(raw.get(key) or {})}
     if not (isinstance(config.get("project"), str) and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", config["project"])):
         raise HiveError(f"{path}: project: a lower-case identifier")
+    if config["project"] != Path(path).stem:  # the name is where its state is kept: two files never share one
+        raise HiveError(f"{path}: project: the file's own name ({Path(path).stem})")
     if not (isinstance(config.get("repo"), str) and REPO_NAME.match(config["repo"])):
         raise HiveError(f"{path}: repo: owner/name")
     if not plain_branch(config["branch"]):
@@ -467,6 +469,9 @@ def load_config(path):
     judge.setdefault("history", [])
     if not (isinstance(judge["history"], list) and len(judge["history"]) <= 16 and all(is_sha(c) for c in judge["history"])):
         raise HiveError(f"{path}: judge.history: the commits of the project's own history its judge reads by id (full ids)")
+    judge.setdefault("kind", "common")
+    if not (isinstance(judge["kind"], str) and judge["kind"] in JUDGES):
+        raise HiveError(f"{path}: judge.kind: a kind of judge this tool holds ({', '.join(sorted(JUDGES))})")
     return config
 
 
@@ -2655,6 +2660,29 @@ def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeou
     return run
 
 
+def the_common_judge(registry_root, settings, workdir):
+    return common_judge(registry_root, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
+                        workdir=workdir, timeout=settings.get("timeout_seconds", 3600))
+
+
+# THE KINDS OF JUDGE. The hive is one and its projects are of several natures: what a verdict is, where the judged
+# code runs and what may accept a candidate are the base's (this file, the same for every project); HOW a candidate is
+# found right or wrong is a kind of judge's; what a project asks of the figures is the project's file. A project names
+# its judge's kind (judge.kind, « common » when it names none): each kind is a function (the registry's tree, the
+# project's judge settings, the judging's own folder) that gives the judge function the judging step runs: (base tree,
+# candidate tree, task, tip, commit) -> {"code": 0 correct, 1 refused, 2 failure to judge, "report": figures}. Every
+# kind answers 0 for the project's tip judged against itself, whatever the task: after a failure to judge, the base
+# asks exactly that, and takes any other answer for a machine that cannot judge (judging: machine_works), which ends
+# the run's judging. A kind is code of the registry, trusted as this file is; a project's file can name one, never
+# bring one.
+JUDGES = {"common": the_common_judge}
+
+
+def judge_of(registry_root, settings, workdir):
+    """The judge function of a project, by the kind its file names."""
+    return JUDGES[settings["kind"]](registry_root, settings, workdir)
+
+
 def judge_figures(published, report_path):
     """Numbers out of the common judge's answer: report.py's whole numbers, and each metric's gain.
 
@@ -2763,9 +2791,7 @@ def cmd_judge(args):
         write_json(args.out, {"answers": {}, "started": []})
         return
     read_bundle(args.repo, read_plan(made, config)[1], args.bundle)
-    settings = config["judge"]
-    judge = common_judge(args.registry, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
-                         workdir=args.judge_workdir, timeout=settings.get("timeout_seconds", 3600))
+    judge = judge_of(args.registry, config["judge"], args.judge_workdir)
     write_json(args.out, {"answers": {}, "started": []})
     notes = {}
     verdicts, outcomes, started = judge_plan(
@@ -3508,16 +3534,30 @@ def plain_clone():
 
 
 def hive_projects(registry):
-    """Every project the registry declares: [configuration]. Trusted: the registry's own tree."""
+    """Every project the registry declares, as far as a worker's command reads the others: [{"project", "repo"}], its
+    name and its repository, and nothing else of its file. A command checks in full only the project it is given
+    (hive_project): what another project's file asks of the tool does not stop this one's workers. The two fields are
+    read of every file because own_fork compares every project's repository with the fork's: a file that cannot be
+    read, or that does not give both under its own name, stops the command, since nothing then says the fork is not
+    a project itself.
+    Trusted: the registry's own tree."""
+    listed = []
     try:
-        return [load_config(path) for path in sorted((Path(registry) / "hive/projects").glob("*.json"))]
+        for path in sorted((Path(registry) / "hive/projects").glob("*.json")):
+            raw = read_json(path)
+            project, repo = (raw.get("project"), raw.get("repo")) if isinstance(raw, dict) else (None, None)
+            if not (isinstance(project, str) and PROJECT_ID.match(project) and project == path.stem and isinstance(repo, str) and REPO_NAME.match(repo)):
+                raise HiveError(f"the registry's file {path.name} does not name its project (the file's own name) and its repository "
+                                "(owner/name): update your clone of the registry")
+            listed.append({"project": project, "repo": repo})
     except (OSError, ValueError, TypeError, RecursionError) as error:
         raise HiveError(f"the registry's project files cannot be read ({type(error).__name__}): update your clone of the registry") from None
+    return listed
 
 
 def hive_project(registry, project):
-    """(configuration, tasks, every project's configuration) of the project a worker names: read from the registry,
-    as « submit » and the hive itself read them. The name goes into a path: it is checked first."""
+    """(configuration, tasks, every project's name and repository) of the project a worker names: read from the
+    registry, as « submit » and the hive itself read them. The name goes into a path: it is checked first."""
     if not isinstance(project, str) or not PROJECT_ID.match(project):
         raise HiveError("--project: a project's identifier, as setup printed it (lower-case letters, digits, dashes)")
     try:
@@ -4155,7 +4195,9 @@ def cmd_setup(args):
     if len(chosen) != 1:
         known = ", ".join(c["project"] for c in configs) or "none"
         raise HiveError(f"which project is this fork of? Give --project (the hive's projects: {known})")
-    config = chosen[0]
+    # The project found is read in full, with its tasks, as every later command reads it: a registry that lacks
+    # either stops the worker here, before it is dealt anything.
+    config, _, configs = hive_project(args.registry, chosen[0]["project"])
     own_fork(clone, config, configs, login, args.fork)
     if clone.git("remote", "get-url", "--push", "origin", to=origin).stdout.strip() != clone.git("remote", "get-url", "origin", to=origin).stdout.strip():
         raise HiveError("a push to origin would not go to the address it is fetched from (a pushInsteadOf rule of your git settings): "

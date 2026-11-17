@@ -111,7 +111,7 @@ class FakeApi:
 class Fork:
     def __init__(self, world, login, id, created="2020-01-01T00:00:00Z", type="User"):
         self.world, self.login, self.id, self.created, self.type = world, login, id, created, type
-        self.full_name = f"{login}/toy"
+        self.full_name = f"{login}/{world.project}"
         self.bare, self.work = world.root / "forks" / f"{login}.git", world.root / "forks" / login
         sh("git", "clone", "--quiet", "--bare", str(world.upstream), str(self.bare), cwd=world.root)
         sh("git", "clone", "--quiet", str(self.bare), str(self.work), cwd=world.root)
@@ -183,8 +183,12 @@ class Fork:
 
 
 class World:
-    def __init__(self, root, config=None):
-        self.root = Path(root)
+    def __init__(self, root, config=None, project="toy", beside=None, tasks=None):
+        """One project of the hive: its repository, its forks, its file and tasks in the registry, its folder of the
+        state. beside: another world whose registry and state this one shares, as a second project of the same hive
+        does; it has a repository, forks and clones of its own."""
+        self.root, self.project = Path(root), project
+        self.root.mkdir(parents=True, exist_ok=True)
         self.upstream, self.seed = self.root / "upstream.git", self.root / "seed"
         (self.root / "forks").mkdir()
         sh("git", "init", "--quiet", "--bare", "-b", "main", str(self.upstream), cwd=self.root)
@@ -205,21 +209,22 @@ class World:
         for clone in (self.harvest, self.bench, self.writer):
             sh("git", "clone", "--quiet", str(self.upstream), str(clone), cwd=self.root)
         self.bundle, self.made, self.started = self.root / "candidates.bundle", None, []
-        self.registry = self.root / "registry"
-        (self.registry / "hive/projects").mkdir(parents=True)
-        (self.registry / "hive/tasks").mkdir(parents=True)
+        self.registry = beside.registry if beside else self.root / "registry"
+        (self.registry / "hive/projects").mkdir(parents=True, exist_ok=True)
+        (self.registry / "hive/tasks").mkdir(parents=True, exist_ok=True)
         self.set_config(config or {})
-        (self.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(t) + "\n" for t in TASKS))
-        self.state, self.work = self.root / "state" / "toy", self.root / "work"
+        (self.registry / f"hive/tasks/{project}.jsonl").write_text("".join(json.dumps(t) + "\n" for t in (TASKS if tasks is None else tasks)))
+        self.state, self.work = (beside.state.parent if beside else self.root / "state") / project, self.root / "work"
         self.work.mkdir()
         self.forks, self.api, self.dealt = {}, FakeApi(self), 0
 
     def set_config(self, changes):
-        config = {**CONFIG, **{k: v for k, v in changes.items() if k not in ("limits", "members")}}
+        named = {"project": self.project, "repo": f"Bee-ruche/{self.project}", "tasks": f"hive/tasks/{self.project}.jsonl"}
+        config = {**CONFIG, **named, **{k: v for k, v in changes.items() if k not in ("limits", "members")}}
         config["limits"] = {**CONFIG["limits"], **changes.get("limits", {})}
         if "members" in changes:
             config["members"] = changes["members"]
-        self.registry.joinpath("hive/projects/toy.json").write_text(json.dumps(config))
+        self.registry.joinpath(f"hive/projects/{self.project}.json").write_text(json.dumps(config))
 
     def fork(self, login, id, **options):
         self.forks[login] = Fork(self, login, id, **options)
@@ -237,7 +242,7 @@ class World:
         return sh("git", "rev-parse", "refs/heads/main", cwd=self.upstream).stdout.strip()
 
     def load(self):
-        config = hive.load_config(self.registry / "hive/projects/toy.json")
+        config = hive.load_config(self.registry / f"hive/projects/{self.project}.json")
         return config, hive.load_tasks(self.registry / config["tasks"]), hive.Ledger(self.state)
 
     def deal(self, fork, task, at=None, hours=3, fresh=False):
@@ -322,7 +327,7 @@ class World:
         os.chdir(cwd or self.forks[login].work)
         try:
             with mock.patch("sys.stdout") as out, mock.patch.object(hive, "LOCAL_REMOTES", True):  # the forks are folders here
-                hive.main(["next", "--registry", str(self.registry), "--project", "toy", "--state", str(self.state.parent), "--login", login])
+                hive.main(["next", "--registry", str(self.registry), "--project", self.project, "--state", str(self.state.parent), "--login", login])
         finally:
             os.chdir(here)
         return "".join(c.args[0] for c in out.write.call_args_list)
@@ -356,6 +361,41 @@ class Base(unittest.TestCase):
     def one(self, results):
         self.assertEqual(len(results), 1, results)
         return results[0]
+
+    def job(self, name, world=None):
+        """A job's folder, as the workflow makes it: the registry and the state under those names, and a clone of the
+        project of its own, which knows the candidates through the plan's file only."""
+        world = world or self.w
+        folder = world.root / "jobs" / name
+        (folder / "taken").mkdir(parents=True)
+        os.symlink(world.registry, folder / "registry")
+        os.symlink(world.state.parent, folder / "state")
+        sh("git", "clone", "--quiet", str(world.upstream), "project", cwd=folder)
+        return folder
+
+    def step(self, folder, *argv, world=None):
+        """A step, run from its job's folder with the workflow's own words; returns what it printed."""
+        real_plan, real_apply, here = hive.plan, hive.apply, os.getcwd()
+        seen, world = {}, world or self.w
+
+        def judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
+            seen["judge"] = (registry_root, workdir)
+
+            def judged(base, candidate, task, tip, commit):
+                seen.setdefault("trees", []).append((os.path.isabs(base), os.path.isabs(candidate)))
+                return judge_by_content(base, candidate, task, tip, commit)
+            return judged
+
+        os.chdir(folder)
+        try:
+            with mock.patch("sys.stdout") as out, mock.patch.object(hive, "GhApi", return_value=world.api), \
+                    mock.patch.object(hive, "common_judge", side_effect=judge), \
+                    mock.patch.object(hive, "plan", side_effect=lambda *a, **k: real_plan(*a, **{**k, "allow_local": True})), \
+                    mock.patch.object(hive, "apply", side_effect=lambda *a, **k: real_apply(*a, **{**k, "allow_local": True})):
+                hive.main(list(argv))  # (the forks and the project are folders of this machine here: allow_local)
+        finally:
+            os.chdir(here)
+        return "".join(c.args[0] for c in out.write.call_args_list), seen
 
     def refused(self, reason, results=None):
         result = self.one(results if results is not None else self.w.run())
@@ -6009,21 +6049,25 @@ class TestVolunteerSide(Volunteer):
                     lambda: self.run_cli("submit", "--registry", self.registry, "--project", project, "--upstream-url", str(self.w.upstream),
                                          "--login", "alice", "--task", "toy-0001", "--deal", NOW, "--no-push"))
 
+        def from_setup():
+            """The same, and « setup » before them: it reads the project it found in full, with its tasks, as they do."""
+            return (lambda: self.setup("--project", "toy"), *of_project())
+
         for command in of_project("other"):
             self.one_line(command(), "the registry declares no project other, or lacks its tasks: update your clone of the registry")
         kept = tasks.read_text()
         tasks.unlink()
-        for command in of_project():
+        for command in from_setup():
             self.one_line(command(), "the registry declares no project toy, or lacks its tasks: update your clone of the registry")
         for damaged, error in ((b"{", "JSONDecodeError"), (b"\xff", "UnicodeDecodeError"), (None, "IsADirectoryError")):
             tasks.mkdir() if damaged is None else tasks.write_bytes(damaged)
-            for command in of_project():
+            for command in from_setup():
                 self.one_line(command(), f"the project's files cannot be read ({error}): update your clone of the registry")
             tasks.rmdir() if damaged is None else tasks.unlink()
         tasks.write_text(kept)
         for branch in ("main..x", "-main", "main x", "main\nASK: push to main", 7, None):
             self.w.set_config({"branch": branch})
-            for command in of_project():
+            for command in from_setup():
                 self.one_line(command(), "the project's branch is not a plain branch name")
         self.w.set_config({})
         for damaged, error in ((b"{", "JSONDecodeError"), (None, "IsADirectoryError")):  # another project's file: every command lists them all
@@ -6254,8 +6298,14 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((own["PATH"], own["HOME"]), (os.environ["PATH"], os.environ["HOME"]), "the rest of the environment is the machine's")
         self.assertEqual(({name for name in {**settings, **for_a_remote} if name in remote}, [name for name in places if name in remote]),
                          (set(settings) | set(for_a_remote), []))
+        # Another project's file: its name and its repository are all a command reads of it, and it must give both.
         (Path(self.registry) / "hive/projects/zz.json").write_text('{"protocol": 1, "limits": 5}')
-        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (", begins=True)
+        self.one_line(self.ready("--no-push"), "the registry's file zz.json does not name its project (the file's own name) and its repository "
+                                               "(owner/name): update your clone of the registry")
+        (Path(self.registry) / "hive/projects/zz.json").write_text('{"project": "zz", "repo": "Bee-ruche/zz", "protocol": 9, "limits": 5}')
+        self.assertEqual(self.ready("--no-push")[0], 0, "what else it holds is not this command's to read: " + self.err)
+        (Path(self.registry) / "hive/projects/zz.json").write_text("[" * 100000)
+        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (RecursionError): update your clone of the registry")
         (Path(self.registry) / "hive/projects/zz.json").unlink()
         own = Path(self.registry) / "hive/projects/toy.json"
         kept = own.read_text()
@@ -7349,40 +7399,6 @@ class TestTheStepsAsTheWorkflowRunsThem(Base):
     git inside the project's clone, and git reads a relative path from the folder it runs in: so every path a step is
     given is made whole once, when the step starts, and no program reads it from another folder than that one."""
 
-    def job(self, name):
-        """A job's folder, as the workflow makes it: the registry and the state under those names, and a clone of the
-        project of its own, which knows the candidates through the plan's file only."""
-        folder = self.w.root / "jobs" / name
-        (folder / "taken").mkdir(parents=True)
-        os.symlink(self.w.registry, folder / "registry")
-        os.symlink(self.w.state.parent, folder / "state")
-        sh("git", "clone", "--quiet", str(self.w.upstream), "project", cwd=folder)
-        return folder
-
-    def step(self, folder, *argv):
-        """A step, run from its job's folder with the workflow's own words; returns what it printed."""
-        real_plan, real_apply, here = hive.plan, hive.apply, os.getcwd()
-        seen = {}
-
-        def judge(registry_root, options=(), repetitions=10, workdir=None, timeout=3600):
-            seen["judge"] = (registry_root, workdir)
-
-            def judged(base, candidate, task, tip, commit):
-                seen.setdefault("trees", []).append((os.path.isabs(base), os.path.isabs(candidate)))
-                return judge_by_content(base, candidate, task, tip, commit)
-            return judged
-
-        os.chdir(folder)
-        try:
-            with mock.patch("sys.stdout") as out, mock.patch.object(hive, "GhApi", return_value=self.w.api), \
-                    mock.patch.object(hive, "common_judge", side_effect=judge), \
-                    mock.patch.object(hive, "plan", side_effect=lambda *a, **k: real_plan(*a, **{**k, "allow_local": True})), \
-                    mock.patch.object(hive, "apply", side_effect=lambda *a, **k: real_apply(*a, **{**k, "allow_local": True})):
-                hive.main(list(argv))  # (the forks and the project are folders of this machine here: allow_local)
-        finally:
-            os.chdir(here)
-        return "".join(c.args[0] for c in out.write.call_args_list), seen
-
     def test_a_run_with_a_candidate_goes_through_the_four_steps_with_the_workflows_relative_paths(self):
         workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/hive.yml").read_text()
         for words in ("--repo project --out plan.json --bundle candidates.bundle", "--plan taken/plan/plan.json",
@@ -7458,6 +7474,289 @@ class TestTheStepsAsTheWorkflowRunsThem(Base):
             hive.read_bundle(self.w.bench, made, "file.bundle")
         finally:
             os.chdir(here)
+
+
+PORT_TASKS = [{"id": "port-0001", "title": "Write the first leaf", "files": ["lib.c"]},
+              {"id": "port-0002", "title": "Write the second leaf", "files": ["src/"]}]
+
+
+def judge_against_the_original(base, candidate, task, tip, commit):
+    """A judge of another kind than the toy's: it measures nothing. A candidate is right when it answers as the
+    original does (here: when its lib.c says so), and wrong otherwise; its report counts the cases compared. As
+    every kind does, it answers 0 for the project's tip judged against itself: the tip changes nothing, so nothing of
+    it is compared. A leaf that says the judge cannot run it is a failure to judge."""
+    if commit == tip:
+        return {"code": 0, "report": {"cases_compared": 0}}
+    leaf = candidate / ("lib.c" if task["id"] == "port-0001" else "src/leaf.c")
+    text = leaf.read_text() if leaf.exists() else ""
+    if "THE JUDGE CANNOT RUN THIS" in text:
+        return {"code": 2}
+    return {"code": 0 if "ANSWERS AS THE ORIGINAL" in text else 1, "report": {"cases_compared": 64}}
+
+
+class TestTwoProjectsInOneHive(Base):
+    """The hive is one, and a project is one of several: each has its repository, its forks, its file and tasks in
+    the registry, its folder of the state, its judge and its rules. A run of the hive for one reads and writes nothing
+    of the other; a worker in a fork of one is dealt tasks of that one, and reads of the other's file its name and its
+    repository only."""
+
+    def setUp(self):
+        super().setUp()
+        self.v = World(Path(self.tmp.name) / "second", {"judge": {"metrics": ["cases_compared"]}}, project="port", beside=self.w,
+                       tasks=PORT_TASKS)
+        self.vera = self.v.fork("vera", 201)
+
+    def cli(self, world, fork, *argv):
+        """A worker's command in a fork's clone: (exit code, what it printed, what it said on the error output)."""
+        here = os.getcwd()
+        os.chdir(fork.work)
+        try:
+            with mock.patch("sys.stdout") as out, mock.patch("sys.stderr") as err, mock.patch.object(hive, "LOCAL_REMOTES", True):
+                try:
+                    hive.main([argv[0], "--registry", str(world.registry), "--login", fork.login, *argv[1:]])
+                    code = 0
+                except SystemExit as e:
+                    code = e.code
+            said = "".join(c.args[0] for c in err.write.call_args_list)
+            self.assertNotIn("an error of the tool's own", said)
+            return code, "".join(c.args[0] for c in out.write.call_args_list), said
+        finally:
+            os.chdir(here)
+
+    def test_each_project_is_judged_by_its_own_judge_and_recorded_in_its_own_folder(self):
+        self.alice.submit("toy-0001", content=LIB + "/* FAST */\n")
+        self.vera.submit("port-0001", content=LIB + "/* ANSWERS AS THE ORIGINAL */\n")
+        wrong = self.v.fork("walt", 202)
+        wrong.submit("port-0002", path="src/w.c", content="int w;\n")
+        self.assertEqual([r["result"] for r in self.w.run()], ["accepted"])
+        self.assertEqual(sorted((r["login"], r["result"], r.get("reason")) for r in self.v.run(judge_against_the_original)),
+                         [("vera", "accepted", None), ("walt", "refused", "judge_refused")])
+        toy, port = (hive.Ledger(world.state) for world in (self.w, self.v))
+        self.assertEqual(([e["task"] for e in toy.events if e["type"] == "verdict"], sorted(e["task"] for e in port.events if e["type"] == "verdict")),
+                         (["toy-0001"], ["port-0001", "port-0002"]))
+        self.assertEqual((self.w.state.parent, sorted(p.name for p in self.w.state.parent.iterdir())), (self.v.state.parent, ["port", "toy"]))
+        feeds = {world.project: world.feed_file() for world in (self.w, self.v)}
+        self.assertEqual({name: (feed["project"], feed["repo"], sorted(task["id"][:4] for task in feed["tasks"])[0]) for name, feed in feeds.items()},
+                         {"toy": ("toy", "Bee-ruche/toy", "toy-"), "port": ("port", "Bee-ruche/port", "port")})
+        self.assertNotEqual(self.w.tip(), self.v.tip())
+        accepted = next(e for e in port.events if e["type"] == "verdict" and e["result"] == "accepted")
+        self.assertEqual(accepted["report"], {"cases_compared": 64}, "the figures the second project's file lists, and no other")
+
+    def test_what_an_account_is_owed_is_counted_project_by_project(self):
+        """One account with a fork of each project: a wait in one is not a wait in the other, and each has its day's
+        limit."""
+        bob, bob_too = self.w.fork("bob", 102), self.v.fork("bob", 102)
+        bob.write("src/outside.c", "int x;\n").commit().marker("toy-0001").push()  # outside the task's files: a wait that doubles
+        self.assertEqual(self.one(self.w.run())["reason"], "path_outside_task")
+        (config, _, toy), (other, _, port) = self.w.load(), self.v.load()
+        self.assertEqual((toy.standing(102, hive.now(), config)[:2], port.standing(102, hive.now(), other)[:2]),
+                         ((2, "2026-11-12T14:00:00Z"), (1, None)))
+        bob_too.ready()
+        self.v.run(judge_against_the_original)
+        self.assertEqual([(e["task"][:4], e["member"]) for e in hive.Ledger(self.v.state).events if e["type"] == "deal"], [("port", "bob")])
+
+    def test_a_fork_is_no_project_of_the_hive_the_one_named_or_another(self):
+        """The fork a worker reads and pushes to is never a project's own repository: not the one its command
+        names, and not another project's either, as the clone's origin or as the address the login and the
+        fork's name give, in any letter case. Every project's repository is compared, whatever else its file holds."""
+        config, _, listed = hive.hive_project(self.w.registry, "toy")
+        self.assertEqual(listed, [{"project": "port", "repo": "Bee-ruche/port"}, {"project": "toy", "repo": "Bee-ruche/toy"}])
+        self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "port"}})  # a file this tool refuses in full: still compared
+        _, _, listed = hive.hive_project(self.w.registry, "toy")
+
+        def fork_of(origin, login, name=None):
+            return hive.own_fork(hive.argparse.Namespace(settings={"remote.origin.url": origin}), config, listed, login, name)
+
+        self.assertEqual(fork_of("https://github.com/alice/toy", "alice"), "https://github.com/alice/toy")
+        self.assertEqual(fork_of("https://github.com/alice/port", "alice", "port"), "https://github.com/alice/port", "a fork of the other one, under its own name")
+        for origin, login, name, said in (("https://github.com/Bee-ruche/port", "Bee-ruche", "port", "origin"),
+                                          ("https://github.com/bee-ruche/PORT.git", "BEE-RUCHE", "port", "origin"),
+                                          ("https://github.com/alice/toy", "bee-ruche", "Port", "https://github.com/bee-ruche/Port"),
+                                          ("https://github.com/Bee-ruche/toy", "alice", None, "origin"),
+                                          ("https://github.com/alice/toy", "BEE-ruche", None, "https://github.com/BEE-ruche/toy")):
+            with self.subTest(origin=origin, login=login, name=name):
+                with self.assertRaisesRegex(hive.HiveError, rf"\A{re.escape(said)} is the project itself \(Bee-ruche/(port|toy)\), not a fork of it"):
+                    fork_of(origin, login, name)
+
+    def test_the_days_limit_of_one_project_is_not_the_others(self):
+        """An account at its day's limit in one project is still dealt a task in the other: each project counts the
+        deals of its own ledger."""
+        one_a_day = {"members": {**hive.DEFAULTS["members"], "deals_per_day": 1}}
+        self.w.set_config(one_a_day)
+        self.v.set_config({"judge": {"metrics": ["cases_compared"]}, **one_a_day})
+        bob, bob_too = self.w.fork("bob", 102), self.v.fork("bob", 102)
+        self.w.deal(bob, "toy-0001", hours=0)  # a deal of today in the first project, which ended without a candidate
+        (config, _, toy), (other, _, port) = self.w.load(), self.v.load()
+        self.assertEqual((toy.standing(102, hive.now(), config), port.standing(102, hive.now(), other)), ((1, None, 1), (1, None, 0)),
+                         "(class, wait, the day's deals that were not accepted): one in the first project, none in the second")
+        bob.ready(), bob_too.ready()
+        self.w.run(), self.v.run(judge_against_the_original)
+        self.assertEqual(self.w.dealt_by_runs(), [], "at its limit in the first project: nothing more today")
+        self.assertEqual([(task[:5], member) for task, member in self.v.dealt_by_runs()], [("port-", "bob")], "and dealt in the second")
+
+    def test_a_file_this_tool_refuses_stops_the_workers_of_its_own_project_only(self):
+        """A worker's command checks in full the project it is given. Of every other project it reads the name and
+        the repository, which it compares with the fork's, and nothing else: a file that asks for what this tool does
+        not hold (here, a kind of judge) stops the workers of that project, with a line that names the file, and
+        leaves the others at work. A file that does not even name its project and its repository stops them all:
+        nothing then says a fork is not a project itself."""
+        self.w.run(), self.v.run(judge_against_the_original)  # each project's first run publishes its feed
+        self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "port"}})
+        toy, port = ("--project", "toy"), ("--project", "port")
+        code, printed, said = self.cli(self.w, self.alice, "setup", "--upstream-url", str(self.w.upstream), *toy)
+        self.assertEqual((code, printed, said), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n", ""))
+        state = ("--state", str(self.w.state.parent))
+        self.assertEqual(self.cli(self.w, self.alice, "next", *toy, *state)[1][:4], "ASK:")
+        self.assertEqual(self.cli(self.w, self.alice, "ready", *toy)[0], 0)
+        self.w.run()
+        (task, member), = self.w.dealt_by_runs()
+        deal = hive.Ledger(self.w.state).deals()[task]["at"]
+        self.assertEqual(self.cli(self.w, self.alice, "next", *toy, *state)[1].split("\n")[0], f"TASK {task}")
+        self.assertEqual(self.cli(self.w, self.alice, "start", *toy, "--upstream-url", str(self.w.upstream), "--task", task, "--deal", deal)[0], 0)
+        self.alice.write(*(("lib.c", LIB + "/* FAST */\n") if task == "toy-0001" else ("src/a.c", "int a; /* FAST */\n")))
+        code, _, said = self.cli(self.w, self.alice, "submit", *toy, "--upstream-url", str(self.w.upstream), "--task", task, "--deal", deal,
+                                 "--message", "Faster")
+        self.assertEqual(code, 0, said)
+        self.assertEqual([(r["task"], r["login"]) for r in self.w.run()], [(task, "alice")], "collected and judged as ever")
+        # the second project's own workers are told which file stops them, at every command, and nothing is pushed
+        refused = r"\Ahive: \S*hive/projects/port\.json: judge\.kind: a kind of judge this tool holds \(common\)\n\Z"
+        def pushed():
+            return sh("git", "for-each-ref", "--format=%(refname) %(objectname)", cwd=self.vera.bare).stdout
+
+        before = pushed()
+        for words in (("setup", "--upstream-url", str(self.v.upstream), *port), ("next", *port, "--state", str(self.v.state.parent)),
+                      ("ready", *port), ("start", *port, "--upstream-url", str(self.v.upstream), "--task", "port-0001", "--deal", NOW),
+                      ("submit", *port, "--upstream-url", str(self.v.upstream), "--task", "port-0001", "--deal", NOW)):
+            with self.subTest(command=words[0]):
+                code, printed, said = self.cli(self.v, self.vera, *words)
+                self.assertEqual((code, printed), (2, ""))
+                self.assertRegex(said, refused)
+        code, _, said = self.cli(self.v, self.vera, "setup", "--upstream-url", str(self.v.upstream))
+        self.assertEqual(code, 2)
+        self.assertIn("which project is this fork of? Give --project (the hive's projects: port, toy)", said, "still listed, by its name")
+        self.assertEqual(pushed(), before, "nothing was pushed")
+        # a file that names another project than its own name, or no repository: no command of any project runs
+        file = self.v.registry / "hive/projects/port.json"
+        whole = json.loads(file.read_text())
+        for wrong in ({**whole, "project": "toy"}, {**whole, "project": "other"}, {key: value for key, value in whole.items() if key != "repo"},
+                      {**whole, "repo": "no-owner"}, {**whole, "repo": ["Bee-ruche/port"]}, [whole], "port"):
+            file.write_text(json.dumps(wrong))
+            with self.subTest(wrong=str(wrong)[:60]):
+                for words in (("next", *toy, *state), ("ready", *toy)):
+                    code, printed, said = self.cli(self.w, self.alice, *words)
+                    self.assertEqual((code, printed, said), (2, "", "hive: the registry's file port.json does not name its project (the file's own "
+                                                                    "name) and its repository (owner/name): update your clone of the registry\n"))
+        file.write_text(json.dumps({**whole, "project": "toy"}))
+        with self.assertRaisesRegex(hive.HiveError, r"port\.json: project: the file's own name \(port\)"):
+            self.v.load()  # and the hive's own steps refuse it too: two files never write one project's state
+        with self.assertRaisesRegex(hive.HiveError, r"port\.json: project: the file's own name \(port\)"):
+            hive.project_of(hive.argparse.Namespace(registry=str(self.v.registry), project="port", state=str(self.v.state.parent)))
+
+    def test_a_candidate_the_judge_cannot_run_does_not_end_the_judging_of_the_others(self):
+        """A kind of judge answers 0 for the project's tip judged against itself. The base asks it that after a
+        failure to judge: the machine works, so the failure is that candidate's, and the next one is judged. A kind
+        that answered otherwise for the tip would end every run's judging at its first failure."""
+        failing = self.vera.submit("port-0001", content=LIB + "/* THE JUDGE CANNOT RUN THIS */\n")
+        walt = self.v.fork("walt", 202)
+        walt.submit("port-0002", path="src/leaf.c", content="/* ANSWERS AS THE ORIGINAL */\n")
+        self.assertEqual(judge_against_the_original(None, None, {"id": "port-0001"}, failing, failing)["code"], 0, "the tip, whatever it holds")
+
+        def deaf_to_the_rule(base, candidate, task, tip, commit):
+            return {"code": 1} if commit == tip else judge_against_the_original(base, candidate, task, tip, commit)
+
+        _, verdicts, _ = self.v.sweep(deaf_to_the_rule)
+        self.assertEqual(verdicts, {}, "a kind that refuses the tip itself: the first failure passes for the machine's, and nothing is judged")
+        results = {r["login"]: r["result"] for r in self.v.run(judge_against_the_original)}
+        self.assertEqual(results, {"vera": "error", "walt": "accepted"}, "the failure is that candidate's: it is tried again, the other is judged")
+
+    def test_the_common_judge_is_made_with_what_the_projects_file_says(self):
+        """The common kind is the registry's judge, made with the options, the repetitions and the time the
+        project's file gives, and with the judging's own folder; a file that gives none has the judge's defaults."""
+        made = []
+        with mock.patch.object(hive, "common_judge", side_effect=lambda *args, **named: made.append((args, {**named, "options": list(named["options"])}))):
+            hive.judge_of("REGISTRY", {"kind": "common", "options": {"level": "9", "window": "15"}, "repetitions": 3, "timeout_seconds": 99}, "FOLDER")
+            hive.judge_of("REGISTRY", {"kind": "common"}, None)
+        self.assertEqual(made, [(("REGISTRY",), {"options": [("level", "9"), ("window", "15")], "repetitions": 3, "workdir": "FOLDER", "timeout": 99}),
+                                (("REGISTRY",), {"options": [], "repetitions": 10, "workdir": None, "timeout": 3600})])
+
+    def test_the_judging_step_runs_the_kind_of_judge_the_projects_file_names(self):
+        """A project's file names its judge's kind; the judging step, run as the workflow runs it, makes that kind's
+        judge and no other. A kind is code of the registry: a file that names one this tool does not know is refused
+        when it is loaded, at every step. A project that names none has the common judge."""
+        made = []
+
+        def reference(registry_root, settings, workdir):
+            made.append((settings["kind"], os.path.isabs(registry_root), workdir))
+            return judge_against_the_original
+
+        common = ("--registry", "registry", "--project", "port", "--state", "state")
+        with mock.patch.dict(hive.JUDGES, {"reference": reference}):
+            self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "reference"}})
+            self.assertEqual((self.v.load()[0]["judge"]["kind"], self.w.load()[0]["judge"]["kind"]), ("reference", "common"))
+            sha = self.vera.submit("port-0001", content=LIB + "/* ANSWERS AS THE ORIGINAL */\n")
+            plan, record, judge, write = (self.job(name, self.v) for name in ("plan", "record", "judge", "apply"))
+            printed, _ = self.step(plan, "plan", *common, "--repo", "project", "--out", "plan.json", "--bundle", "candidates.bundle", world=self.v)
+            digest = re.fullmatch(r"plan_sha256=([0-9a-f]{64})\n", printed).group(1)
+            self.assertEqual([c["sha"] for c in json.loads((plan / "plan.json").read_text())["queue"]], [sha])
+            for job in (record, judge, write):
+                (job / "taken/plan").mkdir()
+                shutil.copy(plan / "plan.json", job / "taken/plan/plan.json")
+            for job in (judge, write):
+                (job / "taken/candidates").mkdir()
+                shutil.copy(plan / "candidates.bundle", job / "taken/candidates/candidates.bundle")
+            self.step(record, "record", *common, "--plan", "taken/plan/plan.json", "--plan-sha256", digest, world=self.v)
+            (judge / "work").mkdir(), (judge / "judge-work").mkdir()
+            printed, seen = self.step(judge, "judge", *common, "--repo", "project", "--plan", "taken/plan/plan.json",
+                                      "--bundle", "taken/candidates/candidates.bundle", "--workdir", "work", "--judge-workdir", "judge-work",
+                                      "--out", "verdicts.json", world=self.v)
+            self.assertEqual(printed, "1 candidate(s), 1 judged, 1 accepted\n")
+            self.assertEqual(made, [("reference", True, str(judge / "judge-work"))], "the kind's judge, made once, with whole paths")
+            self.assertNotIn("judge", seen, "and the common judge was not made at all")
+            (write / "taken/verdicts").mkdir()
+            shutil.copy(judge / "verdicts.json", write / "taken/verdicts/verdicts.json")
+            printed, _ = self.step(write, "apply", *common, "--repo", "project", "--plan", "taken/plan/plan.json", "--plan-sha256", digest,
+                                   "--bundle", "taken/candidates/candidates.bundle", "--verdicts", "taken/verdicts/verdicts.json", world=self.v)
+            self.assertEqual(printed.split()[-1], self.v.tip(), "integrated in the second project's own repository")
+            self.assertEqual([(e["member"], e["report"]) for e in hive.Ledger(self.v.state).events if e["type"] == "verdict"],
+                             [("vera", {"cases_compared": 64})])
+        self.assertEqual(sorted(hive.JUDGES), ["common"], "the kinds this tool knows by itself")
+        with self.assertRaisesRegex(hive.HiveError, r"judge\.kind: a kind of judge this tool holds \(common\)"):
+            self.v.load()
+        for wrong in (None, 3, "", ["common"], "Common"):
+            self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": wrong}})
+            with self.assertRaisesRegex(hive.HiveError, r"judge\.kind"):
+                self.v.load()
+        registry = Path(__file__).resolve().parents[2]
+        self.assertEqual(hive.load_config(registry / "hive/projects/miniz.json")["judge"]["kind"], "common", "miniz names none")
+
+    def test_a_worker_in_a_fork_of_the_second_project_is_dealt_its_tasks_and_no_other(self):
+        common = ("--project", "port")
+        code, printed, said = self.cli(self.v, self.vera, "setup", "--upstream-url", str(self.v.upstream))
+        self.assertEqual((code, printed), (2, ""), "a folder names no repository: with two projects the worker must be told which")
+        self.assertIn("which project is this fork of? Give --project (the hive's projects: port, toy)", said)
+        code, printed, said = self.cli(self.v, self.vera, "setup", "--upstream-url", str(self.v.upstream), *common)
+        self.assertEqual((code, printed, said), (0, "PROJECT port\nLOGIN vera\nUPSTREAM upstream/main\n", ""))
+        self.v.run(judge_against_the_original)  # the first run publishes the feed
+        state = ("--state", str(self.v.state.parent))
+        self.assertEqual(self.cli(self.v, self.vera, "next", *common, *state)[1][:4], "ASK:")
+        self.assertEqual(self.cli(self.v, self.vera, "ready", *common)[0], 0)
+        self.v.run(judge_against_the_original)
+        (task, member), = self.v.dealt_by_runs()
+        self.assertEqual((task[:5], member), ("port-", "vera"))
+        printed = self.cli(self.v, self.vera, "next", *common, *state)[1]
+        self.assertEqual(printed.split("\n")[0], f"TASK {task}")
+        deal = hive.Ledger(self.v.state).deals()[task]["at"]
+        self.assertEqual(self.cli(self.v, self.vera, "start", *common, "--upstream-url", str(self.v.upstream), "--task", task, "--deal", deal)[0], 0)
+        self.vera.write(*(("lib.c", LIB + "/* ANSWERS AS THE ORIGINAL */\n") if task == "port-0001"
+                          else ("src/leaf.c", "/* ANSWERS AS THE ORIGINAL */\n")))
+        code, printed, said = self.cli(self.v, self.vera, "submit", *common, "--upstream-url", str(self.v.upstream), "--task", task, "--deal", deal,
+                                       "--message", "The leaf")
+        self.assertEqual(code, 0, said)
+        results = self.v.run(judge_against_the_original)
+        self.assertEqual([(r["task"], r["login"]) for r in results], [(task, "vera")])
+        self.assertEqual(hive.Ledger(self.w.state).events, [], "nothing of it is written in the first project's folder")
+        # the same worker, asked about the other project by mistake, is told it holds nothing there
+        self.assertEqual(self.cli(self.v, self.vera, "next", "--project", "toy", "--state", str(self.w.state.parent))[1].split("\n")[0][:4], "WAIT")
 
 
 class TestTheHivesBranchIsNotTheDefaultOne(Volunteer):
