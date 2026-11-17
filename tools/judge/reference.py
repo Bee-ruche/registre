@@ -349,11 +349,14 @@ class Judgement:
             raise Erreur("the generator left no /cases/cases")
         return data
 
-    def answers(self, command, binary, where, cases, most, seconds, blame, what):
-        """The file of answers a driver writes for a file of cases, or None; `most` bytes of it are read at most."""
+    def answers(self, command, binary, where, cases, most, seconds, blame, what, processes=2):
+        """The file of answers a driver writes for a file of cases, or None; `most` bytes of it are read at most.
+        A unit's driver has room for itself and no other process (two: the container's own clock is one). The
+        reference's driver is the project's own program: it is given the room of a build (a sanitizer's own
+        helper process, for one, needs it)."""
         given = keep_file(self.folder("given"), "cases", cases)
         with bounded_folder(self.folder("answers"), megabytes(most)) as out:
-            launch(self.docker, command, [(binary, where, True), (given, "/cases", True), (out, "/answers", False)], 2, seconds, blame, what)
+            launch(self.docker, command, [(binary, where, True), (given, "/cases", True), (out, "/answers", False)], processes, seconds, blame, what)
             return left(out, "answers", most, blame, what + ": /answers/answers")
 
 
@@ -498,7 +501,7 @@ def judge(args, work):
     STATE["seed"], STATE["seed_origin"] = seed.hex(), "given" if args.seed else "drawn"
     cases = parse_cases(judgement.generate(reference, args.unit, unit["cases"], seed), unit)
     written = judgement.answers(["/ref/reference", args.unit], reference, "/ref", frame_cases(cases), STREAM_BYTES,
-                                manifest["reference_seconds"], Erreur, "the reference's run")
+                                manifest["reference_seconds"], Erreur, "the reference's run", processes=manifest["build_processes"])
     if written is None:
         raise Erreur("the reference's run left no /answers/answers")
     expected = parse_answers(written, unit)

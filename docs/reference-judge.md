@@ -113,7 +113,8 @@ a unit's.
 | `/unit/driver` | `/unit`, `/cases`, `/answers` | write `/answers/answers`, exit 0 |
 
 Every container is without network, read-only, unprivileged, bounded in time, memory, processes and bytes
-written; a run has room for its driver and no other process; a folder a container writes in is a memory file
+written; a run of a unit has room for its driver and no other process (the reference's own programs have the
+room of a build); a folder a container writes in is a memory file
 system of bounded size, gone when the step ends. A container's command also carries a time of its own, a little
 after the judge's: it ends even if the judge is no longer there to stop it.
 

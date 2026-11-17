@@ -496,6 +496,17 @@ class TestTheJudgeInContainers(Base):
 
     def test_a_run_has_room_for_its_driver_and_no_other_process(self):
         self.assertEqual(self.judge(self.candidate({"port/upper.c": FORKS}))[0], 0, "it could start no process: it answered right")
+        # the reference's own driver is the project's program, not a candidate's: it has the room of a build (here it
+        # starts a helper process and waits for it, as a sanitizer's check for leaks does)
+        text = (TOY / "harness/reference_driver.c").read_text()
+        opening = "int main(int argc, char **argv)\n{\n"
+        self.assertEqual(text.count(opening), 1)
+        helper = ("    pid_t helper = fork();\n    if (helper < 0)\n        return 9;\n    if (helper == 0)\n        _exit(0);\n"
+                  "    waitpid(helper, NULL, 0);\n")
+        helped = write_tree(self.root / "helped", {"harness/reference_driver.c": "#include <sys/wait.h>\n#include <unistd.h>\n"
+                                                   + text.replace(opening, opening + helper)})
+        self.assertEqual(self.judge(tip=helped)[0], 0)
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, helped), tip=helped)[0], 0)
 
     def test_a_unit_right_in_the_generators_order_only(self):
         """Each run is given the cases in an order of its own, drawn by the judge: a unit that is right only in the
