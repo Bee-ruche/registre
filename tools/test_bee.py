@@ -999,7 +999,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
                        "suite.yml": {"contents": "read"},  # ruche-0132 (the switch's own check, ruche-0143, went with the switch: November 2026)
                        "hive-tests.yml": {"contents": "read"},  # the hive protocol's tests (docs/protocol.md)
-                       "hive.yml": {}}  # the hive's hourly run: nothing for the run, each job asks for what it needs (TestHiveWorkflow)
+                       "hive.yml": {},  # the hive's hourly run: nothing for the run, each job asks for what it needs (TestHiveWorkflow)
+                       "hive-cjson.yml": {}}  # the same run for the hive's second project (TestHiveWorkflowOfTheSecondProject)
         # Every entry of the folder, whatever its name ends with: GitHub also runs a workflow written in a .yaml file.
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").iterdir()), sorted(permissions))
         for name, expected_ones in permissions.items():
@@ -1011,9 +1012,9 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                         "validation.yml": {"dispatch": {"actions": "write"}},
                         "verdicts.yml": {"pause": {}}, "auto-integration.yml": {"pause": {}},  # ruche-0122: verdicts, integration
                         "auto-merge.yml": {"verify": {"contents": "read", "pull-requests": "read", "actions": "read"}},  # ruche-0120
-                        "hive.yml": {"plan": {"contents": "read"}, "judge": {"contents": "read"},  # no job writes to the registry
-                                     "record": {"contents": "read", "actions": "read"},  # the two that take the run's artifacts themselves
-                                     "apply": {"contents": "read", "actions": "read"}}}.get(name, {})
+                        **{hive: {"plan": {"contents": "read"}, "judge": {"contents": "read"},  # no job writes to the registry
+                                  "record": {"contents": "read", "actions": "read"},  # the two that take the run's artifacts themselves
+                                  "apply": {"contents": "read", "actions": "read"}} for hive in ("hive.yml", "hive-cjson.yml")}}.get(name, {})
                 self.assertEqual({n: j["permissions"] for n, j in stream["jobs"].items() if "permissions" in j}, jobs)
                 for step in self.steps(name):
                     self.assertNotIn("${{", step.get("run", ""), step.get("name"))
@@ -23885,7 +23886,8 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
 
 class TestHiveWorkflow(unittest.TestCase):
     """The hive's hourly run (.github/workflows/hive.yml; docs/hive-workflow.md explains it): the rules that keep its four jobs
-    apart, read on the file itself.
+    apart, read on the file itself. The run of a second project is another file, held by the same tests, line for line
+    (TestHiveWorkflowOfTheSecondProject): what differs between the two is named below, and nothing else may.
 
     The two jobs that hold a key are held whole, word for word (test_the_two_jobs_that_hold_a_key_are_exactly_these): a rule
     on their shape would leave room beside it, and whoever changes one of them changes this test in the same commit, in sight
@@ -23897,7 +23899,13 @@ class TestHiveWorkflow(unittest.TestCase):
     DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
     APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
     PIN = "a89e36102b43a939aaeec0562bd8a8def73c3ffa"  # the one commit of the registry every job runs (forty zeros name none)
-    REGISTRY = {"uses": CHECKOUT, "with": {"path": "registry", "ref": PIN, "persist-credentials": False}}
+    # What one project's run has of its own: its file and title, the project's name in the registry and its repository,
+    # the variable that starts it, its group (one run of a project at a time), its minute, how its judge's image is made.
+    FILE, TITLE = "hive.yml", "Hive"
+    HIVE_PROJECT, REPOSITORY = "miniz", "minizBee"
+    SWITCH, GROUP, CRON = "HIVE_PROJECTS", "hive-miniz", "17 * * * *"
+    IMAGE = "python3 registry/tools/judge/judge.py --tooling project --image-only"
+    FILES = ("hive.yml", "hive-cjson.yml")  # the files that may name the hive's environments and keys: these, and no other
     STATE_CHECKOUT = {"uses": CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "token": "${{ steps.state.outputs.token }}"}}
     TAKE = "python3 registry/tools/hive/artifact.py take"
 
@@ -23909,7 +23917,8 @@ class TestHiveWorkflow(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.text = (ROOT / ".github/workflows/hive.yml").read_text(encoding="utf-8")
+        cls.REGISTRY = {"uses": cls.CHECKOUT, "with": {"path": "registry", "ref": cls.PIN, "persist-credentials": False}}
+        cls.text = (ROOT / ".github/workflows" / cls.FILE).read_text(encoding="utf-8")
 
         # A key written twice is read once by the usual parser, the last one: what a reader sees would not be what runs.
         cls.stream = yaml.load(cls.text, Loader=cls.once_loader())
@@ -23934,7 +23943,7 @@ class TestHiveWorkflow(unittest.TestCase):
                                "HIVESTATESECRET", "hive-state"),
                 self.STATE_CHECKOUT,
                 {"name": "Record the deals and publish the feed", "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}"},
-                 "run": "python3 registry/tools/hive/hive.py record --registry registry --project miniz --state state \\\n"
+                 "run": f"python3 registry/tools/hive/hive.py record --registry registry --project {self.HIVE_PROJECT} --state state \\\n"
                         '  --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" --commit-state\n'}]})
         self.assertEqual(self.jobs["apply"], {
             "needs": ["plan", "record", "judge"],
@@ -23954,15 +23963,15 @@ class TestHiveWorkflow(unittest.TestCase):
                         "  --into taken/verdicts || { mkdir -p taken/verdicts && echo '{}' > taken/verdicts/verdicts.json; }\n"},
                 self.app_token("A token of an hour for the state repository", "state", self.STATE, "HIVESTATESECRET", "hive-state"),
                 self.app_token("A token of an hour for the project, and nothing else", "project", self.PROJECT,
-                               "HIVEAPPLYSECRET", "minizBee"),
+                               "HIVEAPPLYSECRET", self.REPOSITORY),
                 self.STATE_CHECKOUT,
-                {"name": "The project", "run": "git clone --quiet https://github.com/Bee-ruche/minizBee project"},
+                {"name": "The project", "run": f"git clone --quiet https://github.com/Bee-ruche/{self.REPOSITORY} project"},
                 {"name": "Push what the judge accepted, and record (the only step that holds the project's token)",
                  "env": {"PLAN_SHA256": "${{ needs.plan.outputs.plan_sha256 }}", "HIVE_PROJECT_TOKEN": "${{ steps.project.outputs.token }}"},
                  "run": "auth=$(printf 'x-access-token:%s' \"$HIVE_PROJECT_TOKEN\" | base64 -w0)\n"
                         'echo "::add-mask::$auth"\n'  # the form git sends the token in is kept out of the run's log too
-                        'git -C project config http.https://github.com/Bee-ruche/minizBee.extraheader "Authorization: Basic $auth"\n'
-                        "python3 registry/tools/hive/hive.py apply --registry registry --project miniz --state state \\\n"
+                        f'git -C project config http.https://github.com/Bee-ruche/{self.REPOSITORY}.extraheader "Authorization: Basic $auth"\n'
+                        f"python3 registry/tools/hive/hive.py apply --registry registry --project {self.HIVE_PROJECT} --state state \\\n"
                         '  --repo project --plan taken/plan/plan.json --plan-sha256 "$PLAN_SHA256" \\\n'
                         "  --bundle taken/candidates/candidates.bundle --verdicts taken/verdicts/verdicts.json --commit-state\n"}]})
 
@@ -23972,20 +23981,20 @@ class TestHiveWorkflow(unittest.TestCase):
         which folder an archive is unpacked into, which tree the judge's image is built from)."""
         self.maxDiff = None
         state = {"uses": self.CHECKOUT, "with": {"repository": "Bee-ruche/hive-state", "path": "state", "persist-credentials": False}}
-        project = "git clone --quiet https://github.com/Bee-ruche/minizBee project"
+        project = f"git clone --quiet https://github.com/Bee-ruche/{self.REPOSITORY} project"
 
         def upload(name, path, **more):
             return {"uses": self.UPLOAD, **more, "with": {"name": name, "path": path, "retention-days": 3}}
 
         self.assertEqual(self.jobs["plan"], {
-            "if": "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 30,
+            "if": f"vars.{self.SWITCH} != '' && github.ref == 'refs/heads/main'", "runs-on": "ubuntu-24.04", "timeout-minutes": 30,
             "permissions": {"contents": "read"}, "outputs": {"plan_sha256": "${{ steps.plan.outputs.plan_sha256 }}"},
             "steps": [
                 self.REGISTRY, state,
                 {"name": "The project, in full (its branches under refs/remotes/origin)", "run": project},
                 {"name": "Plan (reads the forks, once; no key, only the read-only token gh needs to list forks)", "id": "plan",
                  "env": {"GH_TOKEN": "${{ github.token }}"},
-                 "run": "python3 registry/tools/hive/hive.py plan --registry registry --project miniz --state state \\\n"
+                 "run": f"python3 registry/tools/hive/hive.py plan --registry registry --project {self.HIVE_PROJECT} --state state \\\n"
                         '  --repo project --out plan.json --bundle candidates.bundle >> "$GITHUB_OUTPUT"\n'
                         "touch candidates.bundle\n"},
                 upload("plan", "plan.json"), upload("candidates", "candidates.bundle")]})
@@ -23997,19 +24006,20 @@ class TestHiveWorkflow(unittest.TestCase):
                 {"uses": self.DOWNLOAD, "with": {"name": "plan", "path": "taken/plan"}},
                 {"uses": self.DOWNLOAD, "with": {"name": "candidates", "path": "taken/candidates"}},
                 {"name": "The judge's image (with network; built from the project's own tree, and no candidate's code runs here)",
-                 "run": "python3 registry/tools/judge/judge.py --tooling project --image-only"},
+                 "run": self.IMAGE},
                 {"name": "Judge the plan's candidates (their code runs only in containers without network)",
                  "run": "mkdir -p work judge-work\n"
-                        "python3 registry/tools/hive/hive.py judge --registry registry --project miniz --state state \\\n"
+                        f"python3 registry/tools/hive/hive.py judge --registry registry --project {self.HIVE_PROJECT} --state state \\\n"
                         "  --repo project --plan taken/plan/plan.json --bundle taken/candidates/candidates.bundle --workdir work \\\n"
                         "  --judge-workdir judge-work --out verdicts.json\n"},
                 upload("verdicts", "verdicts.json", **{"if": "always()"})]})
-        self.assertEqual(self.stream[True], {"schedule": [{"cron": "17 * * * *"}], "workflow_dispatch": None}, "once an hour, or by hand")
-        self.assertEqual(self.stream["name"], "Hive")
+        self.assertEqual(self.stream[True], {"schedule": [{"cron": self.CRON}], "workflow_dispatch": None}, "once an hour, or by hand")
+        self.assertEqual(self.stream["name"], self.TITLE)
 
     def test_no_other_workflow_names_the_hives_environments_or_keys(self):
         """An environment gives its keys to any job that names it, in any workflow of a branch it accepts: the two
-        environments accept `main` only (a setting), and on `main` this file alone names them. Every file of the folder
+        environments accept `main` only (a setting), and on `main` the hive's own runs alone name them (FILES: one
+        file for each project, each held by this class or a subclass of it). Every file of the folder
         is read, whatever its name ends with (the list of them is held by test_the_workflows_security_is_unchanged). And
         no job of any workflow, this one included, is another repository's workflow: a workflow that is called runs with
         its caller's rights, and its text is not in this repository for a test or a reviewer to read."""
@@ -24019,12 +24029,12 @@ class TestHiveWorkflow(unittest.TestCase):
                 for name, job in yaml.safe_load(text)["jobs"].items():
                     if "uses" in job:
                         self.assertRegex(job["uses"], r"\A\./\.github/workflows/[a-z-]+\.yml\Z", f"{name}: a workflow of this repository")
-                    if path.name == "hive.yml":
+                    if path.name in self.FILES:
                         continue
                     environment = job.get("environment")
                     named = environment.get("name") if isinstance(environment, dict) else environment
                     self.assertIn(named, (None, "github-pages"), f"{name}: an environment this test does not know")
-                if path.name != "hive.yml":
+                if path.name not in self.FILES:
                     for word in ("hive-state", "hive-apply", "HIVESTATESECRET", "HIVEAPPLYSECRET", "create-github-app-token"):
                         self.assertNotIn(word.lower(), text.lower())
         with self.assertRaisesRegex(AssertionError, "a key twice"):  # (the parser of setUpClass does refuse a key written twice)
@@ -24038,6 +24048,26 @@ class TestHiveWorkflow(unittest.TestCase):
                 assert len(keys) == len(set(map(repr, keys))), f"a key twice in one mapping: {keys}"
                 return super().construct_mapping(node, deep)
         return Once
+
+    def test_the_texts_that_say_how_to_stop_the_hive_name_every_runs_switch(self):
+        """Each project's run has a switch of its own, a repository variable. Whoever stops the hive follows a text:
+        the three that say how name the switch of every run, so that none is left running."""
+        switches = set()
+        for name in self.FILES:
+            text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            found = set(re.findall(r"\bvars\.([A-Z_]+)", re.sub(r"(?m)#.*$", "", text)))
+            self.assertEqual(len(found), 1, f"{name}: one switch, and no other variable of the repository")
+            switches |= found
+        self.assertEqual(len(switches), len(self.FILES), "a switch of its own for each run")
+        self.assertIn(self.SWITCH, switches)
+        workflow = (ROOT / "docs/hive-workflow.md").read_text(encoding="utf-8")
+        plan = (ROOT / "docs/plan.md").read_text(encoding="utf-8")
+        stops = [re.search(r"(?s)- \*\*To stop the hive\*\*.*?(?=\n- )", workflow), re.search(r"(?m)^\| Stopping the hive at once \|.*$", plan),
+                 re.search(r"(?s)- \*\*The stop button\*\*.*?(?=\n- )", plan)]
+        for found in stops:
+            self.assertIsNotNone(found, "a text that says how to stop the hive was renamed: this test must follow it")
+            for switch in sorted(switches):
+                self.assertIn(f"`{switch}`", found.group(0), "a run's switch is missing from a text that says how to stop the hive")
 
     def test_nothing_is_set_for_a_whole_job_or_for_the_whole_run(self):
         """A key, a token or a variable reaches a step through that step's own lines, where the test above reads it: the run, a
@@ -24061,7 +24091,7 @@ class TestHiveWorkflow(unittest.TestCase):
                          {"plan": {"contents": "read"}, "judge": {"contents": "read"},
                           "record": {"contents": "read", "actions": "read"}, "apply": {"contents": "read", "actions": "read"}},
                          "no job may write to the registry; the two that take artifacts by themselves may read the run's")
-        self.assertEqual(self.stream["concurrency"], {"group": "hive-miniz", "cancel-in-progress": False})
+        self.assertEqual(self.stream["concurrency"], {"group": self.GROUP, "cancel-in-progress": False})
 
     def test_no_text_becomes_code_and_every_action_is_pinned(self):
         for name, job in self.jobs.items():
@@ -24186,7 +24216,7 @@ class TestHiveWorkflow(unittest.TestCase):
                     asked.append((name, step["id"], step["with"]["private-key"], step["with"]["repositories"], step["with"]["client-id"]))
         self.assertEqual(asked, [("record", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
                                  ("apply", "state", "${{ secrets.HIVESTATESECRET }}", "hive-state", self.STATE),
-                                 ("apply", "project", "${{ secrets.HIVEAPPLYSECRET }}", "minizBee", self.PROJECT)])
+                                 ("apply", "project", "${{ secrets.HIVEAPPLYSECRET }}", self.REPOSITORY, self.PROJECT)])
         # However an expression spells it (secrets.X, secrets['X'], toJSON(secrets)): the word appears three times, in those inputs.
         self.assertEqual(len(re.findall(r"(?i)secrets", re.sub(r"(?m)#.*$", "", self.text))), 3, "a key appears nowhere else")
         self.assertEqual(sum(self.APP_TOKEN in u for job in self.jobs for u in self.uses(job)), 3)
@@ -24226,7 +24256,7 @@ class TestHiveWorkflow(unittest.TestCase):
 
     def test_the_jobs_run_on_main_only_and_a_cancelled_run_pushes_nothing(self):
         self.assertEqual({name: (job.get("needs"), job["if"]) for name, job in self.jobs.items()},
-                         {"plan": (None, "vars.HIVE_PROJECTS != '' && github.ref == 'refs/heads/main'"),
+                         {"plan": (None, f"vars.{self.SWITCH} != '' && github.ref == 'refs/heads/main'"),
                           "record": ("plan", "github.ref == 'refs/heads/main'"),
                           "judge": (["plan", "record"], "github.ref == 'refs/heads/main'"),
                           "apply": (["plan", "record", "judge"],
@@ -24254,11 +24284,39 @@ class TestHiveWorkflow(unittest.TestCase):
 
     def test_the_judging_job_outlasts_the_time_the_hive_allows_itself(self):
         """The hive starts no judgement that could end after its own limit; one check of the machine may follow the last."""
-        settings = json.loads((ROOT / "hive/projects/miniz.json").read_text(encoding="utf-8"))
+        settings = json.loads((ROOT / f"hive/projects/{self.HIVE_PROJECT}.json").read_text(encoding="utf-8"))
         allowed = settings.get("limits", {}).get("judging_seconds", 14400)
         one = settings["judge"].get("timeout_seconds", 3600)
         self.assertGreaterEqual(self.jobs["judge"]["timeout-minutes"] * 60, allowed + one + 1800)
         self.assertLessEqual(self.jobs["judge"]["timeout-minutes"], 360, "GitHub's own limit for a job")
+
+
+class TestHiveWorkflowOfTheSecondProject(TestHiveWorkflow):
+    """The hourly run of the hive's second project (.github/workflows/hive-cjson.yml): the first project's run, held by
+    the same tests line for line, but for what this class names: its file and title, its project and repository, its
+    own switch, group and minute, and how its judge's image is made (the judge's second kind).
+
+    The commit of the registry it names is forty zeros, which name none: the file starts nothing, switch or not,
+    until a commit of main is written in it, by a pull request, on the founder's decision."""
+
+    PIN = "0" * 40
+    FILE, TITLE = "hive-cjson.yml", "Hive (cjson)"
+    HIVE_PROJECT, REPOSITORY = "cjson", "cjsonRustBee"
+    SWITCH, GROUP, CRON = "HIVE_CJSON", "hive-cjson", "47 * * * *"
+    IMAGE = "python3 registry/tools/judge/reference.py --tip project --image-only"
+
+    def test_the_two_runs_share_nothing_but_the_state_and_the_keys(self):
+        """Each project has its own switch, its own group (one run of a project at a time, and the two projects' runs do
+        not wait for each other), its own minute, its own repository; the state repository, the two environments and
+        the two Apps are the hive's, the same for both."""
+        first, second = TestHiveWorkflow, type(self)
+        for name in ("FILE", "TITLE", "HIVE_PROJECT", "REPOSITORY", "SWITCH", "GROUP", "CRON", "IMAGE"):
+            self.assertNotEqual(getattr(first, name), getattr(second, name), name)
+        for name in ("STATE", "PROJECT", "CHECKOUT", "UPLOAD", "DOWNLOAD", "APP_TOKEN", "TAKE", "FILES"):
+            self.assertEqual(getattr(first, name), getattr(second, name), name)
+        self.assertEqual(sorted(second.FILES), sorted([first.FILE, second.FILE]))
+        declared = json.loads((ROOT / f"hive/projects/{self.HIVE_PROJECT}.json").read_text(encoding="utf-8"))
+        self.assertEqual((declared["project"], declared["repo"], declared["judge"]["kind"]), ("cjson", "Bee-ruche/cjsonRustBee", "reference"))
 
 
 if __name__ == "__main__":
