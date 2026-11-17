@@ -3538,7 +3538,8 @@ def hive_projects(registry):
     name and its repository, and nothing else of its file. A command checks in full only the project it is given
     (hive_project): what another project's file asks of the tool does not stop this one's workers. The two fields are
     read of every file because own_fork compares every project's repository with the fork's: a file that cannot be
-    read, or that gives neither, stops the command, since nothing then says the fork is not a project itself.
+    read, or that does not give both under its own name, stops the command, since nothing then says the fork is not
+    a project itself.
     Trusted: the registry's own tree."""
     listed = []
     try:

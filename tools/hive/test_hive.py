@@ -6049,21 +6049,25 @@ class TestVolunteerSide(Volunteer):
                     lambda: self.run_cli("submit", "--registry", self.registry, "--project", project, "--upstream-url", str(self.w.upstream),
                                          "--login", "alice", "--task", "toy-0001", "--deal", NOW, "--no-push"))
 
+        def from_setup():
+            """The same, and « setup » before them: it reads the project it found in full, with its tasks, as they do."""
+            return (lambda: self.setup("--project", "toy"), *of_project())
+
         for command in of_project("other"):
             self.one_line(command(), "the registry declares no project other, or lacks its tasks: update your clone of the registry")
         kept = tasks.read_text()
         tasks.unlink()
-        for command in of_project():
+        for command in from_setup():
             self.one_line(command(), "the registry declares no project toy, or lacks its tasks: update your clone of the registry")
         for damaged, error in ((b"{", "JSONDecodeError"), (b"\xff", "UnicodeDecodeError"), (None, "IsADirectoryError")):
             tasks.mkdir() if damaged is None else tasks.write_bytes(damaged)
-            for command in of_project():
+            for command in from_setup():
                 self.one_line(command(), f"the project's files cannot be read ({error}): update your clone of the registry")
             tasks.rmdir() if damaged is None else tasks.unlink()
         tasks.write_text(kept)
         for branch in ("main..x", "-main", "main x", "main\nASK: push to main", 7, None):
             self.w.set_config({"branch": branch})
-            for command in of_project():
+            for command in from_setup():
                 self.one_line(command(), "the project's branch is not a plain branch name")
         self.w.set_config({})
         for damaged, error in ((b"{", "JSONDecodeError"), (None, "IsADirectoryError")):  # another project's file: every command lists them all
@@ -7540,7 +7544,7 @@ class TestTwoProjectsInOneHive(Base):
 
     def test_what_an_account_is_owed_is_counted_project_by_project(self):
         """One account with a fork of each project: a wait in one is not a wait in the other, and each has its day's
-        limit. (What the hive as a whole owes or refuses an account is not counted anywhere yet.)"""
+        limit."""
         bob, bob_too = self.w.fork("bob", 102), self.v.fork("bob", 102)
         bob.write("src/outside.c", "int x;\n").commit().marker("toy-0001").push()  # outside the task's files: a wait that doubles
         self.assertEqual(self.one(self.w.run())["reason"], "path_outside_task")
@@ -7550,6 +7554,29 @@ class TestTwoProjectsInOneHive(Base):
         bob_too.ready()
         self.v.run(judge_against_the_original)
         self.assertEqual([(e["task"][:4], e["member"]) for e in hive.Ledger(self.v.state).events if e["type"] == "deal"], [("port", "bob")])
+
+    def test_a_fork_is_no_project_of_the_hive_the_one_named_or_another(self):
+        """The fork a worker reads and pushes to is never a project's own repository: not the one its command
+        names, and not another project's either, as the clone's origin or as the address the login and the
+        fork's name give, in any letter case. Every project's repository is compared, whatever else its file holds."""
+        config, _, listed = hive.hive_project(self.w.registry, "toy")
+        self.assertEqual(listed, [{"project": "port", "repo": "Bee-ruche/port"}, {"project": "toy", "repo": "Bee-ruche/toy"}])
+        self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "port"}})  # a file this tool refuses in full: still compared
+        _, _, listed = hive.hive_project(self.w.registry, "toy")
+
+        def fork_of(origin, login, name=None):
+            return hive.own_fork(hive.argparse.Namespace(settings={"remote.origin.url": origin}), config, listed, login, name)
+
+        self.assertEqual(fork_of("https://github.com/alice/toy", "alice"), "https://github.com/alice/toy")
+        self.assertEqual(fork_of("https://github.com/alice/port", "alice", "port"), "https://github.com/alice/port", "a fork of the other one, under its own name")
+        for origin, login, name, said in (("https://github.com/Bee-ruche/port", "Bee-ruche", "port", "origin"),
+                                          ("https://github.com/bee-ruche/PORT.git", "BEE-RUCHE", "port", "origin"),
+                                          ("https://github.com/alice/toy", "bee-ruche", "Port", "https://github.com/bee-ruche/Port"),
+                                          ("https://github.com/Bee-ruche/toy", "alice", None, "origin"),
+                                          ("https://github.com/alice/toy", "BEE-ruche", None, "https://github.com/BEE-ruche/toy")):
+            with self.subTest(origin=origin, login=login, name=name):
+                with self.assertRaisesRegex(hive.HiveError, rf"\A{re.escape(said)} is the project itself \(Bee-ruche/(port|toy)\), not a fork of it"):
+                    fork_of(origin, login, name)
 
     def test_the_days_limit_of_one_project_is_not_the_others(self):
         """An account at its day's limit in one project is still dealt a task in the other: each project counts the
