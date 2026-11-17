@@ -3,8 +3,8 @@
 *How work reaches the hive. Implemented by `tools/hive/hive.py`, tested by `tools/hive/test_hive.py` and
 `tools/hive/test_schedule.py`.*
 
-> **Status: in service for one project, by invitation, since 16 November 2026** (miniz, with one worker, the
-> founder's own: [hive-workflow.md](hive-workflow.md)). **Nobody else is invited before a whole round of review by
+> **Status: in service for two test projects, by invitation, since 16 November 2026** (miniz, and cjson since
+> 17 November, with one worker, the founder's own: [hive-workflow.md](hive-workflow.md)). **Nobody else is invited before a whole round of review by
 > another model, on the code as it stands, finds nothing high or critical** ([plan.md](plan.md), 7.2). In an
 > earlier draft, members competed for tasks and the hive decided who came first; review after review, by a model
 > other than the one that wrote the collector, that decision was where the guarantees gave way. This version removes
