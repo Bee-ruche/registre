@@ -86,8 +86,8 @@ Five things carry it:
 7. **Which version of the hive a run uses: one commit, named in the workflow file** (decided 13 November 2026).
    Every job checks out the registry at that commit and at no other: the hive's code, its settings and its tasks
    change when a pull request that a person reviewed changes that line, and at no other time. A new file holds
-   forty zeros in its place, which no checkout can find (the first project's did until 16 November 2026; the second
-   project's does): the line is set, by a pull request of its own, to the commit of `main` that the founder
+   forty zeros in its place, which no checkout can find (the first project's did until 16 November 2026, the second
+   project's until 17 November): the line is set, by a pull request of its own, to the commit of `main` that the founder
    accepted, after the file is on `main`. A new batch of tasks is such a pull request too.
    The tests fail unless the commit named is one that `main` itself has been at (the line of first parents of its
    tip): GitHub serves any commit of a repository by its id, a pull request's included, and a commit inside a pull
@@ -99,8 +99,10 @@ Five things carry it:
    project at a time; the two projects' runs do not wait for each other) and **its own switch, the repository
    variable `HIVE_CJSON`**. The state repository, the two environments and the two Apps are the hive's, the same for
    both runs. What only the founder can make for it: the project's repository, with its two branches as in point 4;
-   the project App installed on it; the variable; and the commit its file names (point 7: forty zeros until then,
-   so the file starts nothing, variable or not).
+   the project App installed on it; the variable; and the commit its file names (point 7). On 17 November 2026 the
+   repository, its branches and their rules were made and the App was given it, and the file names the commit the
+   first project's file names (`3cd46a2`), where the project is declared paused; the variable is empty, so the file
+   starts nothing.
 
 ## The file
 
@@ -158,8 +160,8 @@ member ([decisions.md](decisions.md), 16 November); how often the judge refuses 
 still unmeasured. One point that list does not hold: a run that finds the state repository moved by another
 project's run takes what that run saved and pushes again (setting 8 above, [decisions.md](decisions.md), 17
 November); with one project in service no run has met that case, and it has run in the tests only. Of the second
-project's file (setting 8 above) nothing has run: its repository exists since 17 November 2026, and its file names
-no commit yet.
+project's file (setting 8 above) nothing has run: its repository exists and its file names a commit since 17 November
+2026, and its switch is empty.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
