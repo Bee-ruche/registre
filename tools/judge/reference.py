@@ -399,6 +399,13 @@ def frame_answers(answers):
     return b"".join(struct.pack("<IBI", index, status, len(data)) + data for index, (status, data) in enumerate(answers))
 
 
+def order_of(seed, build, run, count):
+    """The order one run is given its cases in: drawn from the judgement's seed, another for each build and run."""
+    order = list(range(count))
+    random.Random(hashlib.sha256(seed + f"/order/{build}/{run}".encode()).digest()).shuffle(order)
+    return order
+
+
 # ---------------------------------------------------------------- one judgement
 
 def image_of(manifest):
@@ -472,19 +479,19 @@ def judge(args, work):
     if args.tip_itself:
         return {"cases_compared": 0, "builds": 0, "runs": 0}
 
-    STATE["step"] = 7
+    STATE["step"], runs = 7, 0
     for build, binary in enumerate(binaries):
         for run in range(manifest["runs"]):
-            order = list(range(len(cases)))
-            random.Random(hashlib.sha256(seed + f"/order/{build}/{run}".encode()).digest()).shuffle(order)
+            order = order_of(seed, build, run, len(cases))
             wanted = frame_answers([expected[index] for index in order])
             what = f"build {build + 1}, run {run + 1} of unit {args.unit}"
             given = judgement.answers(["/unit/driver"], binary, "/unit", frame_cases([cases[index] for index in order]), len(wanted) + 1,
                                       manifest["run_seconds"], Refus, what)
             if given != wanted:
                 raise Refus(f"{what}: its answers are not the reference's")
+            runs += 1
     STATE["step"] = 9
-    return {"cases_compared": len(cases) * len(binaries) * manifest["runs"], "builds": len(binaries), "runs": len(binaries) * manifest["runs"]}
+    return {"cases_compared": len(cases) * runs, "builds": len(binaries), "runs": runs}  # what was done, not what was asked
 
 
 def write_report(path, report):

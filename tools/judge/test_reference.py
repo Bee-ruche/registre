@@ -107,6 +107,8 @@ READS_THE_ORIGINAL = ('#include "unit.h"\n#include "/src/reference/original.c"\n
                       "{ return original_upper(in, n, out, cap, len); }\n")
 READS_THE_ORIGINAL_BESIDE = READS_THE_ORIGINAL.replace("/src/reference/original.c", "../reference/original.c")
 KEEPS_STATE = hostile(inside="    static unsigned long calls;\n", after_loop="    if (++calls > 100 && n) out[0] ^= 1;\n")
+# Right only when each case is at least as long as the one before: in the order of a generator that sorts them.
+ORDER_BOUND = hostile(inside="    static size_t last;\n", after_loop="    if (n < last && n) out[0] ^= 1;\n    last = n;\n")
 # Right only where the unit lies at one distance, among many, from the driver's own code: the build moves it with the nonce.
 ONE_LAYOUT_ONLY = hostile(before="extern int main(void);\n",
                           after_loop="    if (n && ((((unsigned long)answer - (unsigned long)main) >> 3) % 256) != 77) out[0] ^= 1;\n")
@@ -246,6 +248,19 @@ class TestTheFraming(unittest.TestCase):
         with self.assertRaisesRegex(Erreur, "the same answer"):
             reference.parse_answers(framed((0, 0, 1, b"A"), (1, 0, 1, b"A"), (2, 0, 1, b"A")), never)
         self.assertEqual(reference.parse_answers(framed((0, 0, 1, b"A")), {**never, "cases": 1}), [(0, b"A")], "one case has one answer")
+
+
+class TestTheDraws(unittest.TestCase):
+    def test_each_run_has_an_order_of_its_own_drawn_from_the_seed(self):
+        seed, other = bytes(32), bytes([1]) * 32
+        orders = {(build, run): reference.order_of(seed, build, run, 300) for build in range(3) for run in range(3)}
+        for order in orders.values():
+            self.assertEqual(sorted(order), list(range(300)), "every case, once")
+            self.assertNotEqual(order, list(range(300)), "not the generator's own order")
+        self.assertEqual(len({tuple(order) for order in orders.values()}), 9, "another for each build and each run")
+        self.assertEqual(reference.order_of(seed, 1, 2, 300), orders[1, 2], "the same seed gives the same orders")
+        self.assertNotEqual(reference.order_of(other, 1, 2, 300), orders[1, 2])
+        self.assertEqual((reference.order_of(seed, 0, 0, 0), reference.order_of(seed, 0, 0, 1)), ([], [0]))
 
 
 class TestTreesOnTheHost(Base):
@@ -412,6 +427,20 @@ class TestTheJudgeInContainers(Base):
 
     def test_a_unit_that_keeps_something_from_one_call_to_the_next(self):
         self.refused(KEEPS_STATE, "its answers are not the reference's")
+
+    def test_a_unit_right_in_the_generators_order_only(self):
+        """Each run is given the cases in an order of its own, drawn by the judge: a unit that is right only in the
+        order the generator wrote them in (here a generator that sorts them, and a unit that counts on it) is refused."""
+        sort = ("    for (i = 0; i < count; i++)\n        for (j = i + 1; j < count; j++)\n            if (lengths[j] < lengths[i]) {\n"
+                "                unsigned char kept[LONGEST + 1];\n                size_t n = lengths[i];\n"
+                "                memcpy(kept, cases[i], sizeof kept), memcpy(cases[i], cases[j], sizeof kept), memcpy(cases[j], kept, sizeof kept);\n"
+                "                lengths[i] = lengths[j], lengths[j] = n;\n            }\n")
+        opening = '    out = fopen("/cases/cases", "wb");\n'
+        text = (TOY / "harness/generate.c").read_text()
+        self.assertEqual(text.count(opening), 1)
+        sorted_cases = write_tree(self.root / "sorted", {"harness/generate.c": text.replace(opening, sort + opening)})
+        self.refused(ORDER_BOUND, "its answers are not the reference's", tip=sorted_cases)
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, sorted_cases), tip=sorted_cases)[0], 0)
 
     def test_a_unit_right_in_one_layout_only_and_a_build_that_ignores_the_nonce(self):
         self.refused(ONE_LAYOUT_ONLY, "its answers are not the reference's")
