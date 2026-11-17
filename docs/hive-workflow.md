@@ -55,7 +55,7 @@ Five things carry it:
 2. **Two integration identities, kept apart**: two GitHub Apps of the organization, each with the repository
    permission "Contents: read and write" and nothing else, no webhook:
    - a *state* App, installed on `hive-state` only;
-   - a *project* App, installed on the hosted projects only (`minizBee`).
+   - a *project* App, installed on the hosted projects only (`minizBee`, `cjsonRustBee`).
 
    The workflow asks GitHub, at each run, for a token of an hour for one repository
    (`actions/create-github-app-token`, pinned to a commit). The Apps exist since 13 November 2026: the state App
@@ -126,7 +126,9 @@ Notes on the file:
 - **To stop the hive**: cancel every run in flight (its `apply` then does not run), and empty the switch of each
   project's run for the runs to come: `HIVE_PROJECTS` for the first project's (`hive.yml`) and `HIVE_CJSON` for
   the second's (`hive-cjson.yml`). Both take effect at once, and neither needs a pull request. Emptying one
-  switch stops that project's run and no other. A project's `"paused": true` stops it too, but only from the
+  switch stops that project's run and no other. A project's `"paused": true` stops its work and not its run: no fork is
+  read, nothing is dealt, judged, integrated or written to the state, while the four jobs still start, take the
+  project's repository and their tokens, and make the judge's image. And it does so only from the
   day its workflow file names a commit of the registry that holds it: a run reads the registry at the commit
   the file names, not at `main`.
 - The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): the four jobs
