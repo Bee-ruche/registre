@@ -144,6 +144,6 @@ commit that holds that change since 17 November 2026, on the founder's decision
 fork of the project under the invited account, and that fork's ask.
 
 On 17 November 2026 the five leaves were dealt to the founder's worker, one after another, and every candidate was
-judged correct on a hosted runner (three builds, six runs, and 18,000 to 36,000 cases compared for each) and
-integrated on the project's `hive` branch. No candidate has been refused by this kind in service yet, and no
-judgement of it has failed there.
+judged correct on a hosted runner (for each: three builds, executed six times in all, and 18,000 to 36,000 cases
+compared) and integrated on the project's `hive` branch. In service, this kind has not refused a candidate yet,
+and none of its judgements has failed.
