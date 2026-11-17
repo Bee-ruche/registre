@@ -155,8 +155,11 @@ those runs. Still untried in it: an environment restricted to `main` refusing a 
 no-reply address count on their profile. The dry run of its last point was not made: the second real candidate
 showed the case (a correct candidate short of a proof alone), and a rule of the same day removes its cost to the
 member ([decisions.md](decisions.md), 16 November); how often the judge refuses work that is in fact better is
-still unmeasured. Of the second project's file (setting 8 above) nothing has run: its repository does not exist
-yet.
+still unmeasured. One point that list does not hold: a run that finds the state repository moved by another
+project's run takes what that run saved and pushes again (setting 8 above, [decisions.md](decisions.md), 17
+November); with one project in service no run has met that case, and it has run in the tests only. Of the second
+project's file (setting 8 above) nothing has run: its repository exists since 17 November 2026, and its file names
+no commit yet.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
