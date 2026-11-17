@@ -138,6 +138,7 @@ minifier, the string printer, the comparison of names without regard to case. Th
 cJSON's own: nothing is ever proposed to it from the hive.
 
 The project is declared **by invitation**, for the founder's own account alone (`members.only`). Its repository
-exists since 17 November 2026, and its file no longer says `"paused": true`. The hive deals its first task once the
+exists since 17 November 2026, and its file no longer says `"paused": true`. The hive deals nothing of it before the
 commit its workflow file names holds that change, which the founder decides
-([hive-workflow.md](hive-workflow.md)): until then a run reads the project's file where it is still paused.
+([hive-workflow.md](hive-workflow.md)): until then a run reads the project's file where it is still paused. A deal
+then needs what any project's does: a fork of the project under the invited account, and that fork's ask.

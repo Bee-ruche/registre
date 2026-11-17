@@ -103,9 +103,9 @@ Five things carry it:
    repository, its branches and their rules were made and the App was given it, and the file names the commit the
    first project's file names (`3cd46a2`), where the project is declared paused. The founder then had the variable
    set, and the first run was made with the project paused: its four jobs succeeded, the two that hold a key took
-   their tokens, the judge's image was made from the manifest the project's repository holds, and nothing was written
+   their tokens, the judge's image was made (the one the manifest in the project's repository names), and nothing was written
    to the state repository or to the project's. The project's file on `main` no longer declares it paused; a run
-   keeps the pause until the file names a commit that holds that change.
+   keeps the pause until its workflow file names a commit that holds that change.
 
 ## The file
 
