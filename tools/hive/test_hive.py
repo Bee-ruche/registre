@@ -6294,8 +6294,14 @@ class TestVolunteerSide(Volunteer):
         self.assertEqual((own["PATH"], own["HOME"]), (os.environ["PATH"], os.environ["HOME"]), "the rest of the environment is the machine's")
         self.assertEqual(({name for name in {**settings, **for_a_remote} if name in remote}, [name for name in places if name in remote]),
                          (set(settings) | set(for_a_remote), []))
+        # Another project's file: its name and its repository are all a command reads of it, and it must give both.
         (Path(self.registry) / "hive/projects/zz.json").write_text('{"protocol": 1, "limits": 5}')
-        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (", begins=True)
+        self.one_line(self.ready("--no-push"), "the registry's file zz.json does not name its project (the file's own name) and its repository "
+                                               "(owner/name): update your clone of the registry")
+        (Path(self.registry) / "hive/projects/zz.json").write_text('{"project": "zz", "repo": "Bee-ruche/zz", "protocol": 9, "limits": 5}')
+        self.assertEqual(self.ready("--no-push")[0], 0, "what else it holds is not this command's to read: " + self.err)
+        (Path(self.registry) / "hive/projects/zz.json").write_text("[" * 100000)
+        self.one_line(self.ready("--no-push"), "the registry's project files cannot be read (RecursionError): update your clone of the registry")
         (Path(self.registry) / "hive/projects/zz.json").unlink()
         own = Path(self.registry) / "hive/projects/toy.json"
         kept = own.read_text()
@@ -7472,16 +7478,23 @@ PORT_TASKS = [{"id": "port-0001", "title": "Write the first leaf", "files": ["li
 
 def judge_against_the_original(base, candidate, task, tip, commit):
     """A judge of another kind than the toy's: it measures nothing. A candidate is right when it answers as the
-    original does (here: when its lib.c says so), and wrong otherwise; its report counts the cases compared."""
+    original does (here: when its lib.c says so), and wrong otherwise; its report counts the cases compared. As
+    every kind does, it answers 0 for the project's tip judged against itself: the tip changes nothing, so nothing of
+    it is compared. A leaf that says the judge cannot run it is a failure to judge."""
+    if commit == tip:
+        return {"code": 0, "report": {"cases_compared": 0}}
     leaf = candidate / ("lib.c" if task["id"] == "port-0001" else "src/leaf.c")
     text = leaf.read_text() if leaf.exists() else ""
+    if "THE JUDGE CANNOT RUN THIS" in text:
+        return {"code": 2}
     return {"code": 0 if "ANSWERS AS THE ORIGINAL" in text else 1, "report": {"cases_compared": 64}}
 
 
 class TestTwoProjectsInOneHive(Base):
     """The hive is one, and a project is one of several: each has its repository, its forks, its file and tasks in
-    the registry, its folder of the state, its judge and its rules. Nothing of one is read or written by a run of the
-    other, and a worker in a fork of one is dealt tasks of that one."""
+    the registry, its folder of the state, its judge and its rules. A run of the hive for one reads and writes nothing
+    of the other; a worker in a fork of one is dealt tasks of that one, and reads of the other's file its name and its
+    repository only."""
 
     def setUp(self):
         super().setUp()
@@ -7538,6 +7551,107 @@ class TestTwoProjectsInOneHive(Base):
         self.v.run(judge_against_the_original)
         self.assertEqual([(e["task"][:4], e["member"]) for e in hive.Ledger(self.v.state).events if e["type"] == "deal"], [("port", "bob")])
 
+    def test_the_days_limit_of_one_project_is_not_the_others(self):
+        """An account at its day's limit in one project is still dealt a task in the other: each project counts the
+        deals of its own ledger."""
+        one_a_day = {"members": {**hive.DEFAULTS["members"], "deals_per_day": 1}}
+        self.w.set_config(one_a_day)
+        self.v.set_config({"judge": {"metrics": ["cases_compared"]}, **one_a_day})
+        bob, bob_too = self.w.fork("bob", 102), self.v.fork("bob", 102)
+        self.w.deal(bob, "toy-0001", hours=0)  # a deal of today in the first project, which ended without a candidate
+        (config, _, toy), (other, _, port) = self.w.load(), self.v.load()
+        self.assertEqual((toy.standing(102, hive.now(), config), port.standing(102, hive.now(), other)), ((1, None, 1), (1, None, 0)),
+                         "(class, wait, the day's deals that were not accepted): one in the first project, none in the second")
+        bob.ready(), bob_too.ready()
+        self.w.run(), self.v.run(judge_against_the_original)
+        self.assertEqual(self.w.dealt_by_runs(), [], "at its limit in the first project: nothing more today")
+        self.assertEqual([(task[:5], member) for task, member in self.v.dealt_by_runs()], [("port-", "bob")], "and dealt in the second")
+
+    def test_a_file_this_tool_refuses_stops_the_workers_of_its_own_project_only(self):
+        """A worker's command checks in full the project it is given. Of every other project it reads the name and
+        the repository, which it compares with the fork's, and nothing else: a file that asks for what this tool does
+        not hold (here, a kind of judge) stops the workers of that project, with a line that names the file, and
+        leaves the others at work. A file that does not even name its project and its repository stops them all:
+        nothing then says a fork is not a project itself."""
+        self.w.run(), self.v.run(judge_against_the_original)  # each project's first run publishes its feed
+        self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "port"}})
+        toy, port = ("--project", "toy"), ("--project", "port")
+        code, printed, said = self.cli(self.w, self.alice, "setup", "--upstream-url", str(self.w.upstream), *toy)
+        self.assertEqual((code, printed, said), (0, "PROJECT toy\nLOGIN alice\nUPSTREAM upstream/main\n", ""))
+        state = ("--state", str(self.w.state.parent))
+        self.assertEqual(self.cli(self.w, self.alice, "next", *toy, *state)[1][:4], "ASK:")
+        self.assertEqual(self.cli(self.w, self.alice, "ready", *toy)[0], 0)
+        self.w.run()
+        (task, member), = self.w.dealt_by_runs()
+        deal = hive.Ledger(self.w.state).deals()[task]["at"]
+        self.assertEqual(self.cli(self.w, self.alice, "next", *toy, *state)[1].split("\n")[0], f"TASK {task}")
+        self.assertEqual(self.cli(self.w, self.alice, "start", *toy, "--upstream-url", str(self.w.upstream), "--task", task, "--deal", deal)[0], 0)
+        self.alice.write(*(("lib.c", LIB + "/* FAST */\n") if task == "toy-0001" else ("src/a.c", "int a; /* FAST */\n")))
+        code, _, said = self.cli(self.w, self.alice, "submit", *toy, "--upstream-url", str(self.w.upstream), "--task", task, "--deal", deal,
+                                 "--message", "Faster")
+        self.assertEqual(code, 0, said)
+        self.assertEqual([(r["task"], r["login"]) for r in self.w.run()], [(task, "alice")], "collected and judged as ever")
+        # the second project's own workers are told which file stops them, at every command, and nothing is pushed
+        refused = r"\Ahive: \S*hive/projects/port\.json: judge\.kind: a kind of judge this tool holds \(common\)\n\Z"
+        def pushed():
+            return sh("git", "for-each-ref", "--format=%(refname) %(objectname)", cwd=self.vera.bare).stdout
+
+        before = pushed()
+        for words in (("setup", "--upstream-url", str(self.v.upstream), *port), ("next", *port, "--state", str(self.v.state.parent)),
+                      ("ready", *port), ("start", *port, "--upstream-url", str(self.v.upstream), "--task", "port-0001", "--deal", NOW),
+                      ("submit", *port, "--upstream-url", str(self.v.upstream), "--task", "port-0001", "--deal", NOW)):
+            with self.subTest(command=words[0]):
+                code, printed, said = self.cli(self.v, self.vera, *words)
+                self.assertEqual((code, printed), (2, ""))
+                self.assertRegex(said, refused)
+        code, _, said = self.cli(self.v, self.vera, "setup", "--upstream-url", str(self.v.upstream))
+        self.assertEqual(code, 2)
+        self.assertIn("which project is this fork of? Give --project (the hive's projects: port, toy)", said, "still listed, by its name")
+        self.assertEqual(pushed(), before, "nothing was pushed")
+        # a file that names another project than its own name, or no repository: no command of any project runs
+        file = self.v.registry / "hive/projects/port.json"
+        whole = json.loads(file.read_text())
+        for wrong in ({**whole, "project": "toy"}, {**whole, "project": "other"}, {key: value for key, value in whole.items() if key != "repo"},
+                      {**whole, "repo": "no-owner"}, {**whole, "repo": ["Bee-ruche/port"]}, [whole], "port"):
+            file.write_text(json.dumps(wrong))
+            with self.subTest(wrong=str(wrong)[:60]):
+                for words in (("next", *toy, *state), ("ready", *toy)):
+                    code, printed, said = self.cli(self.w, self.alice, *words)
+                    self.assertEqual((code, printed, said), (2, "", "hive: the registry's file port.json does not name its project (the file's own "
+                                                                    "name) and its repository (owner/name): update your clone of the registry\n"))
+        file.write_text(json.dumps({**whole, "project": "toy"}))
+        with self.assertRaisesRegex(hive.HiveError, r"port\.json: project: the file's own name \(port\)"):
+            self.v.load()  # and the hive's own steps refuse it too: two files never write one project's state
+        with self.assertRaisesRegex(hive.HiveError, r"port\.json: project: the file's own name \(port\)"):
+            hive.project_of(hive.argparse.Namespace(registry=str(self.v.registry), project="port", state=str(self.v.state.parent)))
+
+    def test_a_candidate_the_judge_cannot_run_does_not_end_the_judging_of_the_others(self):
+        """A kind of judge answers 0 for the project's tip judged against itself. The base asks it that after a
+        failure to judge: the machine works, so the failure is that candidate's, and the next one is judged. A kind
+        that answered otherwise for the tip would end every run's judging at its first failure."""
+        failing = self.vera.submit("port-0001", content=LIB + "/* THE JUDGE CANNOT RUN THIS */\n")
+        walt = self.v.fork("walt", 202)
+        walt.submit("port-0002", path="src/leaf.c", content="/* ANSWERS AS THE ORIGINAL */\n")
+        self.assertEqual(judge_against_the_original(None, None, {"id": "port-0001"}, failing, failing)["code"], 0, "the tip, whatever it holds")
+
+        def deaf_to_the_rule(base, candidate, task, tip, commit):
+            return {"code": 1} if commit == tip else judge_against_the_original(base, candidate, task, tip, commit)
+
+        _, verdicts, _ = self.v.sweep(deaf_to_the_rule)
+        self.assertEqual(verdicts, {}, "a kind that refuses the tip itself: the first failure passes for the machine's, and nothing is judged")
+        results = {r["login"]: r["result"] for r in self.v.run(judge_against_the_original)}
+        self.assertEqual(results, {"vera": "error", "walt": "accepted"}, "the failure is that candidate's: it is tried again, the other is judged")
+
+    def test_the_common_judge_is_made_with_what_the_projects_file_says(self):
+        """The common kind is the registry's judge, made with the options, the repetitions and the time the
+        project's file gives, and with the judging's own folder; a file that gives none has the judge's defaults."""
+        made = []
+        with mock.patch.object(hive, "common_judge", side_effect=lambda *args, **named: made.append((args, {**named, "options": list(named["options"])}))):
+            hive.judge_of("REGISTRY", {"kind": "common", "options": {"level": "9", "window": "15"}, "repetitions": 3, "timeout_seconds": 99}, "FOLDER")
+            hive.judge_of("REGISTRY", {"kind": "common"}, None)
+        self.assertEqual(made, [(("REGISTRY",), {"options": [("level", "9"), ("window", "15")], "repetitions": 3, "workdir": "FOLDER", "timeout": 99}),
+                                (("REGISTRY",), {"options": [], "repetitions": 10, "workdir": None, "timeout": 3600})])
+
     def test_the_judging_step_runs_the_kind_of_judge_the_projects_file_names(self):
         """A project's file names its judge's kind; the judging step, run as the workflow runs it, makes that kind's
         judge and no other. A kind is code of the registry: a file that names one this tool does not know is refused
@@ -7579,7 +7693,7 @@ class TestTwoProjectsInOneHive(Base):
             self.assertEqual([(e["member"], e["report"]) for e in hive.Ledger(self.v.state).events if e["type"] == "verdict"],
                              [("vera", {"cases_compared": 64})])
         self.assertEqual(sorted(hive.JUDGES), ["common"], "the kinds this tool knows by itself")
-        with self.assertRaisesRegex(hive.HiveError, r"judge\.kind: a kind of judge this tool knows \(common\)"):
+        with self.assertRaisesRegex(hive.HiveError, r"judge\.kind: a kind of judge this tool holds \(common\)"):
             self.v.load()
         for wrong in (None, 3, "", ["common"], "Common"):
             self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": wrong}})

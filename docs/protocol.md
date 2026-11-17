@@ -247,11 +247,16 @@ the hive runs those git commands with an empty attribute source.
 - **A project names its judge's kind** (`judge.kind` in its file). What a verdict is, where judged code runs and
   what may accept a candidate are the hive's, the same for every project; how a candidate is found right or wrong
   is a kind of judge's; what is asked of the judge's figures is the project's. A kind is code of the registry: a
-  project's file can name one and never bring one, and a file that names a kind the tool does not know is refused
+  project's file can name one and never bring one, and a file that names a kind the tool does not hold is refused
   when it is loaded, at every step. One kind exists today, `common`, which a project that names none has: the
   registry's common judge (docs/common-judge.md): candidate code builds and runs only in a container without
   network, and the verdict is derived on the host. Whatever the kind, code 0 is correct, 1 a refusal, 2 a failure
-  to judge.
+  to judge, and the project's tip judged against itself is answered 0.
+- **A project's file is its own, and bears its name.** `hive/projects/<project>.json` names that project and no
+  other: a file whose `project` is not its own name is refused, so two files never write one project's state. A
+  step of the hive reads the file of the project it runs for and no other. A worker's command checks in full the
+  project it is given; of every other project it reads the name and the repository, which it compares with the
+  fork's, and nothing else: what one project's file asks of the tool does not stop another project's workers.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
   the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
   stops judging and no candidate pays for the breakdown. If it passes, the failure is counted against the deal,

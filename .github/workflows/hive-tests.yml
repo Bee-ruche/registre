@@ -1,14 +1,15 @@
 # Tests of the hive protocol (docs/protocol.md): tools/hive/test_hive.py, test_schedule.py, test_page.py and test_artifact.py, on local git
-# repositories and archives the tests make, without network.
+# repositories and archives the tests make, without network. They run on a change to the tool and on a change to what the tool
+# reads of the registry (hive/: the projects' files and their tasks), which one of the tests loads whole.
 # Read-only: no secret, no write, nothing of a pull request runs with more than a read token.
 name: Hive protocol tests
 
 on:
   pull_request:
-    paths: ["tools/hive/**", ".github/workflows/hive-tests.yml"]
+    paths: ["tools/hive/**", "hive/**", ".github/workflows/hive-tests.yml"]
   push:
     branches: [main]
-    paths: ["tools/hive/**", ".github/workflows/hive-tests.yml"]
+    paths: ["tools/hive/**", "hive/**", ".github/workflows/hive-tests.yml"]
 
 permissions:
   contents: read
