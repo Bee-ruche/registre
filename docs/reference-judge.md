@@ -132,8 +132,8 @@ says `"kind": "reference"` under `judge`, and lists in `judge.metrics` the figur
 A port of [cJSON](https://github.com/DaveGamble/cJSON) (a JSON library in C, MIT) to Rust, leaf by leaf
 (`hive/projects/cjson.json`, `hive/tasks/cjson.jsonl`): the hive's second test project, of another nature than
 the first, so that the base is shaped by neither. Its repository holds cJSON's own files unchanged, with their
-licence, as the reference; a leaf is one Rust file over `core` alone (no `std`, no allocation, no `unsafe`), and
-a task writes one leaf. Five leaves to start with: four hexadecimal digits, a `\uXXXX` escape to UTF-8, the
+licence, as the reference; a leaf is one Rust file over `core` alone (the project's build refuses `std`,
+allocation, `unsafe` and what its own rule lists), and a task writes one leaf. Five leaves to start with: four hexadecimal digits, a `\uXXXX` escape to UTF-8, the
 minifier, the string printer, the comparison of names without regard to case. The project is independent of
 cJSON's own: nothing is ever proposed to it from the hive.
 

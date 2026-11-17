@@ -6,7 +6,7 @@
  "published": "main",
  "paused": true,
  "tasks": "hive/tasks/cjson.jsonl",
- "check": "sh bee/check.sh",
+ "check": "",
  "protected": [
   "bee/**",
   "reference/**",
