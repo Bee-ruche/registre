@@ -55,7 +55,7 @@ Five things carry it:
 2. **Two integration identities, kept apart**: two GitHub Apps of the organization, each with the repository
    permission "Contents: read and write" and nothing else, no webhook:
    - a *state* App, installed on `hive-state` only;
-   - a *project* App, installed on the hosted projects only (`minizBee`).
+   - a *project* App, installed on the hosted projects only (`minizBee`, `cjsonRustBee`).
 
    The workflow asks GitHub, at each run, for a token of an hour for one repository
    (`actions/create-github-app-token`, pinned to a commit). The Apps exist since 13 November 2026: the state App
@@ -86,8 +86,8 @@ Five things carry it:
 7. **Which version of the hive a run uses: one commit, named in the workflow file** (decided 13 November 2026).
    Every job checks out the registry at that commit and at no other: the hive's code, its settings and its tasks
    change when a pull request that a person reviewed changes that line, and at no other time. A new file holds
-   forty zeros in its place, which no checkout can find (the first project's did until 16 November 2026; the second
-   project's does): the line is set, by a pull request of its own, to the commit of `main` that the founder
+   forty zeros in its place, which no checkout can find (the first project's did until 16 November 2026, the second
+   project's until 17 November): the line is set, by a pull request of its own, to the commit of `main` that the founder
    accepted, after the file is on `main`. A new batch of tasks is such a pull request too.
    The tests fail unless the commit named is one that `main` itself has been at (the line of first parents of its
    tip): GitHub serves any commit of a repository by its id, a pull request's included, and a commit inside a pull
@@ -99,8 +99,10 @@ Five things carry it:
    project at a time; the two projects' runs do not wait for each other) and **its own switch, the repository
    variable `HIVE_CJSON`**. The state repository, the two environments and the two Apps are the hive's, the same for
    both runs. What only the founder can make for it: the project's repository, with its two branches as in point 4;
-   the project App installed on it; the variable; and the commit its file names (point 7: forty zeros until then,
-   so the file starts nothing, variable or not).
+   the project App installed on it; the variable; and the commit its file names (point 7). On 17 November 2026 the
+   repository, its branches and their rules were made and the App was given it, and the file names the commit the
+   first project's file names (`3cd46a2`), where the project is declared paused; the variable is empty, so the file
+   starts nothing.
 
 ## The file
 
@@ -124,7 +126,9 @@ Notes on the file:
 - **To stop the hive**: cancel every run in flight (its `apply` then does not run), and empty the switch of each
   project's run for the runs to come: `HIVE_PROJECTS` for the first project's (`hive.yml`) and `HIVE_CJSON` for
   the second's (`hive-cjson.yml`). Both take effect at once, and neither needs a pull request. Emptying one
-  switch stops that project's run and no other. A project's `"paused": true` stops it too, but only from the
+  switch stops that project's run and no other. A project's `"paused": true` stops its work and not its run: no fork is
+  read, nothing is dealt, judged, integrated or written to the state, while the four jobs still start, take the
+  project's repository and their tokens, and make the judge's image. And it does so only from the
   day its workflow file names a commit of the registry that holds it: a run reads the registry at the commit
   the file names, not at `main`.
 - The rules above are held by a test of the file itself (`tools/test_bee.py`, `TestHiveWorkflow`): the four jobs
@@ -158,8 +162,8 @@ member ([decisions.md](decisions.md), 16 November); how often the judge refuses 
 still unmeasured. One point that list does not hold: a run that finds the state repository moved by another
 project's run takes what that run saved and pushes again (setting 8 above, [decisions.md](decisions.md), 17
 November); with one project in service no run has met that case, and it has run in the tests only. Of the second
-project's file (setting 8 above) nothing has run: its repository exists since 17 November 2026, and its file names
-no commit yet.
+project's file (setting 8 above) nothing has run: its repository exists and its file names a commit since 17 November
+2026, and its switch is empty.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
