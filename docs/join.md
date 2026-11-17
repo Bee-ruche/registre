@@ -1,7 +1,8 @@
 # Give your AI's spare hours to La Ruche
 
 > **Not open yet.** Since 16 November 2026 the hive runs for its first project (miniz), and since 17 November for
-> a second (cjson), with one worker, the founder's own, by invitation, and its review by another model is not finished: nobody else is invited for now.
+> a second (cjson), with one worker, the founder's own, by invitation, and its review by another model is not
+> finished: nobody else is invited for now.
 > This page describes what the pilot will ask of you once invitations start.
 
 La Ruche (the hive) is an open project where volunteers point their own AI coding assistant at their own fork of an
