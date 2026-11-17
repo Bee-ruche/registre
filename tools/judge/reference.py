@@ -431,9 +431,11 @@ def judge(args, work):
     needed = budget(manifest, args.tip_itself)
     if needed > args.budget:
         raise Erreur(f"the manifest's bounds add up to {needed} s, above the {args.budget} s a judgement of this project is given")
-    if not args.tip_itself:
-        only_the_unit_differs(args.tip, args.candidate, unit["files"])
     judgement = Judgement(image_of(manifest), manifest, work)
+    if not args.tip_itself:  # what can be told of a candidate without running anything is told first
+        only_the_unit_differs(args.tip, args.candidate, unit["files"])
+        candidate_sources = judgement.folder("candidate-sources")
+        copy_paths(args.candidate, unit["files"], candidate_sources, Refus, file_limit=manifest["unit_bytes"])
 
     STATE["step"] = 2
     sources = judgement.folder("reference-sources")
@@ -452,10 +454,8 @@ def judge(args, work):
 
     binaries = []
     if not args.tip_itself:
-        STATE["step"] = 4
-        candidate_sources = judgement.folder("candidate-sources")
+        STATE["step"] = 4  # the skeleton is the tip's, whatever the candidate's tree holds; the unit's files are the candidate's
         copy_paths(args.tip, manifest["skeleton"], candidate_sources, Erreur)
-        copy_paths(args.candidate, unit["files"], candidate_sources, Refus, file_limit=manifest["unit_bytes"])
         binaries = [judgement.build_unit(candidate_sources, args.unit, Refus)[0] for _ in range(manifest["variants"])]
 
     STATE["step"] = 5  # only now: no build of the candidate's has seen the seed, the cases or their order
