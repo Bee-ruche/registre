@@ -128,12 +128,12 @@ def check_manifest(raw):
     return manifest
 
 
-def budget(manifest, tip_itself):
-    """The worst case of a whole judgement, in seconds: every container at its time bound."""
+def budget(manifest):
+    """The worst case of a candidate's whole judgement, in seconds: every container at its time bound. The question
+    about the tip itself needs less, and is asked the same: a project whose time does not fit a candidate's
+    judgement is told so by the tip's own answer, not by its candidates' failures."""
     reference = 3 * (manifest["reference_seconds"] + OVERHEAD)  # its build, the generator, its run
     control = 2 * (CONTROL * manifest["build_seconds"] + OVERHEAD) + manifest["run_seconds"] + OVERHEAD
-    if tip_itself:
-        return reference + control
     return (reference + control + manifest["variants"] * (manifest["build_seconds"] + OVERHEAD)
             + manifest["variants"] * manifest["runs"] * (manifest["run_seconds"] + OVERHEAD))
 
@@ -239,6 +239,27 @@ def same_bytes(one, other):
                 return False
             if not block:
                 return True
+
+
+def tip_is_ready(tip, files):
+    """What the tip must hold for a unit to be written at all, asked of the tip whatever is judged (so that a tip
+    that is not ready is the project's failure to judge, never a candidate's refusal): no repository of its own
+    (a candidate's tree is plain files and could never equal it), the folder of each of the unit's files, and
+    nothing at a file's path that a candidate could not replace by a file (a folder)."""
+    if os.path.lexists(os.path.join(tip, ".git")):
+        raise Erreur("the tip's tree is a repository (the project's file names a history): a project of this kind names none")
+    for relative in files:
+        parts = relative.split("/")
+        try:
+            os.close(descend(tip, parts[:-1]))
+        except OSError:
+            raise Erreur(f"the tip does not hold the folder of {relative}: the project keeps a file there, written or not") from None
+        try:
+            mode = os.lstat(os.path.join(tip, relative)).st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISDIR(mode):
+            raise Erreur(f"the tip holds a folder at {relative}, where a unit's file goes")
 
 
 def only_the_unit_differs(tip, candidate, files):
@@ -455,9 +476,10 @@ def judge(args, work):
     unit = manifest["units"][args.unit]
     if sorted(args.task_file or []) != sorted(unit["files"]):
         raise Erreur("the task's files are not exactly its unit's files")
-    needed = budget(manifest, args.tip_itself)
+    needed = budget(manifest)
     if needed > args.budget:
         raise Erreur(f"the manifest's bounds add up to {needed} s, above the {args.budget} s a judgement of this project is given")
+    tip_is_ready(args.tip, unit["files"])
     judgement = Judgement(image_of(manifest), manifest, work)
     if not args.tip_itself:  # what can be told of a candidate without running anything is told first
         only_the_unit_differs(args.tip, args.candidate, unit["files"])
@@ -518,9 +540,10 @@ def judge(args, work):
             what = f"build {build + 1}, run {run + 1} of unit {args.unit}"
             given = judgement.answers(["/unit/driver"], binary, "/unit", frame_cases([cases[index] for index in order]), len(wanted) + 1,
                                       manifest["run_seconds"], Refus, what)
+            STATE["step"] = 8
             if given != wanted:
                 raise Refus(f"{what}: its answers are not the reference's")
-            runs += 1
+            STATE["step"], runs = 7, runs + 1
     STATE["step"] = 8
     return {"cases_compared": len(cases) * runs, "builds": len(binaries), "runs": runs}  # what was done, not what was asked
 

@@ -7837,6 +7837,12 @@ class TestTheReferenceKind(unittest.TestCase):
             self.asked(judge, "C" * 40, status, report)
             self.asked(judge, "T" * 40, 0, {"code": 0, "seed_origin": "drawn"})
             self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"], f"no seed kept after {status}, {report}")
+        # a seed is given again to the very next question and to no other: another candidate's judgement in between
+        # (here one the judge never finished) takes it away, whatever that one's end
+        self.asked(judge, "C" * 40, 2, {"code": 2, "seed": self.SEED, "seed_origin": "drawn"})
+        self.assertEqual(self.asked(judge, "D" * 40, subprocess.TimeoutExpired("judge", 3600), None), {"code": 2})
+        self.asked(judge, "T" * 40, 0, {"code": 0, "seed_origin": "drawn"})
+        self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"], "the seed of an earlier judgement is not this question's")
         # the tip, answered 0 with the seed it was given: the machine works
         self.asked(judge, "C" * 40, 2, {"code": 2, "seed": self.SEED, "seed_origin": "drawn"})
         self.assertEqual(self.asked(judge, "T" * 40, 0, {"code": 0, "seed": self.SEED, "seed_origin": "given", "cases_compared": 0}),

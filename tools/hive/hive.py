@@ -2682,6 +2682,7 @@ def reference_judge(registry_root, workdir=None, timeout=3600):
 
     def run(base, candidate, task, tip, commit):
         out = Path(base).parent / "reference.json"
+        seed, kept["seed"] = kept["seed"], None  # a seed is given again once, to the question that follows the failure
         command = [sys.executable, str(judge_py), "--tip", str(base), "--unit", str((task.get("options") or {}).get("unit", "")),
                    "--budget", str(max(1, timeout - REFERENCE_MARGIN)), "--json", str(out)]
         for path in task.get("files") or ():
@@ -2689,7 +2690,7 @@ def reference_judge(registry_root, workdir=None, timeout=3600):
         if workdir:
             command += ["--workdir", str(workdir)]
         if commit == tip:
-            command += ["--tip-itself"] + (["--seed", kept["seed"]] if kept["seed"] else [])
+            command += ["--tip-itself"] + (["--seed", seed] if seed else [])
         else:
             command += ["--candidate", str(candidate)]
         try:
@@ -2710,8 +2711,9 @@ def reference_judge(registry_root, workdir=None, timeout=3600):
             code = 2  # a candidate is accepted on cases the judge drew itself: a seed it was given is a reproduction
         else:
             code = ran.returncode  # (a refusal may come before any case is drawn: a tree that differs, a unit that does not build)
-        seed = report.get("seed") if isinstance(report, dict) else None
-        kept["seed"] = seed if code == 2 and commit != tip and isinstance(seed, str) and re.fullmatch(r"[0-9a-f]{64}", seed) else None
+        drawn = report.get("seed") if isinstance(report, dict) else None
+        if code == 2 and commit != tip and isinstance(drawn, str) and re.fullmatch(r"[0-9a-f]{64}", drawn):
+            kept["seed"] = drawn
         figures = {name: report[name] for name in ("cases_compared", "builds", "runs")
                    if code == 0 and type(report.get(name)) is int and 0 <= report[name] < 10 ** 12}
         return {"code": code, "report": figures}
@@ -2729,9 +2731,9 @@ def the_reference_judge(registry_root, settings, workdir):
 # its judge's kind (judge.kind, « common » when it names none): each kind is a function (the registry's tree, the
 # project's judge settings, the judging's own folder) that gives the judge function the judging step runs: (base tree,
 # candidate tree, task, tip, commit) -> {"code": 0 correct, 1 refused, 2 failure to judge, "report": figures}. Every
-# kind answers 0 for the project's tip judged against itself, whatever the task: after a failure to judge, the base
-# asks exactly that, and takes any other answer for a machine that cannot judge (judging: machine_works), which ends
-# the run's judging. A kind is code of the registry, trusted as this file is; a project's file can name one, never
+# kind answers 0 for the project's tip judged against itself, whatever the tip holds, for any task the kind can
+# judge at all: after a failure to judge, the base asks exactly that, and takes any other answer for a machine that
+# cannot judge (judging: machine_works), which ends the run's judging. A kind is code of the registry, trusted as this file is; a project's file can name one, never
 # bring one.
 JUDGES = {"common": the_common_judge, "reference": the_reference_judge}
 

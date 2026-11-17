@@ -213,10 +213,10 @@ class TestTheManifest(Base):
 
     def test_the_bounds_add_up_to_a_whole_judgements_worst_case(self):
         manifest = reference.check_manifest(MANIFEST)
-        side = 3 * (60 + 10) + 2 * (3 * 60 + 10) + (10 + 10)
-        self.assertEqual((reference.budget(manifest, True), reference.budget(manifest, False)), (side, side + 2 * (60 + 10) + 4 * (10 + 10)))
+        side = 3 * (60 + 10) + 2 * (3 * 60 + 10) + (10 + 10)  # the reference's three containers, the control's three
+        self.assertEqual(reference.budget(manifest), side + 2 * (60 + 10) + 4 * (10 + 10))
         longest = reference.check_manifest({**MANIFEST, **{name: cap for name, (_, cap) in reference.NUMBERS.items()}})
-        self.assertEqual(reference.budget(longest, False), 3 * 910 + 2 * 2710 + 310 + 8 * 910 + 64 * 310, "every container at its cap, counted")
+        self.assertEqual(reference.budget(longest), 3 * 910 + 2 * 2710 + 310 + 8 * 910 + 64 * 310, "every container at its cap, counted")
 
 
 class TestTheFraming(unittest.TestCase):
@@ -308,6 +308,26 @@ class TestTreesOnTheHost(Base):
         moved = write_tree(self.root / "cand-moved", {"x": lambda tree: ((tree / "doc").unlink(), os.symlink("/etc/shadow", tree / "doc"))}, source=with_link)
         with self.assertRaises(Refus):
             reference.only_the_unit_differs(str(with_link), str(moved), files)
+
+    def test_what_the_tip_must_hold_for_a_unit_to_be_written(self):
+        tip = write_tree(self.root / "tip")
+        files = ["port/upper.c"]
+        reference.tip_is_ready(str(tip), files)
+        reference.tip_is_ready(str(write_tree(self.root / "absent", {"port/upper.c": None})), files)
+        reference.tip_is_ready(str(write_tree(self.root / "link", {"x": lambda t: ((t / "port/upper.c").unlink(), os.symlink("squeeze.c", t / "port/upper.c"))})), files)
+        outside = self.root / "outside"
+        outside.mkdir()
+        for name, make, said in (("no-folder", lambda t: shutil.rmtree(t / "port"), "does not hold the folder of port/upper.c"),
+                                 ("folder-is-a-link", lambda t: (shutil.rmtree(t / "port"), os.symlink(outside, t / "port")), "does not hold the folder"),
+                                 ("folder-is-a-file", lambda t: (shutil.rmtree(t / "port"), (t / "port").write_text("x")), "does not hold the folder"),
+                                 ("folder-at-the-file", lambda t: ((t / "port/upper.c").unlink(), (t / "port/upper.c").mkdir()), "holds a folder at port/upper.c"),
+                                 ("repository", lambda t: (t / ".git").mkdir(), "is a repository"),
+                                 ("repository-file", lambda t: (t / ".git").write_text("gitdir: /elsewhere\n"), "is a repository")):
+            tree = write_tree(self.root / name)
+            make(tree)
+            with self.subTest(tip=name), self.assertRaisesRegex(Erreur, said) as raised:
+                reference.tip_is_ready(str(tree), files)
+            self.assertNotIsInstance(raised.exception, Panne)
 
     def test_paths_are_copied_as_bytes_and_nothing_is_followed(self):
         tip = write_tree(self.root / "tip")
@@ -453,7 +473,7 @@ class TestTheJudgeInContainers(Base):
         self.assertEqual((code, report["step"]), (0, 6), err)
         self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, trapped), tip=trapped)[0], 0, "and the next candidate on it is judged")
         self.assertEqual(self.judge(self.candidate({"port/squeeze.c": SQUEEZE}, trapped), unit="squeeze", tip=trapped)[0], 0)
-        # a tip that does not hold the unit's file at all: the question about the tip is answered, and the unit can be written
+        # a tip that does not hold the unit's file (its folder is there): the question about the tip is answered, and the unit can be written
         without = write_tree(self.root / "without", {"port/upper.c": None})
         self.assertEqual(self.judge(tip=without)[0], 0)
         self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, without), tip=without)[0], 0)
@@ -595,7 +615,33 @@ class TestTheJudgeInContainers(Base):
             code, report, err = self.judge(self.candidate(honest), **options)
             self.assertEqual((code, report["step"]), (2, 1), err)
             self.assertIn(said, report["reason"])
-        self.assertEqual(self.judge(budget=610)[0], 0, "the tip against itself needs less")
+        # the tip is asked with the same time as a candidate: a project whose time is too short hears it from its own tip
+        code, report, err = self.judge(budget=700)
+        self.assertEqual((code, report["step"]), (2, 1), err)
+        self.assertIn("add up to 830 s", report["reason"])
+        self.assertEqual(self.judge(budget=830)[0], 0)
+
+    def test_a_tip_that_is_not_ready_for_a_unit_is_the_projects_failure_never_a_candidates_refusal(self):
+        """What the tip must hold for a unit to be written: the folder of its files, nothing a candidate could not
+        replace at a file's path, and no repository of its own. Asked of the tip whatever is judged: the tip itself
+        and a candidate get the same answer, a failure to judge."""
+        def folder_at_the_units_path(tree):
+            (tree / "port/upper.c").unlink()
+            (tree / "port/upper.c").mkdir()
+            (tree / "port/upper.c/kept").write_text("x\n")
+
+        for name, tip_changes, said in (("no-folder", {"port/upper.c": None, "port/squeeze.c": None, "x": lambda tree: (tree / "port").rmdir()},
+                                         "does not hold the folder of port/upper.c"),
+                                        ("folder", {"x": folder_at_the_units_path}, "holds a folder at port/upper.c"),
+                                        ("repository", {"x": lambda tree: (tree / ".git").mkdir()}, "is a repository")):
+            tip = write_tree(self.root / f"unready-{name}", tip_changes)
+            candidate = write_tree(self.root / f"unready-{name}-candidate")
+            (candidate / "port/upper.c").write_text(UPPER)
+            for judged in (None, candidate):
+                with self.subTest(tip=name, candidate=bool(judged)):
+                    code, report, err = self.judge(judged, tip=tip)
+                    self.assertEqual((code, report["step"]), (2, 1), err)
+                    self.assertIn(said, report["reason"])
 
     def test_what_fails_on_the_cases_drawn_fails_again_for_the_tip_with_the_same_seed(self):
         """A reference or a generator that fails on some draws: the candidate's judgement is a failure to judge, and
@@ -626,6 +672,48 @@ class TestTheJudgeInContainers(Base):
         self.assertEqual(judge(base, write_tree(trees / "more", {"port/upper.c": UPPER, "port/squeeze.c": SQUEEZE}), task, "T" * 40, "F" * 40), {"code": 1, "report": {}})
         self.assertEqual(judge(base, base, task, "T" * 40, "T" * 40), {"code": 0, "report": {"cases_compared": 0, "builds": 0, "runs": 0}})
         self.assertEqual(judge(base, base, {**task, "files": ["port/"]}, "T" * 40, "T" * 40)["code"], 2, "a task that is not its unit's files")
+
+
+    def test_through_the_bases_own_judging_on_a_real_repository(self):
+        """The base's judging step as it runs: it writes the tip's tree and the candidate's merged tree out of a git
+        repository, and asks the judge; after a failure to judge it asks about the tip itself."""
+        import hive
+
+        def git(*words):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *words],
+                                  cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+
+        def commit(changes, message):
+            for relative, text in changes.items():
+                (repo / relative).parent.mkdir(parents=True, exist_ok=True)
+                (repo / relative).write_text(text)
+            git("add", "-A")
+            git("commit", "-q", "-m", message)
+            return git("rev-parse", "HEAD")
+
+        repo = write_tree(self.root / "repo")
+        git("init", "-q", "-b", "main")
+        tip = commit({}, "the project")
+        right = commit({"port/upper.c": UPPER}, "the unit")
+        git("checkout", "-q", "-b", "wrong", tip)
+        wrong = commit({"port/upper.c": CORPUS_ONLY}, "right on the corpus only")
+        git("checkout", "-q", "-b", "more", tip)
+        more = commit({"port/upper.c": UPPER, "harness/unit.h": (TOY / "harness/unit.h").read_text() + "/* changed */\n"}, "more than the unit")
+        judge = hive.judge_of(str(HERE.parent.parent), {"kind": "reference", "timeout_seconds": 1200}, str(self.root / "work"))
+        task = {"id": "toy-0001", "files": ["port/upper.c"], "options": {"unit": "upper"}}
+        verdicts = {}
+        (self.root / "trees").mkdir()
+        verdict_of = hive.judging(str(repo), judge, str(self.root / "trees"), verdicts, ["cases_compared", "builds", "runs"], longest=1200)
+        for name, sha, expected in (("right", right, {"code": 0, "report": {"cases_compared": 1200, "builds": 2, "runs": 4}}),
+                                    ("wrong", wrong, {"code": 1, "report": {}}), ("more", more, {"code": 1, "report": {}})):
+            with self.subTest(candidate=name):
+                self.assertEqual(verdict_of({"sha": sha}, task, tip, hive.tree_of(str(repo), sha), sha), expected)
+        self.assertFalse(verdict_of.machine_down())
+        self.assertEqual(os.listdir(self.root / "trees"), [], "the base removes the trees it wrote")
+        # a task the judge cannot take (its files are not its unit's): a failure to judge, and the tip itself says the same
+        odd = {"id": "toy-0002", "files": ["port/"], "options": {"unit": "upper"}}
+        self.assertIsNone(verdict_of({"sha": right}, odd, tip, hive.tree_of(str(repo), right), right))
+        self.assertTrue(verdict_of.machine_down(), "the run's judging stops, and no candidate is charged")
 
 
 if __name__ == "__main__":

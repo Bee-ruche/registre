@@ -52,10 +52,13 @@ Nothing of the tip and nothing of the candidate runs on the judge's machine itse
 
 For a task whose unit is U, the tip's tree and the candidate's tree written out by the base:
 
-0. **Budget.** The manifest's bounds, every container at its time, must fit the time the project's file gives a
-   judgement (`judge.timeout_seconds`).
-1. **Read and check.** The manifest; the task's files, which must be exactly U's files; the candidate's tree, which
-   must equal the tip's everywhere else; U's files, which must be plain files within the manifest's bound.
+0. **Budget.** The manifest's bounds, every container of a candidate's judgement at its time, must fit the time
+   the project's file gives a judgement (`judge.timeout_seconds`). The question about the tip is asked the same.
+1. **Read and check.** The manifest; the task's files, which must be exactly U's files; the tip, which must hold
+   the folder of each of U's files, nothing but a file (or nothing) at their paths, and no repository of its own
+   (a project of this kind names no `judge.history`); then the candidate's tree, which must equal the tip's
+   everywhere else, and U's files, which must be plain files within the manifest's bound. What is asked of the
+   tip is asked whatever is judged: a tip that is not ready is the project's failure, never a candidate's refusal.
 2. **The reference** is built in its own container: its driver and the generator.
 3. **The control.** The skeleton with the project's blank unit in U's place is built twice, with two nonces: the
    two binaries must differ; one is run on no case and must write nothing and exit 0. This tells a broken
@@ -64,7 +67,7 @@ For a task whose unit is U, the tip's tree and the candidate's tree written out 
 5. **The draw.** Only now a seed is drawn. The generator writes U's cases (exactly the manifest's count, each
    within its bound); the reference answers them. The host checks both files against the framing.
 6. **The tip against itself** stops here, answered 0: nothing is asked of U, and nothing of U is built or run,
-   whether the tip holds it, holds it unwritten, or does not hold it yet.
+   whether the tip holds it written, unwritten, or not yet (its folder is there).
 7. **The runs.** Each binary is run several times, each time on the cases in another order.
 8. **The comparison**, on the host: each file of answers is read through the safe reader, no further than the
    expected length plus one byte, and must be exactly what the host built from the reference's answers.
