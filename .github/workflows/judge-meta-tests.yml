@@ -1,5 +1,6 @@
 # Meta-tests of the common judge (tools/judge/): the whole judge, in containers, against the honest toy
 # project and its malicious variants (tools/judge/test_judge.py). Run when the common judge changes.
+# The judge's second kind (tools/judge/reference.py) is tried the same way, on its own toy project.
 # The variants' code runs only in the judge's containers (without network, read-only).
 name: Common judge (meta-tests)
 
@@ -26,3 +27,7 @@ jobs:
         env:
           BEE_JUGE_INTEGRATION: "1"
         run: python3 tools/judge/test_judge.py
+      - name: The second kind (reference), its unit tests and meta-tests on its own toy project
+        env:
+          BEE_JUGE_INTEGRATION: "1"
+        run: python3 tools/judge/test_reference.py

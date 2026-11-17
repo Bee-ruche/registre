@@ -2665,17 +2665,77 @@ def the_common_judge(registry_root, settings, workdir):
                         workdir=workdir, timeout=settings.get("timeout_seconds", 3600))
 
 
+REFERENCE_MARGIN = 120  # seconds of a judgement's time kept for what is not a container: copies, the image's check
+
+
+def reference_judge(registry_root, workdir=None, timeout=3600):
+    """The judge of the second kind (tools/judge/reference.py, docs/reference-judge.md) as a judge function: a
+    candidate is right when the unit its task names answers exactly as the project's reference does, on cases drawn
+    when it is judged. Code 0 correct, 1 refused, 2 failure to judge. The report holds whole numbers only
+    (cases_compared, builds, runs). The task says its unit (options.unit) and its files, which the judge wants to be
+    exactly that unit's files.
+
+    After a failure to judge, the base asks about the tip itself (judging: machine_works). That question is asked
+    with the seed of the judgement that failed: a reference or a generator that failed on the cases drawn fails
+    again and is seen, where a new draw could pass and leave the failure on the candidate."""
+    judge_py, kept = Path(registry_root) / "tools/judge/reference.py", {"seed": None}
+
+    def run(base, candidate, task, tip, commit):
+        out = Path(base).parent / "reference.json"
+        seed, kept["seed"] = kept["seed"], None  # a seed is given again once, to the question that follows the failure
+        command = [sys.executable, str(judge_py), "--tip", str(base), "--unit", str((task.get("options") or {}).get("unit", "")),
+                   "--budget", str(max(1, timeout - REFERENCE_MARGIN)), "--json", str(out)]
+        for path in task.get("files") or ():
+            command += ["--task-file", str(path)]
+        if workdir:
+            command += ["--workdir", str(workdir)]
+        if commit == tip:
+            command += ["--tip-itself"] + (["--seed", seed] if seed else [])
+        else:
+            command += ["--candidate", str(candidate)]
+        try:
+            out.unlink()  # never an earlier judgement's report
+        except OSError:
+            pass
+        try:
+            ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            return {"code": 2}
+        try:
+            report = json.loads(out.read_text(encoding="utf-8"))
+        except (OSError, ValueError, RecursionError):
+            report = None
+        if not isinstance(report, dict) or ran.returncode not in (0, 1) or report.get("code") != ran.returncode:
+            code = 2  # the judge's own word and its exit status must agree: anything else is a failure to judge
+        elif ran.returncode == 0 and commit != tip and report.get("seed_origin") != "drawn":
+            code = 2  # a candidate is accepted on cases the judge drew itself: a seed it was given is a reproduction
+        else:
+            code = ran.returncode  # (a refusal may come before any case is drawn: a tree that differs, a unit that does not build)
+        drawn = report.get("seed") if isinstance(report, dict) else None
+        if code == 2 and commit != tip and isinstance(drawn, str) and re.fullmatch(r"[0-9a-f]{64}", drawn):
+            kept["seed"] = drawn
+        figures = {name: report[name] for name in ("cases_compared", "builds", "runs")
+                   if code == 0 and type(report.get(name)) is int and 0 <= report[name] < 10 ** 12}
+        return {"code": code, "report": figures}
+
+    return run
+
+
+def the_reference_judge(registry_root, settings, workdir):
+    return reference_judge(registry_root, workdir=workdir, timeout=settings.get("timeout_seconds", 3600))
+
+
 # THE KINDS OF JUDGE. The hive is one and its projects are of several natures: what a verdict is, where the judged
 # code runs and what may accept a candidate are the base's (this file, the same for every project); HOW a candidate is
 # found right or wrong is a kind of judge's; what a project asks of the figures is the project's file. A project names
 # its judge's kind (judge.kind, « common » when it names none): each kind is a function (the registry's tree, the
 # project's judge settings, the judging's own folder) that gives the judge function the judging step runs: (base tree,
 # candidate tree, task, tip, commit) -> {"code": 0 correct, 1 refused, 2 failure to judge, "report": figures}. Every
-# kind answers 0 for the project's tip judged against itself, whatever the task: after a failure to judge, the base
-# asks exactly that, and takes any other answer for a machine that cannot judge (judging: machine_works), which ends
-# the run's judging. A kind is code of the registry, trusted as this file is; a project's file can name one, never
+# kind answers 0 for the project's tip judged against itself, whatever the tip holds, for any task the kind can
+# judge at all: after a failure to judge, the base asks exactly that, and takes any other answer for a machine that
+# cannot judge (judging: machine_works), which ends the run's judging. A kind is code of the registry, trusted as this file is; a project's file can name one, never
 # bring one.
-JUDGES = {"common": the_common_judge}
+JUDGES = {"common": the_common_judge, "reference": the_reference_judge}
 
 
 def judge_of(registry_root, settings, workdir):

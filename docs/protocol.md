@@ -248,10 +248,13 @@ the hive runs those git commands with an empty attribute source.
   what may accept a candidate are the hive's, the same for every project; how a candidate is found right or wrong
   is a kind of judge's; what is asked of the judge's figures is the project's. A kind is code of the registry: a
   project's file can name one and never bring one, and a file that names a kind the tool does not hold is refused
-  when it is loaded, at every step. One kind exists today, `common`, which a project that names none has: the
-  registry's common judge (docs/common-judge.md): candidate code builds and runs only in a container without
-  network, and the verdict is derived on the host. Whatever the kind, code 0 is correct, 1 a refusal, 2 a failure
-  to judge, and the project's tip judged against itself is answered 0.
+  when it is loaded, at every step. Two kinds exist. `common`, which a project that names none has, is the
+  registry's common judge (docs/common-judge.md): the candidate gives the same outputs as the project's tip, and
+  is measured against it. `reference` (docs/reference-judge.md) is for a port or a rewrite: the unit a candidate
+  writes answers exactly as the project's reference does, on cases drawn when it is judged. In both, candidate
+  code builds and runs only in a container without network, and the verdict is derived on the host. Whatever the
+  kind, code 0 is correct, 1 a refusal, 2 a failure to judge, and the project's tip judged against itself is
+  answered 0.
 - **A project's file is its own, and bears its name.** `hive/projects/<project>.json` names that project and no
   other: a file whose `project` is not its own name is refused, so two files never write one project's state. A
   step of the hive reads the file of the project it runs for and no other. A worker's command checks in full the

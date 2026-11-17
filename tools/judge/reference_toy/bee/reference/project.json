@@ -1,0 +1,18 @@
+{
+  "image": "common",
+  "reference": ["reference", "harness", "bee/reference"],
+  "skeleton": ["harness/unit_driver.c", "harness/unit.h", "harness/frames.h", "bee/reference/build-unit"],
+  "units": {
+    "upper": {"files": ["port/upper.c"], "blank": ["harness/blank_unit.c"], "cases": 300, "case_bytes": 64, "answer_bytes": 64, "refuses": true},
+    "squeeze": {"files": ["port/squeeze.c"], "blank": ["harness/blank_unit.c"], "cases": 300, "case_bytes": 64, "answer_bytes": 64, "refuses": false}
+  },
+  "variants": 2,
+  "runs": 2,
+  "build_seconds": 60,
+  "run_seconds": 10,
+  "reference_seconds": 60,
+  "memory_mb": 256,
+  "build_processes": 64,
+  "output_mb": 16,
+  "unit_bytes": 65536
+}
