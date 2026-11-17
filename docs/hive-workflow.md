@@ -3,7 +3,8 @@
 *The workflow of phase 1 (docs/plan.md, 7.2): [`.github/workflows/hive.yml`](../.github/workflows/hive.yml). The run
 holds the right to write to a project, so it entered the repository only after another model than the one that
 wrote it had reviewed it, with `tools/test_bee.py` listing its permissions
-(`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has never run.** On
+(`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has run for the
+first project since 16 November 2026**, by invitation (the founder's own worker). On
 `main` it starts every hour and all four jobs are skipped, as long as the repository variable `HIVE_PROJECTS` is
 empty; and the commit of the registry it checks out is the one its file names: forty zeros until 16 November
 2026, then, the same day, the commits `main` reached by pull requests 372 (the founder's own first run), 375 (the
@@ -141,6 +142,17 @@ Notes on the file:
   sharing the group would replace each other's waiting runs.
 
 ## What could not be tried here
+
+**Since the first real runs (16 November 2026)**, for the first project, these points of the list below have been
+met for real: the whole run, with both keys; the forks listed with the read-only token; `artifact.py` on GitHub's
+own archives; the judge's image made from a clone of the project, and miniz's judge on the trees the hive hands it
+(a run with one candidate ends in three to four minutes); a push the project's repository declined, which the hive
+recorded as one. The list is kept as it was written before those runs. Still untried in it: an environment
+restricted to `main` refusing a job started on another ref; what `!cancelled()` gives when the judging job is
+stopped at its time limit; whether commits authored under a member's no-reply address count on their profile. The
+dry run of its last point was not made as written: the first real candidates showed the case (a correct candidate
+short of a proof alone), and a rule of the same day answers it ([decisions.md](decisions.md), 16 November). Of the
+second project's file (point 8 above) nothing has run: its repository does not exist yet.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
