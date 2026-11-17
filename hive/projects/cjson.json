@@ -4,7 +4,7 @@
  "repo": "Bee-ruche/cjsonRustBee",
  "branch": "hive",
  "published": "main",
- "paused": true,
+ "paused": false,
  "tasks": "hive/tasks/cjson.jsonl",
  "check": "",
  "protected": [

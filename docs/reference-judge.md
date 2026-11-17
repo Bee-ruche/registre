@@ -1,8 +1,8 @@
 # The judge's second kind: `reference` (a candidate answers as a reference does)
 
 Status: built in the registry (`tools/judge/reference.py`), tried on a toy project in its tests
-(`tools/judge/reference_toy/`, `tools/judge/test_reference.py`). Its first project is declared, paused:
-`cjson` (below).
+(`tools/judge/reference_toy/`, `tools/judge/test_reference.py`). Its first project is declared, by invitation to
+the founder's own account alone: `cjson` (below).
 
 A project names its judge's kind in its file (`judge.kind`, [protocol.md](protocol.md)). The first kind,
 `common` ([common-judge.md](common-judge.md)), compares a candidate with the project's own tip and measures it.
@@ -137,5 +137,7 @@ allocation, `unsafe` and what its own rule lists), and a task writes one leaf. F
 minifier, the string printer, the comparison of names without regard to case. The project is independent of
 cJSON's own: nothing is ever proposed to it from the hive.
 
-The project is declared **paused**, by invitation: nothing is dealt and nothing runs until its repository exists
-and the founder opens it.
+The project is declared **by invitation**, for the founder's own account alone (`members.only`). Its repository
+exists since 17 November 2026, and its file no longer says `"paused": true`. The hive deals its first task once the
+commit its workflow file names holds that change, which the founder decides
+([hive-workflow.md](hive-workflow.md)): until then a run reads the project's file where it is still paused.
