@@ -104,8 +104,11 @@ Five things carry it:
    first project's file names (`3cd46a2`), where the project is declared paused. The founder then had the variable
    set, and the first run was made with the project paused: its four jobs succeeded, the two that hold a key took
    their tokens, the judge's image was made (the one the manifest in the project's repository names), and nothing was written
-   to the state repository or to the project's. The project's file on `main` no longer declares it paused; a run
-   keeps the pause until its workflow file names a commit that holds that change.
+   to the state repository or to the project's. The project's file then left its pause (pull request
+   388), and the workflow file names that commit (`5091c9c`) since, on the founder's decision: from the run after,
+   the hive reads the forks of the one invited account, deals, judges and integrates for this project. The two
+   projects' files name two commits of the registry; between the two, the documents, the two workflow files and
+   their test, and the second project's own file differ, and nothing of `tools/hive/` or `tools/judge/`.
 
 ## The file
 
@@ -164,9 +167,9 @@ showed the case (a correct candidate short of a proof alone), and a rule of the 
 member ([decisions.md](decisions.md), 16 November); how often the judge refuses work that is in fact better is
 still unmeasured. One point that list does not hold: a run that finds the state repository moved by another
 project's run takes what that run saved and pushes again (setting 8 above, [decisions.md](decisions.md), 17
-November); with one project in service no run has met that case, and it has run in the tests only. Of the second
-project's file (setting 8 above) nothing has run: its repository exists and its file names a commit since 17 November
-2026, and its switch is empty.
+November); no run has met that case yet, and it has run in the tests only. Of the second project's file (setting 8
+above) one run has been read, made with the project paused; no task of that project has been dealt or judged yet, so
+the judge's second kind has not judged on a hosted runner.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).

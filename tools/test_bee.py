@@ -24299,7 +24299,7 @@ class TestHiveWorkflowOfTheSecondProject(TestHiveWorkflow):
     The commit of the registry it names was forty zeros, which name none, until 17 November 2026: a commit of main
     is written in it by a pull request, on the founder's decision. It starts nothing while its switch is empty."""
 
-    PIN = "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87"  # the one commit of the registry every job of this file runs
+    PIN = "5091c9c80d3f9c1e7703b4a9d87938dd19770297"  # the one commit of the registry every job of this file runs
     FILE, TITLE = "hive-cjson.yml", "Hive (cjson)"
     HIVE_PROJECT, REPOSITORY = "cjson", "cjsonRustBee"
     SWITCH, GROUP, CRON = "HIVE_CJSON", "hive-cjson", "47 * * * *"
