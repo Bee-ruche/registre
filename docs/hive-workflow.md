@@ -89,6 +89,15 @@ Five things carry it:
    The tests fail unless the commit named is one that `main` itself has been at (the line of first parents of its
    tip): GitHub serves any commit of a repository by its id, a pull request's included, and a commit inside a pull
    request that was merged is in `main`'s history without ever having been its state.
+8. **A second project has a run of its own** (`.github/workflows/hive-cjson.yml`, for the project `cjson`): the same
+   four jobs, held by the same tests line for line; what differs is named in one place
+   (`TestHiveWorkflowOfTheSecondProject`): the project and its repository, how its judge's image is made (the
+   judge's second kind, [reference-judge.md](reference-judge.md)), its minute of the hour, its group (one run of a
+   project at a time; the two projects' runs do not wait for each other) and **its own switch, the repository
+   variable `HIVE_CJSON`**. The state repository, the two environments and the two Apps are the hive's, the same for
+   both runs. What only the founder can make for it: the project's repository, with its two branches as in point 4;
+   the project App installed on it; the variable; and the commit its file names (point 7: forty zeros until then,
+   so the file starts nothing, variable or not).
 
 ## The file
 
