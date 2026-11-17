@@ -85,11 +85,11 @@ The full specification is [docs/protocol.md](protocol.md).
 
 | Piece | State | Where |
 | --- | --- | --- |
-| The common judge | **built**, in service for the old flow | `tools/judge/` |
-| The collector (plan, record, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; not in service**. Rebuilt around dealing after seven reviews of the earlier design by another model; the new one is under review, and there is not yet a review that finds nothing serious | `tools/hive/` |
+| The judges | **built**: the common judge (the same outputs as the project's tip, and measurably better), in service for the old flow and for the hive's first project; a second kind, `reference` (a candidate answers as a reference does: [reference-judge.md](reference-judge.md)), built and tested, in service for no project yet | `tools/judge/` |
+| The collector (plan, record, judge, apply, ledger, feed, statistics) and the volunteer's commands | **built and tested; in service on miniz since 16 November 2026, by invitation** (one member so far: the founder's own worker). Rebuilt around dealing after seven reviews of the earlier design by another model; each change since is read by another model, and there is not yet a whole round that finds nothing serious: the gate of 7.2 is not passed. The founder started the run for their own account alone, by their own decision ([decisions.md](decisions.md), 16 November 2026); nobody else is invited before the gate is passed | `tools/hive/` |
 | The worker's guide | **built** | `.claude/skills/bee-worker/` |
-| The hourly workflow (four jobs), the state repository, the integration identity | **written and reviewed, never run** (phase 1): on `main` it starts every hour and skips its four jobs while the variable `HIVE_PROJECTS` is empty; needs the founder's settings (section 7.1), the commit of the registry it is to use, and a dry run | `.github/workflows/hive.yml`, `docs/hive-workflow.md` |
-| A project's configuration, tasks and splitter | **planned** for miniz (phase 1) | `hive/projects/`, `hive/tasks/` |
+| The hourly workflow (four jobs), the state repository, the integration identity | **in service for miniz since 16 November 2026** (phase 1), on the commit of the registry its file names; a second file, for the second project, is on `main`, switched off, and names no commit. Each file starts every hour and skips its four jobs while its own repository variable (`HIVE_PROJECTS`, `HIVE_CJSON`) is empty. Still to make before the pilot: the dry run of the judge's false refusals ([hive-workflow.md](hive-workflow.md), its last point) | `.github/workflows/hive.yml`, `.github/workflows/hive-cjson.yml`, `docs/hive-workflow.md` |
+| A project's configuration, tasks and splitter | **written by hand** for miniz (in service) and for the second test project, `cjson`, a port of cJSON to Rust (declared, paused; its repository is not made yet); no splitter yet | `hive/projects/`, `hive/tasks/` |
 | The project page (progress, members, models) and the member's card | **built** (the generator and its tests); where it is published is phase 1 | `tools/hive/page.py` |
 | The volunteers' page | **built**, as a draft for the pilot | `docs/join.md` |
 
@@ -355,7 +355,7 @@ narrowed the hive to what a machine judges; they are corrected.
 
 | Kind | First real project | State |
 | --- | --- | --- |
-| Optimizing | miniz | built, not in service (phase 1) |
+| Optimizing | miniz | in service by invitation since 16 November 2026 (phase 1) |
 | Building | the packet decoder, then PCRE2 (4.3) | a machine still judges the code; the judgment that is new is of the **tests** others write before the code (seeded mutants they must catch). Next after the pilot |
 | Deciding without an oracle | the hive's own choices first (which tasks, which project next), on a school project | the least concrete kind, and the hive's own. Its form of judgment is to be designed in docs/judges.md and attacked before it decides anything real; a human's word is final until it has held (commandment 11) |
 | Proving | none yet: a trial (4.3) | the strictest judge, and a field where others already work at scale |
@@ -611,7 +611,9 @@ What the builder adds to make it permanent (proposals, the founder's to change):
 - **A lost record**: the hive promises in its ledger before it pushes; the next run completes the ledger from the
   promise.
 - **A commit the project's repository declines** (a rule on what may be pushed there): counted against its
-  candidate, three times at most, and the run ends in error so that a maintainer sees it.
+  candidate, three times at most, when the hive had just pushed there in the same run (otherwise the hive's own
+  right to push is as likely the cause, and the candidate only loses its place); the run ends in error so that a
+  maintainer sees it.
 - **An incident** (the judge accepted what it should not have): stop button, revert, a task for the judge's gap, a
   line in the decision log. The member is banned only for cheating, never for a judge's mistake.
 
@@ -661,8 +663,9 @@ volunteer-computing projects have done for decades).
 3. **Two integration identities** (done on 13 November 2026): two GitHub Apps, one that can write the state's own
    repository (`Bee-ruche/hive-state`, public) and one that can write the hosted projects' branches, each key in
    an environment of the registry that accepts the branch `main` only. The hourly workflow is
-   `.github/workflows/hive.yml`; the settings it needs, and the one still to make (the commit of the registry it
-   uses), are in [docs/hive-workflow.md](hive-workflow.md).
+   `.github/workflows/hive.yml`; the settings it needs are in [docs/hive-workflow.md](hive-workflow.md) (the
+   last of them, the commit of the registry it uses, was made on 16 November 2026 and moves by a pull request of
+   its own).
 4. **Access to the two forks** for the builder, or the founder applies the forks' changes: the builder's pushes to
    them are refused, and it does not work around a refusal.
 5. **The decisions** D1 to D10 (docs/founder-decisions.md), first of all D1 (ask the providers), D4 (the flagship)

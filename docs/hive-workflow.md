@@ -3,7 +3,8 @@
 *The workflow of phase 1 (docs/plan.md, 7.2): [`.github/workflows/hive.yml`](../.github/workflows/hive.yml). The run
 holds the right to write to a project, so it entered the repository only after another model than the one that
 wrote it had reviewed it, with `tools/test_bee.py` listing its permissions
-(`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has never run.** On
+(`test_the_workflows_security_is_unchanged`) and holding its rules (`TestHiveWorkflow`). **It has been running for
+the first project since 16 November 2026**, by invitation (the founder's own worker). On
 `main` it starts every hour and all four jobs are skipped, as long as the repository variable `HIVE_PROJECTS` is
 empty; and the commit of the registry it checks out is the one its file names: forty zeros until 16 November
 2026, then, the same day, the commits `main` reached by pull requests 372 (the founder's own first run), 375 (the
@@ -83,9 +84,10 @@ Five things carry it:
 6. **Actions settings**: workflows may not approve pull requests; artifacts kept a few days.
 7. **Which version of the hive a run uses: one commit, named in the workflow file** (decided 13 November 2026).
    Every job checks out the registry at that commit and at no other: the hive's code, its settings and its tasks
-   change when a pull request that a person reviewed changes that line, and at no other time. The file holds forty
-   zeros in its place, which no checkout can find: the line is set, by a pull request of its own, to the commit of
-   `main` that the founder accepted, after this file is on `main`. A new batch of tasks is such a pull request too.
+   change when a pull request that a person reviewed changes that line, and at no other time. A new file holds
+   forty zeros in its place, which no checkout can find (the first project's did until 16 November 2026; the second
+   project's does): the line is set, by a pull request of its own, to the commit of `main` that the founder
+   accepted, after the file is on `main`. A new batch of tasks is such a pull request too.
    The tests fail unless the commit named is one that `main` itself has been at (the line of first parents of its
    tip): GitHub serves any commit of a repository by its id, a pull request's included, and a commit inside a pull
    request that was merged is in `main`'s history without ever having been its state.
@@ -141,6 +143,19 @@ Notes on the file:
   sharing the group would replace each other's waiting runs.
 
 ## What could not be tried here
+
+**Since the first real runs (16 November 2026)**, for the first project, these points of the list below have been
+met for real: the whole run, with both keys; the forks listed with the read-only token; `artifact.py` on GitHub's
+own archives; the judge's image made from a clone of the project, and miniz's judge on the trees the hive hands it
+(a run with one candidate ends in about three to four minutes, by GitHub's own record of the runs); a push the
+project's repository declined, which the hive recorded as a declined push. The list is kept as it was written before
+those runs. Still untried in it: an environment restricted to `main` refusing a job started on another ref; what
+`!cancelled()` gives when the judging job is stopped at its time limit; whether commits authored under a member's
+no-reply address count on their profile. The dry run of its last point was not made: the second real candidate
+showed the case (a correct candidate short of a proof alone), and a rule of the same day removes its cost to the
+member ([decisions.md](decisions.md), 16 November); how often the judge refuses work that is in fact better is
+still unmeasured. Of the second project's file (setting 8 above) nothing has run: its repository does not exist
+yet.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
