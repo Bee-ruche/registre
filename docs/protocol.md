@@ -244,8 +244,13 @@ the hive runs those git commands with an empty attribute source.
   two trees to disk **byte for byte, without git's checkout** (no hook, filter, attribute or end-of-line conversion applies), and hands them
   to the judge. A candidate can add or change plain files only; the project's own links and submodules are
   written as they are.
-- The judge is the registry's common judge (docs/common-judge.md): candidate code builds and runs only in a
-  container without network, and the verdict is derived on the host. Code 0 is correct, 1 a refusal, 2 a failure
+- **A project names its judge's kind** (`judge.kind` in its file). What a verdict is, where judged code runs and
+  what may accept a candidate are the hive's, the same for every project; how a candidate is found right or wrong
+  is a kind of judge's; what is asked of the judge's figures is the project's. A kind is code of the registry: a
+  project's file can name one and never bring one, and a file that names a kind the tool does not know is refused
+  when it is loaded, at every step. One kind exists today, `common`, which a project that names none has: the
+  registry's common judge (docs/common-judge.md): candidate code builds and runs only in a container without
+  network, and the verdict is derived on the host. Whatever the kind, code 0 is correct, 1 a refusal, 2 a failure
   to judge.
 - **A failure to judge is the candidate's doing only if the machine works.** When the judge fails on a candidate,
   the hive asks it about the project's own tip against itself. If that fails too, the machine is down: the run
@@ -454,7 +459,8 @@ hour and the fork's own number, which adding forks to the list does not shift.
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
   (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the
-  judge's options, the figures of the judge it keeps (`judge.metrics`) and requires (`judge.require`), the
+  kind of its judge (`judge.kind`), the judge's options, the figures of the judge it keeps (`judge.metrics`) and
+  requires (`judge.require`), the
   judge's proofs it takes (`judge.confirm`: figures it keeps, named `sure_<measure>`; every goal on a figure holds
   one of them, with a minimum of 1 or more, and a project that lists none has goals of the kind « correct » only;
   what the project requires of every candidate, `judge.require`, stays as the project wrote it), and the project's pause

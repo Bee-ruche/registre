@@ -467,6 +467,10 @@ def load_config(path):
     judge.setdefault("history", [])
     if not (isinstance(judge["history"], list) and len(judge["history"]) <= 16 and all(is_sha(c) for c in judge["history"])):
         raise HiveError(f"{path}: judge.history: the commits of the project's own history its judge reads by id (full ids)")
+    judge.setdefault("kind", "common")
+    if not (isinstance(judge["kind"], str) and judge["kind"] in JUDGES):
+        raise HiveError(f"{path}: judge.kind: a kind of judge this tool knows ({', '.join(sorted(JUDGES))}): if the registry names "
+                        "another, this tool is older than the registry")
     return config
 
 
@@ -2655,6 +2659,26 @@ def common_judge(registry_root, options=(), repetitions=10, workdir=None, timeou
     return run
 
 
+def the_common_judge(registry_root, settings, workdir):
+    return common_judge(registry_root, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
+                        workdir=workdir, timeout=settings.get("timeout_seconds", 3600))
+
+
+# THE KINDS OF JUDGE. The hive is one and its projects are of several natures: what a verdict is, where the judged
+# code runs and what may accept a candidate are the base's (this file, the same for every project); HOW a candidate is
+# found right or wrong is a kind of judge's; what a project asks of the figures is the project's file. A project names
+# its judge's kind (judge.kind, « common » when it names none): each kind is a function (the registry's tree, the
+# project's judge settings, the judging's own folder) that gives the judge function the judging step runs: (base tree,
+# candidate tree, task, tip, commit) -> {"code": 0 correct, 1 refused, 2 failure to judge, "report": figures}. A kind
+# is code of the registry, trusted as this file is; a project's file can name one, never bring one.
+JUDGES = {"common": the_common_judge}
+
+
+def judge_of(registry_root, settings, workdir):
+    """The judge function of a project, by the kind its file names."""
+    return JUDGES[settings["kind"]](registry_root, settings, workdir)
+
+
 def judge_figures(published, report_path):
     """Numbers out of the common judge's answer: report.py's whole numbers, and each metric's gain.
 
@@ -2763,9 +2787,7 @@ def cmd_judge(args):
         write_json(args.out, {"answers": {}, "started": []})
         return
     read_bundle(args.repo, read_plan(made, config)[1], args.bundle)
-    settings = config["judge"]
-    judge = common_judge(args.registry, options=(settings.get("options") or {}).items(), repetitions=settings.get("repetitions", 10),
-                         workdir=args.judge_workdir, timeout=settings.get("timeout_seconds", 3600))
+    judge = judge_of(args.registry, config["judge"], args.judge_workdir)
     write_json(args.out, {"answers": {}, "started": []})
     notes = {}
     verdicts, outcomes, started = judge_plan(
