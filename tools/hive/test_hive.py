@@ -2333,7 +2333,7 @@ class TestFirstReview(Base):
         takes what the other run saved and pushes again, a bounded number of times, waiting a little longer each
         time; past the bound the step fails in one line that says whose state is not saved. A push refused while
         nothing moved there is not another run's doing: it is tried once more and no more, and git's words are said."""
-        def a_race(times):
+        def a_race(times, folder="other"):
             root = Path(tempfile.mkdtemp(prefix="state-race-", dir=self.w.root))
             origin, mine, theirs = root / "state.git", root / "mine", root / "theirs"
             sh("git", "init", "--quiet", "--bare", "-b", "hive-state", str(origin), cwd=root)
@@ -2353,9 +2353,11 @@ class TestFirstReview(Base):
                 if Path(repo) == mine and args[0] == "push":
                     pushes.append(args)
                     if len(pushes) <= times:  # the other project's run saves its own folder just before
-                        with open(theirs / "other/ledger.jsonl", "a") as f:
+                        (theirs / folder).mkdir(exist_ok=True)
+                        with open(theirs / folder / "ledger.jsonl", "a") as f:
                             f.write(f"{len(pushes)}\n")
-                        sh("git", "commit", "--quiet", "--all", "-m", "theirs again", cwd=theirs)
+                        sh("git", "add", "--all", cwd=theirs)
+                        sh("git", "commit", "--quiet", "-m", "theirs again", cwd=theirs)
                         sh("git", "pull", "--quiet", "--rebase", "origin", "hive-state", cwd=theirs)
                         sh("git", "push", "--quiet", "origin", "HEAD", cwd=theirs)
                 return real(repo, *args, **named)
@@ -2371,6 +2373,8 @@ class TestFirstReview(Base):
 
             def there(path):
                 return sh("git", "show", f"hive-state:{path}", cwd=origin, check=False).stdout
+            self.assertEqual(sh("git", "rev-list", "--merges", "--count", "hive-state", cwd=origin).stdout.strip(), "0",
+                             "the state's history stays one line: what the other run saved is taken under this run's commit")
             return said, len(pushes), waits, there("toy/ledger.jsonl"), there("other/ledger.jsonl")
 
         self.assertEqual(hive.STATE_PUSHES, 6)
@@ -2383,6 +2387,11 @@ class TestFirstReview(Base):
         self.assertEqual(said, "the state repository moved before each of this run's 6 pushes: the state of toy is committed here and not "
                                "saved there. Other projects' runs save theirs at the same moment, far more often than they should: a "
                                "person must look at them")
+        # What the other run saved is in THIS project's folder (two runs of one project, which the workflow's group
+        # forbids): nothing is chosen between the two. The step ends on git's own failure, and what was saved there stays.
+        said, pushes, waits, mine, theirs = a_race(1, folder="toy")
+        self.assertRegex(said, r"\Agit pull failed \(\d+\)")
+        self.assertEqual((pushes, waits, mine, theirs), (1, [], "1\n", "0\n"))
         # refused, and nothing moved there (a right withdrawn, a rule): two pushes, no wait, git's own failure
         root = Path(tempfile.mkdtemp(prefix="state-refused-", dir=self.w.root))
         origin, state = root / "state.git", root / "state"
