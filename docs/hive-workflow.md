@@ -8,7 +8,8 @@ the first project since 16 November 2026**, by invitation (the founder's own wor
 `main` it starts every hour and all four jobs are skipped, as long as the repository variable `HIVE_PROJECTS` is
 empty; and the commit of the registry it checks out is the one its file names: forty zeros until 16 November
 2026, then, the same day, the commits `main` reached by pull requests 372 (the founder's own first run), 375 (the
-correction that run called for) and 377 (a refusal for a proof alone). A pull request of its
+correction that run called for) and 377 (a refusal for a proof alone), and from 17 November the one reached by
+pull request 384 (the base as it stands before a second project runs). A pull request of its
 own changes that line (setting 7 below). What could not be tried is listed at the end.*
 
 ## What it must guarantee
