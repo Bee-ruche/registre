@@ -19,7 +19,7 @@ comparison. What knows the project is the project's, at its tip.
 | The kind: the steps below, the isolation (`container.py`), the safe reading (`lecture.py`), the draws, the comparison, the verdict | the registry | on the judge's machine |
 | The image | the registry: the manifest names an image the registry holds (today `common`, the common judge's) and never brings one | — |
 | The manifest `bee/reference/project.json`: data | the project's tip, a path no candidate can change | never: it is read, every field checked against a floor and a cap |
-| `bee/reference/build-reference`, `bee/reference/build-unit`, the reference, the two drivers, the generator of cases | the project's tip, paths no candidate can change | in containers only |
+| `bee/reference/build-reference`, `bee/reference/build-unit`, the reference, the two drivers, the generator of cases, a blank unit | the project's tip, paths no candidate can change | in containers only |
 | A unit's files | the candidate, for the unit of its task | read as bytes on the host; built and run in containers only |
 
 Nothing of the tip and nothing of the candidate runs on the judge's machine itself.
@@ -35,11 +35,15 @@ Nothing of the tip and nothing of the candidate runs on the judge's machine itse
   <u32 length><bytes>`…; the index is the case's position; a refusal carries no bytes.
 - A **nonce** is random bytes the kind gives each build of a unit. The project's build makes the binary's
   layout follow it.
+- A **blank unit** is the project's own stand-in for a unit: files that build in the unit's place and do nothing
+  (they abort if called). The judge builds its control with them.
 
 ## The two rules
 
 1. **A candidate answers only for binaries of its own unit**, built from the skeleton at the tip and its own
    files. No other unit is built or run for it, and the rest of its tree must be the tip's, byte for byte.
+   Nothing a candidate wrote is built or run in another candidate's judgement, nor in the question about the tip
+   itself: a unit that was accepted is, from then on, only ever built again as a candidate's.
 2. **A unit is right when it is right in every build and every run drawn for it**: several binaries built with
    different nonces, each run several times on the cases in orders the judge draws, every file of answers exactly
    the expected one and every exit status 0.
@@ -53,13 +57,14 @@ For a task whose unit is U, the tip's tree and the candidate's tree written out 
 1. **Read and check.** The manifest; the task's files, which must be exactly U's files; the candidate's tree, which
    must equal the tip's everywhere else; U's files, which must be plain files within the manifest's bound.
 2. **The reference** is built in its own container: its driver and the generator.
-3. **The control.** The tip's own U is built twice, with two nonces: the two binaries must differ; one is run on no
-   case and must write nothing and exit 0. This tells a broken toolchain, skeleton or driver from a candidate
-   that does not build.
+3. **The control.** The skeleton with the project's blank unit in U's place is built twice, with two nonces: the
+   two binaries must differ; one is run on no case and must write nothing and exit 0. This tells a broken
+   toolchain, skeleton or driver from a candidate that does not build. The unit the tip holds is not part of it.
 4. **The candidate's binaries** of U are built, one per nonce, from the tip's skeleton and the candidate's files.
 5. **The draw.** Only now a seed is drawn. The generator writes U's cases (exactly the manifest's count, each
    within its bound); the reference answers them. The host checks both files against the framing.
-6. **The tip against itself** stops here, answered 0: nothing is asked of U, which the tip may not hold yet.
+6. **The tip against itself** stops here, answered 0: nothing is asked of U, and nothing of U is built or run,
+   whether the tip holds it, holds it unwritten, or does not hold it yet.
 7. **The runs.** Each binary is run several times, each time on the cases in another order.
 8. **The comparison**, on the host: each file of answers is read through the safe reader, no further than the
    expected length plus one byte, and must be exactly what the host built from the reference's answers.
@@ -73,7 +78,7 @@ The verdict:
   control, the machine. The base then asks about the tip itself ([protocol.md](protocol.md)); that question is
   asked with the seed of the judgement that failed, so that the same cases are drawn.
 
-The report holds numbers only: `cases_compared`, `builds`, `runs`.
+Of the judge's report the base keeps numbers only: `cases_compared`, `builds`, `runs` (what was done).
 
 ## The manifest
 
@@ -82,7 +87,8 @@ The report holds numbers only: `cases_compared`, `builds`, `runs`.
   "image": "common",
   "reference": ["reference", "harness", "bee/reference"],
   "skeleton": ["harness/unit_driver.c", "harness/unit.h", "bee/reference/build-unit"],
-  "units": {"upper": {"files": ["port/upper.c"], "cases": 300, "case_bytes": 64, "answer_bytes": 64, "refuses": true}},
+  "units": {"upper": {"files": ["port/upper.c"], "blank": ["harness/blank_unit.c"],
+                      "cases": 300, "case_bytes": 64, "answer_bytes": 64, "refuses": true}},
   "variants": 2, "runs": 2,
   "build_seconds": 60, "run_seconds": 10, "reference_seconds": 60,
   "memory_mb": 256, "build_processes": 64, "output_mb": 16, "unit_bytes": 65536
@@ -90,9 +96,11 @@ The report holds numbers only: `cases_compared`, `builds`, `runs`.
 ```
 
 `reference`: what the reference's container is given. `skeleton`: what a unit's build is given beside the
-unit's own files. `refuses`: whether the unit refuses some inputs (the cases drawn must then hold a refusal and
-an answer). `variants`: builds per candidate; `runs`: runs per build; both at least 2. A unit's file is never a
-path of `reference` or `skeleton`, never under `bee/`, never another unit's.
+unit's own files. `blank`: for each of the unit's files, the project's file that stands in its place in the
+control. `refuses`: whether the unit refuses some inputs (the cases drawn must then hold a refusal and
+an answer). `variants`: builds per candidate; `runs`: runs per build; both at least 2. A unit's file is a plain
+file, never a path of `reference` or `skeleton`, never under `bee/`, never another unit's; a blank file is never
+a unit's.
 
 ## What the project's programs are given
 
@@ -105,7 +113,9 @@ path of `reference` or `skeleton`, never under `bee/`, never another unit's.
 | `/unit/driver` | `/unit`, `/cases`, `/answers` | write `/answers/answers`, exit 0 |
 
 Every container is without network, read-only, unprivileged, bounded in time, memory, processes and bytes
-written; a folder a container writes in is a memory file system of bounded size, gone when the step ends.
+written; a run has room for its driver and no other process; a folder a container writes in is a memory file
+system of bounded size, gone when the step ends. A container's command also carries a time of its own, a little
+after the judge's: it ends even if the judge is no longer there to stop it.
 
 ## For the base
 

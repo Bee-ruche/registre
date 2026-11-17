@@ -57,7 +57,8 @@ STREAM_BYTES = 64 << 20  # a whole file of cases, or of answers
 SOURCE_BYTES = 64 << 20  # what one container is given of the project's tree
 ENTRIES = 20000          # files and folders under the paths one container is given
 IMAGES = {"common": ()}  # an image's name -> the packages added to the common judge's image (tools/judge/Dockerfile.base)
-CONTROL = 3              # the tip's own builds are given this many times the candidate's time
+CONTROL = 3              # the control's builds are given this many times a candidate's time
+GRACE = 30               # a container ends itself this many seconds after its time bound, should the judge be gone
 OVERHEAD = 10            # seconds counted for one container's start and end
 SEED = re.compile(r"[0-9a-f]{64}")
 STATE = {}               # what the report says of a judgement that stops: the step, the seed
@@ -102,12 +103,14 @@ def check_manifest(raw):
         raise Erreur("the manifest's units: names of lower-case letters, digits and underscores")
     manifest["units"], taken = {}, []
     for name, unit in units.items():
-        if not isinstance(unit, dict) or set(unit) != {"files", "refuses", *UNIT_NUMBERS}:
-            raise Erreur(f"the manifest's unit {name}: exactly the fields files, refuses, " + ", ".join(sorted(UNIT_NUMBERS)))
+        if not isinstance(unit, dict) or set(unit) != {"files", "blank", "refuses", *UNIT_NUMBERS}:
+            raise Erreur(f"the manifest's unit {name}: exactly the fields files, blank, refuses, " + ", ".join(sorted(UNIT_NUMBERS)))
         files = paths(unit["files"], f"unit {name}: files")
+        if not isinstance(unit["blank"], list) or len(unit["blank"]) != len(files) or not all(isinstance(p, str) and PATH.fullmatch(p) for p in unit["blank"]):
+            raise Erreur(f"the manifest's unit {name}: blank: one plain relative path for each of its files")
         if type(unit["refuses"]) is not bool:
             raise Erreur(f"the manifest's unit {name}: refuses is true or false")
-        checked = {"files": files, "refuses": unit["refuses"]}
+        checked = {"files": files, "blank": list(unit["blank"]), "refuses": unit["refuses"]}
         for key, bounds in UNIT_NUMBERS.items():
             checked[key] = whole(unit[key], bounds, f"unit {name}: {key}")
         if checked["cases"] * (4 + checked["case_bytes"]) > STREAM_BYTES or checked["cases"] * (9 + checked["answer_bytes"]) > STREAM_BYTES:
@@ -119,6 +122,9 @@ def check_manifest(raw):
                 raise Erreur(f"the manifest's unit {name}: {path} is also the project's own, or another unit's")
         taken += files
         manifest["units"][name] = checked
+    for name, unit in manifest["units"].items():  # a blank is the project's own file: never one a candidate writes
+        if any(within(path, taken) or path == "bee" for path in unit["blank"]):
+            raise Erreur(f"the manifest's unit {name}: a blank file is a unit's own file")
     return manifest
 
 
@@ -173,15 +179,18 @@ def regular_files(root, relative, found):
         raise ValueError(f"{relative} is neither a file nor a folder")
 
 
-def copy_paths(root, listed, target, blame, limit=SOURCE_BYTES, file_limit=None):
+def copy_paths(root, listed, target, blame, limit=SOURCE_BYTES, file_limit=None, files_only=False):
     """The files at root/<each listed path> written under target with the same relative paths, readable by the
-    container's user. Nothing is followed and nothing special is copied; blame says whose fault a bad path is."""
+    container's user. Nothing is followed and nothing special is copied; blame says whose fault a bad path is.
+    files_only: each listed path is a file itself (a unit's files), never a folder."""
     found = []
     try:
         for relative in listed:
             regular_files(root, relative, found)
     except (OSError, ValueError) as error:
         raise blame(f"a path that is not a plain file or folder ({propre(str(error), 200)})") from None
+    if files_only and sorted(relative for relative, _ in found) != sorted(listed):
+        raise blame("a unit's file that is not a plain file")
     total = 0
     for relative, executable in found:
         try:
@@ -236,7 +245,7 @@ def only_the_unit_differs(tip, candidate, files):
     """Refus unless the candidate's tree is the tip's everywhere but at the unit's files. The base integrates the
     whole tree a candidate gives: what this judge does not build must be what the project already holds."""
     ours, theirs = snapshot(tip), snapshot(candidate)
-    for relative in files:  # the unit's files, and the folders that lead to them, are the candidate's to hold
+    for relative in files:  # the unit's files are the candidate's to hold, whether the tip has them or not
         ours.pop(relative, None), theirs.pop(relative, None)
     if ours != theirs:
         raise Refus("the candidate changes something else than its unit's files")
@@ -262,6 +271,9 @@ def bounded_folder(path, megabytes):
 def launch(docker, command, mounts, pids, seconds, blame, what, entry=None):
     """One container, to its end. A time bound reached, or an exit status that is not 0, is `blame`'s (Refus: the
     candidate's doing; Erreur: the project's or the machine's). Docker's own failure is always the machine's."""
+    # The judge stops a container at its time bound (container.Docker.launch). Should the judge itself be killed, the
+    # container still ends: the command runs under « timeout », inside, a little later.
+    command = ["timeout", "-s", "KILL", str(seconds + GRACE)] + command
     try:
         ran = docker.launch(command, mounts, pids=pids, entry=entry, timeout_seconds=seconds)
     except Panne:
@@ -399,6 +411,11 @@ def frame_answers(answers):
     return b"".join(struct.pack("<IBI", index, status, len(data)) + data for index, (status, data) in enumerate(answers))
 
 
+def draw_seed():
+    """The seed of one judgement: from the system's own randomness, when the judge asks, never before."""
+    return secrets.token_bytes(32)
+
+
 def order_of(seed, build, run, count):
     """The order one run is given its cases in: drawn from the judgement's seed, another for each build and run."""
     order = list(range(count))
@@ -427,7 +444,7 @@ def read_manifest(tip):
 
 
 def judge(args, work):
-    """Steps 0 to 9 of docs/reference-judge.md. Returns the report's figures; Refus: code 1; Erreur: code 2."""
+    """One judgement, step by step (docs/reference-judge.md). Returns the report's figures; Refus: code 1; Erreur: code 2."""
     STATE["step"] = 1
     manifest = read_manifest(args.tip)
     if not NAME.fullmatch(args.unit or "") or args.unit not in manifest["units"]:
@@ -442,22 +459,33 @@ def judge(args, work):
     if not args.tip_itself:  # what can be told of a candidate without running anything is told first
         only_the_unit_differs(args.tip, args.candidate, unit["files"])
         candidate_sources = judgement.folder("candidate-sources")
-        copy_paths(args.candidate, unit["files"], candidate_sources, Refus, file_limit=manifest["unit_bytes"])
+        copy_paths(args.candidate, unit["files"], candidate_sources, Refus, file_limit=manifest["unit_bytes"], files_only=True)
 
     STATE["step"] = 2
     sources = judgement.folder("reference-sources")
     copy_paths(args.tip, manifest["reference"], sources, Erreur)
     reference = judgement.build_reference(sources)
 
-    STATE["step"] = 3  # the control: the tip's own unit builds, twice, into two different binaries, and its driver starts
-    tip_sources = judgement.folder("tip-sources")
-    copy_paths(args.tip, manifest["skeleton"] + unit["files"], tip_sources, Erreur)
-    (control, first), (_, second) = (judgement.build_unit(tip_sources, args.unit, Erreur, CONTROL) for _ in range(2))
+    # The control: the skeleton with the project's BLANK unit in the unit's place builds, twice, into two different
+    # binaries, and its driver starts. Never the unit the tip holds: that one was a candidate's, and nothing a
+    # candidate wrote is built or run in another's judgement, or in the question about the tip itself.
+    STATE["step"] = 3
+    control_sources = judgement.folder("control-sources")
+    copy_paths(args.tip, manifest["skeleton"], control_sources, Erreur)
+    for path, blank in zip(unit["files"], unit["blank"]):
+        try:
+            data = lire_sortie(args.tip, blank, manifest["unit_bytes"])
+        except (Refus, OSError) as error:
+            raise Erreur(f"the project's blank unit {blank}: {propre(str(error), 200)}") from None
+        if data is None:
+            raise Erreur(f"the project's tip holds no blank unit {blank}")
+        keep_file(os.path.dirname(os.path.join(control_sources, path)), os.path.basename(path), data)
+    (control, first), (_, second) = (judgement.build_unit(control_sources, args.unit, Erreur, CONTROL) for _ in range(2))
     if first == second:
         raise Erreur("the project's build gives the same binary for two nonces: it must make the binary follow the nonce")
-    nothing = judgement.answers(["/unit/driver"], control, "/unit", b"", 1, manifest["run_seconds"], Erreur, "the tip's driver, given no case")
+    nothing = judgement.answers(["/unit/driver"], control, "/unit", b"", 1, manifest["run_seconds"], Erreur, "the project's driver, given no case")
     if nothing:
-        raise Erreur("the tip's driver, given no case, wrote something")
+        raise Erreur("the project's driver, given no case, wrote something")
 
     binaries = []
     if not args.tip_itself:
@@ -466,7 +494,7 @@ def judge(args, work):
         binaries = [judgement.build_unit(candidate_sources, args.unit, Refus)[0] for _ in range(manifest["variants"])]
 
     STATE["step"] = 5  # only now: no build of the candidate's has seen the seed, the cases or their order
-    seed = bytes.fromhex(args.seed) if args.seed else secrets.token_bytes(32)
+    seed = bytes.fromhex(args.seed) if args.seed else draw_seed()
     STATE["seed"], STATE["seed_origin"] = seed.hex(), "given" if args.seed else "drawn"
     cases = parse_cases(judgement.generate(reference, args.unit, unit["cases"], seed), unit)
     written = judgement.answers(["/ref/reference", args.unit], reference, "/ref", frame_cases(cases), STREAM_BYTES,
@@ -490,7 +518,7 @@ def judge(args, work):
             if given != wanted:
                 raise Refus(f"{what}: its answers are not the reference's")
             runs += 1
-    STATE["step"] = 9
+    STATE["step"] = 8
     return {"cases_compared": len(cases) * runs, "builds": len(binaries), "runs": runs}  # what was done, not what was asked
 
 

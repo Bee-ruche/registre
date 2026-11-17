@@ -101,6 +101,15 @@ PIPE_FOR_ANSWERS = hostile(before="static void swap(void) { unlink(\"/answers/an
                            inside="    static int set; if (!set++) atexit(swap);\n")
 ONE_BYTE_MORE = hostile(before="static void more(void) { FILE *f = fopen(\"/answers/answers\", \"ab\"); if (f) { fputc(0, f); fclose(f); } }\n",
                         inside="    static int set; if (!set++) atexit(more);\n")
+MANY_BYTES_MORE = hostile(before="static void more(void) { static char block[1 << 16]; FILE *f = fopen(\"/answers/answers\", \"ab\"); int i; "
+                          "if (f) { for (i = 0; i < 16; i++) fwrite(block, 1, sizeof block, f); fclose(f); } }\n",
+                          inside="    static int set; if (!set++) atexit(more);\n")
+# Right only if it cannot start another process: a run is given room for its driver and no more.
+FORKS = hostile(inside="    static int tried, forked; if (!tried++) { pid_t child = fork(); if (child == 0) _exit(0); forked = child > 0; }\n",
+                after_loop="    if (forked && n) out[0] ^= 1;\n")
+# Right on every case; but its driver, given NO case, exits 3 before it starts (code that runs when the binary loads).
+EMPTY_TRAP = hostile(before="__attribute__((constructor)) static void trap(void)\n{\n    struct stat st;\n"
+                            "    if (stat(\"/cases/cases\", &st) == 0 && st.st_size == 0)\n        _exit(3);\n}\n")
 RIGHT_AND_EXIT_7 = hostile(before="static void leave(void) { _exit(7); }\n", inside="    static int set; if (!set++) atexit(leave);\n")
 READS_THE_ORIGINAL = ('#include "unit.h"\n#include "/src/reference/original.c"\n'
                       "int answer(const unsigned char *in, size_t n, unsigned char *out, size_t cap, size_t *len)\n"
@@ -149,7 +158,8 @@ class TestTheManifest(Base):
 
     def test_the_toys_manifest_is_taken_as_it_is(self):
         manifest = reference.check_manifest(MANIFEST)
-        self.assertEqual((manifest["units"]["upper"]["files"], manifest["variants"], manifest["image"]), (["port/upper.c"], 2, "common"))
+        self.assertEqual((manifest["units"]["upper"]["files"], manifest["units"]["upper"]["blank"], manifest["variants"], manifest["image"]),
+                         (["port/upper.c"], ["harness/blank_unit.c"], 2, "common"))
         self.assertEqual(reference.read_manifest(str(TOY)), manifest)
 
     def test_anything_else_is_a_failure_to_judge(self):
@@ -170,6 +180,12 @@ class TestTheManifest(Base):
                       {**MANIFEST, "units": {"": unit}}, {**MANIFEST, "units": {"x" * 33: unit}}, {**MANIFEST, "units": {"upper": []}},
                       {**MANIFEST, "units": {"upper": {**unit, "extra": 1}}}, {**MANIFEST, "units": {"upper": {k: v for k, v in unit.items() if k != "refuses"}}},
                       {**MANIFEST, "units": {"upper": {**unit, "refuses": 1}}}, {**MANIFEST, "units": {"upper": {**unit, "cases": 0}}},
+                      {**MANIFEST, "units": {"upper": {k: v for k, v in unit.items() if k != "blank"}}}, {**MANIFEST, "units": {"upper": {**unit, "blank": []}}},
+                      {**MANIFEST, "units": {"upper": {**unit, "blank": "harness/blank_unit.c"}}}, {**MANIFEST, "units": {"upper": {**unit, "blank": ["../x"]}}},
+                      {**MANIFEST, "units": {"upper": {**unit, "blank": ["a", "b"]}}}, {**MANIFEST, "units": {"upper": {**unit, "blank": [7]}}},
+                      # the blank is the project's own file: never one a candidate writes
+                      {**MANIFEST, "units": {"upper": {**unit, "blank": ["port/upper.c"]}}}, {**MANIFEST, "units": {**MANIFEST["units"], "upper": {**unit, "blank": ["port/squeeze.c"]}}},
+                      {**MANIFEST, "units": {"upper": {**unit, "blank": ["port/upper.c/x"]}}}, {**MANIFEST, "units": {"upper": {**unit, "blank": ["port"]}}},
                       {**MANIFEST, "units": {"upper": {**unit, "cases": 100001}}}, {**MANIFEST, "units": {"upper": {**unit, "case_bytes": 0}}},
                       {**MANIFEST, "units": {"upper": {**unit, "answer_bytes": 0}}}, {**MANIFEST, "units": {"upper": {**unit, "cases": 100000, "case_bytes": 65536}}},
                       {**MANIFEST, "units": {"upper": {**unit, "cases": 100000, "answer_bytes": 1 << 20}}}, {**MANIFEST, "units": {"upper": {**unit, "files": []}}},
@@ -297,7 +313,7 @@ class TestTreesOnTheHost(Base):
         tip = write_tree(self.root / "tip")
         target = self.root / "copied"
         listed = reference.copy_paths(str(tip), ["harness", "bee/reference/build-unit"], str(target), Erreur)
-        self.assertEqual(sorted(listed), ["bee/reference/build-unit", "harness/frames.h", "harness/generate.c", "harness/reference_driver.c",
+        self.assertEqual(sorted(listed), ["bee/reference/build-unit", "harness/blank_unit.c", "harness/frames.h", "harness/generate.c", "harness/reference_driver.c",
                                           "harness/unit.h", "harness/unit_driver.c"])
         self.assertEqual((target / "harness/unit.h").read_bytes(), (TOY / "harness/unit.h").read_bytes())
         modes = {str(p.relative_to(target)): stat.S_IMODE(p.stat().st_mode) for p in target.rglob("*")}
@@ -328,6 +344,12 @@ class TestTreesOnTheHost(Base):
         self.assertEqual(reference.copy_paths(big, ["port/upper.c"], str(self.root / "to-big-2"), Refus, file_limit=70000), ["port/upper.c"])
         with self.assertRaises(Erreur):
             reference.copy_paths(big, ["port", "harness"], str(self.root / "to-big-3"), Erreur, limit=70100)
+        # a unit's file is a file: a folder under its name, empty or not, is not one
+        for name, make in (("empty", lambda t: ((t / "port/upper.c").unlink(), (t / "port/upper.c").mkdir())),
+                           ("full", lambda t: ((t / "port/upper.c").unlink(), (t / "port/upper.c").mkdir(), (t / "port/upper.c/x.c").write_text("int x;\n")))):
+            with self.subTest(folder=name), self.assertRaisesRegex(Refus, "not a plain file"):
+                reference.copy_paths(trapped(f"folder-{name}", make), ["port/upper.c"], str(self.root / f"to-folder-{name}"), Refus, files_only=True)
+        self.assertEqual(reference.copy_paths(str(tip), ["port/upper.c"], str(self.root / "to-file"), Refus, files_only=True), ["port/upper.c"])
 
 
 class TestWhatAnOutcomeMeans(unittest.TestCase):
@@ -355,7 +377,8 @@ class TestWhatAnOutcomeMeans(unittest.TestCase):
                 reference.launch(Docker(Panne("failure of the judge's machine")), ["sh"], [], 5, 7, blame, "the step")
         docker = Docker(0)
         self.assertEqual(reference.launch(docker, ["x"], [("a", "/a", True)], 9, 11, Refus, "s", entry=b"n\n").returncode, 0)
-        self.assertEqual(docker.asked, (["x"], [("a", "/a", True)], 9, b"n\n", 11))
+        self.assertEqual(docker.asked, (["timeout", "-s", "KILL", "41", "x"], [("a", "/a", True)], 9, b"n\n", 11),
+                         "the command under a time of its own, a little after the judge's: it ends even if the judge is gone")
 
     def test_the_command_line(self):
         for wrong in (["--tip", "t", "--seed", "xyz"], ["--tip", "t", "--seed", "A" * 64], ["--tip", "t"]):
@@ -406,7 +429,7 @@ class TestTheJudgeInContainers(Base):
     def test_an_honest_unit_is_right_and_the_tip_against_itself_too(self):
         code, report, err = self.judge(self.candidate({"port/upper.c": UPPER}))
         self.assertEqual((code, report["cases_compared"], report["builds"], report["runs"], report["seed_origin"], report["step"]),
-                         (0, 300 * 2 * 2, 2, 4, "drawn", 9), err)
+                         (0, 300 * 2 * 2, 2, 4, "drawn", 8), err)
         code, other, err = self.judge(self.candidate({"port/squeeze.c": SQUEEZE}), unit="squeeze")
         self.assertEqual((code, other["cases_compared"]), (0, 1200), err)
         self.assertNotEqual(report["seed"], other["seed"], "each judgement draws its own")
@@ -420,6 +443,49 @@ class TestTheJudgeInContainers(Base):
         self.assertEqual(self.judge(tip=written)[0], 0)
         self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER.replace("size_t i;", "size_t i = 0;")}, written), tip=written)[0], 0)
 
+    def test_nothing_a_candidate_wrote_is_built_or_run_once_it_is_the_tips(self):
+        """The control is built from the project's blank unit, never from the unit the tip holds. So a unit accepted
+        yesterday, whatever it does when it is run otherwise than a candidate is (here: given no case, it exits 3),
+        cannot make the question about the tip, or another candidate's judgement, fail."""
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": EMPTY_TRAP}))[0], 0, "right on every case drawn: accepted")
+        trapped = write_tree(self.root / "trapped", {"port/upper.c": EMPTY_TRAP})
+        code, report, err = self.judge(tip=trapped)
+        self.assertEqual((code, report["step"]), (0, 6), err)
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, trapped), tip=trapped)[0], 0, "and the next candidate on it is judged")
+        self.assertEqual(self.judge(self.candidate({"port/squeeze.c": SQUEEZE}, trapped), unit="squeeze", tip=trapped)[0], 0)
+        # a tip that does not hold the unit's file at all: the question about the tip is answered, and the unit can be written
+        without = write_tree(self.root / "without", {"port/upper.c": None})
+        self.assertEqual(self.judge(tip=without)[0], 0)
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, without), tip=without)[0], 0)
+        # even a unit at the tip that does not build is nobody's trouble but its own task's
+        broken = write_tree(self.root / "broken", {"port/upper.c": "#error not C\n"})
+        self.assertEqual(self.judge(tip=broken)[0], 0)
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": UPPER}, broken), tip=broken)[0], 0)
+
+    def test_the_seed_is_drawn_after_every_build(self):
+        """No build has seen the seed, the cases or their order: the judge draws them once the last binary is made."""
+        events = []
+        build, generate, draw = reference.Judgement.build_unit, reference.Judgement.generate, reference.draw_seed
+
+        def building(*given, **named):
+            events.append("build")
+            return build(*given, **named)
+
+        def generating(*given, **named):
+            events.append("generate")
+            return generate(*given, **named)
+
+        def drawing():
+            events.append("seed")
+            return draw()
+
+        candidate = self.candidate({"port/upper.c": UPPER})
+        with mock.patch.object(reference.Judgement, "build_unit", building), mock.patch.object(reference.Judgement, "generate", generating), \
+                mock.patch.object(reference, "draw_seed", drawing), mock.patch.dict(reference.STATE, clear=True):
+            code = reference.main(["--tip", str(self.tip), "--candidate", str(candidate), "--unit", "upper", "--task-file", "port/upper.c",
+                                   "--budget", "3600", "--workdir", str(self.root / "work")])
+        self.assertEqual((code, events), (0, ["build"] * 4 + ["seed", "generate"]), "two control builds, two of the candidate's, then the draw")
+
     def test_a_unit_wrong_on_some_inputs_or_right_on_the_corpus_only(self):
         self.refused(WRONG_SOMETIMES, "its answers are not the reference's")
         self.refused(CORPUS_ONLY, "its answers are not the reference's")
@@ -427,6 +493,9 @@ class TestTheJudgeInContainers(Base):
 
     def test_a_unit_that_keeps_something_from_one_call_to_the_next(self):
         self.refused(KEEPS_STATE, "its answers are not the reference's")
+
+    def test_a_run_has_room_for_its_driver_and_no_other_process(self):
+        self.assertEqual(self.judge(self.candidate({"port/upper.c": FORKS}))[0], 0, "it could start no process: it answered right")
 
     def test_a_unit_right_in_the_generators_order_only(self):
         """Each run is given the cases in an order of its own, drawn by the judge: a unit that is right only in the
@@ -460,6 +529,7 @@ class TestTheJudgeInContainers(Base):
         self.refused(LINK_FOR_ANSWERS, r"/answers/answers: invalid output \(link or special file\)")
         self.refused(PIPE_FOR_ANSWERS, r"/answers/answers: invalid output")
         self.refused(ONE_BYTE_MORE, "its answers are not the reference's")
+        self.refused(MANY_BYTES_MORE, r"/answers/answers: output too large")  # read no further than what is expected, and one byte
         self.refused(RIGHT_AND_EXIT_7, "exit status 7")
         self.refused(FLOOD, "exit status|its answers are not the reference's|output too large")
 
@@ -475,6 +545,7 @@ class TestTheJudgeInContainers(Base):
                               ({"port/upper.c": UPPER, "port/squeeze.c": SQUEEZE}, "something else than its unit's files"),
                               ({"port/upper.c": UPPER, "bee/reference/project.json": manifest_with(runs=3)}, "something else than its unit's files"),
                               ({"port/upper.c": None}, "No such file"),
+                              ({"port/upper.c": lambda tree: ((tree / "port/upper.c").unlink(), (tree / "port/upper.c").mkdir())}, "not a plain file"),
                               ({"port/upper.c": lambda tree: ((tree / "port/upper.c").unlink(), os.symlink("../reference/original.c", tree / "port/upper.c"))},
                                "not a plain file or folder"),
                               ({"port/upper.c": UPPER + "/" * 70000 + "\n"}, "port/upper.c: output too large")):
@@ -492,7 +563,10 @@ class TestTheJudgeInContainers(Base):
                 ("image", {"bee/reference/project.json": manifest_with(image="ubuntu:latest")}, "the name of an image the registry holds", 1),
                 ("broken-reference", {"reference/original.c": "#error broken\n"}, "the reference's build: exit status", 2),
                 ("broken-skeleton", {"harness/unit.h": "#error broken\n"}, "the build of unit upper: exit status", 3),
-                ("driver-fails", {"harness/unit_driver.c": "int main(void) { return 5; }\n"}, "the tip's driver, given no case: exit status 5", 3),
+                ("driver-fails", {"harness/unit_driver.c": "int main(void) { return 5; }\n"}, "the project's driver, given no case: exit status 5", 3),
+                ("driver-writes", {"harness/unit_driver.c": '#include <stdio.h>\nint main(void) { FILE *f = fopen("/answers/answers", "wb"); fputc(1, f); return fclose(f); }\n'},
+                 "the project's driver, given no case, wrote something", 3),
+                ("no-blank", {"harness/blank_unit.c": None}, "holds no blank unit harness/blank_unit.c", 3),
                 ("generator-short", {"harness/generate.c": (TOY / "harness/generate.c").read_text().replace("for (i = 0; i < count; i++) {\n        unsigned char b[4]",
                                                                                                            "for (i = 1; i < count; i++) {\n        unsigned char b[4]")},
                  "fewer cases than the manifest's count", 5),
@@ -536,6 +610,9 @@ class TestTheJudgeInContainers(Base):
         answer = judge(base, write_tree(trees / "right", {"port/upper.c": UPPER}), task, "T" * 40, "C" * 40)
         self.assertEqual(answer, {"code": 0, "report": {"cases_compared": 1200, "builds": 2, "runs": 4}})
         self.assertEqual(judge(base, write_tree(trees / "wrong", {"port/upper.c": CORPUS_ONLY}), task, "T" * 40, "D" * 40), {"code": 1, "report": {}})
+        # refused before any case is drawn (a unit that does not build, a tree that is more than the unit): a refusal all the same
+        self.assertEqual(judge(base, write_tree(trees / "unbuilt", {"port/upper.c": "#error\n"}), task, "T" * 40, "E" * 40), {"code": 1, "report": {}})
+        self.assertEqual(judge(base, write_tree(trees / "more", {"port/upper.c": UPPER, "port/squeeze.c": SQUEEZE}), task, "T" * 40, "F" * 40), {"code": 1, "report": {}})
         self.assertEqual(judge(base, base, task, "T" * 40, "T" * 40), {"code": 0, "report": {"cases_compared": 0, "builds": 0, "runs": 0}})
         self.assertEqual(judge(base, base, {**task, "files": ["port/"]}, "T" * 40, "T" * 40)["code"], 2, "a task that is not its unit's files")
 

@@ -6,6 +6,7 @@ hostile. Nothing here is a real project.
 - `reference/original.c`: the ORIGINAL, two functions of bytes: `upper` (ASCII letters to capitals; it refuses a
   text that holds a byte above 127) and `squeeze` (runs of spaces become one space; it never refuses).
 - `port/<unit>.c`: the unit a task writes. At this tip both are unwritten: they build, and abort when called.
-- `harness/`: the reference's driver, the unit's driver, and the generator of cases (all the project's own).
+- `harness/`: the reference's driver, the unit's driver, the generator of cases, and the blank unit the judge
+  builds its control with (all the project's own).
 - `bee/reference/project.json`: the manifest (data). `bee/reference/build-reference` and `build-unit`: the two
   build scripts, run in containers only. `build-unit` reads a nonce and makes the binary's layout follow it.
