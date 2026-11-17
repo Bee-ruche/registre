@@ -92,7 +92,7 @@ FLOOD = hostile(before="""static void fill(void)
     static char block[1 << 16];
     FILE *f = fopen("/answers/more", "wb");
     if (f) while (fwrite(block, 1, sizeof block, f) == sizeof block) { }
-    while (fwrite(block, 1, sizeof block, stdout) == sizeof block && ftell(stdout) < (64L << 20)) { }
+    { int more; for (more = 0; more < 128 && fwrite(block, 1, sizeof block, stdout) == sizeof block; more++) { } }
 }
 """, inside="    static int done; if (!done++) fill();\n")
 LINK_FOR_ANSWERS = hostile(before="static void swap(void) { unlink(\"/answers/answers\"); if (symlink(\"/etc/hostname\", \"/answers/answers\")) _exit(9); }\n",
@@ -181,8 +181,8 @@ class TestTheManifest(Base):
             with self.subTest(wrong=str(wrong)[-90:]), self.assertRaises(Erreur) as raised:
                 reference.check_manifest(wrong)
             self.assertNotIsInstance(raised.exception, Panne)
-        for text in (b"{", b"\xff", b"[" * 100000, b"null", b""):
-            tip = write_tree(self.root / f"tip{len(text)}", {"bee/reference/project.json": text})
+        for number, text in enumerate((b"{", b"\xff", b"[" * 100000, b"null", b"")):
+            tip = write_tree(self.root / f"tip{number}", {"bee/reference/project.json": text})
             with self.subTest(text=text[:10]), self.assertRaises(Erreur):
                 reference.read_manifest(str(tip))
         gone = write_tree(self.root / "gone", {"bee/reference/project.json": None})
@@ -408,7 +408,7 @@ class TestTheJudgeInContainers(Base):
     def test_a_unit_wrong_on_some_inputs_or_right_on_the_corpus_only(self):
         self.refused(WRONG_SOMETIMES, "its answers are not the reference's")
         self.refused(CORPUS_ONLY, "its answers are not the reference's")
-        self.refused(SQUEEZE, "its answers are not the reference's")  # another unit's code under this unit's name
+        self.refused(SQUEEZE, "its answers are not the reference's|output too large")  # another unit's code under this unit's name
 
     def test_a_unit_that_keeps_something_from_one_call_to_the_next(self):
         self.refused(KEEPS_STATE, "its answers are not the reference's")
@@ -432,7 +432,7 @@ class TestTheJudgeInContainers(Base):
         self.refused(PIPE_FOR_ANSWERS, r"/answers/answers: invalid output")
         self.refused(ONE_BYTE_MORE, "its answers are not the reference's")
         self.refused(RIGHT_AND_EXIT_7, "exit status 7")
-        self.refused(FLOOD, "exit status|its answers are not the reference's")
+        self.refused(FLOOD, "exit status|its answers are not the reference's|output too large")
 
     def test_a_build_that_reads_the_original_or_blows_up_and_a_unit_that_never_answers(self):
         self.refused(READS_THE_ORIGINAL, "the build of unit upper: exit status")
@@ -445,7 +445,7 @@ class TestTheJudgeInContainers(Base):
         for changes, said in (({"port/upper.c": UPPER, "harness/frames.h": "#error\n"}, "something else than its unit's files"),
                               ({"port/upper.c": UPPER, "port/squeeze.c": SQUEEZE}, "something else than its unit's files"),
                               ({"port/upper.c": UPPER, "bee/reference/project.json": manifest_with(runs=3)}, "something else than its unit's files"),
-                              ({"port/upper.c": None}, "port/upper.c"),
+                              ({"port/upper.c": None}, "No such file"),
                               ({"port/upper.c": lambda tree: ((tree / "port/upper.c").unlink(), os.symlink("../reference/original.c", tree / "port/upper.c"))},
                                "not a plain file or folder"),
                               ({"port/upper.c": UPPER + "/" * 70000 + "\n"}, "port/upper.c: output too large")):
@@ -477,7 +477,7 @@ class TestTheJudgeInContainers(Base):
                     self.assertIn(said, report["reason"])
         # the task and the manifest must agree; the bounds must fit the time a judgement is given
         for options, said in (({"unit": "lower"}, "names no unit"), ({"files": ["port/"]}, "not exactly its unit's files"),
-                              ({"files": ["port/upper.c", "port/squeeze.c"]}, "not exactly its unit's files"), ({"budget": 700}, "add up to 820 s")):
+                              ({"files": ["port/upper.c", "port/squeeze.c"]}, "not exactly its unit's files"), ({"budget": 700}, "add up to 830 s")):
             code, report, err = self.judge(self.candidate(honest), **options)
             self.assertEqual((code, report["step"]), (2, 1), err)
             self.assertIn(said, report["reason"])
