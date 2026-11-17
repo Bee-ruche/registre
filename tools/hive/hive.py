@@ -2706,10 +2706,10 @@ def reference_judge(registry_root, workdir=None, timeout=3600):
             report = None
         if not isinstance(report, dict) or ran.returncode not in (0, 1) or report.get("code") != ran.returncode:
             code = 2  # the judge's own word and its exit status must agree: anything else is a failure to judge
-        elif commit != tip and report.get("seed_origin") != "drawn":
-            code = 2  # (a seed given to the judge is a reproduction, never a judgement)
+        elif ran.returncode == 0 and commit != tip and report.get("seed_origin") != "drawn":
+            code = 2  # a candidate is accepted on cases the judge drew itself: a seed it was given is a reproduction
         else:
-            code = ran.returncode
+            code = ran.returncode  # (a refusal may come before any case is drawn: a tree that differs, a unit that does not build)
         seed = report.get("seed") if isinstance(report, dict) else None
         kept["seed"] = seed if code == 2 and commit != tip and isinstance(seed, str) and re.fullmatch(r"[0-9a-f]{64}", seed) else None
         figures = {name: report[name] for name in ("cases_compared", "builds", "runs")

@@ -7803,10 +7803,14 @@ class TestTheReferenceKind(unittest.TestCase):
                          {"code": 0, "report": {"cases_compared": 0}})
         self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"])
         self.assertNotIn("--candidate", self.commands[-1][0])
-        # a refusal; then everything that is not the judge's own word agreeing with its exit status: a failure to judge
+        # a refusal, after the cases were drawn or before (a tree that differs, a unit that does not build: no seed yet)
         self.assertEqual(self.asked(judge, "C" * 40, 1, {"code": 1, "reason": "x", "seed": self.SEED, "seed_origin": "drawn"}), {"code": 1, "report": {}})
-        for status, report in ((0, {"code": 1}), (1, {"code": 0, "seed_origin": "drawn"}), (0, None), (0, "{"), (0, [0]), (0, "[" * 100000), (3, {"code": 3}),
-                               (2, {"code": 2}), (0, {"code": 0, "seed_origin": "given", "cases_compared": 5}), (0, {"code": 0, "cases_compared": 5}),
+        self.assertEqual(self.asked(judge, "C" * 40, 1, {"code": 1, "reason": "the build of unit upper: exit status 1", "step": 4}), {"code": 1, "report": {}})
+        self.assertEqual(self.asked(judge, "C" * 40, 1, {"code": 1, "step": 7, "seed": self.SEED, "seed_origin": "given"}), {"code": 1, "report": {}})
+        # then everything that is not the judge's own word agreeing with its exit status: a failure to judge
+        for status, report in ((0, {"code": 1}), (1, {"code": 0, "seed_origin": "drawn"}), (0, None), (1, None), (0, "{"), (0, [0]), (0, "[" * 100000),
+                               (3, {"code": 3}), (2, {"code": 2}), (1, {"code": 2}), (1, {"code": "1"}),
+                               (0, {"code": 0, "seed_origin": "given", "cases_compared": 5}), (0, {"code": 0, "cases_compared": 5}),
                                (subprocess.TimeoutExpired("judge", 900), None)):
             with self.subTest(status=str(status), report=str(report)[:40]):
                 self.assertEqual(self.asked(judge, "C" * 40, status, report), {"code": 2, "report": {}} if not isinstance(status, Exception) else {"code": 2})
