@@ -1,7 +1,8 @@
 # The judge's second kind: `reference` (a candidate answers as a reference does)
 
 Status: built in the registry (`tools/judge/reference.py`), tried on a toy project in its tests
-(`tools/judge/reference_toy/`, `tools/judge/test_reference.py`). No project of the hive uses it yet.
+(`tools/judge/reference_toy/`, `tools/judge/test_reference.py`). Its first project is declared, paused:
+`cjson` (below).
 
 A project names its judge's kind in its file (`judge.kind`, [protocol.md](protocol.md)). The first kind,
 `common` ([common-judge.md](common-judge.md)), compares a candidate with the project's own tip and measures it.
@@ -17,7 +18,7 @@ comparison. What knows the project is the project's, at its tip.
 | Part | Where | Runs |
 | --- | --- | --- |
 | The kind: the steps below, the isolation (`container.py`), the safe reading (`lecture.py`), the draws, the comparison, the verdict | the registry | on the judge's machine |
-| The image | the registry: the manifest names an image the registry holds (today `common`, the common judge's) and never brings one | — |
+| The image | the registry: the manifest names an image the registry holds and never brings one: `common` (the common judge's), `rust` (the same with the system's `rustc` and `lld`) | — |
 | The manifest `bee/reference/project.json`: data | the project's tip, a path no candidate can change | never: it is read, every field checked against a floor and a cap |
 | `bee/reference/build-reference`, `bee/reference/build-unit`, the reference, the two drivers, the generator of cases, a blank unit | the project's tip, paths no candidate can change | in containers only |
 | A unit's files | the candidate, for the unit of its task | read as bytes on the host; built and run in containers only |
@@ -125,3 +126,16 @@ after the judge's: it ends even if the judge is no longer there to stop it.
 
 A task of such a project names its unit (`options.unit`) and lists exactly that unit's files. The project's file
 says `"kind": "reference"` under `judge`, and lists in `judge.metrics` the figures it keeps (`cases_compared`).
+
+## The first project of this kind: `cjson`
+
+A port of [cJSON](https://github.com/DaveGamble/cJSON) (a JSON library in C, MIT) to Rust, leaf by leaf
+(`hive/projects/cjson.json`, `hive/tasks/cjson.jsonl`): the hive's second test project, of another nature than
+the first, so that the base is shaped by neither. Its repository holds cJSON's own files unchanged, with their
+licence, as the reference; a leaf is one Rust file over `core` alone (the project's build refuses `std`,
+allocation, `unsafe` and what its own rule lists), and a task writes one leaf. Five leaves to start with: four hexadecimal digits, a `\uXXXX` escape to UTF-8, the
+minifier, the string printer, the comparison of names without regard to case. The project is independent of
+cJSON's own: nothing is ever proposed to it from the hive.
+
+The project is declared **paused**, by invitation: nothing is dealt and nothing runs until its repository exists
+and the founder opens it.
