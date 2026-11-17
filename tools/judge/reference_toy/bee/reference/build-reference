@@ -1,0 +1,5 @@
+#!/bin/sh
+# The reference's side, built in its own container: the reference's driver and the generator of cases, left in /out.
+set -eu
+cc -O1 -std=gnu99 -Wall -Wextra -Werror -o /out/reference /src/harness/reference_driver.c /src/reference/original.c
+cc -O1 -std=gnu99 -Wall -Wextra -Werror -o /out/generate /src/harness/generate.c

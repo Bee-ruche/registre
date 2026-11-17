@@ -1,0 +1,17 @@
+#!/bin/sh
+# One unit's driver, built from the skeleton and that unit's file alone: « build-unit <unit> », a nonce
+# (hexadecimal) on its input, the binary left as /out/driver. The nonce sets the size of a padding linked between
+# the driver and the unit: where the unit's code and data lie, seen from the rest of the binary, follows the nonce.
+set -eu
+unit="$1"
+nonce=$(head -c 64)
+size=$(( 0x$(printf %s "$nonce" | cut -c1-4) % 4000 + 16 ))
+steps=$(( 0x$(printf %s "$nonce" | cut -c5-8) % 200 + 1 ))
+{
+    echo "unsigned char bee_padding[$size] = {1};"
+    echo "int bee_pad(int x) {"
+    i=0
+    while [ "$i" -lt "$steps" ]; do echo "    x = x * 31 + $i;"; i=$((i + 1)); done
+    echo "    return x + bee_padding[0]; }"
+} > /tmp/pad.c
+cc -O1 -std=gnu99 -Wall -Wextra -I/src/harness -o /out/driver /src/harness/unit_driver.c /tmp/pad.c "/src/port/$unit.c"
