@@ -211,6 +211,19 @@ class TestTheManifest(Base):
             with self.subTest(tip=tip.name), self.assertRaises(Erreur):
                 reference.read_manifest(str(tip))
 
+    def test_the_images_a_manifest_may_name(self):
+        """An image is the registry's: a manifest names one of these, and what it names is the common judge's image
+        with the packages the table lists, whatever else the manifest says."""
+        import container
+        self.assertEqual(reference.IMAGES, {"common": (), "rust": ("rustc", "lld")})
+        self.assertTrue(all(container.PACKAGE.fullmatch(package) for packages in reference.IMAGES.values() for package in packages))
+        for name, packages in reference.IMAGES.items():
+            with mock.patch.object(reference.container, "build_image", return_value="label") as build, \
+                    mock.patch.object(reference.container, "image_id", return_value="sha256:" + "1" * 64) as identity, \
+                    mock.patch.dict(os.environ, {"BEE_JUGE_RESEAU": "host"}):
+                self.assertEqual(reference.image_of(reference.check_manifest({**MANIFEST, "image": name})), "sha256:" + "1" * 64)
+            self.assertEqual((build.call_args[0], identity.call_args[0]), ((packages, "host"), ("label",)), "run by its id, not by a name")
+
     def test_the_bounds_add_up_to_a_whole_judgements_worst_case(self):
         manifest = reference.check_manifest(MANIFEST)
         side = 3 * (60 + 10) + 2 * (3 * 60 + 10) + (10 + 10)  # the reference's three containers, the control's three
@@ -673,6 +686,16 @@ class TestTheJudgeInContainers(Base):
         self.assertEqual(judge(base, base, task, "T" * 40, "T" * 40), {"code": 0, "report": {"cases_compared": 0, "builds": 0, "runs": 0}})
         self.assertEqual(judge(base, base, {**task, "files": ["port/"]}, "T" * 40, "T" * 40)["code"], 2, "a task that is not its unit's files")
 
+
+    def test_the_image_for_rust_holds_its_compiler_and_its_linker(self):
+        """The image a port to Rust names: the compiler, the linker that lays a binary's sections in an order it is
+        given, and the C compiler of the reference's side."""
+        import container
+        docker = container.Docker(reference.image_of(reference.check_manifest({**MANIFEST, "image": "rust"})), memoire="256m")
+        ran = reference.launch(docker, ["sh", "-c", "rustc --version && ld.lld --version && cc --version && ld.lld --help | grep -c shuffle-sections"],
+                               [], 16, 60, Erreur, "the image's tools")
+        said = ran.stdout.decode()
+        self.assertRegex(said, r"(?s)\Arustc 1\.\d+\.\d+ .*LLD \d+\..*\bcc \(.*\n[1-9]\d*\n\Z")
 
     def test_through_the_bases_own_judging_on_a_real_repository(self):
         """The base's judging step as it runs: it writes the tip's tree and the candidate's merged tree out of a git

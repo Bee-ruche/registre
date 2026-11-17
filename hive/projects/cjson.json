@@ -1,0 +1,42 @@
+{
+ "protocol": 1,
+ "project": "cjson",
+ "repo": "Bee-ruche/cjsonRustBee",
+ "branch": "hive",
+ "published": "main",
+ "paused": true,
+ "tasks": "hive/tasks/cjson.jsonl",
+ "check": "sh bee/check.sh",
+ "protected": [
+  "bee/**",
+  "reference/**",
+  "harness/**",
+  "port/src/lib.rs",
+  "port/blank.rs",
+  "port/LEAVES.md",
+  ".github/**",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "README.md",
+  "LICENSE",
+  ".gitignore"
+ ],
+ "members": {
+  "only": [72140]
+ },
+ "models": [
+  "claude-fable-5-2",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5"
+ ],
+ "limits": {
+  "files": 1,
+  "file_bytes": 65536
+ },
+ "judge": {
+  "kind": "reference",
+  "timeout_seconds": 2400,
+  "metrics": ["cases_compared", "builds", "runs"]
+ }
+}

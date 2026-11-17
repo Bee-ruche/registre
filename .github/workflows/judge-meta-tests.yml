@@ -1,15 +1,16 @@
 # Meta-tests of the common judge (tools/judge/): the whole judge, in containers, against the honest toy
 # project and its malicious variants (tools/judge/test_judge.py). Run when the common judge changes.
-# The judge's second kind (tools/judge/reference.py) is tried the same way, on its own toy project.
+# The judge's second kind (tools/judge/reference.py) is tried the same way, on its own toy project, alone and through the
+# base's own judging (tools/hive/hive.py calls it: a change there runs these tests too).
 # The variants' code runs only in the judge's containers (without network, read-only).
 name: Common judge (meta-tests)
 
 on:
   pull_request:
-    paths: ["tools/judge/**", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
+    paths: ["tools/judge/**", "tools/hive/hive.py", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
   push:
     branches: [main]
-    paths: ["tools/judge/**", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
+    paths: ["tools/judge/**", "tools/hive/hive.py", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
   workflow_dispatch:
 
 permissions:

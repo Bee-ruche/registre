@@ -56,7 +56,9 @@ UNIT_NUMBERS = {"cases": (1, 100000), "case_bytes": (1, 65536), "answer_bytes": 
 STREAM_BYTES = 64 << 20  # a whole file of cases, or of answers
 SOURCE_BYTES = 64 << 20  # what one container is given of the project's tree
 ENTRIES = 20000          # files and folders under the paths one container is given
-IMAGES = {"common": ()}  # an image's name -> the packages added to the common judge's image (tools/judge/Dockerfile.base)
+# An image's name -> the packages added to the common judge's image (tools/judge/Dockerfile.base). « rust »: the
+# compiler and the linker a port to Rust is built with, as the system's own release packages them.
+IMAGES = {"common": (), "rust": ("rustc", "lld")}
 CONTROL = 3              # the control's builds are given this many times a candidate's time
 GRACE = 30               # a container ends itself this many seconds after its time bound, should the judge be gone
 OVERHEAD = 10            # seconds counted for one container's start and end
