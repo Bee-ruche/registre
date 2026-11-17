@@ -167,9 +167,12 @@ showed the case (a correct candidate short of a proof alone), and a rule of the 
 member ([decisions.md](decisions.md), 16 November); how often the judge refuses work that is in fact better is
 still unmeasured. One point that list does not hold: a run that finds the state repository moved by another
 project's run takes what that run saved and pushes again (setting 8 above, [decisions.md](decisions.md), 17
-November); no run has met that case yet, and it has run in the tests only. Of the second project's file (setting 8
-above) one run has been read, made with the project paused; no task of that project has been dealt or judged yet, so
-the judge's second kind has not judged on a hosted runner.
+November); no run has met that case yet, and it has run in the tests only. The second project's file (setting 8
+above) ran out of its pause on 17 November 2026, started by hand seven times: the first of those runs wrote the
+project's folder in the state repository, and in the six after it the project's five tasks were dealt one after
+another to the founder's worker, judged by the judge's second kind on a hosted runner and integrated, every one
+accepted (for each candidate: three builds of its leaf, executed six times in all, and 18,000 to 36,000 cases
+compared). Untried there: a candidate that kind refuses, and a failure to judge.
 
 - The whole run: there is no Docker in the builder's environment, and the builder holds neither App's key (on
   purpose: the keys are the founder's to enter, in the registry's settings, and nowhere else).
