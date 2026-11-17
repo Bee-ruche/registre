@@ -100,15 +100,17 @@ Five things carry it:
    variable `HIVE_CJSON`**. The state repository, the two environments and the two Apps are the hive's, the same for
    both runs. What only the founder can make for it: the project's repository, with its two branches as in point 4;
    the project App installed on it; the variable; and the commit its file names (point 7). On 17 November 2026 the
-   repository, its branches and their rules were made and the App was given it, and the file names the commit the
-   first project's file names (`3cd46a2`), where the project is declared paused. The founder then had the variable
+   repository, its branches and their rules were made and the App was given it, and the file was given the commit the
+   first project's file named then (`3cd46a2`), where the project is declared paused. The founder then had the variable
    set, and the first run was made with the project paused: its four jobs succeeded, the two that hold a key took
    their tokens, the judge's image was made (the one the manifest in the project's repository names), and nothing was written
    to the state repository or to the project's. The project's file then left its pause (pull request
    388), and the workflow file names that commit (`5091c9c`) since, on the founder's decision: from the run after,
    the hive reads the forks of the one invited account, deals, judges and integrates for this project. The two
-   projects' files name two commits of the registry; between the two, the documents, the two workflow files and
-   their test, and the second project's own file differ, and nothing of `tools/hive/` or `tools/judge/`.
+   projects' files name two commits of the registry (the first project's names `db9ad22` since 18 November 2026,
+   where its task miniz-0010 is closed: [decisions.md](decisions.md)); between the two, the documents, the second
+   project's workflow file and its test, and the first project's tasks file differ, and nothing of `tools/hive/` or
+   `tools/judge/`.
 
 ## The file
 

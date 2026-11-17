@@ -24,7 +24,7 @@ jobs:
       plan_sha256: ${{ steps.plan.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87", persist-credentials: false }
+        with: { path: registry, ref: "db9ad22db217bd2147ce6edcf2da83d9ef5fbc75", persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project, in full (its branches under refs/remotes/origin)
@@ -53,7 +53,7 @@ jobs:
       actions: read                  # to read this run's own artifacts
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87", persist-credentials: false }
+        with: { path: registry, ref: "db9ad22db217bd2147ce6edcf2da83d9ef5fbc75", persist-credentials: false }
       - name: Take the plan (one named file, before this job holds any key)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,7 +87,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87", persist-credentials: false }
+        with: { path: registry, ref: "db9ad22db217bd2147ce6edcf2da83d9ef5fbc75", persist-credentials: false }
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { repository: Bee-ruche/hive-state, path: state, persist-credentials: false }
       - name: The project
@@ -120,7 +120,7 @@ jobs:
       actions: read                  # to read this run's own artifacts
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: { path: registry, ref: "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87", persist-credentials: false }
+        with: { path: registry, ref: "db9ad22db217bd2147ce6edcf2da83d9ef5fbc75", persist-credentials: false }
       - name: Take the plan, the candidates and the judge's answers (named files, before this job holds any key)
         env:
           GH_TOKEN: ${{ github.token }}

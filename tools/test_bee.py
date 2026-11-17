@@ -23898,7 +23898,7 @@ class TestHiveWorkflow(unittest.TestCase):
     UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2: the writer tools/hive/artifact.py reads
     DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
     APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
-    PIN = "3cd46a24c0d7b5807f3e05e90d60aa2b3b2f9b87"  # the one commit of the registry every job runs (forty zeros name none)
+    PIN = "db9ad22db217bd2147ce6edcf2da83d9ef5fbc75"  # the one commit of the registry every job runs (forty zeros name none)
     # What one project's run has of its own: its file and title, the project's name in the registry and its repository,
     # the variable that starts it, its group (one run of a project at a time), its minute, how its judge's image is made.
     FILE, TITLE = "hive.yml", "Hive"
