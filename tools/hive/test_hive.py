@@ -7619,7 +7619,7 @@ class TestTwoProjectsInOneHive(Base):
         self.assertEqual(code, 0, said)
         self.assertEqual([(r["task"], r["login"]) for r in self.w.run()], [(task, "alice")], "collected and judged as ever")
         # the second project's own workers are told which file stops them, at every command, and nothing is pushed
-        refused = r"\Ahive: \S*hive/projects/port\.json: judge\.kind: a kind of judge this tool holds \(common\)\n\Z"
+        refused = r"\Ahive: \S*hive/projects/port\.json: judge\.kind: a kind of judge this tool holds \(common, reference\)\n\Z"
         def pushed():
             return sh("git", "for-each-ref", "--format=%(refname) %(objectname)", cwd=self.vera.bare).stdout
 
@@ -7685,14 +7685,14 @@ class TestTwoProjectsInOneHive(Base):
         when it is loaded, at every step. A project that names none has the common judge."""
         made = []
 
-        def reference(registry_root, settings, workdir):
+        def by_the_original(registry_root, settings, workdir):
             made.append((settings["kind"], os.path.isabs(registry_root), workdir))
             return judge_against_the_original
 
         common = ("--registry", "registry", "--project", "port", "--state", "state")
-        with mock.patch.dict(hive.JUDGES, {"reference": reference}):
-            self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "reference"}})
-            self.assertEqual((self.v.load()[0]["judge"]["kind"], self.w.load()[0]["judge"]["kind"]), ("reference", "common"))
+        with mock.patch.dict(hive.JUDGES, {"original": by_the_original}):
+            self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": "original"}})
+            self.assertEqual((self.v.load()[0]["judge"]["kind"], self.w.load()[0]["judge"]["kind"]), ("original", "common"))
             sha = self.vera.submit("port-0001", content=LIB + "/* ANSWERS AS THE ORIGINAL */\n")
             plan, record, judge, write = (self.job(name, self.v) for name in ("plan", "record", "judge", "apply"))
             printed, _ = self.step(plan, "plan", *common, "--repo", "project", "--out", "plan.json", "--bundle", "candidates.bundle", world=self.v)
@@ -7710,7 +7710,7 @@ class TestTwoProjectsInOneHive(Base):
                                       "--bundle", "taken/candidates/candidates.bundle", "--workdir", "work", "--judge-workdir", "judge-work",
                                       "--out", "verdicts.json", world=self.v)
             self.assertEqual(printed, "1 candidate(s), 1 judged, 1 accepted\n")
-            self.assertEqual(made, [("reference", True, str(judge / "judge-work"))], "the kind's judge, made once, with whole paths")
+            self.assertEqual(made, [("original", True, str(judge / "judge-work"))], "the kind's judge, made once, with whole paths")
             self.assertNotIn("judge", seen, "and the common judge was not made at all")
             (write / "taken/verdicts").mkdir()
             shutil.copy(judge / "verdicts.json", write / "taken/verdicts/verdicts.json")
@@ -7719,8 +7719,8 @@ class TestTwoProjectsInOneHive(Base):
             self.assertEqual(printed.split()[-1], self.v.tip(), "integrated in the second project's own repository")
             self.assertEqual([(e["member"], e["report"]) for e in hive.Ledger(self.v.state).events if e["type"] == "verdict"],
                              [("vera", {"cases_compared": 64})])
-        self.assertEqual(sorted(hive.JUDGES), ["common"], "the kinds this tool knows by itself")
-        with self.assertRaisesRegex(hive.HiveError, r"judge\.kind: a kind of judge this tool holds \(common\)"):
+        self.assertEqual(sorted(hive.JUDGES), ["common", "reference"], "the kinds this tool holds by itself")
+        with self.assertRaisesRegex(hive.HiveError, r"judge\.kind: a kind of judge this tool holds \(common, reference\)"):
             self.v.load()
         for wrong in (None, 3, "", ["common"], "Common"):
             self.v.set_config({"judge": {"metrics": ["cases_compared"], "kind": wrong}})
@@ -7757,6 +7757,94 @@ class TestTwoProjectsInOneHive(Base):
         self.assertEqual(hive.Ledger(self.w.state).events, [], "nothing of it is written in the first project's folder")
         # the same worker, asked about the other project by mistake, is told it holds nothing there
         self.assertEqual(self.cli(self.v, self.vera, "next", "--project", "toy", "--state", str(self.w.state.parent))[1].split("\n")[0][:4], "WAIT")
+
+
+class TestTheReferenceKind(unittest.TestCase):
+    """The second kind of judge, as the base calls it (tools/judge/reference.py does the judging, in containers: its
+    own tests are tools/judge/test_reference.py). Here: the words the base gives it, what it takes for an answer, and
+    the seed it gives again when it asks about the tip after a failure to judge."""
+
+    SEED = "5eed" * 16
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "base").mkdir()
+        self.task = {"id": "port-0001", "files": ["port/upper.c"], "options": {"unit": "upper"}}
+        self.commands, self.answers = [], []
+
+    def asked(self, judge, commit, *answer):
+        """One question to the judge, the judging program replaced by one that answers (exit status, report)."""
+        def program(command, **named):
+            self.commands.append((command, named))
+            status, report = answer
+            if isinstance(status, Exception):
+                raise status
+            if report is not None:
+                Path(command[command.index("--json") + 1]).write_text(report if isinstance(report, str) else json.dumps(report))
+            return subprocess.CompletedProcess(command, status, "", "")
+
+        with mock.patch.object(hive.subprocess, "run", side_effect=program):
+            return judge(self.root / "base", self.root / "candidate", self.task, "T" * 40, commit)
+
+    def test_the_words_the_base_gives_the_judge_and_what_it_takes_for_an_answer(self):
+        judge = hive.judge_of("/registry", {"kind": "reference", "timeout_seconds": 900}, "/judging")
+        right = {"code": 0, "seed": self.SEED, "seed_origin": "drawn", "cases_compared": 1200, "builds": 2, "runs": 4, "unit": "upper", "extra": 7}
+        self.assertEqual(self.asked(judge, "C" * 40, 0, right), {"code": 0, "report": {"cases_compared": 1200, "builds": 2, "runs": 4}})
+        command, named = self.commands[-1]
+        out = str(self.root / "reference.json")
+        self.assertEqual(command, [sys.executable, "/registry/tools/judge/reference.py", "--tip", str(self.root / "base"), "--unit", "upper",
+                                   "--budget", "780", "--json", out, "--task-file", "port/upper.c", "--workdir", "/judging",
+                                   "--candidate", str(self.root / "candidate")])
+        self.assertEqual((named["timeout"], named["stdin"]), (900, subprocess.DEVNULL), "the whole judgement inside the project's time")
+        # the tip itself: no candidate, and the judge is told so
+        self.assertEqual(self.asked(judge, "T" * 40, 0, {"code": 0, "seed": self.SEED, "seed_origin": "drawn", "cases_compared": 0}),
+                         {"code": 0, "report": {"cases_compared": 0}})
+        self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"])
+        self.assertNotIn("--candidate", self.commands[-1][0])
+        # a refusal; then everything that is not the judge's own word agreeing with its exit status: a failure to judge
+        self.assertEqual(self.asked(judge, "C" * 40, 1, {"code": 1, "reason": "x", "seed": self.SEED, "seed_origin": "drawn"}), {"code": 1, "report": {}})
+        for status, report in ((0, {"code": 1}), (1, {"code": 0, "seed_origin": "drawn"}), (0, None), (0, "{"), (0, [0]), (0, "[" * 100000), (3, {"code": 3}),
+                               (2, {"code": 2}), (0, {"code": 0, "seed_origin": "given", "cases_compared": 5}), (0, {"code": 0, "cases_compared": 5}),
+                               (subprocess.TimeoutExpired("judge", 900), None)):
+            with self.subTest(status=str(status), report=str(report)[:40]):
+                self.assertEqual(self.asked(judge, "C" * 40, status, report), {"code": 2, "report": {}} if not isinstance(status, Exception) else {"code": 2})
+        # figures that are not whole numbers of ordinary size are not figures
+        odd = {"code": 0, "seed_origin": "drawn", "cases_compared": True, "builds": -1, "runs": 10 ** 13}
+        self.assertEqual(self.asked(judge, "C" * 40, 0, odd), {"code": 0, "report": {}})
+        # a task that names no unit: the judge is asked all the same, with an empty name, and says what it thinks of it
+        self.task = {"id": "port-0002", "files": ["a", "b/"]}
+        self.asked(judge, "C" * 40, 2, {"code": 2})
+        self.assertEqual(self.commands[-1][0][4:6] + self.commands[-1][0][10:14], ["--unit", "", "--task-file", "a", "--task-file", "b/"])
+
+    def test_the_tip_is_asked_with_the_seed_of_the_judgement_that_failed(self):
+        """After a failure to judge the base asks about the tip itself. The cases are then the same: what failed on
+        them fails again and stops the run, where a new draw could pass and leave the failure on the candidate."""
+        judge = hive.judge_of("/registry", {"kind": "reference"}, None)
+        self.assertEqual(self.asked(judge, "C" * 40, 2, {"code": 2, "seed": self.SEED, "seed_origin": "drawn", "step": 5}), {"code": 2, "report": {}})
+        self.assertEqual(self.commands[-1][0][6:8], ["--budget", str(3600 - hive.REFERENCE_MARGIN)])
+        self.asked(judge, "T" * 40, 2, {"code": 2, "seed": self.SEED, "seed_origin": "given"})
+        self.assertEqual(self.commands[-1][0][-3:], ["--tip-itself", "--seed", self.SEED])
+        self.asked(judge, "T" * 40, 0, {"code": 0, "seed_origin": "drawn"})
+        self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"], "once: the next question about the tip draws its own")
+        for status, report in ((1, {"code": 1, "seed": self.SEED, "seed_origin": "drawn"}), (0, {"code": 0, "seed": self.SEED, "seed_origin": "drawn"}),
+                               (2, {"code": 2, "seed": "zz" * 32}), (2, {"code": 2, "seed": 7}), (2, {"code": 2}), (2, None)):
+            self.asked(judge, "C" * 40, status, report)
+            self.asked(judge, "T" * 40, 0, {"code": 0, "seed_origin": "drawn"})
+            self.assertEqual(self.commands[-1][0][-1:], ["--tip-itself"], f"no seed kept after {status}, {report}")
+        # the tip, answered 0 with the seed it was given: the machine works
+        self.asked(judge, "C" * 40, 2, {"code": 2, "seed": self.SEED, "seed_origin": "drawn"})
+        self.assertEqual(self.asked(judge, "T" * 40, 0, {"code": 0, "seed": self.SEED, "seed_origin": "given", "cases_compared": 0}),
+                         {"code": 0, "report": {"cases_compared": 0}})
+
+    def test_a_projects_file_may_name_the_kind(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "port.json"
+            path.write_text(json.dumps({**CONFIG, "project": "port", "repo": "Bee-ruche/port", "tasks": "hive/tasks/port.jsonl",
+                                        "judge": {"metrics": ["cases_compared"], "kind": "reference", "timeout_seconds": 1200}}))
+            config = hive.load_config(path)
+        self.assertEqual((config["judge"]["kind"], hive.JUDGES["reference"]), ("reference", hive.the_reference_judge))
 
 
 class TestTheHivesBranchIsNotTheDefaultOne(Volunteer):
