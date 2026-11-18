@@ -736,7 +736,7 @@ class TestTheTrustedBase(Case):
     """A project may say how many active members its guardians cover (docs/protocol.md, "How tasks are dealt"); the
     feed then says how many members are active, how many are covered, and whether a new member is dealt a task now."""
 
-    BASE = {"active": 3, "active_days": 30, "cover": 4, "takes_new": True, "active_marks": [mark(1), mark(2), mark(3)]}
+    BASE = {"active": 3, "active_days": 30, "cover": 4, "takes_new": True, "active_marks": ["feedfacefeedface", "0123456789abcdef", "fedcba9876543210"]}
 
     def made(self, members):
         self.ledger([verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001")])
@@ -751,7 +751,7 @@ class TestTheTrustedBase(Case):
         files, data, seen = self.made({**self.BASE, "active": 4, "takes_new": False})
         self.assertIn("Members: 4 active (dealt a task in the last 30 days); the project's guardians cover 4. A new member is dealt a task once there "
                       "is room.", seen.said)
-        self.assertNotIn(mark(1), "".join(files.values()), "the members' marks are the workers' to read, not the page's")
+        self.assertNotIn("feedfacefeedface", "".join(files.values()), "the members' marks are the workers' to read, not the page's")
 
     def test_a_project_that_sets_no_such_bound_has_the_page_it_had(self):
         without, data, _ = self.made(None)
