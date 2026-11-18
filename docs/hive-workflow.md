@@ -107,9 +107,10 @@ Five things carry it:
    to the state repository or to the project's. The project's file then left its pause (pull request
    388), and the workflow file was given that commit (`5091c9c`), on the founder's decision: from the run after,
    the hive reads the forks of the one invited account, deals, judges and integrates for this project. Since
-   18 November 2026 the two projects' files name one commit of the registry again (`c8f45ef`): the first
-   project's task miniz-0010 is closed there, and a task that failed in a member's hands goes first to another
-   member ([decisions.md](decisions.md)); nothing of `tools/judge/` differs from the commits they named before.
+   18 November 2026 the two projects' files name one commit of the registry again (`ebe773d`): the first
+   project's task miniz-0010 is closed there, a task that failed in a member's hands goes first to another
+   member, and while they are tested the two projects ask no wait ([decisions.md](decisions.md)); nothing of
+   `tools/judge/` differs from the commits they named before.
 
 ## The file
 
