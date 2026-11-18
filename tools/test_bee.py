@@ -23898,7 +23898,7 @@ class TestHiveWorkflow(unittest.TestCase):
     UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2: the writer tools/hive/artifact.py reads
     DOWNLOAD = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4.3.0: in the job that holds no key only
     APP_TOKEN = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"  # v3.3.0
-    PIN = "c8f45efe42ee29de924ba8c2d3a80d772a30bbe9"  # the one commit of the registry every job runs (forty zeros name none)
+    PIN = "ebe773d8da9776ed258dba20896ed5d3f6971583"  # the one commit of the registry every job runs (forty zeros name none)
     # What one project's run has of its own: its file and title, the project's name in the registry and its repository,
     # the variable that starts it, its group (one run of a project at a time), its minute, how its judge's image is made.
     FILE, TITLE = "hive.yml", "Hive"
@@ -24299,7 +24299,7 @@ class TestHiveWorkflowOfTheSecondProject(TestHiveWorkflow):
     The commit of the registry it names was forty zeros, which name none, until 17 November 2026: a commit of main
     is written in it by a pull request, on the founder's decision. It starts nothing while its switch is empty."""
 
-    PIN = "c8f45efe42ee29de924ba8c2d3a80d772a30bbe9"  # the one commit of the registry every job of this file runs
+    PIN = "ebe773d8da9776ed258dba20896ed5d3f6971583"  # the one commit of the registry every job of this file runs
     FILE, TITLE = "hive-cjson.yml", "Hive (cjson)"
     HIVE_PROJECT, REPOSITORY = "cjson", "cjsonRustBee"
     SWITCH, GROUP, CRON = "HIVE_CJSON", "hive-cjson", "47 * * * *"
