@@ -105,12 +105,11 @@ Five things carry it:
    set, and the first run was made with the project paused: its four jobs succeeded, the two that hold a key took
    their tokens, the judge's image was made (the one the manifest in the project's repository names), and nothing was written
    to the state repository or to the project's. The project's file then left its pause (pull request
-   388), and the workflow file names that commit (`5091c9c`) since, on the founder's decision: from the run after,
-   the hive reads the forks of the one invited account, deals, judges and integrates for this project. The two
-   projects' files name two commits of the registry (the first project's names `db9ad22` since 18 November 2026,
-   where its task miniz-0010 is closed: [decisions.md](decisions.md)); between the two, the documents, the second
-   project's workflow file and its test, and the first project's tasks file differ, and nothing of `tools/hive/` or
-   `tools/judge/`.
+   388), and the workflow file was given that commit (`5091c9c`), on the founder's decision: from the run after,
+   the hive reads the forks of the one invited account, deals, judges and integrates for this project. Since
+   18 November 2026 the two projects' files name one commit of the registry again (`c8f45ef`): the first
+   project's task miniz-0010 is closed there, and a task that failed in a member's hands goes first to another
+   member ([decisions.md](decisions.md)); nothing of `tools/judge/` differs from the commits they named before.
 
 ## The file
 
