@@ -630,8 +630,8 @@ def read_waiting(folder, now):
 
 def read_base(folder):
     """{active, active_days, cover, takes_new} from the feed's « members », for a project that says how many active
-    members its guardians cover (docs/protocol.md, "How tasks are dealt"): how many members are active, within how
-    many days of a deal, how many the project's guardians cover, and whether a new member is dealt a task now. None
+    members its guardians cover (docs/protocol.md, "How tasks are dealt"): how many members are active, for how
+    many days an accepted contribution keeps one so, how many the guardians cover, and whether a new member is dealt a task now. None
     when the feed has none of it, when the project sets no such bound (no cover), or when a value is not the whole
     number or the yes-or-no the hive writes: the page then says nothing of it. (The feed is the hive's latest: these
     are its figures as of the feed, like the tasks' states.)"""
@@ -1121,8 +1121,8 @@ def render_html(data, title, repo_url, join):
     base = data["trusted_base"]
     if base is not None:  # the project says how many active members its guardians cover (read_base())
         progress = [*(progress if isinstance(progress, list) else [progress]),
-                    el("p", f"Members: {base['active']:,} active (dealt a task in the last {base['active_days']:,} days); the project's "
-                                      f"guardians cover {base['cover']:,}. "
+                    el("p", f"Members: {base['active']:,} active (holding a task, or with a contribution accepted in the last "
+                                      f"{base['active_days']:,} days); the project's guardians cover {base['cover']:,}. "
                                       + ("A new member is dealt a task now." if base["takes_new"] else "A new member is dealt a task once there is room."),
                                  class_="note")]
     sections.append(el("section", el("h2", "Progress"), progress))

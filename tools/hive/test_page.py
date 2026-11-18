@@ -747,9 +747,9 @@ class TestTheTrustedBase(Case):
     def test_the_page_says_how_many_members_are_active_and_how_many_the_projects_guardians_cover(self):
         files, data, seen = self.made(self.BASE)
         self.assertEqual(data["trusted_base"], {"active": 3, "active_days": 30, "cover": 4, "takes_new": True})
-        self.assertIn("Members: 3 active (dealt a task in the last 30 days); the project's guardians cover 4. A new member is dealt a task now.", seen.said)
+        self.assertIn("Members: 3 active (holding a task, or with a contribution accepted in the last 30 days); the project's guardians cover 4. A new member is dealt a task now.", seen.said)
         files, data, seen = self.made({**self.BASE, "active": 4, "takes_new": False})
-        self.assertIn("Members: 4 active (dealt a task in the last 30 days); the project's guardians cover 4. A new member is dealt a task once there "
+        self.assertIn("Members: 4 active (holding a task, or with a contribution accepted in the last 30 days); the project's guardians cover 4. A new member is dealt a task once there "
                       "is room.", seen.said)
         self.assertNotIn("feedfacefeedface", "".join(files.values()), "the members' marks are the workers' to read, not the page's")
 

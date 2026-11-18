@@ -141,17 +141,28 @@ Each run, after the forks were read, in this order:
 
 **A project's trusted base keeps pace with its members.** A project that names guardians ("Guardians") may say how
 many active members one guardian covers (`members.per_guardian` in its file): the project's lead sets it, and the
-hive counts. A member is *active* while the ledger holds a deal to its account within the project's window
-(`members.active_days`, 30 days unless the file says otherwise), whatever came of the deal. The base *covers*
-`per_guardian` times the number of accounts the file names as guardians. A member that is active is dealt as
-above. An asker that is not is a **new member**, and is dealt a task only while the active members, with the new
-ones the same run has already dealt to, are fewer than the base covers. Beyond that it is passed over: no deal, no
-line, no wait, and its ask stays where it is, for the run that finds room (a member's last deal leaves the window,
-or the project names one more guardian). The askers come in the order of point 3 whatever the bound: it holds a
-new member back and moves nobody ahead. A member the project already has is never turned away by it, even where the
-project has more of them than its base covers. A project that sets no `per_guardian` has no such bound. The jobs
-that write hold the plan's deals against the same rule, from the project's file and the ledger as the plan read it:
-a plan that deals to more new members than the base covers is not applied at all.
+hive counts. A member is *active* when it holds a live deal (a task is in its hands now, however long ago it was
+dealt), or when a candidate of its own was **accepted** within the project's window (`members.active_days`, 30
+days unless the file says otherwise: to the second, from the instant of the acceptance's line; an acceptance a
+guardian's ruling brought is one). Nothing else makes a member active: not an ask, not a deal that ran out, not a
+candidate that was refused. A place is held by work the project took, or by a task being worked on; an account
+whose deal ends otherwise holds none from then on, and then waits what any member waits. And an account the
+project's file does not take today (one it bans, or one it does not name where it is open by invitation) is never
+counted, whatever the ledger holds of it: its place is free from the next run. The base *covers* `per_guardian`
+times the number of accounts the file names as guardians. A member that is active is dealt as above; a member
+whose candidate waits for its answer holds a live deal, and is dealt its next task as any such member is. An asker
+that is not active is a **new member**, and is dealt a task only while the active members, with the new ones the
+same run has already dealt to, are fewer than the base covers. Beyond that it is passed over: no deal, no line, no
+wait, and its ask stays where it is, for the run that finds room (a deal ends without an acceptance, a member's
+last acceptance leaves the window, the project turns an account away or names one more guardian). The askers come
+in the order of point 3 whatever the bound: it holds a new member back and moves nobody ahead. A member that is
+active is never turned away by it, even where the project has more of them than its base covers. A project that
+sets no `per_guardian` has no such bound. The jobs that write hold the plan against the same rule, from the
+project's file, its tasks and the ledger as the plan read it: they count the active members themselves, once the
+deals the plan says are over are closed; they hold each of those deals as one the ledger has live and whose time
+is up at the plan's instant, or whose task is no longer open (that the member's fork held no candidate for it is
+the plan job's reading of the fork); and a plan that frees a place by a deal that is not over, or deals to more
+new members than the base covers, is not applied at all.
 
 Between the candidates and the askers come the rulings of the project's guardians, where the project names any
 ("Guardians"): a ruling that stands is served when its task is free and every open task that shares a file with it
@@ -628,9 +639,11 @@ other run saved and pushes again, a bounded number of times. In each folder:
   when a member is dealt nothing (`wait`). It holds nothing a contributor wrote. The hash keeps sentences a login
   could spell out of the feed; it hides nobody, since the owners of forks are public. `members` says where the
   project's trusted base stands ("How tasks are dealt"): `active` (how many members are active now), `active_days`
-  (the window), `cover` (how many the project's guardians cover; `null` where the project sets no bound),
-  `takes_new` (whether a new member is dealt a task now) and `active_marks` (the active members, under the same
-  hash of their logins): whole numbers, a yes or a no, and hashes.
+  (for how many days an accepted candidate keeps its member active), `cover` (how many the project's guardians
+  cover; `null` where the project sets no bound), `takes_new` (whether a new member is dealt a task now) and
+  `active_marks` (the active members, under the same hash of their logins): whole numbers, a yes or a no, and
+  hashes. A member is found there, as in `deals` and `wait`, under the login of the line of its latest deal: one
+  that changed its login since is found again at its next deal.
 - `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is added up for a model, not for a member).
 - `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
   member, an ask that was used, a submit that is not a candidate, a commit shaped like a ruling in a fork whose
@@ -680,7 +693,8 @@ hour and the fork's own number, which adding forks to the list does not shift.
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false; and `per_guardian` and
   `active_days`: how many active members one guardian covers, a whole number of 1 or more, and for how many days
-  after a deal a member is active, 30 unless the file says otherwise; a file with no `per_guardian` sets no bound,
+  after an accepted candidate a member stays active, 30 unless the file says otherwise; a file with no
+  `per_guardian` sets no bound,
   and one that sets it without naming a guardian does not load), how long a deal lasts
   (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`: an hour at least, or none at all, `0`, for a
   project whose file names one account alone: a file that names a second one with that setting does not load),

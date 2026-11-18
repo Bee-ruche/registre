@@ -126,7 +126,9 @@ two hours.
   three (its eleven first tasks change three files). With more workers than that, a worker waits its turn.
 - **A project takes new members only as far as its guardians cover.** A project may say how many active members
   one of its guardians covers; while it has that many, a new member is dealt no task, at no cost: its worker is
-  told to come back later, and is served once there is room. A member the project already has goes on.
+  told to come back later, and is served once there is room. A member is active while it holds a task, and for a
+  while (thirty days, unless the project says otherwise) after each of its candidates the project accepted: such
+  a member goes on.
 - **A task that is not completed costs a wait.** A candidate the judge examined and refused costs your account two
   hours before its next task, each time: on tasks that ask for a measured gain, that is ordinary. A task dealt and
   left, or a candidate refused before the judge (a file outside the task, a branch that does not merge), costs two
