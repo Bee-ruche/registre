@@ -3411,6 +3411,28 @@ exec {real} "$@"
             with self.subTest(goal=goal), self.assertRaisesRegex(hive.HiveError, "goal"):
                 hive.check_goals(config, {"toy-0004": {"id": "toy-0004", "goal": goal}})
 
+    def test_the_judges_figures_say_of_which_kinds_the_suspects_are_and_nothing_of_what_was_flagged(self):
+        """A member whose candidate fell on the project's bound on suspects reads which of the judge's checks it was:
+        one figure for each kind the judge counted, under the judge's own word for the kind. Nothing else of that
+        count becomes a figure: no kind the judge does not know, no count that is not a whole number above zero, and
+        never the text of what was flagged, which comes from the judged code."""
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])
+        listed = re.search(r"^SEVERITY = \(([^)]*)\)", (registry / "tools/judge/judge.py").read_text(encoding="utf-8"), re.M)
+        self.assertEqual(hive.SUSPECT_KINDS, tuple(re.findall(r'"([a-z_]+)"', listed.group(1))), "the judge's own list of kinds")
+        self.assertTrue(all(hive.METRIC.match(f"suspects_{kind}") for kind in hive.SUSPECT_KINDS))
+        path = Path(tempfile.mkdtemp(dir=self.tmp.name)) / "judge.json"
+        flagged = [{"type": "octets", "detail": "rdtsc: 1 occurrence(s) at 0f31 in unit.o"}] * 2 + [{"type": "source", "detail": "a line"}]
+        path.write_text(json.dumps({"judge": {"suspicious_constructs": flagged, "suspicious_constructs_by_type": {
+            "octets": 2, "source": 1, "section": 0, "symbole": True, "instruction": "3", "appel_externe": -1, "architecture": 2.0,
+            "a_kind_of_its_own": 4, "octets\n": 5}}}), encoding="utf-8")
+        figures = hive.judge_figures({"suspects": "3", "outputs_compared": "12"}, path)
+        self.assertEqual(figures, {"suspects": 3, "outputs_compared": 12, "suspects_octets": 2, "suspects_source": 1})
+        self.assertEqual(hive.clean_report(figures, ["suspects", "suspects_octets"]), {"suspects": 3, "suspects_octets": 2},
+                         "kept in the ledger when the project lists it, as any figure")
+        for other in ({"judge": {"suspicious_constructs_by_type": ["octets"]}}, {"judge": "octets"}, {"judge": {}}, {}):
+            path.write_text(json.dumps(other), encoding="utf-8")
+            self.assertEqual(hive.judge_figures({"suspects": "0", "outputs_compared": "12"}, path), {"suspects": 0, "outputs_compared": 12})
+
     def test_a_goal_on_a_figure_always_holds_a_proof_the_project_takes(self):
         """No measure accepts a candidate alone, whatever the project and whatever its judge: a goal on a figure holds one
         of the judge's proofs the project takes (judge.confirm: figures named sure_<measure>), with a minimum of 1 or
@@ -4714,6 +4736,9 @@ class TestProjectFiles(unittest.TestCase):
                 self.assertTrue(all(task["id"].startswith(config["project"] + "-") for task in tasks.values()))
                 self.assertTrue(all(not hive.protected(f.rstrip("/"), config["protected"]) for task in tasks.values() for f in task["files"]),
                                 "a task names a file its own project protects")
+                if any(condition["name"] == "suspects" for condition in config["judge"]["require"]):
+                    self.assertTrue(all(f"suspects_{kind}" in config["judge"]["metrics"] for kind in hive.SUSPECT_KINDS),
+                                    "a project that bounds the suspects keeps their kinds: a refusal's line says which check it was")
                 if not json.loads(path.read_text()).get("in_service"):
                     self.assertTrue(config.get("paused") or config["members"]["only"] is not None,
                                     "a project not yet in service is paused, or open by invitation")
