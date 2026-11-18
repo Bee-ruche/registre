@@ -1944,12 +1944,13 @@ def check_rulings(plan_, config, tasks, ledger):
     (as_the_plan_counted): what a step that writes asks before it writes or pushes anything. The plan comes from the
     step that read the forks; a step that holds a key takes from it, about a ruling, only what these bear out.
 
-    A candidate the plan says a guardian admitted: either its task is one the registry has closed or lists no more
-    since the plan, and the step answers the ruling void and does nothing else with it (process), as it refuses a
-    member's candidate whose task was closed meanwhile; or the ruling stands (admissible); the candidate is, field for field,
-    the one the ledger gives for that commit (candidate_of): no plan credits another account, another fork or
-    another task with it; the task was free when the plan was made, and so was every open task that shares a file
-    with it; no other candidate of the plan is for that task or for one of those, and the plan deals none of them.
+    A candidate the plan says a guardian admitted. Its task may be one the registry has closed, or lists no more,
+    since the plan: the step then answers the ruling void and does nothing else with it (process), as it refuses a
+    member's candidate whose task was closed meanwhile. Otherwise the ruling stands (admissible); the candidate is,
+    field for field, the one the ledger gives for that commit (candidate_of): no plan credits another account,
+    another fork or another task with it; the task was free when the plan was made, and so was every open task
+    that shares a file with it; no other ruling of the plan takes that task, no other candidate of the plan is for
+    it or for one of those, and the plan deals none of them.
     A ruling the plan says is void: it is void for that reason by admissible's own reading (or its task was closed
     since, which voids it as well); « duplicate », which is the plan's draw between two rulings on one commit, is
     said only of a ruling that would otherwise stand.
