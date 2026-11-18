@@ -86,8 +86,10 @@ project's history and changes only the task's files; it then runs the same struc
 a worker learns of a refusal before spending a judgement. A refusal it prints names a path only if the project
 holds it.
 
-A candidate is identified by its commit id. The same commit is answered once, whatever the number of branches
-that carry it. Of several candidates pushed for one deal, one stands (a draw) and the others are ignored.
+A candidate is identified by its commit id. The same commit is answered once as a candidate, whatever the number
+of branches that carry it, and is not read again. A commit that was refused is judged a second time in one case
+only: a guardian of the project admits it ("Guardians"). Of several candidates pushed for one deal, one stands (a
+draw) and the others are ignored.
 
 ## Whose forks are read
 
@@ -110,6 +112,12 @@ stopped by the bound above, or failed while the fork's branches changed under it
 to its member, only when the hive could not list it, or when its fetch failed on branches that stood still: then
 GitHub or the network may be the cause.
 
+**A guardian's fork is read for its rulings** ("Guardians"), in the same way and within the same bounds, whatever
+this section says of its account as a member's: the project's file names a guardian by the account's number, as it
+names a member it invites, and a project open by invitation, an age the account does not have or a ban on it as a
+member change nothing to that. What such a fork holds as a member's (an ask, a candidate) is then nothing, as
+before, and is not remembered either.
+
 ## How tasks are dealt
 
 Each run, after the forks were read, in this order:
@@ -130,6 +138,10 @@ Each run, after the forks were read, in this order:
    a draw, it never names a task. An ending that was the hive's or the project's doing is not held against the
    task, and what a member held in vain stays so. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
+
+Between the candidates and the askers come the rulings of the project's guardians, where the project names any
+("Guardians"): a ruling that stands is served when its task is free and every open task that shares a file with it
+is; the commit it admits is then that task's one candidate in the run, and those tasks are dealt to nobody in it.
 
 **A member may say which part of the project it prefers, and the hive follows it only when its own rules lose
 nothing by it.** The project is already chosen by the fork the worker runs in; a part is one of the files the
@@ -245,6 +257,11 @@ the hive runs those git commands with an empty attribute source.
 - The judging and the write job go through the same candidates, with the same ledger, tasks and instant (the
   plan's): they derive the same commits. A plan from the future, or more than a day old, is not applied; nor is
   anything if the project's tip moved since the plan.
+- **Of a guardian's ruling, the jobs that write take from the plan what the plan job read in the guardian's fork**
+  (that the fork holds the ruling at its task's branch and what the ruling says, the guardian's login, that the
+  ruling carries its commit) **and hold everything else again by themselves**, against the project's file and the
+  ledger as the plan read it, before they write or push anything ("Guardians", "What each job holds of a ruling"):
+  a plan that says of a ruling what these do not bear out is not applied at all.
 
 ## How a candidate is judged and integrated
 
@@ -313,7 +330,152 @@ the hive runs those git commands with an empty attribute source.
   it unattended, that the hive's judge accepted it and that no person read it before it was integrated; then the
   task, the member, the candidate and the model the worker declared (`Hive-Model`, or `undeclared`). It is
   deterministic: the same tip, candidate, task, member, model and instant always give the same commit id. The
-  candidate's own commit messages and author fields never enter the project's history.
+  candidate's own commit messages and author fields never enter the project's history. A commit a guardian
+  admitted says so: in place of the judge's acceptance and « no person read it », that the judge refused it for a
+  figure the project lets its guardians waive, that a guardian of the project admitted it and that it was judged
+  again in full; and in two lines more, `Hive-Guardian` (the guardian's login) and `Hive-Ruling` (the ruling's
+  commit id).
+
+## Guardians
+
+Members are strangers, and nothing in this protocol trusts one. A project may also name **guardians**: a few
+accounts that its own file trusts, by their GitHub account numbers (`guardians.accounts`). A guardian is honest
+and may be wrong. It decides alone and at once, and what guards against its mistakes is that each decision is a
+public line of the ledger, with its account on it. A project that names none takes no ruling, and everything
+below is absent from its runs.
+
+A guardian has one power: **to admit one commit that the hive refused for a figure alone that the project lets a
+guardian waive.** What a project requires of every contribution (`judge.require`) can only refuse, and one such
+bar may be a count of what the registry's judge flags in a candidate (`suspects`): a flagged construct is not a
+fault in itself, it is what a guardian reviews (docs/common-judge.md). A ruling is the outcome of that review. It
+relaxes nothing that is asked of members: the commit is judged again, in full, and the ruling changes one thing in
+that judgement.
+
+**What may be waived is the project's to say.** `guardians.waive` lists figures, each with a bound. A figure
+there is one the project keeps and requires with a `max`, in one condition that asks nothing else; its bound, that
+`max` at least, is the most a ruling may let the figure reach. A file that says anything else of its guardians
+does not load.
+
+**A ruling** is a commit at the tip of one branch of the guardian's own fork: `hive/rule/<task>`, the branch
+`hive.py admit` writes for the task the ruling names. Its one parent is the commit it admits and its files are that
+commit's, so that reading the guardian's fork brings the admitted commit itself, whatever its member's fork holds
+since. Its message, each line alone on its line:
+
+```
+Hive-Action: admit
+Hive-Member: gina
+Hive-Task: miniz-0010
+Hive-Commit: 3b1f0c9a5d2e4f60718293a4b5c6d7e8f9012345
+Hive-Waive: suspects 2
+```
+
+- `Hive-Member`: the guardian's login. A ruling counts only in the fork of the account it names, and only if the
+  project's file names that account (the number GitHub gives for the fork's owner).
+- `Hive-Task` and `Hive-Commit`: the task, and the full id of the commit admitted, as the ledger's refusal names it.
+  **A ruling counts at one branch, by its name**: the guardian's fork lists `hive/rule/<that task>` at that very
+  commit. A guardian's fork holds other commits than those the guardian's command made (a commit fetched to be read,
+  and pushed along with the rest): what one of them says is no decision of the guardian's, whatever it is shaped
+  like.
+- Anywhere else (a fork whose owner the project's file does not name, the member's own fork included; another
+  account's name; any other branch of a guardian's fork) a commit shaped like a ruling is a commit without a
+  marker: not read again while it stays there, and no line. That holds for good: a guardian the file names later,
+  or one who meant a ruling that sits elsewhere, makes it anew (`hive.py admit` makes a new commit each time).
+- `Hive-Waive`, once for each figure waived: the figure, and up to what, as a plain decimal number. The hive
+  compares the figure's name with those the project's file lists and keeps the file's own string; a name the file
+  does not hold is counted and goes no further.
+
+`hive.py admit --project <project> --login <the guardian's login> --task <task> --commit <id> --waive
+<figure>=<bound>`, run in a clone of the guardian's fork that holds the commit, makes the ruling and pushes it to
+the fork's branch `hive/rule/<task>`, under the same checks of the clone as a worker's commands; `--withdraw`
+deletes that branch. The guardian fetches the commit into that clone **by its id, as the ledger's refusal gives
+it**, never as a branch of its member's fork: a branch is whatever its owner pushed there since, and what it holds
+is data. A guardian keeps no branch under `hive/rule/` that came from another remote, and pushes there only
+through `hive.py admit`: what a guardian's fork holds at that branch, the hive takes as the guardian's. The
+command decides nothing: whether a ruling stands is said by the hive.
+
+**A ruling stands** only if all of this holds:
+
+- the project's file names the account;
+- the ruling carries the commit it names (its one parent, the same files);
+- the task is one of the project's, open, and not done;
+- the ledger holds the hive's answer to that commit as a candidate for that task, and that answer is a refusal
+  `requirement_not_met` whose line keeps what the judge measured: every requirement that report fails is on a
+  figure the project lets a guardian waive;
+- the commit's member is an account the project takes today, by its file: not one it bans (by the account's
+  number, or by the login of its deal's line), and, in a project open by invitation, one the file names. A ruling
+  brings in no work of an account the project has turned away since. The login held against a ban here is the
+  one the member had when it was dealt the task, where the reading of forks holds the fork's login of the day: a
+  ban written as a login reaches a ruling under the login of that time only, and a ban by account number is the
+  same everywhere. A project that bans, bans by number;
+- the commit is not the guardian's own, except in a project whose file names one account alone as its members: a
+  trial with one person in it has nobody else to rule, and the line shows the same account twice;
+- each figure the ruling waives is one the file lists, with a bound between what the project requires and the
+  file's own bound, and the ruling covers what the commit failed: each failed figure, as far as it was measured;
+- the ruling has no answer yet. Of several rulings that stand on one commit, one is taken, by the run's draw; the
+  others are answered `duplicate` by the run that answers that one, and wait with it until then.
+
+**What each job holds of a ruling.** The `plan` job is the only one that reads a fork, a guardian's as a member's.
+Three things are its reading, and the jobs that write take them from the plan, as they take from it which commits
+a member's fork held: that the fork of that account holds, at the task's ruling branch, a commit of that id that
+says this (the task, the commit, each figure waived and its bound); the login GitHub gives for the account; and
+that the ruling carries the commit it names. Everything else in the list above is read from the project's file,
+its tasks and the ledger, and `record` and `apply` hold it again, by themselves, against the ledger as the plan
+read it, before they write or push anything: the account is one the file names; the commit, its task, its member,
+that member's login and fork, the deal and the model are the ledger's own for that refusal, field for field; the
+refusal is one a guardian may lift; the member is one the project takes; what is waived lies within the file's
+bounds and covers what the commit failed; the task was free, and no other candidate or deal of the plan takes it or
+a task that shares a file with it; a void line names a task of the registry or none, for the reason those same
+readings give; `duplicate` is said only in a plan that admits the same commit under another ruling; and no ruling
+is named twice in a plan. A plan that says otherwise is not applied at all. One case is the registry's doing and
+stops nothing: a task the registry has closed, or lists no more, when the write job reads it. Whatever the plan
+said of a ruling for that task (admitted, void for another reason, `duplicate`), the write job answers it void
+itself, `task_closed` (`malformed` stays, where the plan read that the ruling does not carry its commit), with the
+task as the registry names it now or none, as it refuses a member's candidate whose task was closed meanwhile; a
+task's name the registry does not list reaches no line; and the rest of the plan is applied.
+
+**A ruling that stands is served when its task is free**, and every open task that shares a file with it: until
+then it stays where it is, in the guardian's fork, and the hive keeps nothing of it. Then the commit joins the
+run's candidates, for that task and in the name of the member who wrote it: the account of the refusal's line,
+with the login and the fork that the line of its deal gives. **It is judged again as any candidate is**, merged on
+the project's tip as it stands then: the limits, the structural rules, the judge's own answer, every requirement
+of the project, the task's goal and its proofs. One thing differs: a requirement on a figure the ruling waives is
+met when the figure is within the ruling's bound. What passes is integrated and credited to its member.
+
+**Every ruling is answered once, on a line of the ledger, and a ruling that fails costs the commit's member
+nothing.**
+
+- *Accepted*: a `verdict` line like any other (the task is done, the member is credited, the statistics count
+  it), with four fields more: `ruling` (the ruling's commit id), `guardian_id` and `guardian` (the account that
+  admitted it, by number and by login), and `waived` (each figure waived with the ruling's bound). The line names
+  the deal the commit answered when it was refused, and it is written when it is decided: after whatever the
+  member's later deals came to. The ledger's endings are read in the order they were written, so **that acceptance
+  is the member's latest ending**, whatever ended between the refusal and it: every wait the member had is
+  cleared, a later failed deal's included; the member has the class, and what goes with it (a preference
+  followed), of one whose last deal was accepted, until its next deal ends; and the deal the line names leaves the
+  day's count. It is the most recent thing the hive said of that member's work, and it counts as that.
+- *Anything else*: a line of type `ruling`, which is no verdict: the ruling's commit id, the guardian's number and
+  login, the task (as the registry names it, or none), the commit, a `result` and a `reason`. It names no member
+  and counts in nobody's deals, waits, refusals or statistics.
+
+| `result` | `reason` | The ruling |
+| --- | --- | --- |
+| `void` | `malformed` | does not carry the commit it names |
+| `void` | `task_closed`, `task_done` | names a task that is not the project's or is closed; or one that is done (by the commit of a member it was dealt to meanwhile, for instance) |
+| `void` | `unknown_commit` | names a commit the ledger holds no answer to, as a candidate for that task |
+| `void` | `not_reviewable` | names a commit that was not refused for figures alone that the project lets a guardian waive |
+| `void` | `member_not_taken` | admits the commit of an account the project's file does not take today: one it bans, or one a project open by invitation does not name |
+| `void` | `own_candidate` | admits the guardian's own commit, in a project whose file does not name one account alone as its members |
+| `void` | `beyond_bound` | waives a figure the file does not list, or outside the file's bounds, or not as far as the figure the commit was refused for |
+| `void` | `duplicate` | stands, and lost the draw to another ruling on the same commit: said in the run that answers that other ruling, never before |
+| `refused` | a candidate's reason code (`conflict`, `judge_refused`, `requirement_not_met`…) | stood, and its commit, judged again, was refused: the line says whether the judge examined it (`judged`), and keeps `detail` and, for a figure, the judge's `report`, as a refusal's verdict does |
+
+A run spent on an admitted commit without an answer is a mark of the ruling, not of the deal the commit once
+answered; a ruling's marks end as a deal's do (`judge_failed`, `push_refused`, `not_answered`), on the ruling's
+line and at no cost either. The write
+job answers rulings, once it has seen the project's tip where the plan saw it; the `record` job holds them and
+writes none. A ruling that lost the draw has its `duplicate` line in the run that answers the ruling that won it:
+where that run did not reach the commit, or could not tell the fate of its push, both wait. A ruling whose guardian the file no longer names is not applied, and at the next run it is a commit
+like any other.
 
 ## What holds over time
 
@@ -414,13 +576,16 @@ folder and no other, so two projects' runs never conflict: a push that finds the
 other run saved and pushes again, a bounded number of times. In each folder:
 
 - `ledger.jsonl`: append-only, one JSON object per line: `deal`, `expired`, `verdict`, `error` (a mark, with its
-  kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`; each carries the key of
+  kind), `intent` and `void` (a promise, and a promise whose push never landed), `unused`, and `ruling` (a
+  guardian's ruling that did not end in an integration: "Guardians"); each carries the key of
   its run. **It holds no text a fork wrote**: logins, the numeric ids of the account and of its fork, task ids of
   the project, commit ids, instants, reason codes, a model identifier the project lists, whole numbers under the
-  hive's own keys, a file of the project as the registry names it, and the judge's figures the project lists. **A
+  hive's own keys, a file of the project as the registry names it, the judge's figures the project lists, and the
+  bounds of a ruling under the project's own names for the figures. **A
   login is written beside a deal and beside an accepted candidate, which is a credit; a refusal, a run without an
   answer and an expired deal carry the account's number alone.** That is discretion, not secrecy: the deal names its
-  member, and the candidate sits in a public fork.
+  member, and the candidate sits in a public fork. A guardian's login is written beside each of its rulings,
+  whatever the answer: a guardian's decisions are public and named.
 
   A `verdict` line carries the task, the deal it answers, the candidate's commit id, the account's number and its
   fork's, the result, whether the judge examined the candidate (`judged`) and the model the worker declared. An
@@ -431,6 +596,10 @@ other run saved and pushes again, a bounded number of times. In each folder:
   accepted one**, the same numbers bounded the same way: how far it fell short is what its member needs to know,
   and whoever is dealt the task next. `judge_refused` and every refusal before the judge carry none. A refusal's
   line written before this rule has no `report`; it stays valid, and whatever reads the ledger takes both.
+
+  A commit has one verdict as a candidate. One that a guardian admitted and the hive then accepted has a second,
+  which names the ruling (`ruling`, `guardian_id`, `guardian`, `waived`: "Guardians") and is recorded once per
+  ruling: the two lines stand side by side, the refusal as it was written and the acceptance that followed.
 
   A `deal` line carries the task, its member's login, the account's number and its fork's, when the deal starts
   and until when. When the member's ask named a part of the project it adds `prefer`: `{"file": <the part, as the
@@ -446,7 +615,10 @@ other run saved and pushes again, a bounded number of times. In each folder:
   could spell out of the feed; it hides nobody, since the owners of forks are public.
 - `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is added up for a model, not for a member).
 - `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
-  member, an ask that was used, a submit that is not a candidate). Only what is still at a tip of that fork is
+  member, an ask that was used, a submit that is not a candidate, a commit shaped like a ruling in a fork whose
+  owner the project does not name a guardian, under another account's name, or at another branch than its task's
+  ruling branch). A guardian's ruling at its branch is not listed there: it is read at each run until the ledger
+  holds its answer. Only what is still at a tip of that fork is
   kept: what one fork pushes never costs another its entries.
 - `accounts.json`: when each account that owns a fork was created, asked of GitHub once.
 
@@ -494,7 +666,9 @@ hour and the fork's own number, which adding forks to the list does not shift.
   requires (`judge.require`), the
   judge's proofs it takes (`judge.confirm`: figures it keeps, named `sure_<measure>`; every goal on a figure holds
   one of them, with a minimum of 1 or more, and a project that lists none has goals of the kind « correct » only;
-  what the project requires of every candidate, `judge.require`, stays as the project wrote it), and the project's pause
+  what the project requires of every candidate, `judge.require`, stays as the project wrote it), its guardians if
+  it names any (`guardians`: `accounts`, their GitHub account numbers, and `waive`, the figures they may waive,
+  each with the most a ruling may let it reach; a file without it takes no ruling: "Guardians"), and the project's pause
   (`"paused": true`). A run reads this file, and the tasks, at the commit of the registry the
   workflow names: a change acts once that line is moved to it.
 - `hive/tasks/<project>.jsonl` in the registry: one task per line: `id`, `title`, `files` (exact paths, or a

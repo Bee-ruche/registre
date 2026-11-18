@@ -22,6 +22,14 @@ Why this split: an agent can be deceived by the content it reads (injection) or 
 mechanical rule cannot be convinced. A guardian's review is therefore one **condition** of R3
 among others (CI, judges intact, vote, window), never a decision on its own.
 
+**A hive project's guardians are another thing under the same word.** The guardians of this page review
+contributions that reach the registry by pull request, and their review is one condition among others, never a
+decision. A project that the hive runs unattended (docs/protocol.md) may name guardians of its own in its file
+(`hive/projects/<project>.json`, `guardians`), by GitHub account number: those decide alone and at once, on one
+thing only, which is to admit a commit the hive's judge refused for a figure the project's file lets them waive.
+The commit is then judged again in full, and every such decision is a public line of the project's ledger, with
+the guardian's account on it (docs/protocol.md, "Guardians"). Neither list makes anyone a guardian in the other.
+
 **Scope.** Today a guardian reviews for the whole hive. Later, the council will be able to appoint one for a single branch (a project, a domain): their privilege will then hold only over what falls entirely within that branch (R14, [branches.md](branches.md)).
 
 ## Reviewing a contribution, step by step

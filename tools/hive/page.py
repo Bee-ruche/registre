@@ -521,7 +521,12 @@ def clean_event(raw, goals=None, proofs=None):
         # line's is. A line written before that rule has none, and so has any other refusal: nothing is read of them.
         if result == "refused" and event["reason"] in MEASURED and isinstance(raw.get("report"), dict):
             event["measured"] = read_report(raw["report"], (goals or {}).get(task), proofs)
-        if candidate is not None:
+        # A verdict on a commit a guardian admitted names its ruling, and is that ruling's answer: the commit already
+        # has a verdict, the refusal the ruling is about, and the two are two lines (hive.Ledger.mark).
+        ruling = matching(raw.get("ruling"), SHA)
+        if ruling is not None:
+            event["marks"].append(("ruling", ruling))
+        elif candidate is not None:
             event["marks"].append(("candidate", candidate))
         if result == "accepted":
             # (The hive accepts only what the judge judged, and records the commit it integrated. A line it never
@@ -531,6 +536,13 @@ def clean_event(raw, goals=None, proofs=None):
             event.update(read_report(raw.get("report"), (goals or {}).get(task), proofs), changed=read_changed(raw.get("figures")))
             if event["commit"] is not None:
                 event["marks"].append(("commit", event["commit"]))
+    elif kind == "ruling":
+        # A guardian's ruling that did not end in an integration (hive.ruling_event): no verdict, and nobody's. The
+        # page counts one thing of it: whether the judge ran on the commit it admitted (judge_runs()).
+        ruling = matching(raw.get("ruling"), SHA)
+        event.update(judged=raw.get("judged") is True)
+        if ruling is not None:
+            event["marks"] = [("ruling", ruling)]
     return event
 
 
@@ -544,6 +556,8 @@ def judge_runs(events):
       error, kind « push »     the judge accepted it, and the project's repository declined its commit
       unused                   the judge ran on it, and the hive could not use the answer: an earlier push of the
                                same run did not land. It is judged again at a later run, which is another run
+      ruling, judged true      the judge examined, again, a commit a guardian admitted, and the hive refused it on
+                               its answer (one it accepted is a verdict, counted as such)
 
     Not a run of the judge: an error of kind « hive » (the hive could not derive the candidate: the judge never saw
     it), a verdict whose judged is not true (refused before the judge), an intent and a void (a promised push and its
@@ -551,15 +565,16 @@ def judge_runs(events):
 
     What the ledger does not tell apart. An unused line carries no kind: the hive also writes one for a candidate it
     could not derive after a push that did not land, and it is counted here as a run. A promise whose push the hive
-    could not tell the fate of, and that a later run closes with a void, leaves no line of the five above: that run is
+    could not tell the fate of, and that a later run closes with a void, leaves no line of the six above: that run is
     not counted. Both are rare, and neither can be read from the ledger with certainty."""
-    return sum(1 for event in events if (event["type"] == "verdict" and event["judged"]) or (event["type"] in ("error", "unused") and event["ran"]))
+    return sum(1 for event in events if (event["type"] in ("verdict", "ruling") and event["judged"]) or (event["type"] in ("error", "unused") and event["ran"]))
 
 
 def once(events):
     """(the lines that count, in order; how many were left out as repeats). The hive records an answer once
     (hive.Ledger.mark): one verdict for a candidate; one error for a candidate, a run and a kind; one unused line for
-    a candidate and a run; one deal for a task and a run. A ledger that holds a line twice (merged twice, a line
+    a candidate and a run; one deal for a task and a run; one answer for a guardian's ruling, which is a verdict on
+    the commit it admitted or a line of the ruling's own. A ledger that holds a line twice (merged twice, a line
     replayed) is read here as the hive reads its own: the first line stands and the others count for nothing, in any
     figure, card or badge. An accepted verdict whose integrated commit an earlier accepted verdict already holds is a
     repeat too: one commit is one integration, one card, one page. Only whole ids are compared (a 40-hex candidate or
