@@ -3824,6 +3824,51 @@ class TestDealing(Base):
             self.w.run()
             self.assertEqual(len(self.lines("deal")), 3, "the next day it is dealt again")
 
+    def test_a_task_a_member_held_in_vain_is_dealt_to_it_after_those_it_never_held_while_two_are_left(self):
+        """At a member's turn, while two at least of the tasks it could be dealt are ones it never held in vain (a
+        candidate of its own refused, a deal it left without one), the draw is among these alone, whatever the key,
+        and what it prefers is decided among these too. With fewer than two the draw is among all of them: the rule
+        narrows a draw and never names a task. An ending that was the hive's or the project's side's is not held
+        against the task; what another member held in vain is nothing to this one."""
+        self.w.set_config({"members": {"deals_per_day": 50}})
+        old = "2026-11-10T10:00:00Z"
+        self.answered(self.alice, "toy-0001", "goal_not_met", at=old)
+        left = self.w.deal(self.alice, "toy-0002", fresh=True)
+        hive.Ledger(self.w.state).append([{"type": "expired", "at": old, "task": "toy-0002", "deal": left, "member_id": self.alice.id,
+                                          "run": "test-left"}])  # no word of a fault: the member's own
+        self.answered(self.alice, "toy-0004", "task_closed", at=old)  # the project's side: not held against the task
+        self.answered(self.bob, "toy-0005", "goal_not_met", at=old)   # another member's
+        ledger = self.w.load()[2]
+        self.assertEqual((ledger.held_in_vain(self.alice.id), ledger.held_in_vain(self.bob.id), ledger.held_in_vain(999)),
+                         ({"toy-0001", "toy-0002"}, {"toy-0005"}, set()))
+        self.assertIsNone(self.standing(self.alice)[1], "no wait is left: it is an asker")
+        self.alice.ready()
+        self.assertEqual({task for _, task, _ in self.planned(40)}, {"toy-0004", "toy-0005"},
+                         "never the two it held in vain, while two it did not are free")
+        # What it prefers is decided among those tasks too: a part two of them list is kept; a part whose one task it
+        # held in vain has no free task for it, and the plain draw runs among the same tasks.
+        self.answered(self.alice, "toy-0003")  # an accepted deal, on a task closed since
+        self.alice.ready(prefer="lib.c")
+        among = self.planned(40)
+        self.assertEqual(({task for _, task, _ in among}, self.told(among)), ({"toy-0004", "toy-0005"}, {self.kept("lib.c")}))
+        self.alice.ready(prefer="src/")
+        plain = self.planned(40)
+        self.assertEqual(({task for _, task, _ in plain}, self.told(plain)), ({"toy-0004", "toy-0005"}, {self.not_kept("src/", "no_free_task")}))
+        self.assertEqual(self.w.run(), [], "and the steps that write take such a plan")
+        dealt = self.one(self.lines("deal"))
+        self.assertEqual((dealt["task"] in {"toy-0004", "toy-0005"}, dealt["prefer"]), (True, {"file": "src/", "kept": False, "because": "no_free_task"}))
+        # One task alone is left that it never held in vain: the draw is among all of them, or the rule would name it.
+        with self.at("12:30:00"):
+            self.alice.attempt(dealt["task"], dealt["at"])
+            self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
+        with self.at("14:30:00"):
+            self.assertEqual(len(self.w.load()[2].held_in_vain(self.alice.id)), 3)
+            self.alice.ready()
+            self.assertEqual({task for _, task, _ in self.planned(80)}, self.OPEN, "one alone is left: any of them")
+            # Another member, at its turn, is dealt first what it never held in vain itself.
+            self.bob.ready()
+            self.assertEqual({task for login, task, _ in self.planned(120) if login == "bob"}, self.OPEN - {"toy-0005"})
+
     def test_several_candidates_for_one_deal_are_one_candidate(self):
         self.hold(self.alice, "toy-0001")
         pushed = [self.alice.fresh(f"c{i}").submit("toy-0001", content=LIB + f"/* REFUSE {i} */\n") for i in range(20)]

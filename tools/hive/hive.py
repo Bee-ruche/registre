@@ -756,6 +756,21 @@ class Ledger:
                 last = e.get("result") == "accepted"
         return last is True
 
+    def held_in_vain(self, member_id):
+        """The tasks a member was dealt and did not complete, by an ending that was its own: a candidate refused, or
+        a deal left without one. What the hive's or the project's side caused (HIVE_SIDE_REASONS, an expiry at no
+        fault of the member's) is not held against the task: the member's work on it was not what failed. A task
+        it completed is done and is dealt to nobody."""
+        vain = set()
+        for e in self.events:
+            if e.get("member_id") != member_id:
+                continue
+            if e.get("type") == "expired" and not e.get("fault"):
+                vain.add(e.get("task"))
+            elif e.get("type") == "verdict" and e.get("deal") and e.get("result") != "accepted" and e.get("reason") not in HIVE_SIDE_REASONS:
+                vain.add(e.get("task"))
+        return vain
+
     def marks(self, task, member_id, deal):
         """The runs the hive spent on a deal's candidates without an answer: [(kind, unproven)]. Counted for the deal,
         not for the commit: putting another commit in place of one that failed starts nothing afresh.
@@ -1631,7 +1646,11 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
     4. Each asker is dealt, among the open tasks that have no live deal and whose tier it takes, the one a draw
-       gives it. Tasks that share a file are never held by two members at
+       gives it: among those it has not already held in vain (a candidate of its own refused, a deal it left
+       without one: Ledger.held_in_vain) while two at least of them are left; among all of them otherwise. A task
+       that failed in a member's hands goes first to another member, or waits. The rule never names a task: it
+       narrows the draw only where the draw still has two tasks to choose from. These tasks are `mine` below.
+       Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is accepted in this run.
     The draws use a key drawn AFTER the forks were read.
@@ -1641,7 +1660,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     what the fork wrote is compared with the registry's strings and goes no further (discover): the plan, the ledger
     and the logs hold the registry's string, and any other value is no preference at all. A member with several asks
     has a preference only if all of them name the same part. At the member's turn in step 4, with `mine` the tasks
-    it could be dealt anyway (open, free, their rivals free, of its tier), the preference is kept if and only if,
+    it could be dealt anyway (open, free, their rivals free, of its tier, and first those it never held in vain, as
+    step 4 says), the preference is kept if and only if,
     decided in this order:
       a. the project offers preferences (members.preferences); otherwise « not_offered »;
       b. the member's last deal that came to an end, in whatever way, ended with an accepted candidate
@@ -1786,6 +1806,12 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         mine = [t for t in dealable if int(tasks[t].get("tier", 1)) <= tier]
         if not mine:
             continue
+        # First the tasks this member has not already held in vain, while two at least are left: with one alone the
+        # rule would name the task, and nobody chooses a task. What follows (the preference, the draw) sees only these.
+        again = ledger.held_in_vain(member_id)
+        fresh = [t for t in mine if t not in again]
+        if len(fresh) >= 2:
+            mine = fresh
         among, said = mine, {}
         if member_id in prefers:  # followed only when it costs no rule anything: the project's switch, then the class, then the tasks
             part = prefers[member_id]

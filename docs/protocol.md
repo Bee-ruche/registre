@@ -124,13 +124,18 @@ Each run, after the forks were read, in this order:
    after a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was
    accepted, then those who never had one, then the others; within each group, a draw.
 4. **The deal.** Each asker gets one task, drawn among the open tasks that nobody holds and that it takes by its
-   tier. The draws use a key drawn *after* the forks were
+   tier. While two at least of those tasks are ones the member never held in vain (a candidate of its own
+   refused, a deal it left without one), the draw is among these alone: a task that failed in a member's hands
+   goes first to another member, or waits. With fewer than two, the draw is among all of them: the rule narrows
+   a draw, it never names a task. An ending that was the hive's or the project's doing is not held against the
+   task, and what a member held in vain stays so. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
 
 **A member may say which part of the project it prefers, and the hive follows it only when its own rules lose
 nothing by it.** The project is already chosen by the fork the worker runs in; a part is one of the files the
 project's tasks name. At the member's turn, among the tasks it could be dealt anyway (open, held by nobody, the
-tasks that share a file with them free too, of a tier it takes), the preference is kept if and only if, decided in
+tasks that share a file with them free too, of a tier it takes, and those it never held in vain alone while two
+of them are left: point 4 above), the preference is kept if and only if, decided in
 this order:
 
 1. the project offers preferences (`members.preferences` in its file, on by default);
