@@ -24,6 +24,14 @@ task is to keep them apart:
 | `judge` | `hive.py judge` | the registry, the project, the plan and the bundle, the state repository (without credentials) | nothing: it uploads `verdicts.json` | holds a key; talks to a fork; has the network while a candidate's code runs |
 | `apply` | `hive.py apply` | the registry, the project, the plan, the bundle, the verdicts | the project's branch (integration identity) and the state repository | reads a fork; runs anyone's code; unpacks another job's archive |
 
+A project's guardians (docs/protocol.md, "Guardians") change nothing in this table, and bring no key and no
+setting. A guardian's ruling is a commit in the guardian's own fork: `plan` reads it there as it reads members'
+branches, and is still the only job that reads a fork; the commit the ruling admits reaches `judge` and `apply` in
+the plan's bundle, as every candidate does; `record` and `apply` hold what the plan says of a ruling against the
+registry and the ledger before they write, with the keys they already held. A guardian holds no right on the
+project, on the state or on the registry: who is one is a line of the project's file, which changes by a pull
+request like any other line of it.
+
 Five things carry it:
 
 1. **The plan's SHA-256 is a job output**, not a file: `record` and `apply` receive it from GitHub, not from an

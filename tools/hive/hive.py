@@ -144,7 +144,7 @@ RULING_VOID = {
     "task_done": "the task is done",
     "unknown_commit": "the ledger holds no answer to that commit for that task",
     "not_reviewable": "the commit was not refused for figures alone that the project lets a guardian waive",
-    "own_candidate": "the commit is the guardian's own, in a project that names more than one account",
+    "own_candidate": "the commit is the guardian's own, and the project's file does not name one account alone as its members",
     "beyond_bound": "the ruling waives a figure the project does not let a guardian waive, or outside the bounds the project sets, or "
                     "not as far as the figure the commit was refused for",
     "duplicate": "another ruling on the same commit stands",

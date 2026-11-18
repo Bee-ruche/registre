@@ -732,6 +732,56 @@ class TestJudgeRuns(Case):
         self.assertEqual(self.summary(self.make())["totals"]["judge_runs"], 4, "one for a candidate and a run, as the hive records them")
 
 
+class TestRulings(Case):
+    """A project's guardians may admit a commit the hive refused (docs/protocol.md, "Guardians"). The ledger then holds
+    two verdicts on one commit, the refusal and the acceptance that names the ruling, and lines of rulings that did
+    not end in an integration, which are nobody's verdict."""
+
+    def ruling(self, number, result="void", reason="task_done", **more):
+        """A ruling's line as the hive writes it (hive.ruling_event)."""
+        return {"type": "ruling", "at": "2026-11-10T09:00:00Z", "run": f"{number:032x}", "ruling": sha(9000 + number), "guardian_id": 201,
+                "guardian": "gina", "task": "toy-0001", "sha": sha(number), "result": result, "reason": reason, "judged": False, **more}
+
+    def test_a_commit_a_guardian_admitted_is_an_integration_beside_the_refusal_it_already_had(self):
+        refusal = verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001", "refused", reason="requirement_not_met")
+        admitted = verdict(1, "2026-11-11T09:00:00Z", "alice", 101, "toy-0001", ruling=sha(9001), guardian_id=201, guardian="gina",
+                           waived={"suspects": 1})
+        self.assertEqual(admitted["sha"], refusal["sha"], "one commit, answered twice: as a candidate, then by the ruling")
+        self.ledger([refusal, admitted, admitted])
+        files = self.make()
+        data, seen = self.summary(files), self.harmless(files)
+        self.assertEqual({key: data["totals"][key] for key in ("verdicts", "judged", "accepted", "integrations", "refused", "judge_runs")},
+                         {"verdicts": 2, "judged": 2, "accepted": 1, "integrations": 1, "refused": 1, "judge_runs": 2})
+        self.assertEqual(data["ledger"]["repeated_lines"], 1, "the same answer of the same ruling twice is one answer")
+        self.assertEqual([(member["id"], member["login"], member["integrations"]) for member in data["members"]], [(101, "alice", 1)],
+                         "the work is its member's; the guardian that admitted it is no member of the page")
+        self.assertEqual([win["commit"] for win in data["recent"]], [admitted["commit"]])
+        self.assertIn(f"wins/{admitted['commit']}.html", files)
+        self.assertNotIn("gina", "".join(files.values()))
+
+    def test_a_ruling_that_did_not_end_in_an_integration_is_nobodys_verdict(self):
+        refusal = verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001", "refused", reason="requirement_not_met")
+        lines = [self.ruling(1), self.ruling(2, "refused", "conflict", detail={}),
+                 self.ruling(3, "refused", "judge_refused", judged=True, detail={}),  # the judge ran on it again
+                 self.ruling(3, "refused", "judge_refused", judged=True, detail={}),  # the same line twice
+                 self.ruling(4, "refused", "requirement_not_met", judged=True, detail={}, report={"suspects": 3}),
+                 self.ruling(5, judged="yes"), {**self.ruling(6, judged=True), "ruling": "HEAD"},
+                 self.ruling(7, guardian='"><script>alert(1)</script>', reason='<img src=x onerror=alert(1)>', task="../../etc")]
+        self.ledger([refusal])
+        without = self.summary(self.make())
+        self.ledger([refusal, *lines])
+        files = self.make()
+        data = self.summary(files)
+        self.harmless(files)
+        self.assertEqual(data["totals"], {**without["totals"], "judge_runs": without["totals"]["judge_runs"] + 3},
+                         "nothing is added to what was judged, accepted or refused of candidates; each run of the judge is counted once")
+        self.assertEqual((data["members"], data["refusals"], data["recent"]), (without["members"], without["refusals"], without["recent"]))
+        self.assertEqual(data["ledger"]["repeated_lines"], 1)
+        self.assertEqual(page.judge_runs([page.clean_event(line) for line in lines]), 4, "line by line, before the repeat is left out")
+        for needle in ("gina", "onerror", "alert(1)", "../../etc"):
+            self.assertNotIn(needle, "".join(files.values()))
+
+
 class TestRefusals(Case):
     """What was refused of candidates, and, apart from it, what the hive's own side ended at no cost to the member."""
 

@@ -116,7 +116,9 @@ two hours.
   what breaks a structural rule, then judges it, merged on the project's tip, in a container without network.
 - **Every candidate is answered in the public ledger**: accepted, and integrated as one commit authored by you, or
   refused with a reason code ([protocol.md](protocol.md)). When the judge found it correct and short of a figure,
-  the refusal's line keeps what the judge measured: you can read how far it fell short.
+  the refusal's line keeps what the judge measured: you can read how far it fell short. Where a project names
+  guardians, one of them may admit a commit that fell only on a figure the project lets them waive: it is judged
+  again, and if it passes it is integrated and credited to you; if it does not, that costs you nothing.
 - **One task at a time.** A worker that runs every hour gets a task per run when tasks are free and its work
   is accepted: it pushes its candidate and asks for the next, and the hive deals the next as soon as the first is
   accepted. Tasks that change
@@ -141,7 +143,9 @@ two hours.
   put to the founder ([founder-decisions.md](founder-decisions.md), D1); until one answers in writing, the risk is
   on your account.
 - **The judge decides, not you and not a maintainer.** A refused candidate is not an insult: the reason code says
-  what was wrong, and the task goes back to the pool.
+  what was wrong, and the task goes back to the pool. One refusal can be looked at again: a project may name
+  guardians, who may admit a commit refused for a figure alone that the project's file lets them waive, each such
+  decision on a public line of the ledger; everything else is then asked of the commit again, by the same judge.
 - **You do not choose your task**: only the hardest tier your worker takes, and a part of the project you would
   rather have, which the hive follows when its rules lose nothing by it. And your worker waits for the hive's
   next run before its first task.

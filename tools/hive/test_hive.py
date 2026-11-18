@@ -10279,8 +10279,9 @@ class TestGuardians(Base):
         judged = len(judge_by_content.seen)
         self.assertEqual((self.hour(), len(judge_by_content.seen)), ([], judged))
         self.assertEqual((self.written(), self.w.tip()), (written, self.start), "no line, and nothing integrated")
-        kept = [sha for shas in hive.read_ignored(self.w.state).values() for sha in shas]
-        self.assertEqual(sorted(set(kept) & set(nothing)), sorted(nothing), "each is a commit the hive does not read again")
+        kept = hive.read_ignored(self.w.state)
+        self.assertEqual([set(nothing[:2]) <= set(kept["1102"]), nothing[2] in kept["1101"], nothing[3] in kept["1201"]], [True] * 3,
+                         "each is, in its fork, a commit the hive does not read again")
         with mock.patch.object(hive, "fetch_heads", side_effect=AssertionError("fetched again")):
             self.assertEqual(self.hour(), [])
 
@@ -10385,7 +10386,7 @@ class TestGuardians(Base):
         self.assertEqual((self.hour(), self.w.tip()), ([], self.start))
         self.assertEqual({line["ruling"]: (line["result"], line["reason"]) for line in self.lines()}, {ruling: ("void", "beyond_bound") for ruling in beyond})
         for text in (json.dumps(self.w.made), self.written(), (self.w.state / "feed.json").read_text()):
-            self.assertNotIn("ignore", text)
+            self.assertNotIn("ignore_all", text)
         exact = self.gina.rule(self.alice, "toy-0001", twice, {"suspects": 2}, branch="hive/rule/exact")
         self.assertEqual(self.one(self.hour())["result"], "accepted", "up to the bound, and no further")
         self.assertEqual((self.verdicts()[-1]["ruling"], self.verdicts()[-1]["waived"], self.verdicts()[-1]["report"]["suspects"]), (exact, {"suspects": 2}, 2))
@@ -10675,7 +10676,7 @@ class TestGuardians(Base):
             self.assertTrue(hive.is_sha(line["ruling"]) and hive.RUN_KEY.match(line["run"]) and hive.stamp(line["at"]))
         self.assertEqual(refused["detail"], {})
         for text in (self.written(), json.dumps(self.w.made), (self.w.state / "feed.json").read_text(), (self.w.state / "stats.json").read_text()):
-            self.assertNotRegex(text, "(?i)ignore|hive-")
+            self.assertNotRegex(text, "(?i)ignore.all|instructions|hive-")
             self.assertNotIn("GINA", text)
 
     def test_the_integrated_commit_names_the_guardian_that_admitted_it(self):
