@@ -643,7 +643,7 @@ other run saved and pushes again, a bounded number of times. In each folder:
   cover; `null` where the project sets no bound), `takes_new` (whether a new member is dealt a task now) and
   `active_marks` (the active members, under the same hash of their logins): whole numbers, a yes or a no, and
   hashes. A member is found there, as in `deals` and `wait`, under the login of the line of its latest deal: one
-  that changed its login since is found again at its next deal.
+  that changed its login since is found there again once it is dealt a task under the new one.
 - `stats.json`: candidates judged and accepted by declared model, and, for each account with accepted work, how many were accepted (what was refused is added up for a model, not for a member).
 - `ignored.json`: fork by fork, the branch tips the hive does not read again (no marker, a marker for another
   member, an ask that was used, a submit that is not a candidate, a commit shaped like a ruling in a fork whose
