@@ -10701,8 +10701,9 @@ class TestGuardians(Base):
             self.assertNotIn("GINA", text)
 
     def test_the_integrated_commit_names_the_guardian_that_admitted_it(self):
-        """The commit says what it is in the hive's own fixed words, as every integrated commit does, and two lines
-        more: the guardian that admitted it, and the ruling. The same commit, task, member, ruling and instant give
+        """The commit says what it is in the hive's own fixed words, as every integrated commit does: here that the
+        judge refused it for a figure and a guardian admitted it, never that the judge accepted it and no person
+        read it; and two lines more: the guardian that admitted it, and the ruling. The same commit, task, member, ruling and instant give
         the same commit id in the step that judges and in the step that writes."""
         candidate = self.flagged()
         ruling = self.gina.rule(self.alice, "toy-0001", candidate, {"suspects": 1})
@@ -10710,7 +10711,7 @@ class TestGuardians(Base):
         self.assertEqual(list(verdicts), [self.one(outcomes)["commit"]])
         self.assertEqual(self.one(self.w.apply(verdicts)[0])["commit"], self.one(outcomes)["commit"])
         body = sh("git", "show", "-s", "--format=%B", "main", cwd=self.w.upstream).stdout
-        self.assertEqual(body.strip().splitlines(), ["toy-0001: Make f0 faster", "", hive.UNATTENDED, "", "Hive-Task: toy-0001", "Hive-Member: alice",
+        self.assertEqual(body.strip().splitlines(), ["toy-0001: Make f0 faster", "", hive.ADMITTED, "", "Hive-Task: toy-0001", "Hive-Member: alice",
                                                      f"Hive-Candidate: {candidate}", "Hive-Model: undeclared", "Hive-Guardian: gina",
                                                      f"Hive-Ruling: {ruling}"])
         config, tasks, _ = self.w.load()

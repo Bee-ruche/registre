@@ -329,8 +329,10 @@ the hive runs those git commands with an empty attribute source.
   task, the member, the candidate and the model the worker declared (`Hive-Model`, or `undeclared`). It is
   deterministic: the same tip, candidate, task, member, model and instant always give the same commit id. The
   candidate's own commit messages and author fields never enter the project's history. A commit a guardian
-  admitted says so in two lines more, `Hive-Guardian` (the guardian's login) and `Hive-Ruling` (the ruling's
-  commit id), and differs in nothing else.
+  admitted says so: in place of the judge's acceptance and « no person read it », that the judge refused it for a
+  figure the project lets its guardians waive, that a guardian of the project admitted it and that it was judged
+  again in full; and in two lines more, `Hive-Guardian` (the guardian's login) and `Hive-Ruling` (the ruling's
+  commit id).
 
 ## Guardians
 

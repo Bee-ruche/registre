@@ -1357,6 +1357,12 @@ def stored_otherwise(repo, tree, paths):
 
 UNATTENDED = ("Written by an AI coding agent running unattended, credited to the member whose agent it is. "
               "Accepted by the hive's judge; read by no person before it was integrated.")
+# The same, for a commit a guardian admitted: the judge refused it for a figure, a guardian of the project let that
+# figure go, and the judge examined it again in full. Whether the guardian is a person or an agent the hive does not
+# know, and the sentence says neither.
+ADMITTED = ("Written by an AI coding agent running unattended, credited to the member whose agent it is. "
+            "Refused by the hive's judge for a figure the project lets its guardians waive; admitted by a guardian of the "
+            "project, and judged again in full before it was integrated.")
 
 
 def squash_commit(repo, tree, tip, task, member, candidate, instant, model=None, admit=None):
@@ -1368,14 +1374,15 @@ def squash_commit(repo, tree, tip, task, member, candidate, instant, model=None,
     candidate, task, member, model and instant give the same commit id, so the writing job can check the judged one.
 
     admit: the ruling by which a guardian admitted the commit, for one that was ({"guardian": the guardian's login,
-    "ruling": the ruling's commit id}). Its message then ends with two lines more, which name them, and nothing else
-    of it differs: the figures waived for it are on the ledger's line."""
+    "ruling": the ruling's commit id}). Its message then says, in place of « accepted by the judge, read by no person »,
+    that the judge refused it for a figure and a guardian admitted it (ADMITTED), and ends with two lines more, which
+    name the guardian and the ruling: the figures waived for it are on the ledger's line."""
     login, member_id = member["login"], int(member["id"])
     if not LOGIN.match(login):
         raise HiveError("member login unreadable")
     title = safe_text(task.get("title") or "", 72)
     declared = model if isinstance(model, str) and MODEL.match(model) else "undeclared"
-    message = (f"{task['id']}: {title}\n\n{UNATTENDED}\n\nHive-Task: {task['id']}\nHive-Member: {login}\n"
+    message = (f"{task['id']}: {title}\n\n{UNATTENDED if admit is None else ADMITTED}\n\nHive-Task: {task['id']}\nHive-Member: {login}\n"
                f"Hive-Candidate: {need_sha(candidate)}\nHive-Model: {declared}\n")
     if admit is not None:
         if not (isinstance(admit.get("guardian"), str) and LOGIN.match(admit["guardian"])):
