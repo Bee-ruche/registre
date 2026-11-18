@@ -3168,11 +3168,12 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
                "member_id": o["member_id"], "repo_id": o["repo_id"], "sha": o["sha"],
                **({"ruling": o["admit"]["ruling"]} if o.get("admit") else {})} for o in outcomes[len(kept):]
               if o is not unsure and (o["judged"] or o["result"] == "error")]
-    ledger.append(events_of(kept, instant, run) + voids + unused)
     # The rulings the plan found void are answered here, by the step that has seen the project's tip where the plan
     # saw it: what the plan read of the promised pushes (landed or not, at that tip) is what holds now. One that lost
-    # the draw on a commit is answered with the ruling that won it, and not before (void_lines).
-    ledger.append(void_lines(void_rulings, run, instant, {o["sha"] for o in kept if o.get("admit") and o["result"] in ("accepted", "refused", "void")}))
+    # the draw on a commit is answered with the ruling that won it, and not before (void_lines): in the same write,
+    # so that a step that stops leaves both answers or neither.
+    answered = {o["sha"] for o in kept if o.get("admit") and o["result"] in ("accepted", "refused", "void")}
+    ledger.append(events_of(kept, instant, run) + voids + unused + void_lines(void_rulings, run, instant, answered))
     # A member whose candidate was answered in this run gets the task the plan had kept for it.
     # The deals the plan found over are written here too, should the recording step not have run: a task is never
     # dealt (below) on the strength of an expiry the ledger does not hold.

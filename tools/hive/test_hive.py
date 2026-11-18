@@ -10731,7 +10731,11 @@ class TestGuardians(Base):
                 ("a void that names no task, for a reason that needs one", {"rulings": [{**void, "task": None, "reason": "own_candidate"}]}),
                 ("one ruling answered twice", {"rulings": [{**void, "reason": "duplicate"}, {**void, "reason": "duplicate"}]}),
                 ("« duplicate » in a plan that admits no ruling on that commit", {"queue": [other], "rulings": [{**void, "reason": "duplicate"}]}),
-                ("« duplicate » of a ruling that would not stand", {"rulings": [{**void, "waive": {"suspects": 3}, "reason": "duplicate"}]})):
+                ("« duplicate » of a ruling that would not stand", {"rulings": [{**void, "waive": {"suspects": 3}, "reason": "duplicate"}]}),
+                # (A task the registry does not list makes a ruling void whatever the plan says of it, further down;
+                # not the ruling of an account the file does not name: that one is no ruling at all.)
+                ("a void for a task the registry does not list, by an account the file does not name",
+                 {"rulings": [{**void, "task": "toy-9999", "guardian_id": 102, "guardian": "bob"}]})):
             with self.subTest(name):
                 for step in (lambda: self.w.record(**changes), lambda: self.w.apply(verdicts, **changes)):
                     with self.assertRaisesRegex(hive.HiveError, "do not bear out: nothing is written"):
