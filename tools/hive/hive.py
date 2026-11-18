@@ -144,10 +144,11 @@ RULING_VOID = {
     "task_done": "the task is done",
     "unknown_commit": "the ledger holds no answer to that commit for that task",
     "not_reviewable": "the commit was not refused for figures alone that the project lets a guardian waive",
+    "member_not_taken": "the commit's member is an account the project's file does not take today: one it bans, or one it does not invite",
     "own_candidate": "the commit is the guardian's own, and the project's file does not name one account alone as its members",
     "beyond_bound": "the ruling waives a figure the project does not let a guardian waive, or outside the bounds the project sets, or "
                     "not as far as the figure the commit was refused for",
-    "duplicate": "another ruling on the same commit stands",
+    "duplicate": "another ruling that stands on the same commit won the draw: the commit is judged under that one, in the same run",
 }
 # Why a preference is not kept, in the order plan decides them. One word for a member that never had a deal come to an end and
 # for one whose last deal did not end with an accepted candidate: a deal's line names its member, and the ledger does not say
@@ -825,10 +826,14 @@ class Ledger:
             it): the same wait, doubled at each such deal in a row, until an acceptance.
           What the hive's own side caused (a task closed meanwhile, a candidate it could not answer, a fork it could
           not read) costs nothing.
-          A candidate that was refused and that a guardian then admitted has a second verdict, which names the deal
-          the candidate answered: if it is an acceptance it counts as any acceptance does, from the moment it is
-          written (it clears the wait, and that deal leaves the day's count). A ruling that ends otherwise is no
-          verdict and names no member: it changes nothing here.
+          A candidate that was refused and that a guardian then admitted has a second verdict, an acceptance,
+          which names the deal the candidate answered when it was refused and stands in the ledger where it was
+          written: after every ending the member had meanwhile. Endings are read in the ledger's order, so that
+          acceptance is the member's LATEST ending, whatever deals of the member ended between the refusal and it:
+          it clears every wait the member had (an acceptance clears both kinds), the class is 0 (and
+          last_deal_accepted is true) until the member's next deal ends, and the deal it names leaves the day's
+          count. It is the most recent thing the hive said of that member's work, and it is counted as such. A
+          ruling that ends otherwise is no verdict and names no member: it changes nothing here.
         today: the deals it was given on the instant's day, those that ended in an acceptance left out: the day's
           limit bounds what an account can take and waste, never what it can contribute."""
         ends, today, accepted, day = [], [], set(), iso(instant)[:10]
@@ -867,7 +872,9 @@ class Ledger:
         than class 0 (standing), which passes over the endings that cost a member nothing (a task closed meanwhile, a
         candidate the hive could not answer, a fork it could not read): those are no fault of the member's as far as
         the hive can tell, and they are no proof of work either. What a member earns by an accepted candidate (a
-        preference followed) is earned by its latest deal, and lasts until its next one ends."""
+        preference followed) is earned by its latest deal, and lasts until its next one ends. Endings are read in
+        the ledger's order: the acceptance of a commit a guardian admitted is the member's latest ending from the
+        moment it is written, whatever ended between the commit's refusal and it (standing)."""
         last = None
         for e in self.events:
             if e.get("member_id") != member_id:
@@ -1625,10 +1632,14 @@ def fetch_heads(repo, url, heads, slot, allow_local=False, most=FETCH_WEIGHTS * 
     return got
 
 
-def listed_heads(repo, url, allow_local=False):
+def listed_heads(repo, url, allow_local=False, branches=None):
     """The branches of a fork, as it lists them now: {commit id: branch} (one commit on several branches is one
     commit), or None for a fork with more branches than the hive lists. The list is read no further than a list of
-    the most branches the hive lists can be long. Raises HiveError when the fork cannot be listed."""
+    the most branches the hive lists can be long. Raises HiveError when the fork cannot be listed.
+
+    branches: a dictionary the caller gives to be told, beside that, which commit each branch is at: it is filled
+    with {branch: commit id} for every branch of the same listing. A member's marker counts at whatever branch
+    carries it, and needs none of it; a guardian's ruling counts at one branch, by its name (discover)."""
     listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=30, env=transport(allow_local))
     if listed is None:
         return None
@@ -1637,6 +1648,8 @@ def listed_heads(repo, url, allow_local=False):
         sha, _, ref = line.partition("\t")
         if is_sha(sha) and HEAD_REF.match(ref):
             heads.setdefault(sha, ref)
+            if branches is not None:
+                branches.setdefault(ref, sha)
     return heads if len(heads) <= HEADS_PER_FORK_MAX else None
 
 
@@ -1676,12 +1689,18 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
 
     A GUARDIAN'S FORK IS READ FOR ITS RULINGS, in the same way and within the same bounds, whatever the project asks
     of a member: a project open by invitation, an account too young for it or one it bans may still be one its file
-    names a guardian (by the account's number, as GitHub gives it for the fork's owner). A ruling (read_ruling) at a
-    branch tip of such a fork, by that fork's owner, is one entry (« action »: admit): the ruling's commit id, the
+    names a guardian (by the account's number, as GitHub gives it for the fork's owner). A ruling (read_ruling) counts
+    at one place: in such a fork, by that fork's owner, at the tip of the branch the guardian's command writes for
+    the task the ruling names (RULE_BRANCH: the fork lists that very branch at that very commit). A guardian's fork
+    holds other commits than those its command made (a member's branch fetched to be read, and pushed along): what
+    one of them says is no decision of the guardian's, whatever it is shaped like. A ruling that counts is one entry
+    (« action »: admit): the ruling's commit id, the
     guardian's account, the task and the commit it names, whether it carries that commit (carries), and what it
     waives, as the project's own names for the figures it lets a guardian waive (waivable): a figure of any other
-    name is counted (« unlisted ») and its name goes no further. In a fork whose owner the project does not name, or
-    under another account's name, a ruling is nothing, for good, as a member's marker under another's name is. Where
+    name is counted (« unlisted ») and its name goes no further. In a fork whose owner the project does not name,
+    under another account's name, or at any other branch of a guardian's fork, a commit shaped like a ruling is
+    nothing, for good, as a member's marker under another's name is (a guardian who is named later, or who meant
+    it, makes the ruling anew: the command makes a new commit each time). Where
     a guardian's fork is not one the hive reads for a member, its asks and candidates are nothing and are not
     remembered either: for members such a fork is not read, and `reads` says of it what it would say without the
     rulings."""
@@ -1713,7 +1732,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                 continue
             url = fork_url(api, fork["full_name"], allow_local)
             try:
-                heads = listed_heads(repo, url, allow_local)
+                branches = {}  # which commit each branch is at, in the same listing: a ruling counts at one branch, by its name
+                heads = listed_heads(repo, url, allow_local, branches)
             except HiveError:
                 continue
             if heads is None:
@@ -1771,7 +1791,8 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                 marker = read_marker(message) if message is not None else None  # (a commit too long to be read: no marker)
                 ruling = read_ruling(message) if message is not None and not marker else None
                 if ruling:
-                    if guardian and ruling["member"].lower() == fork["login"].lower():
+                    if guardian and ruling["member"].lower() == fork["login"].lower() \
+                            and branches.get("refs/heads/" + RULE_BRANCH.format(task=ruling["task"])) == sha:
                         # What it waives is kept under the project's own names for the figures a guardian may waive,
                         # and under no other: a name the project's file does not hold is counted, never carried.
                         found.append({"sha": sha, "repo_id": fork["repo_id"], "login": fork["login"], "member_id": fork["id"],
@@ -1780,7 +1801,9 @@ def discover(repo, config, api, skip, instant, allow_local=False, known=None, ac
                                       "unlisted": sum(1 for figure in ruling["waive"] if figure not in waive),
                                       "whole": carries(repo, sha, ruling["commit"])})
                     else:
-                        mine.append(sha)  # a ruling of an account the project does not name, or in another's name: nothing here, for good
+                        # Of an account the project does not name, in another's name, or at another branch than the
+                        # one the guardian's command writes for that task: nothing here, for good.
+                        mine.append(sha)
                 elif not marker:
                     mine.append(sha)
                 elif marker["member"].lower() != fork["login"].lower():
@@ -1875,7 +1898,9 @@ def admissible(ruling, config, tasks, ledger):
     "waive": {figure: bound}, "whole": it carries that commit (carries), "unlisted": how many figures it names that
     the project does not let a guardian waive}. Held against the project's file, its tasks and the ledger, and
     against nothing else: the plan asks it of what it read in a guardian's fork, and each step that writes asks it
-    again of what the plan says, with the ledger as the plan counted it (check_rulings).
+    again of what the plan says, with the ledger as the plan counted it (check_rulings). What the ruling's own
+    commit is and says (« whole », « unlisted », the figures and their bounds) is the plan step's reading of the
+    fork, which no later step can make again; what is decided on them here is decided the same way at every step.
 
       not_named       the project's file does not name that account a guardian: no ruling at all
       answered        the ledger already holds this ruling's answer: a ruling is answered once
@@ -1889,7 +1914,12 @@ def admissible(ruling, config, tasks, ledger):
                       keeps what the judge measured, with every requirement it fails today a figure the project lets
                       a guardian waive, measured; or the ledger does not hold the deal the commit answered, which
                       says whose it is
-      own_candidate   the commit is the guardian's own; unless the project's file names one account alone as its
+      member_not_taken  the commit's member is an account the project's file does not take today (barred): it bans
+                      the account (its number, as the refusal's line gives it, or the login of its deal's line),
+                      or it is open by invitation and does not name it. A ruling brings in no work of an account
+                      the project has turned away since. (How old the account is, GitHub alone says: the plan asked
+                      it when the member was dealt the task, and no step asks it again for a ruling.)
+      own_candidate  the commit is the guardian's own; unless the project's file names one account alone as its
                       members (one_account_alone): a trial with one person in it has nobody else to rule
       beyond_bound    the ruling names a figure the project does not let a guardian waive, or a bound that is not
                       between what the project requires and the most it lets a ruling reach; or it does not cover
@@ -1922,6 +1952,8 @@ def admissible(ruling, config, tasks, ledger):
     failed = [condition["name"] for condition in config["judge"]["require"] if not condition_met(condition, report)]
     if not all(figure in allowed and number(report.get(figure)) for figure in failed):
         return "not_reviewable"
+    if barred({"id": answer["member_id"], "login": dealt["member"]}, config):
+        return "member_not_taken"
     if answer["member_id"] == ruling["guardian_id"] and not one_account_alone(config):
         return "own_candidate"
     waive = ruling["waive"]
@@ -1948,25 +1980,43 @@ def candidate_of(ruling, ledger, models):
 
 def check_rulings(plan_, config, tasks, ledger):
     """Holds what a plan says of rulings against the project's file, its tasks and the ledger as the plan counted it
-    (as_the_plan_counted): what a step that writes asks before it writes or pushes anything. The plan comes from the
-    step that read the forks; a step that holds a key takes from it, about a ruling, only what these bear out.
+    (as_the_plan_counted): what a step that writes asks before it writes or pushes anything.
+
+    WHAT A STEP THAT WRITES TAKES FROM THE PLAN, AND WHAT IT HOLDS ITSELF. The plan comes from the one step that reads
+    the forks, and a step that holds a key reads none. Three things about a ruling are therefore the plan step's
+    reading of the guardian's fork, taken as the plan gives them, as that step's reading of a member's fork is for a
+    candidate: that the fork of that account holds, at the task's ruling branch, a commit of that id which says this
+    (the task, the commit, each figure and its bound, how many figures it names that the project's file does not
+    hold); the login GitHub gives for the account (held here for its shape alone: read_plan); and whether the
+    ruling carries the commit it names (« whole »: true of every ruling the plan admits). Everything else is held
+    here, from the project's file, its tasks and the ledger:
 
     A candidate the plan says a guardian admitted. Its task may be one the registry has closed, or lists no more,
     since the plan: the step then answers the ruling void and does nothing else with it (process), as it refuses a
-    member's candidate whose task was closed meanwhile. Otherwise the ruling stands (admissible); the candidate is,
-    field for field, the one the ledger gives for that commit (candidate_of): no plan credits another account,
-    another fork or another task with it; the task was free when the plan was made, and so was every open task
-    that shares a file with it; no other ruling of the plan takes that task, no other candidate of the plan is for
-    it or for one of those, and the plan deals none of them.
-    A ruling the plan says is void: it is void for that reason by admissible's own reading (or its task was closed
-    since, which voids it as well); « duplicate », which is the plan's draw between two rulings on one commit, is
-    said only of a ruling that would otherwise stand.
+    member's candidate whose task was closed meanwhile. Otherwise the ruling stands (admissible: the account is
+    one the file names; the ledger holds the refusal the ruling is about, for that task, and it is one a guardian
+    may lift; its member is one the project takes; what is waived is within the file's bounds and covers what the
+    commit failed; the ruling has no answer); the candidate is, field for field, the one the ledger gives for that
+    commit (candidate_of): no plan credits another account, another fork or another task with it; the task was
+    free when the plan was made, and so was every open task that shares a file with it; no other ruling of the
+    plan takes that task, no other candidate of the plan is for it or for one of those, and the plan deals none
+    of them.
+    A ruling the plan says is void. Its task is one of the registry's, or none. It is void for that very reason
+    by admissible's own reading of what the plan gives. « duplicate », which is the plan's draw between rulings
+    that stand on one commit, is said only of a ruling that would stand, and only in a plan that admits that same
+    commit under another ruling: the answer of a ruling that lost the draw goes with the judgement of the one that
+    won it, never before.
+    No ruling is named twice in a plan, among those it admits and those it answers void: a ruling has one answer,
+    and a line of its own would close the promise made for its push (Ledger.promises).
     Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
     untrue = HiveError("the plan says of a ruling what the project's file and the ledger do not bear out: nothing is written")
     admitted = [entry for entry in plan_["queue"] if "admit" in entry]
     voids = plan_.get("rulings", [])
     if not admitted and not voids:
         return
+    named = [entry["admit"]["ruling"] for entry in admitted] + [void["ruling"] for void in voids]
+    if len(set(named)) != len(named):
+        raise untrue
     deals, done, rivals = ledger.deals(), ledger.done(), rivals_of(tasks)
 
     def held(task_id):
@@ -1976,25 +2026,31 @@ def check_rulings(plan_, config, tasks, ledger):
     for entry in admitted:
         admit = entry["admit"]
         ruling = {"ruling": admit["ruling"], "guardian_id": admit["guardian_id"], "task": entry["task"], "sha": entry["sha"],
-                  "waive": admit["waive"], "whole": True, "unlisted": 0}
+                  "waive": admit["waive"], "whole": True, "unlisted": 0}  # (whole, unlisted: the plan admits no ruling of which it read otherwise)
         reason = admissible(ruling, config, tasks, ledger)
         if reason == "task_closed":
             continue  # closed, or listed no more, since the plan: answered void, and nothing judged, integrated or credited (process)
         if reason is not None:
             raise untrue
-        named = {key: entry[key] for key in ("sha", "repo_id", "login", "member_id", "task", "model", "deal")}
-        if named != candidate_of(ruling, ledger, config["models"]):
+        said = {key: entry[key] for key in ("sha", "repo_id", "login", "member_id", "task", "model", "deal")}
+        if said != candidate_of(ruling, ledger, config["models"]):
             raise untrue
         around = {entry["task"]} | {other for other in rivals[entry["task"]] if not tasks[other].get("closed") and other not in done}
         if any(held(task_id) for task_id in around) or entry["task"] in taken:
             raise untrue
         taken |= around
     others = [entry["task"] for entry in plan_["queue"] if "admit" not in entry] + [deal["task"] for deal in (*plan_["deals"], *plan_["conditional"])]
-    if taken & set(others) or len({entry["admit"]["ruling"] for entry in admitted}) != len(admitted):
+    if taken & set(others):
         raise untrue
+    judged = {entry["sha"] for entry in admitted}  # the commits this plan judges under a ruling
     for void in voids:
+        if void["task"] is not None and void["task"] not in tasks:
+            raise untrue  # a ruling's line names a task of the registry, or none
         reason = admissible(void, config, tasks, ledger)
-        if reason not in (void["reason"], "task_closed") and not (void["reason"] == "duplicate" and reason is None):
+        if void["reason"] == "duplicate":
+            if reason is not None or void["sha"] not in judged:
+                raise untrue
+        elif reason != void["reason"]:
             raise untrue
 
 
@@ -2017,12 +2073,14 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        that deal, and T is open. Of several, one stands (a draw). Every other submit is ignored for good: it costs
        the hive nothing. They are judged oldest deal first; after them those a run already failed on, and last
        those the project's repository already declined.
-    2a. Rulings, in a project that names guardians. A ruling at a branch tip of a guardian's own fork admits one
-       commit the hive refused for a figure alone that the project lets a guardian waive. One that does not stand
-       (admissible) is answered void, at no cost to anybody. One that stands is served when its task is free and
-       every open task that shares a file with it is: the commit joins the candidates, for that task and in the
-       name of the member who wrote it, and those tasks are dealt to nobody in this plan. Until then the ruling
-       waits where it is, in the guardian's fork. Of several rulings on one commit, one stands (a draw).
+    2a. Rulings, in a project that names guardians. A ruling at the tip of the task's ruling branch of a guardian's
+       own fork admits one commit the hive refused for a figure alone that the project lets a guardian waive. One
+       that does not stand (admissible) is answered void, at no cost to anybody. One that stands is served when its
+       task is free and every open task that shares a file with it is: the commit joins the candidates, for that
+       task and in the name of the member who wrote it, and those tasks are dealt to nobody in this plan. Until
+       then the ruling waits where it is, in the guardian's fork. Of several rulings that stand on one commit, one
+       is taken (a draw); the others are answered « duplicate » by the plan that judges the commit under that one,
+       and wait with it until then.
     3. Askers: members with a « ready » tip. Not those who hold a live deal without a candidate, are waiting after
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
@@ -2128,20 +2186,21 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             rank[entry["sha"]] = bool(marks)
     # 2a. rulings. Each is held against the project's file, its tasks and the ledger as it stands here, the deals just
     # found over included (admissible); of several that stand on one commit one is taken, by the draw, and the others
-    # are answered « duplicate ». A ruling that does not stand is answered (`voids`: the write step records it). One
+    # (`second`) are answered « duplicate » once that one's commit is among this plan's candidates (further down). A
+    # ruling that does not stand is answered (`voids`: the write step records it). One
     # that stands is served when its task is free and every open task that shares a file with it is: the commit it
     # admits then joins the candidates, for that task and in its member's name as the ledger gives it (candidate_of),
     # and those tasks are neither another ruling's in this plan nor dealt in it (below). Otherwise it waits where
     # it is, at the tip of its branch in the guardian's fork, and is read again at the next run: nothing is kept of it.
-    voids, standing, taken = [], {}, set()
+    voids, standing, second, taken = [], {}, {}, set()
     for entry in sorted(rulings, key=lambda e: draw(key, e["sha"])):
         ruling = {"ruling": entry["sha"], "guardian_id": entry["member_id"], "guardian": entry["login"],
                   "task": entry["task"] if entry["task"] in tasks else None,  # the registry's own id, or none: never a fork's word
                   "sha": entry["commit"], "waive": entry["waive"], "whole": entry["whole"], "unlisted": entry["unlisted"]}
         reason = admissible(ruling, config, tasks, ledger)
         if reason is None and ruling["sha"] in standing:
-            reason = "duplicate"
-        if reason is None:
+            second.setdefault(ruling["sha"], []).append(ruling)  # it stands too, on a commit the draw gave to another ruling (below)
+        elif reason is None:
             standing[ruling["sha"]] = ruling
         elif reason in RULING_VOID:
             voids.append({**ruling, "reason": reason})
@@ -2189,7 +2248,13 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     if len(within) < len(queue):
         log(f"the candidates' file is full, or the time to weigh them is used up: {len(queue) - len(within)} candidate(s) wait for the next run")
     queue = within
-    waiting = {(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # of live deals: a commit a guardian admitted answers none
+    # A ruling that stands on a commit the draw gave to another ruling is answered « duplicate » in the plan that
+    # judges that commit under the other ruling, and in no other: while the ruling that won waits (for its task, or
+    # for room in this plan), the others wait with it, unanswered, and the next plan draws among them again.
+    for candidate in queue:
+        if "admit" in candidate:
+            voids.extend({**ruling, "reason": "duplicate"} for ruling in second.get(candidate["sha"], ()))
+    waiting ={(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # of live deals: a commit a guardian admitted answers none
 
     # 3. askers
     askers = []
@@ -5682,8 +5747,10 @@ def cmd_admit(args):
     open. --commit is a commit's full id: the ledger's refusal gives it. Each --waive is <figure>=<bound>: a figure
     the project's file lets a guardian waive, written as the file writes it, and a bound between what the project
     requires of that figure and the most its file lets a ruling reach; anything else is an error, said in one line
-    with the file's own figures and bounds, and nothing is made or pushed. The clone must hold the commit (the
-    guardian fetched it to read it): the ruling is made in a store of this tool's own into which that commit and all
+    with the file's own figures and bounds, and nothing is made or pushed. The clone must hold the commit: the
+    guardian fetched it to read it, by its id as the ledger gives it and not as a branch of its member's fork, which
+    is whatever that fork's owner pushed there since (what such a branch holds is data, and a guardian's fork counts
+    for the hive at the one branch this command writes: discover). The ruling is made in a store of this tool's own into which that commit and all
     it reaches were copied, each object written anew (copied_out), and pushed from there. Whether the account is one
     the project names, and whether the commit is one a ruling can admit, the hive says at its next run."""
     if not LOGIN.match(args.login):
@@ -5722,8 +5789,9 @@ def cmd_admit(args):
     if not waived:
         raise HiveError("--waive: say what the ruling waives, <figure>=<bound>, once for each figure. Nothing was made or pushed")
     if clone.git("cat-file", "-t", args.commit, check=False).stdout.strip() != "commit":
-        raise HiveError("this clone holds no commit of that id. A ruling carries the commit it admits: fetch the member's branch into this "
-                        "clone, read the commit, then run this again. Nothing was made or pushed")
+        raise HiveError("this clone holds no commit of that id. A ruling carries the commit it admits: fetch that commit into this clone "
+                        "by its id, as the ledger's refusal gives it (never a branch: a branch is whatever its owner pushed since), read "
+                        "it, then run this again. Nothing was made or pushed")
     # The instant makes each ruling a new commit: a ruling is answered once.
     ruled = now()
     lines = [f"Hive ruling: {task['id']} ({iso(ruled)})", "", f"Hive-Action: {ADMIT}", f"Hive-Member: {login}", f"Hive-Task: {task['id']}",

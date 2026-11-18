@@ -25,12 +25,17 @@ task is to keep them apart:
 | `apply` | `hive.py apply` | the registry, the project, the plan, the bundle, the verdicts | the project's branch (integration identity) and the state repository | reads a fork; runs anyone's code; unpacks another job's archive |
 
 A project's guardians (docs/protocol.md, "Guardians") change nothing in this table, and bring no key and no
-setting. A guardian's ruling is a commit in the guardian's own fork: `plan` reads it there as it reads members'
-branches, and is still the only job that reads a fork; the commit the ruling admits reaches `judge` and `apply` in
-the plan's bundle, as every candidate does; `record` and `apply` hold what the plan says of a ruling against the
-registry and the ledger before they write, with the keys they already held. A guardian holds no right on the
-project, on the state or on the registry: who is one is a line of the project's file, which changes by a pull
-request like any other line of it.
+setting. A guardian's ruling is a commit in the guardian's own fork, at the branch `hive/rule/<task>`: `plan` reads
+it there as it reads members' branches, and is still the only job that reads a fork; the commit the ruling admits
+reaches `judge` and `apply` in the plan's bundle, as every candidate does. What `plan` read in the guardian's fork
+is the plan's word for the later jobs, as what it read in a member's fork is: that the fork holds that ruling at
+that branch and what the ruling says, the login GitHub gives for the account, and that the ruling carries the
+commit it names. Everything else about a ruling (that the project's file names the account; which commit, task,
+member and deal the ledger holds for the refusal; that the refusal is one a guardian may lift and the member one
+the project takes; that what is waived lies within the file's bounds; that the task was free) `record` and `apply`
+read again by themselves, from the registry and the ledger, before they write, with the keys they already held.
+A guardian holds no right on the project, on the state or on the registry: who is one is a line of the project's
+file, which changes by a pull request like any other line of it.
 
 Five things carry it:
 
