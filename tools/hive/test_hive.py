@@ -10762,6 +10762,12 @@ class TestGuardians(Base):
         self.assertEqual((made["queue"], "rulings" in made, self.hour(), self.written()), ([], False, [], written))
         bob.submit("toy-0005", content=LIB + "/* REFUSE */\n")
         self.assertEqual(([o["login"] for o in self.hour()], self.lines()), (["bob"], []))
+        # A run that plans the commit under the ruling the draw took, and has no judgement left for it: that ruling has
+        # no answer yet, and the one that lost the draw has none before it.
+        guardians = {"guardians": {**GUARDIANS, "accounts": [201, 202]}}
+        self.w.set_config({**self.config, **guardians, "limits": {"judgements_per_sweep": 0}})
+        self.assertEqual((self.one(self.hour())["result"], [void["reason"] for void in self.w.made["rulings"]], self.lines()), ("skipped", ["duplicate"], []))
+        self.w.set_config({**self.config, **guardians})
         judged = len(judge_by_content.seen)
         self.assertEqual((self.one(self.hour())["result"], len(judge_by_content.seen)), ("accepted", judged + 1))
         verdict, line = self.verdicts()[-1], self.one(self.lines())

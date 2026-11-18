@@ -148,7 +148,7 @@ RULING_VOID = {
     "own_candidate": "the commit is the guardian's own, and the project's file does not name one account alone as its members",
     "beyond_bound": "the ruling waives a figure the project does not let a guardian waive, or outside the bounds the project sets, or "
                     "not as far as the figure the commit was refused for",
-    "duplicate": "another ruling that stands on the same commit won the draw: the commit is judged under that one, in the same run",
+    "duplicate": "another ruling that stands on the same commit won the draw, and has its answer in the same run",
 }
 # Why a preference is not kept, in the order plan decides them. One word for a member that never had a deal come to an end and
 # for one whose last deal did not end with an accepted candidate: a deal's line names its member, and the ledger does not say
@@ -2004,8 +2004,8 @@ def check_rulings(plan_, config, tasks, ledger):
     A ruling the plan says is void. Its task is one of the registry's, or none. It is void for that very reason
     by admissible's own reading of what the plan gives. « duplicate », which is the plan's draw between rulings
     that stand on one commit, is said only of a ruling that would stand, and only in a plan that admits that same
-    commit under another ruling: the answer of a ruling that lost the draw goes with the judgement of the one that
-    won it, never before.
+    commit under another ruling: the answer of a ruling that lost the draw goes with the answer of the one that
+    won it, never before (void_lines).
     No ruling is named twice in a plan, among those it admits and those it answers void: a ruling has one answer,
     and a line of its own would close the promise made for its push (Ledger.promises).
     Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
@@ -2974,9 +2974,14 @@ def ruling_event(ruling, instant, run, result, reason, **more):
             "guardian": ruling["guardian"], "task": ruling["task"], "sha": ruling["sha"], "result": result, "reason": reason, **more}
 
 
-def void_lines(plan_, instant):
-    """The ledger lines of the rulings the plan answers void (once per ruling, whatever number of times the step runs)."""
-    return [ruling_event(void, instant, plan_["key"], "void", void["reason"], judged=False) for void in plan_.get("rulings", [])]
+def void_lines(plan_, instant, answered=()):
+    """The ledger lines of the rulings the plan answers void (once per ruling, whatever number of times the step runs).
+    answered: the commits whose admitted ruling this run has answered (a verdict recorded, or a line of the ruling's
+    own). A ruling the plan says lost the draw (« duplicate ») has its line when the ruling that won it has its
+    answer, in the same run: where the run did not reach the commit, could not tell its push's fate or was declined
+    it, the ruling that won waits for the next run, and those that lost wait with it, unanswered."""
+    return [ruling_event(void, instant, plan_["key"], "void", void["reason"], judged=False) for void in plan_.get("rulings", [])
+            if void["reason"] != "duplicate" or void["sha"] in answered]
 
 
 def events_of(outcomes, instant, run):
@@ -3141,8 +3146,9 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
               if o is not unsure and (o["judged"] or o["result"] == "error")]
     ledger.append(events_of(kept, instant, run) + voids + unused)
     # The rulings the plan found void are answered here, by the step that has seen the project's tip where the plan
-    # saw it: what the plan read of the promised pushes (landed or not, at that tip) is what holds now.
-    ledger.append(void_lines(plan_, instant))
+    # saw it: what the plan read of the promised pushes (landed or not, at that tip) is what holds now. One that lost
+    # the draw on a commit is answered with the ruling that won it, and not before (void_lines).
+    ledger.append(void_lines(plan_, instant, {o["sha"] for o in kept if o.get("admit") and o["result"] in ("accepted", "refused", "void")}))
     # A member whose candidate was answered in this run gets the task the plan had kept for it.
     # The deals the plan found over are written here too, should the recording step not have run: a task is never
     # dealt (below) on the strength of an expiry the ledger does not hold.

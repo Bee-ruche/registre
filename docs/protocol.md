@@ -407,7 +407,7 @@ is data. The command decides nothing: whether a ruling stands is said by the hiv
 - each figure the ruling waives is one the file lists, with a bound between what the project requires and the
   file's own bound, and the ruling covers what the commit failed: each failed figure, as far as it was measured;
 - the ruling has no answer yet. Of several rulings that stand on one commit, one is taken, by the run's draw; the
-  others are answered `duplicate` by the run that judges the commit under that one, and wait with it until then.
+  others are answered `duplicate` by the run that answers that one, and wait with it until then.
 
 **What each job holds of a ruling.** The `plan` job is the only one that reads a fork, a guardian's as a member's.
 Three things are its reading, and the jobs that write take them from the plan, as they take from it which commits
@@ -458,14 +458,15 @@ nothing.**
 | `void` | `member_not_taken` | admits the commit of an account the project's file does not take today: one it bans, or one a project open by invitation does not name |
 | `void` | `own_candidate` | admits the guardian's own commit, in a project whose file does not name one account alone as its members |
 | `void` | `beyond_bound` | waives a figure the file does not list, or outside the file's bounds, or not as far as the figure the commit was refused for |
-| `void` | `duplicate` | stands, and lost the draw to another ruling on the same commit: said in the run that judges the commit under that other ruling, never before |
+| `void` | `duplicate` | stands, and lost the draw to another ruling on the same commit: said in the run that answers that other ruling, never before |
 | `refused` | a candidate's reason code (`conflict`, `judge_refused`, `requirement_not_met`…) | stood, and its commit, judged again, was refused: the line says whether the judge examined it (`judged`), and keeps `detail` and, for a figure, the judge's `report`, as a refusal's verdict does |
 
 A run spent on an admitted commit without an answer is a mark of the ruling, not of the deal the commit once
 answered; a ruling's marks end as a deal's do (`judge_failed`, `push_refused`, `not_answered`), on the ruling's
 line and at no cost either. The write
 job answers rulings, once it has seen the project's tip where the plan saw it; the `record` job holds them and
-writes none. A ruling whose guardian the file no longer names is not applied, and at the next run it is a commit
+writes none. A ruling that lost the draw has its `duplicate` line in the run that answers the ruling that won it:
+where that run did not reach the commit, or could not tell the fate of its push, both wait. A ruling whose guardian the file no longer names is not applied, and at the next run it is a commit
 like any other.
 
 ## What holds over time
