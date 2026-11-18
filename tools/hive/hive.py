@@ -446,7 +446,12 @@ def load_config(path):
         raise HiveError(f"{path}: tasks: the project's own tasks file (hive/tasks/{config['project']}.jsonl)")
     if not isinstance(config.get("check", ""), str):
         raise HiveError(f"{path}: check: the project's own quick check, one command line")
-    for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 1)):
+    # A project whose file names one account alone may ask no wait at all: the wait is there for those nobody named,
+    # and for members among themselves. With a second account named, or none, an hour at least: such a file does not
+    # load until its wait is set back, so that the setting cannot outlive the trial it was made for.
+    only = config["members"]["only"]
+    alone = isinstance(only, list) and len(only) == 1 and type(only[0]) is int
+    for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 0 if alone else 1)):
         if type(config[key]) is not int or not least <= config[key] <= BACKOFF_MAX_HOURS:
             raise HiveError(f"{path}: {key}: a whole number of hours, from {least} to {BACKOFF_MAX_HOURS}")
     if type(config["members"]["deals_per_day"]) is not int or config["members"]["deals_per_day"] < 1:

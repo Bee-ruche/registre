@@ -14,8 +14,10 @@
   "tests/**",
   "examples/**"
  ],
+ "backoff_hours": 0,
  "members": {
-  "only": [72140]
+  "only": [72140],
+  "deals_per_day": 50
  },
  "models": [
   "claude-fable-5-2",

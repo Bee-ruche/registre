@@ -172,6 +172,9 @@ What ends a deal, and what it costs its member:
 | its time is up and the fork holds no candidate | the same wait that doubles |
 | the hive could not answer it in six runs for no fault of the candidate's (`not_answered`), could not read the fork for a day, or the project closed the task | none: not the member's doing |
 
+These are a project's defaults (two hours as the first wait); a project whose file names one account alone may
+set the wait to nothing while it is tried, and then only the day's count is left of what follows.
+
 **A deal that does not end in an accepted candidate costs something**, so that no way of ending a deal is free: a
 wait, or, for a candidate that lacks a proof alone, its place in the day's limit. When the judge examined the
 candidate, the wait is two hours; there is none when the candidate is correct, reaches the task's own figure and
@@ -475,7 +478,9 @@ hour and the fork's own number, which adding forks to the list does not shift.
   branch the project publishes (`published`, which the hive never writes), the protected paths, the limits,
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
-  (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the
+  (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`: an hour at least, or none at all, `0`, for a
+  project whose file names one account alone: a file that names a second one with that setting does not load),
+  the models it keeps statistics for, the
   kind of its judge (`judge.kind`), the judge's options, the figures of the judge it keeps (`judge.metrics`) and
   requires (`judge.require`), the
   judge's proofs it takes (`judge.confirm`: figures it keeps, named `sure_<measure>`; every goal on a figure holds
