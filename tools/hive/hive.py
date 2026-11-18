@@ -1646,9 +1646,10 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
     4. Each asker is dealt, among the open tasks that have no live deal and whose tier it takes, the one a draw
-       gives it: first among those it has not already held in vain (a candidate of its own refused, a deal it left
-       without one: Ledger.held_in_vain), while one is left; among all of them otherwise. A task that failed in a
-       member's hands goes to another member, or waits, before it comes back to the same one.
+       gives it: among those it has not already held in vain (a candidate of its own refused, a deal it left
+       without one: Ledger.held_in_vain) while two at least of them are left; among all of them otherwise. A task
+       that failed in a member's hands goes first to another member, or waits. The rule never names a task: it
+       narrows the draw only where the draw still has two tasks to choose from. These tasks are `mine` below.
        Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is accepted in this run.
@@ -1659,7 +1660,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     what the fork wrote is compared with the registry's strings and goes no further (discover): the plan, the ledger
     and the logs hold the registry's string, and any other value is no preference at all. A member with several asks
     has a preference only if all of them name the same part. At the member's turn in step 4, with `mine` the tasks
-    it could be dealt anyway (open, free, their rivals free, of its tier), the preference is kept if and only if,
+    it could be dealt anyway (open, free, their rivals free, of its tier, and first those it never held in vain, as
+    step 4 says), the preference is kept if and only if,
     decided in this order:
       a. the project offers preferences (members.preferences); otherwise « not_offered »;
       b. the member's last deal that came to an end, in whatever way, ended with an accepted candidate
@@ -1804,6 +1806,11 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         mine = [t for t in dealable if int(tasks[t].get("tier", 1)) <= tier]
         if not mine:
             continue
+        # First the tasks this member has not already held in vain, while two at least are left: with one alone the
+        # rule would name the task, and nobody chooses a task. What follows (the preference, the draw) sees only these.
+        fresh = [t for t in mine if t not in ledger.held_in_vain(member_id)]
+        if len(fresh) >= 2:
+            mine = fresh
         among, said = mine, {}
         if member_id in prefers:  # followed only when it costs no rule anything: the project's switch, then the class, then the tasks
             part = prefers[member_id]
@@ -1812,9 +1819,6 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
                        else "no_free_task" if not listing else "one_free_task" if len(listing) == 1 else None)
             among = mine if because else listing  # a kept preference narrows the draw to tasks of `mine`, and to nothing else
             said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
-        if among is mine:  # the plain draw: first the tasks this member has not already held in vain, while one is left
-            again = ledger.held_in_vain(member_id)
-            among = [t for t in mine if t not in again] or mine
         task_id = min(among, key=lambda t: draw(key, member_id, t))
         dealable -= {task_id} | rivals[task_id]
         fork = asks[member_id][0]
