@@ -2025,7 +2025,7 @@ def check_rulings(plan_, config, tasks, ledger):
     voids = plan_.get("rulings", [])
     if not admitted and not voids:
         return []
-    named =[entry["admit"]["ruling"] for entry in admitted] + [void["ruling"] for void in voids]
+    named = [entry["admit"]["ruling"] for entry in admitted] + [void["ruling"] for void in voids]
     if len(set(named)) != len(named):
         raise untrue
     deals, done, rivals = ledger.deals(), ledger.done(), rivals_of(tasks)
