@@ -2774,18 +2774,33 @@ def judge_of(registry_root, settings, workdir):
     return JUDGES[settings["kind"]](registry_root, settings, workdir)
 
 
+# The kinds of suspect the common judge counts (tools/judge/judge.py: SEVERITY, its own words; a test holds the two
+# lists equal). The hive reads no other key of that count.
+SUSPECT_KINDS = ("analyse_incomplete", "architecture", "appel_interdit", "symbole_interdit", "instruction", "octets", "section",
+                 "symbole", "symbole_defini", "appel_externe", "source")
+
+
 def judge_figures(published, report_path):
     """Numbers out of the common judge's answer: report.py's whole numbers, and each metric's gain.
 
     sure_<metric> is given for the measures of the report's « metrics » (the stopwatch's, and what the judge reads
     of the outputs). A count made by a tool that runs the program inside itself (the report's « instructions ») gives
     a gain and a worse_, and no sure_, under whatever name the project's plug-in gave it. Which of the sure_ figures
-    are proofs is the project's to say (judge.confirm): those the judged program cannot bear upon."""
+    are proofs is the project's to say (judge.confirm): those the judged program cannot bear upon.
+
+    suspects_<kind> says how many of the suspects are of each kind the judge knows (SUSPECT_KINDS), for the kinds it
+    counted at least one of: a member whose candidate fell on the project's bound on suspects reads which of the
+    judge's checks it was. A kind is one of the judge's own words; what was flagged (a name, bytes, a line: text of
+    the judged code) stays in the judge's report and reaches no figure."""
     figures = {name: int(published[name]) for name in ("suspects", "outputs_compared")
                if re.fullmatch(r"0|[1-9][0-9]{0,15}", published.get(name, ""))}
     try:
         with open(report_path, encoding="utf-8") as f:
             report = json.load(f)
+        kinds = report["judge"].get("suspicious_constructs_by_type") if isinstance(report.get("judge"), dict) else None
+        for kind in SUSPECT_KINDS if isinstance(kinds, dict) else ():
+            if type(kinds.get(kind)) is int and 0 < kinds[kind] < 10 ** 9:
+                figures[f"suspects_{kind}"] = kinds[kind]
         for family, proves in ((report.get("metrics") or {}, True), (report.get("instructions") or {}, False)):
             for name, metric in family.items():
                 key = re.sub(r"[^a-z0-9]+", "_", str(name).lower()).strip("_")[:50]
