@@ -3869,6 +3869,34 @@ class TestDealing(Base):
             self.bob.ready()
             self.assertEqual({task for login, task, _ in self.planned(120) if login == "bob"}, self.OPEN - {"toy-0005"})
 
+    def test_a_project_open_by_invitation_alone_may_ask_no_wait_at_all(self):
+        """The waits are there for members nobody named. A project whose file names its members one by one may set
+        its wait to nothing (`backoff_hours` 0): a candidate refused and a deal left then cost no wait, and the member
+        is dealt again at the next run; its day's deals are still counted. A project anyone can join cannot."""
+        path = self.w.registry / "hive/projects/toy.json"
+        self.w.set_config({"backoff_hours": 0})
+        with self.assertRaises(hive.HiveError):
+            hive.load_config(path)
+        self.w.set_config({"backoff_hours": 0, "members": {"only": [101, 102], "deals_per_day": 3}})
+        self.assertEqual(hive.load_config(path)["backoff_hours"], 0)
+        self.alice.ready()
+        self.w.run()
+        first = self.one(self.lines("deal"))
+        with self.at("12:30:00"):
+            self.alice.attempt(first["task"], first["at"])
+            self.alice.ready()
+            self.assertEqual(self.one(self.w.run(lambda *a: {"code": 1}))["reason"], "judge_refused")
+            self.assertEqual(self.standing(self.alice), (2, None, 1), "refused, and no wait; its day counts one deal")
+            self.w.run()
+            self.assertEqual(len(self.lines("deal")), 2, "dealt again at the next run")
+        with self.at("17:00:00"):  # the second deal is left without a candidate: it expires, and costs no wait either
+            self.alice.ready()
+            self.w.run()
+            self.assertEqual((len(self.lines("expired")), self.standing(self.alice)[1]), (1, None))
+            self.w.run()
+            self.assertEqual(len(self.lines("deal")), 3, "and dealt a third time")
+            self.assertEqual(self.standing(self.alice)[2], 3, "its day is used: the count is the bound that stays")
+
     def test_several_candidates_for_one_deal_are_one_candidate(self):
         self.hold(self.alice, "toy-0001")
         pushed = [self.alice.fresh(f"c{i}").submit("toy-0001", content=LIB + f"/* REFUSE {i} */\n") for i in range(20)]
@@ -4673,7 +4701,9 @@ class TestProjectFiles(unittest.TestCase):
                 tasks = hive.load_tasks(registry / config["tasks"])
                 hive.check_goals(config, tasks)
                 self.assertEqual(config["project"], path.stem)
-                self.assertEqual((config["deal_hours"], config["grace_hours"], config["backoff_hours"]), (3, 1, 2))
+                self.assertEqual((config["deal_hours"], config["grace_hours"]), (3, 1))
+                self.assertTrue(config["backoff_hours"] == 2 or (config["backoff_hours"] == 0 and config["members"]["only"] is not None),
+                                "the wait of two hours, or none at all while the project is open by invitation alone")
                 self.assertTrue(tasks)
                 self.assertTrue(all(task["id"].startswith(config["project"] + "-") for task in tasks.values()))
                 self.assertTrue(all(not hive.protected(f.rstrip("/"), config["protected"]) for task in tasks.values() for f in task["files"]),

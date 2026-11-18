@@ -475,7 +475,8 @@ hour and the fork's own number, which adding forks to the list does not shift.
   branch the project publishes (`published`, which the hive never writes), the protected paths, the limits,
   the member rules (`min_account_age_days`, `deals_per_day`, `banned`, `only`, and `preferences`: whether the
   part of the project an ask prefers is followed, true unless the file says false), how long a deal lasts
-  (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`), the models it keeps statistics for, the
+  (`deal_hours`, `grace_hours`) and the first wait (`backoff_hours`: an hour at least, or none at all, `0`, for a
+  project open by invitation alone, whose members are named one by one), the models it keeps statistics for, the
   kind of its judge (`judge.kind`), the judge's options, the figures of the judge it keeps (`judge.metrics`) and
   requires (`judge.require`), the
   judge's proofs it takes (`judge.confirm`: figures it keeps, named `sure_<measure>`; every goal on a figure holds
