@@ -11114,9 +11114,10 @@ class TestGuardians(Base):
 
 class TestTheBaseCoversItsMembers(Base):
     """A project's base of trusted accounts keeps pace with its members. Its file says how many active members one
-    guardian covers; the hive counts the members itself (an account it dealt a task to within the project's window)
-    and deals no task to a NEW member beyond what the project's guardians cover. The members the project has go on;
-    a new member that is passed over pays nothing, and is served by the run that finds room."""
+    guardian covers; the hive counts the members itself (an account that holds a live deal, or a candidate of whose
+    own was accepted within the project's window, and that the project's file takes today) and deals no task to a
+    NEW member beyond what the project's guardians cover. The members that are active go on; a new member that is
+    passed over pays nothing, and is served by the run that finds room."""
 
     APART = [{"id": f"toy-{number:04d}", "title": f"Work in file {number}", "files": [f"src/t{number}.c"]} for number in range(1, 10)]
     config = {"judge": GUARDED, "guardians": GUARDIANS, "members": {"per_guardian": 2}}  # one guardian: two active members covered
