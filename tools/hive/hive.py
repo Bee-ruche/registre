@@ -563,6 +563,8 @@ def waivable(config):
     """figure -> (the most the project requires of it, the most a ruling may let it reach), for each figure the
     project lets a guardian waive (guardians_of); nothing for a project that names no guardian."""
     listed = (config.get("guardians") or {}).get("waive", {})
+    if not listed:
+        return {}
     required = {c["name"]: c["max"] for c in config["judge"]["require"] if c["name"] in listed}
     return {figure: (required[figure], most) for figure, most in listed.items() if figure in required}
 
@@ -1086,14 +1088,14 @@ def read_ruling(message):
     task, member, commit = found.get("Hive-Task"), found.get("Hive-Member"), found.get("Hive-Commit")
     if not (found.get("Hive-Action") == ADMIT and member and LOGIN.match(member) and task and TASK_ID.match(task) and is_sha(commit)):
         return None
+    if not 1 <= len(lines) <= WAIVES_MAX:
+        return None
     waive = {}
     for line in lines:
         figure, _, bound = line.partition(" ")
         if not METRIC.match(figure) or not BOUND.match(bound) or figure in waive:
             return None
         waive[figure] = float(bound) if "." in bound else int(bound)
-    if not 1 <= len(lines) <= WAIVES_MAX:
-        return None
     return {"action": ADMIT, "member": member, "task": task, "commit": commit, "waive": waive}
 
 
@@ -1942,12 +1944,15 @@ def check_rulings(plan_, config, tasks, ledger):
     (as_the_plan_counted): what a step that writes asks before it writes or pushes anything. The plan comes from the
     step that read the forks; a step that holds a key takes from it, about a ruling, only what these bear out.
 
-    A candidate the plan says a guardian admitted: the ruling stands (admissible); the candidate is, field for field,
+    A candidate the plan says a guardian admitted: either its task is one the registry has closed or lists no more
+    since the plan, and the step answers the ruling void and does nothing else with it (process), as it refuses a
+    member's candidate whose task was closed meanwhile; or the ruling stands (admissible); the candidate is, field for field,
     the one the ledger gives for that commit (candidate_of): no plan credits another account, another fork or
     another task with it; the task was free when the plan was made, and so was every open task that shares a file
     with it; no other candidate of the plan is for that task or for one of those, and the plan deals none of them.
-    A ruling the plan says is void: it is void for that reason by admissible's own reading; « duplicate », which is
-    the plan's draw between two rulings on one commit, is said only of a ruling that would otherwise stand.
+    A ruling the plan says is void: it is void for that reason by admissible's own reading (or its task was closed
+    since, which voids it as well); « duplicate », which is the plan's draw between two rulings on one commit, is
+    said only of a ruling that would otherwise stand.
     Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
     untrue = HiveError("the plan says of a ruling what the project's file and the ledger do not bear out: nothing is written")
     admitted = [entry for entry in plan_["queue"] if "admit" in entry]
@@ -1964,9 +1969,13 @@ def check_rulings(plan_, config, tasks, ledger):
         admit = entry["admit"]
         ruling = {"ruling": admit["ruling"], "guardian_id": admit["guardian_id"], "task": entry["task"], "sha": entry["sha"],
                   "waive": admit["waive"], "whole": True, "unlisted": 0}
-        if admissible(ruling, config, tasks, ledger) is not None:
+        reason = admissible(ruling, config, tasks, ledger)
+        if reason == "task_closed":
+            continue  # closed, or listed no more, since the plan: answered void, and nothing judged, integrated or credited (process)
+        if reason is not None:
             raise untrue
-        if {key: entry[key] for key in ("sha", "repo_id", "login", "member_id", "task", "model", "deal")} != candidate_of(ruling, ledger, config["models"]):
+        named = {key: entry[key] for key in ("sha", "repo_id", "login", "member_id", "task", "model", "deal")}
+        if named != candidate_of(ruling, ledger, config["models"]):
             raise untrue
         around = {entry["task"]} | {other for other in rivals[entry["task"]] if not tasks[other].get("closed") and other not in done}
         if any(held(task_id) for task_id in around) or entry["task"] in taken:
@@ -1977,7 +1986,7 @@ def check_rulings(plan_, config, tasks, ledger):
         raise untrue
     for void in voids:
         reason = admissible(void, config, tasks, ledger)
-        if reason != void["reason"] and not (void["reason"] == "duplicate" and reason is None):
+        if reason not in (void["reason"], "task_closed") and not (void["reason"] == "duplicate" and reason is None):
             raise untrue
 
 
@@ -2172,7 +2181,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     if len(within) < len(queue):
         log(f"the candidates' file is full, or the time to weigh them is used up: {len(queue) - len(within)} candidate(s) wait for the next run")
     queue = within
-    waiting = {(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # the candidates of live deals: a ruling's answers no deal that is live
+    waiting = {(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # of live deals: a commit a guardian admitted answers none
 
     # 3. askers
     askers = []
@@ -2599,7 +2608,9 @@ def process(repo, tip, queue, config, tasks, ledger, verdict_of, instant, starte
             if admit and admit["ruling"] in answered:
                 continue  # a ruling is answered once
             if admit and (task is None or task.get("closed") or entry["task"] in done):
-                outcome.update(result="void", reason="task_done" if task is not None and not task.get("closed") else "task_closed")
+                # (The task as the registry names it, or none: a ruling's line names no task the registry does not list.)
+                outcome.update(result="void", reason="task_done" if task is not None and not task.get("closed") else "task_closed",
+                               task=task["id"] if task is not None else None)
                 continue
             if task is None or task.get("closed") or entry["task"] in done:
                 raise Refusal("task_closed")

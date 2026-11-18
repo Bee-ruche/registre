@@ -10440,6 +10440,27 @@ class TestGuardians(Base):
         line = self.one(self.lines(world))
         self.assertEqual((line["ruling"], line["result"], line["reason"]), (ruling, "void", "task_done"), "the task was done first: the ruling admits nothing")
 
+    def test_a_ruling_whose_task_the_project_closes_between_the_plan_and_the_write_step_is_void(self):
+        """The registry closes the task, or lists it no more, after the plan was made: the write step answers the
+        ruling void, as it refuses a member's candidate whose task was closed meanwhile, and judges, integrates and
+        credits nothing. A task the registry does not list is named on no line."""
+        for name, kept, named in (("closed", lambda task: dict(task, closed=True) if task["id"] == "toy-0001" else task, "toy-0001"),
+                                  ("listed no more", lambda task: None if task["id"] == "toy-0001" else task, None)):
+            with self.subTest(name):
+                world, alice, gina = self.another()
+                candidate = self.flagged(alice, world=world)
+                ruling = gina.rule(alice, "toy-0001", candidate, {"suspects": 1})
+                _, verdicts, _ = world.sweep(judge_that_flags)
+                self.assertEqual(len(verdicts), 1, "the judge ran on it, on the plan's word")
+                before = (world.tip(), self.standing(world=world), self.verdicts(world))
+                (world.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(task) + "\n" for task in map(kept, TASKS) if task is not None))
+                result = self.one(world.apply(verdicts)[0])
+                self.assertEqual((result["result"], result["reason"]), ("void", "task_closed"))
+                line = self.one(self.lines(world))
+                self.assertEqual((line["ruling"], line["result"], line["reason"], line["task"], line["sha"], line["judged"]),
+                                 (ruling, "void", "task_closed", named, candidate, False))
+                self.assertEqual((world.tip(), self.standing(world=world), self.verdicts(world)), before)
+
     def test_a_task_admitted_in_a_plan_is_dealt_to_nobody_in_that_plan(self):
         """The commit a ruling admits is the task's one candidate in the run that judges it: the task is dealt to
         nobody in that plan, and neither is a task that shares a file with it."""
