@@ -124,7 +124,10 @@ Each run, after the forks were read, in this order:
    after a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was
    accepted, then those who never had one, then the others; within each group, a draw.
 4. **The deal.** Each asker gets one task, drawn among the open tasks that nobody holds and that it takes by its
-   tier. The draws use a key drawn *after* the forks were
+   tier. A task the member already held in vain (a candidate of its own refused, a deal it left without one) is
+   drawn for it only when no other is left: a task that failed in a member's hands goes to another member, or
+   waits, before it comes back to the same one. An ending that was the hive's or the project's doing is not held
+   against the task. The draws use a key drawn *after* the forks were
    read: nobody can push something that steers them. An ask is used once.
 
 **A member may say which part of the project it prefers, and the hive follows it only when its own rules lose

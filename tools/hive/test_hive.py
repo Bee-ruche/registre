@@ -3824,6 +3824,42 @@ class TestDealing(Base):
             self.w.run()
             self.assertEqual(len(self.lines("deal")), 3, "the next day it is dealt again")
 
+    def test_a_task_a_member_held_in_vain_comes_back_to_it_only_after_those_it_never_held(self):
+        """The plain draw takes first, among the tasks a member could be dealt, those it has not already held in
+        vain: a candidate of its own refused, a deal it left without one. While one such task is left the member is
+        never dealt the others, whatever the key; when none is left, the draw is among them all, as before. An ending
+        that was the hive's or the project's side's is not held against the task; what another member held in vain
+        is nothing to this one; and a preference that is kept is the draw it was."""
+        self.w.set_config({"members": {"deals_per_day": 50}})
+        old = "2026-11-10T10:00:00Z"
+        self.answered(self.alice, "toy-0001", "goal_not_met", at=old)
+        left = self.w.deal(self.alice, "toy-0002", fresh=True)
+        hive.Ledger(self.w.state).append([{"type": "expired", "at": old, "task": "toy-0002", "deal": left, "member_id": self.alice.id,
+                                          "fault": False, "run": "test-left"}])
+        self.answered(self.alice, "toy-0004", "task_closed", at=old)  # the project's side: not held against the task
+        self.answered(self.bob, "toy-0005", "goal_not_met", at=old)   # another member's
+        ledger = self.w.load()[2]
+        self.assertEqual((ledger.held_in_vain(self.alice.id), ledger.held_in_vain(self.bob.id), ledger.held_in_vain(999)),
+                         ({"toy-0001", "toy-0002"}, {"toy-0005"}, set()))
+        self.assertIsNone(self.standing(self.alice)[1], "no wait is left: it is an asker")
+        self.alice.ready()
+        self.assertEqual({task for _, task, _ in self.planned(40)}, {"toy-0004", "toy-0005"},
+                         "never the two it held in vain, while two it did not are free")
+        # A preference that is kept is the draw it was: among the tasks of the part, the one held in vain too.
+        self.answered(self.alice, "toy-0003")  # an accepted deal, on a task closed since
+        self.alice.ready(prefer="lib.c")
+        among = self.planned(60)
+        self.assertEqual(({task for _, task, _ in among}, self.told(among)), ({"toy-0001", "toy-0004", "toy-0005"}, {self.kept("lib.c")}))
+        # Every task it could be dealt was held in vain: the draw is among them all again.
+        self.answered(self.alice, "toy-0004", "judge_refused", at=old)
+        self.answered(self.alice, "toy-0005", "not_proven", at=old)
+        self.assertEqual(self.w.load()[2].held_in_vain(self.alice.id), self.OPEN)
+        self.alice.ready()
+        self.assertEqual({task for _, task, _ in self.planned(80)}, self.OPEN, "none is left that it never held: any of them")
+        # Another member, at its turn, is dealt first what it never held in vain itself.
+        self.bob.ready()
+        self.assertEqual({task for login, task, _ in self.planned(120) if login == "bob"}, self.OPEN - {"toy-0005"})
+
     def test_several_candidates_for_one_deal_are_one_candidate(self):
         self.hold(self.alice, "toy-0001")
         pushed = [self.alice.fresh(f"c{i}").submit("toy-0001", content=LIB + f"/* REFUSE {i} */\n") for i in range(20)]

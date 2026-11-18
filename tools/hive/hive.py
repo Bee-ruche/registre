@@ -756,6 +756,21 @@ class Ledger:
                 last = e.get("result") == "accepted"
         return last is True
 
+    def held_in_vain(self, member_id):
+        """The tasks a member was dealt and did not complete, by an ending that was its own: a candidate refused, or
+        a deal left without one. What the hive's or the project's side caused (HIVE_SIDE_REASONS, an expiry at no
+        fault of the member's) is not held against the task: the member's work on it was not what failed. A task
+        it completed is done and is dealt to nobody."""
+        vain = set()
+        for e in self.events:
+            if e.get("member_id") != member_id:
+                continue
+            if e.get("type") == "expired" and not e.get("fault"):
+                vain.add(e.get("task"))
+            elif e.get("type") == "verdict" and e.get("deal") and e.get("result") != "accepted" and e.get("reason") not in HIVE_SIDE_REASONS:
+                vain.add(e.get("task"))
+        return vain
+
     def marks(self, task, member_id, deal):
         """The runs the hive spent on a deal's candidates without an answer: [(kind, unproven)]. Counted for the deal,
         not for the commit: putting another commit in place of one that failed starts nothing afresh.
@@ -1631,7 +1646,10 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        a deal that ended badly, or have had their deals for the day. In this order: those whose last deal was accepted, then those who never
        had one, then the others; within each, a draw.
     4. Each asker is dealt, among the open tasks that have no live deal and whose tier it takes, the one a draw
-       gives it. Tasks that share a file are never held by two members at
+       gives it: first among those it has not already held in vain (a candidate of its own refused, a deal it left
+       without one: Ledger.held_in_vain), while one is left; among all of them otherwise. A task that failed in a
+       member's hands goes to another member, or waits, before it comes back to the same one.
+       Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is accepted in this run.
     The draws use a key drawn AFTER the forks were read.
@@ -1794,6 +1812,9 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
                        else "no_free_task" if not listing else "one_free_task" if len(listing) == 1 else None)
             among = mine if because else listing  # a kept preference narrows the draw to tasks of `mine`, and to nothing else
             said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
+        if among is mine:  # the plain draw: first the tasks this member has not already held in vain, while one is left
+            again = ledger.held_in_vain(member_id)
+            among = [t for t in mine if t not in again] or mine
         task_id = min(among, key=lambda t: draw(key, member_id, t))
         dealable -= {task_id} | rivals[task_id]
         fork = asks[member_id][0]
