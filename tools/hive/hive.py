@@ -1918,7 +1918,11 @@ def admissible(ruling, config, tasks, ledger):
                       the account (its number, as the refusal's line gives it, or the login of its deal's line),
                       or it is open by invitation and does not name it. A ruling brings in no work of an account
                       the project has turned away since. (How old the account is, GitHub alone says: the plan asked
-                      it when the member was dealt the task, and no step asks it again for a ruling.)
+                      it when the member was dealt the task, and no step asks it again for a ruling.) The login
+                      held against a ban here is the one the member had when it was dealt the task, where the
+                      reading of forks holds the fork's login of the day: a ban written as a login reaches a
+                      ruling under the login of that time only, and a ban by the account's number is the same
+                      everywhere. A project that bans, bans by number.
       own_candidate  the commit is the guardian's own; unless the project's file names one account alone as its
                       members (one_account_alone): a trial with one person in it has nobody else to rule
       beyond_bound    the ruling names a figure the project does not let a guardian waive, or a bound that is not
@@ -2001,11 +2005,18 @@ def check_rulings(plan_, config, tasks, ledger):
     free when the plan was made, and so was every open task that shares a file with it; no other ruling of the
     plan takes that task, no other candidate of the plan is for it or for one of those, and the plan deals none
     of them.
-    A ruling the plan says is void. Its task is one of the registry's, or none. It is void for that very reason
-    by admissible's own reading of what the plan gives. « duplicate », which is the plan's draw between rulings
+    A ruling the plan says is void, for a task the registry lists and has not closed, or for none. It is void for
+    that very reason by admissible's own reading of what the plan gives. « duplicate », which is the plan's draw between rulings
     that stand on one commit, is said only of a ruling that would stand, and only in a plan that admits that same
     commit under another ruling: the answer of a ruling that lost the draw goes with the answer of the one that
     won it, never before (void_lines).
+    One case is the registry's doing and stops nothing, as for a candidate and for a commit a guardian admitted: the
+    plan names a task the registry has closed, or lists no more (already when the plan was made, or since; the
+    steps of a run in service read one registry). Whatever the plan said of such a ruling, « duplicate » included, the step answers it itself, with what
+    it holds: void, « task_closed » (the plan's own reason only where this step's reading gives the same), and the
+    task as the registry names it now, or none: a task's name the registry does not list reaches no line. The
+    account is still one the file names, and the ruling one the ledger has not answered.
+    Returns the rulings to answer void, each with the task and the reason its line carries (void_lines).
     No ruling is named twice in a plan, among those it admits and those it answers void: a ruling has one answer,
     and a line of its own would close the promise made for its push (Ledger.promises).
     Otherwise HiveError: such a plan is not the hive's, and nothing of it is written."""
@@ -2013,8 +2024,8 @@ def check_rulings(plan_, config, tasks, ledger):
     admitted = [entry for entry in plan_["queue"] if "admit" in entry]
     voids = plan_.get("rulings", [])
     if not admitted and not voids:
-        return
-    named = [entry["admit"]["ruling"] for entry in admitted] + [void["ruling"] for void in voids]
+        return []
+    named =[entry["admit"]["ruling"] for entry in admitted] + [void["ruling"] for void in voids]
     if len(set(named)) != len(named):
         raise untrue
     deals, done, rivals = ledger.deals(), ledger.done(), rivals_of(tasks)
@@ -2043,15 +2054,25 @@ def check_rulings(plan_, config, tasks, ledger):
     if taken & set(others):
         raise untrue
     judged = {entry["sha"] for entry in admitted}  # the commits this plan judges under a ruling
+    answers = []
     for void in voids:
-        if void["task"] is not None and void["task"] not in tasks:
-            raise untrue  # a ruling's line names a task of the registry, or none
-        reason = admissible(void, config, tasks, ledger)
+        listed = void["task"] if void["task"] in tasks else None  # the task as the registry names it now, or none
+        reason = admissible({**void, "task": listed}, config, tasks, ledger)
+        if void["task"] is not None and (listed is None or tasks[listed].get("closed")):
+            # The plan names a task that the registry lists no more, or has closed: the ruling is void for that, by
+            # this step's own reading, whatever the plan said of it. The line is this step's: the registry's id or
+            # none, never the plan's string; the plan's reason only where this reading gives the same.
+            if reason not in ("malformed", "task_closed"):
+                raise untrue  # (an account the file does not name, a ruling the ledger already answers)
+            answers.append({**void, "task": listed, "reason": void["reason"] if void["reason"] == reason else "task_closed"})
+            continue
         if void["reason"] == "duplicate":
             if reason is not None or void["sha"] not in judged:
                 raise untrue
         elif reason != void["reason"]:
             raise untrue
+        answers.append(dict(void))
+    return answers
 
 
 def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False):
@@ -2974,13 +2995,16 @@ def ruling_event(ruling, instant, run, result, reason, **more):
             "guardian": ruling["guardian"], "task": ruling["task"], "sha": ruling["sha"], "result": result, "reason": reason, **more}
 
 
-def void_lines(plan_, instant, answered=()):
-    """The ledger lines of the rulings the plan answers void (once per ruling, whatever number of times the step runs).
+def void_lines(voids, run, instant, answered=()):
+    """The ledger lines of the rulings a run answers void (once per ruling, whatever number of times the step runs).
+    voids: what check_rulings returns: the plan's void rulings as the write step holds them, each with the task and
+    the reason its line carries (the registry's own id for the task, or none).
     answered: the commits whose admitted ruling this run has answered (a verdict recorded, or a line of the ruling's
-    own). A ruling the plan says lost the draw (« duplicate ») has its line when the ruling that won it has its
-    answer, in the same run: where the run did not reach the commit, could not tell its push's fate or was declined
-    it, the ruling that won waits for the next run, and those that lost wait with it, unanswered."""
-    return [ruling_event(void, instant, plan_["key"], "void", void["reason"], judged=False) for void in plan_.get("rulings", [])
+    own). A ruling that lost the draw (« duplicate ») has its line when the ruling that won it has its answer, in
+    the same run: where the run did not reach the commit, could not tell its push's fate or was declined it, the
+    ruling that won waits for the next run, and those that lost wait with it, unanswered. (One whose task the
+    registry closed is no « duplicate » any more: it is void for the task, and waits for nothing.)"""
+    return [ruling_event(void, instant, run, "void", void["reason"], judged=False) for void in voids
             if void["reason"] != "duplicate" or void["sha"] in answered]
 
 
@@ -3086,7 +3110,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     counted = as_the_plan_counted(ledger, plan_)
     for deal in (*plan_["deals"], *plan_["conditional"]):
         deal_prefer(deal, tasks, config, counted)  # a preference that is not the registry's, or not true, stops the step before it pushes or writes anything
-    check_rulings(plan_, config, tasks, counted)  # and so does a ruling the project's file and the ledger do not bear out
+    void_rulings = check_rulings(plan_, config, tasks, counted)  # and so does a ruling the project's file and the ledger do not bear out
     # What this step writes in the ledger is dated now, when it is written: a wait counts from the moment its member
     # can see the answer, however long the judging took. The commits it derives are dated at the plan's instant, as
     # the judging step dated them: the same commits.
@@ -3148,7 +3172,7 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     # The rulings the plan found void are answered here, by the step that has seen the project's tip where the plan
     # saw it: what the plan read of the promised pushes (landed or not, at that tip) is what holds now. One that lost
     # the draw on a commit is answered with the ruling that won it, and not before (void_lines).
-    ledger.append(void_lines(plan_, instant, {o["sha"] for o in kept if o.get("admit") and o["result"] in ("accepted", "refused", "void")}))
+    ledger.append(void_lines(void_rulings, run, instant, {o["sha"] for o in kept if o.get("admit") and o["result"] in ("accepted", "refused", "void")}))
     # A member whose candidate was answered in this run gets the task the plan had kept for it.
     # The deals the plan found over are written here too, should the recording step not have run: a task is never
     # dealt (below) on the strength of an expiry the ledger does not hold.
@@ -5756,7 +5780,9 @@ def cmd_admit(args):
     with the file's own figures and bounds, and nothing is made or pushed. The clone must hold the commit: the
     guardian fetched it to read it, by its id as the ledger gives it and not as a branch of its member's fork, which
     is whatever that fork's owner pushed there since (what such a branch holds is data, and a guardian's fork counts
-    for the hive at the one branch this command writes: discover). The ruling is made in a store of this tool's own into which that commit and all
+    for the hive at the one branch this command writes: discover). A guardian keeps no branch under hive/rule/ that
+    came from another remote, and pushes there through this command only: what its fork holds at that branch, the
+    hive takes as the guardian's. The ruling is made in a store of this tool's own into which that commit and all
     it reaches were copied, each object written anew (copied_out), and pushed from there. Whether the account is one
     the project names, and whether the commit is one a ruling can admit, the hive says at its next run."""
     if not LOGIN.match(args.login):

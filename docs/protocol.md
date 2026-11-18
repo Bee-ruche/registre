@@ -389,7 +389,9 @@ Hive-Waive: suspects 2
 the fork's branch `hive/rule/<task>`, under the same checks of the clone as a worker's commands; `--withdraw`
 deletes that branch. The guardian fetches the commit into that clone **by its id, as the ledger's refusal gives
 it**, never as a branch of its member's fork: a branch is whatever its owner pushed there since, and what it holds
-is data. The command decides nothing: whether a ruling stands is said by the hive.
+is data. A guardian keeps no branch under `hive/rule/` that came from another remote, and pushes there only
+through `hive.py admit`: what a guardian's fork holds at that branch, the hive takes as the guardian's. The
+command decides nothing: whether a ruling stands is said by the hive.
 
 **A ruling stands** only if all of this holds:
 
@@ -401,7 +403,10 @@ is data. The command decides nothing: whether a ruling stands is said by the hiv
   figure the project lets a guardian waive;
 - the commit's member is an account the project takes today, by its file: not one it bans (by the account's
   number, or by the login of its deal's line), and, in a project open by invitation, one the file names. A ruling
-  brings in no work of an account the project has turned away since;
+  brings in no work of an account the project has turned away since. The login held against a ban here is the
+  one the member had when it was dealt the task, where the reading of forks holds the fork's login of the day: a
+  ban written as a login reaches a ruling under the login of that time only, and a ban by account number is the
+  same everywhere. A project that bans, bans by number;
 - the commit is not the guardian's own, except in a project whose file names one account alone as its members: a
   trial with one person in it has nobody else to rule, and the line shows the same account twice;
 - each figure the ruling waives is one the file lists, with a bound between what the project requires and the
@@ -421,9 +426,12 @@ refusal is one a guardian may lift; the member is one the project takes; what is
 bounds and covers what the commit failed; the task was free, and no other candidate or deal of the plan takes it or
 a task that shares a file with it; a void line names a task of the registry or none, for the reason those same
 readings give; `duplicate` is said only in a plan that admits the same commit under another ruling; and no ruling
-is named twice in a plan. A plan that says otherwise is not applied at all. (One case is no fault of the plan's: a
-task the registry closed after the plan was made. The write job then answers the ruling void, as it refuses a
-member's candidate whose task was closed meanwhile.)
+is named twice in a plan. A plan that says otherwise is not applied at all. One case is the registry's doing and
+stops nothing: a task the registry has closed, or lists no more, when the write job reads it. Whatever the plan
+said of a ruling for that task (admitted, void for another reason, `duplicate`), the write job answers it void
+itself, `task_closed` (`malformed` stays, where the plan read that the ruling does not carry its commit), with the
+task as the registry names it now or none, as it refuses a member's candidate whose task was closed meanwhile; a
+task's name the registry does not list reaches no line; and the rest of the plan is applied.
 
 **A ruling that stands is served when its task is free**, and every open task that shares a file with it: until
 then it stays where it is, in the guardian's fork, and the hive keeps nothing of it. Then the commit joins the

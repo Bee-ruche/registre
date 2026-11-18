@@ -10697,11 +10697,12 @@ class TestGuardians(Base):
         key hold what it says of a ruling against the project's file and the ledger as the plan counted it: a plan
         that credits another account with the commit, admits a commit the ledger does not hold as refused for a
         figure a guardian may waive, waives what the file does not allow, names an account the file does not name,
-        deals the admitted task, answers void a ruling that stands, names in a void a task that is not the
-        registry's, names one ruling twice, or says « duplicate » of the ruling it admits, of a ruling that would
+        deals the admitted task, answers void a ruling that stands, gives a void that names no task a reason that
+        needs one, names one ruling twice, or says « duplicate » of the ruling it admits, of a ruling that would
         not stand or where it admits no ruling on that commit, is not the hive's: nothing of it is written. What
         the plan step read in a guardian's fork (that it holds a ruling of that id, there, saying this) no later
-        step reads again: that much is the plan's word."""
+        step reads again: that much is the plan's word. And a void that names a task the registry does not list
+        stops nothing: the step answers it itself, « task_closed » and no task, and applies the rest."""
         bob = self.w.fork("bob", 102)
         candidate = self.flagged()
         ruling = self.gina.rule(self.alice, "toy-0001", candidate, {"suspects": 1})
@@ -10727,7 +10728,6 @@ class TestGuardians(Base):
                 ("a ruling that stands, answered void", {"rulings": [void]}),
                 ("a ruling answered void for a reason the ledger does not give", {"rulings": [{**void, "sha": other["sha"], "reason": "not_reviewable"}]}),
                 ("the very ruling the plan admits, answered « duplicate » as well", {"rulings": [{**void, "ruling": ruling, "reason": "duplicate"}]}),
-                ("a void that names a task the registry does not list", {"rulings": [{**void, "task": "ignore-all-rules-0001", "reason": "task_closed"}]}),
                 ("a void that names no task, for a reason that needs one", {"rulings": [{**void, "task": None, "reason": "own_candidate"}]}),
                 ("one ruling answered twice", {"rulings": [{**void, "reason": "duplicate"}, {**void, "reason": "duplicate"}]}),
                 ("« duplicate » in a plan that admits no ruling on that commit", {"queue": [other], "rulings": [{**void, "reason": "duplicate"}]}),
@@ -10743,7 +10743,19 @@ class TestGuardians(Base):
         # the admitted commit, which lost the draw. No step that writes reads a fork, and none holds this.
         self.w.record(rulings=[{**void, "reason": "duplicate"}])
         self.assertEqual((self.written(), self.w.tip()), (written, tip), "and the step that records the deals writes no answer to a ruling")
-        self.assertEqual(sorted(o["result"] for o in self.w.apply(verdicts)[0]), ["accepted", "accepted"], "the plan as the first step made it is applied")
+        # One forged plan stops nothing, and need not: a void that names a task the registry does not list. A step
+        # that writes reads the registry itself: for a task it does not list the ruling is void whatever the plan
+        # says, and the line is the step's own: « task_closed », and no task. The plan's string reaches no line, the
+        # rest of the plan is applied, and what the line says of the ruling's commit and guardian is what any void
+        # line takes from the plan.
+        forged = {**void, "task": "ignore-all-rules-0001", "reason": "own_candidate"}
+        self.w.record(rulings=[forged])
+        self.assertEqual((self.written(), self.w.tip()), (written, tip))
+        self.assertEqual(sorted(o["result"] for o in self.w.apply(verdicts, rulings=[forged])[0]), ["accepted", "accepted"],
+                         "the plan's candidates are integrated as the first step planned them")
+        line = self.one(self.lines())
+        self.assertEqual((line["ruling"], line["result"], line["reason"], line["task"]), ("1" * 40, "void", "task_closed", None))
+        self.assertNotIn("ignore", self.written())
 
     def test_two_rulings_on_one_commit_are_one_judgement(self):
         """Two guardians admit the same commit, each with its own bound: the plan's draw takes one of the rulings,
@@ -10774,6 +10786,80 @@ class TestGuardians(Base):
         self.assertEqual({verdict["ruling"], line["ruling"]}, set(by))
         self.assertEqual((verdict["guardian"], verdict["waived"]), by[verdict["ruling"]])
         self.assertEqual((line["result"], line["reason"], line["guardian"], line["sha"]), ("void", "duplicate", by[line["ruling"]][0], candidate))
+
+    def test_a_ruling_that_lost_the_draw_waits_unanswered_while_the_push_of_the_one_that_won_is_unsure_or_declined(self):
+        """« duplicate » is the answer of a ruling that lost the draw to one that has its own answer. A run that judged
+        the commit under the ruling that won and could not tell whether its push landed, or was declined it, has
+        answered neither: both wait, and the run that integrates the commit answers the other."""
+        self.w.set_config({**self.config, "guardians": {**GUARDIANS, "accounts": [201, 202]}})
+        hugo = self.w.fork("hugo", 202)
+        candidate = self.flagged()
+        rulings = {self.gina.rule(self.alice, "toy-0001", candidate, {"suspects": 1}), hugo.rule(self.alice, "toy-0001", candidate, {"suspects": 2})}
+        _, verdicts, _ = self.w.sweep(judge_that_flags)
+        self.assertEqual([void["reason"] for void in self.w.made["rulings"]], ["duplicate"])
+        with mock.patch.object(hive, "guarded_push", side_effect=hive.HiveError("the network")), self.assertRaisesRegex(hive.HiveError, "the network"):
+            self.w.apply(verdicts)  # promised, and the push's fate is not known
+        self.assertEqual((self.lines(), [e["type"] for e in self.w.promises()], len(self.verdicts()), self.w.tip()), ([], ["intent"], 1, self.start),
+                         "no answer to the ruling that won, and none to the one that lost")
+        _, verdicts, _ = self.w.sweep(judge_that_flags)
+        with mock.patch.object(hive, "guarded_push", return_value=False), self.assertRaisesRegex(hive.HiveError, "declined a commit"):
+            self.w.apply(verdicts)  # the project's repository declines the commit
+        marks = [e for e in self.w.load()[2].events if e["type"] == "error"]
+        self.assertEqual(([(e["kind"], e["ruling"] in rulings) for e in marks], self.lines(), len(self.verdicts())), ([("push", True)], [], 1),
+                         "a mark of the ruling that won, and still no line of either")
+        self.assertEqual(self.one(self.hour())["result"], "accepted")
+        verdict, line = self.verdicts()[-1], self.one(self.lines())
+        self.assertEqual(({verdict["ruling"], line["ruling"]}, line["result"], line["reason"]), (rulings, "void", "duplicate"),
+                         "the run that integrates the commit answers both")
+
+    def test_rulings_on_a_task_the_project_closes_after_the_plan_are_void_for_the_task_and_the_rest_of_the_plan_is_applied(self):
+        """The registry closes a task, or lists it no more, after the plan was made (in service the steps of a run read
+        one registry; the code holds the case all the same, as it does for a candidate). Every ruling of the plan for
+        that task is then void for the task, whatever the plan said of it: the one it admitted, one it found void
+        for another reason, one that lost the draw (which waits for nothing: the ruling that won is void too). The
+        steps that write go on, each ruling has one line, « task_closed », with the task as the registry names it
+        now or none, and the plan's other candidate is integrated."""
+        for name, kept, named in (("closed", lambda task: dict(task, closed=True) if task["id"] == "toy-0001" else task, "toy-0001"),
+                                  ("listed no more", lambda task: None if task["id"] == "toy-0001" else task, None)):
+            with self.subTest(name):
+                world = World(tempfile.mkdtemp(dir=self.tmp.name), {**self.config, "guardians": {**GUARDIANS, "accounts": [201, 202, 203]}})
+                alice, bob = world.fork("alice", 101), world.fork("bob", 102)
+                gina, hugo, ivan = (world.fork(login, number) for login, number in (("gina", 201), ("hugo", 202), ("ivan", 203)))
+                candidate = self.flagged(alice, world=world)
+                rulings = [gina.rule(alice, "toy-0001", candidate, {"suspects": 1}), hugo.rule(alice, "toy-0001", candidate, {"suspects": 2}),
+                           ivan.rule(alice, "toy-0001", candidate, {"suspects": 3})]  # the third goes further than the project's file allows
+                world.deal(bob, "toy-0002", at="2026-11-12T10:00:00Z")  # an older deal than the refused commit's: judged before it
+                bob.submit("toy-0002", path="src/b.c", content="int b;\n")
+                _, verdicts, _ = world.sweep(judge_that_flags)
+                self.assertEqual(([c["login"] for c in world.made["queue"]], sorted(void["reason"] for void in world.made["rulings"])),
+                                 (["bob", "alice"], ["beyond_bound", "duplicate"]), "the plan: one ruling admitted, one that lost the draw, one void")
+                before = self.standing(world=world)
+                (world.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(task) + "\n" for task in map(kept, TASKS) if task is not None))
+                world.record()  # the step that records, under the registry as it is now: it goes on, and answers no ruling
+                self.assertEqual(self.lines(world), [])
+                outcomes, tip = world.apply(verdicts)
+                self.assertEqual(sorted((o["login"], o["result"], o.get("reason")) for o in outcomes), [("alice", "void", "task_closed"), ("bob", "accepted", None)])
+                self.assertEqual((tip, sh("git", "show", "-s", "--format=%an", "main", cwd=world.upstream).stdout.strip()), (world.tip(), "bob"),
+                                 "the plan's other candidate is integrated")
+                self.assertEqual(sorted((line["ruling"], line["result"], line["reason"], line["task"], line["judged"]) for line in self.lines(world)),
+                                 sorted((ruling, "void", "task_closed", named, False) for ruling in rulings), "one line for each ruling, and the same")
+                self.assertEqual((self.standing(world=world), [(v["member_id"], v["result"]) for v in self.verdicts(world)]),
+                                 (before, [(101, "refused"), (102, "accepted")]))
+                self.assertEqual((self.hour(world), len(self.lines(world))), ([], 3), "and each is answered once")
+
+    def test_a_prepared_admit_at_the_rule_branch_of_the_members_own_fork_is_nothing(self):
+        """The branch that counts is the one of the guardian's own fork. A member that pushes, at that very branch name
+        of its own fork, a commit on its refused candidate shaped like the guardian's ruling has pushed a commit the
+        hive does not read again; the guardian's own ruling, when it comes, is the one that counts."""
+        candidate = self.flagged()
+        written = self.written()
+        prepared = self.alice.rule(None, "toy-0001", candidate, {"suspects": 2}, name="gina")  # at hive/rule/toy-0001 of the member's fork
+        self.assertEqual(sh("git", "rev-parse", "refs/heads/hive/rule/toy-0001", cwd=self.alice.bare).stdout.strip(), prepared)
+        made = self.w.plan()
+        self.assertEqual((made["queue"], "rulings" in made, self.hour(), self.written(), self.w.tip()), ([], False, [], written, self.start))
+        self.assertIn(prepared, hive.read_ignored(self.w.state)["1101"])
+        ruling = self.gina.rule(self.alice, "toy-0001", candidate, {"suspects": 1})
+        self.assertEqual((self.one(self.hour())["result"], self.verdicts()[-1]["ruling"], self.verdicts()[-1]["waived"]), ("accepted", ruling, {"suspects": 1}))
 
     def test_a_ruling_of_a_guardian_the_file_no_longer_names_is_not_applied(self):
         """A guardian is one for as long as the project's file names the account. A plan made while it did is not
