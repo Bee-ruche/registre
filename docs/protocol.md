@@ -296,12 +296,13 @@ the hive runs those git commands with an empty attribute source.
   a proof leads nothing.
 - **A refusal on the suspects says which of the judge's checks it was.** The registry's judge counts what its
   reading of the compiled code and of the source flags in a candidate and not in the base (`suspects`), and a
-  project may bound that count for every contribution. Beside the count the judge gives one figure for each kind it
-  counted, `suspects_<kind>`, under its own word for the kind (`octets`: bytes that spell an instruction a computing
+  project may bound that count for every contribution. Beside the count the hive takes from the judge's report one
+  figure for each kind the judge counted at least one of, `suspects_<kind>`, under the judge's own word for the kind (`octets`: bytes that spell an instruction a computing
   library has no use for; `instruction`; `source`; `symbole_defini`, `appel_externe`, `appel_interdit`,
   `symbole_interdit`, `symbole`; `section`; `architecture`; `analyse_incomplete`). A project that keeps those
-  figures has them on the refusal's line. What was flagged (a name, bytes, a line) is text of the judged code: it
-  stays in the judge's own report and reaches no line of the ledger.
+  figures has them on the refusal's line. A kind the judge counted none of has no figure, so these figures say and
+  bound nothing: a project bounds the count itself. What was flagged (a name, bytes, a line) is text of the judged
+  code: it stays in the judge's own report and reaches no line of the ledger.
 - Candidates are judged one after the other on a tip that moves with each acceptance, so **what is integrated is
   exactly what was judged**. They are different tasks' candidates: there is one per task at most.
 - **The order: oldest deal first**, so that a candidate the run had no time for moves up. After them come those a
