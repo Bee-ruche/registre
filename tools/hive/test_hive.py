@@ -10932,8 +10932,7 @@ class TestGuardians(Base):
 
     def test_a_project_without_guardians_runs_as_before(self):
         """A project whose file names no guardian takes no ruling: a commit marked as one is a commit without a
-        marker, the refusal stands, and the plan is, key for key, the plan it was. The two projects the registry
-        declares name none."""
+        marker, the refusal stands, and the plan is, key for key, the plan it was."""
         world = World(tempfile.mkdtemp(dir=self.tmp.name), {"judge": GUARDED})
         alice, gina = world.fork("alice", 101), world.fork("gina", 201)
         self.assertIsNone(world.load()[0]["guardians"])
@@ -10946,9 +10945,6 @@ class TestGuardians(Base):
         self.assertEqual((sorted(made), made["queue"], made["ignored"]["1201"]), (keys, [], [ruling]))
         self.assertEqual((self.hour(world), self.written(world), world.tip()), ([], written, self.start))
         self.assertEqual(sorted(self.w.plan()), keys, "and so is the plan of a project that names guardians, while it answers no ruling")
-        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])  # set when the tests run on a copy
-        for path in sorted((registry / "hive/projects").glob("*.json")):
-            self.assertIsNone(hive.load_config(path)["guardians"], path.name)
 
         def history(ruled):
             """The same runs of a project whose file names no guardian, on the same draws: a candidate refused for the

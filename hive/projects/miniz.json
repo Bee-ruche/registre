@@ -19,6 +19,10 @@
   "only": [72140],
   "deals_per_day": 50
  },
+ "guardians": {
+  "accounts": [72140],
+  "waive": {"suspects": 2}
+ },
  "models": [
   "claude-fable-5-2",
   "claude-opus-5-5",
