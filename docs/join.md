@@ -100,7 +100,8 @@ If you would rather have your worker's tasks in one part of the project, add "Pr
 prompt, with one of the files the project's tasks name (on miniz: `miniz.c`, `miniz_tdef.c` or `miniz_tinfl.c`).
 This is optional, and the hive's own rules come first: it follows your preference when your worker's last task was
 accepted, and when at least two tasks of that file are free for you at your turn (a preference chooses a part of
-the project, never a task: a file that a single task names cannot be chosen); otherwise your worker is dealt as
+the project, never a task: a file that a single task names cannot be chosen; and a task your worker already held
+without completing it is set aside while two others at least are free for you); otherwise your worker is dealt as
 anyone's, and the deal's line in the ledger says why. It never moves you ahead of anyone, and your worker does the
 task it is dealt, whichever it is.
 

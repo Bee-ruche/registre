@@ -1808,7 +1808,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             continue
         # First the tasks this member has not already held in vain, while two at least are left: with one alone the
         # rule would name the task, and nobody chooses a task. What follows (the preference, the draw) sees only these.
-        fresh = [t for t in mine if t not in ledger.held_in_vain(member_id)]
+        again = ledger.held_in_vain(member_id)
+        fresh = [t for t in mine if t not in again]
         if len(fresh) >= 2:
             mine = fresh
         among, said = mine, {}
