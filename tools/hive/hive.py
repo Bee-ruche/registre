@@ -2254,7 +2254,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     for candidate in queue:
         if "admit" in candidate:
             voids.extend({**ruling, "reason": "duplicate"} for ruling in second.get(candidate["sha"], ()))
-    waiting ={(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # of live deals: a commit a guardian admitted answers none
+    waiting = {(c["member_id"], c["task"]) for c in queue if "admit" not in c}  # of live deals: a commit a guardian admitted answers none
 
     # 3. askers
     askers = []
