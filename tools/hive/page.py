@@ -628,6 +628,23 @@ def read_waiting(folder, now):
     return {"count": len(ages), "oldest_seconds": max(ages)} if ages else None
 
 
+def read_base(folder):
+    """{active, active_days, cover, takes_new} from the feed's « members », for a project that says how many active
+    members its guardians cover (docs/protocol.md, "How tasks are dealt"): how many members are active, within how
+    many days of a deal, how many the project's guardians cover, and whether a new member is dealt a task now. None
+    when the feed has none of it, when the project sets no such bound (no cover), or when a value is not the whole
+    number or the yes-or-no the hive writes: the page then says nothing of it. (The feed is the hive's latest: these
+    are its figures as of the feed, like the tasks' states.)"""
+    feed = read_json(folder, "feed.json")
+    base = feed.get("members") if isinstance(feed, dict) else None
+    if not isinstance(base, dict) or type(base.get("takes_new")) is not bool:
+        return None
+    figures = {key: base.get(key) for key in ("active", "active_days", "cover")}
+    if not all(type(value) is int and 0 <= value <= 10 ** 9 for value in figures.values()) or figures["cover"] < 1 or figures["active_days"] < 1:
+        return None
+    return {**figures, "takes_new": base["takes_new"]}
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # The figures
 
@@ -784,6 +801,7 @@ def collect(state, now, tasks=None, project=None):
         "ledger": {"lines": lines, "unreadable_lines": skipped, "events_left_out": lines - skipped - len(usable),
                    "lines_after_now": after, "repeated_lines": repeated},
     }
+    data["trusted_base"] = read_base(state)
     data["stats_json"] = compare_stats(read_json(state, "stats.json"), models)
     data["_wins"] = wins  # for the cards; not part of summary.json
     return data
@@ -1100,6 +1118,13 @@ def render_html(data, title, repo_url, join):
                                for position, status in enumerate(STATUSES, 1)], class_="tiles"),
                     progress_bar(tasks) if tasks["total"] else None,
                     el("p", f"Tasks in all: {tasks['total']}. A task is done when the judge accepted a candidate for it.", class_="note")]
+    base = data["trusted_base"]
+    if base is not None:  # the project says how many active members its guardians cover (read_base())
+        progress = [*(progress if isinstance(progress, list) else [progress]),
+                    el("p", f"Members: {base['active']:,} active (dealt a task in the last {base['active_days']:,} days); the project's "
+                                      f"guardians cover {base['cover']:,}. "
+                                      + ("A new member is dealt a task now." if base["takes_new"] else "A new member is dealt a task once there is room."),
+                                 class_="note")]
     sections.append(el("section", el("h2", "Progress"), progress))
 
     sections.append(el("section", el("h2", "This week"), el("div", [

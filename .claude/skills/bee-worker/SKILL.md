@@ -183,6 +183,8 @@ Stop. The sentence says which of these it is:
 - **the hive dealt you a task that your clone of the registry does not list as open** (the registry moved);
 - **your deal ends in under an hour**: too late to start; do not submit for it;
 - **your ask is pushed and the hive has not answered it yet**: do not ask again, the ask is still read;
+- **the project's trusted base covers N active member(s) and has them**: the project deals no task to a new
+  member for now, and your account is not one of its active members. Do not ask; a later run finds room;
 - **the project is paused**, **the hive has not published a feed yet**, or **the feed is not one this tool
   reads**: nothing a worker can do.
 

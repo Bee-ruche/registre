@@ -28,7 +28,10 @@ decision. A project that the hive runs unattended (docs/protocol.md) may name gu
 (`hive/projects/<project>.json`, `guardians`), by GitHub account number: those decide alone and at once, on one
 thing only, which is to admit a commit the hive's judge refused for a figure the project's file lets them waive.
 The commit is then judged again in full, and every such decision is a public line of the project's ledger, with
-the guardian's account on it (docs/protocol.md, "Guardians"). Neither list makes anyone a guardian in the other.
+the guardian's account on it (docs/protocol.md, "Guardians"). Such a project may also say how many active members
+one of its guardians covers: the hive counts the members and deals no task to a new one beyond what the project's
+guardians cover, so that a project's trusted base grows with its members (docs/protocol.md, "How tasks are
+dealt"). Neither list makes anyone a guardian in the other.
 
 **Scope.** Today a guardian reviews for the whole hive. Later, the council will be able to appoint one for a single branch (a project, a domain): their privilege will then hold only over what falls entirely within that branch (R14, [branches.md](branches.md)).
 
