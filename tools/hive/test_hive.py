@@ -10297,10 +10297,13 @@ class TestGuardians(Base):
     def test_a_guardians_fork_is_read_for_its_rulings_whatever_the_projects_invitation_says(self):
         """A guardian is named by the project's file, as a member the project invites is: its fork is read for its
         rulings even where the project would not read it for a member. What it pushes as a member there (an ask) is
-        nobody's, as before, and is not remembered: it is read on the day the project reads that fork for a member."""
+        nobody's, as before, and is not remembered: it is read on the day the project reads that fork for a member.
+        (A ban by the account's number and a guardian's place are one file saying two things of an account: such a
+        file does not load, TestTheSettingsList. A ban by a login is no word on who holds the login now, and leaves
+        the account the file names a guardian.)"""
         for name, members, created in (("open by invitation, and the guardian is not invited", {"only": [101]}, {}),
                                        ("an account younger than the project asks of a member", None, {"created": "2026-10-01T00:00:00Z"}),
-                                       ("an account the project bans as a member", {"banned": [201]}, {})):
+                                       ("an account whose login the project bans as a member", {"banned": ["Gina"]}, {})):
             with self.subTest(name):
                 world = World(tempfile.mkdtemp(dir=self.tmp.name), {**self.config, **({"members": members} if members else {})})
                 alice, gina = world.fork("alice", 101), world.fork("gina", 201, **created)
