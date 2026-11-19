@@ -558,6 +558,8 @@ def load_config(path):
         raise HiveError(f"{path}: members.min_account_age_days: a whole number of days, from 0 to {ACCOUNT_AGE_MOST}")
     if type(config.get("paused", False)) is not bool:
         raise HiveError(f"{path}: paused: true or false")
+    if type(raw.get("in_service", False)) is not bool:  # a mark the registry's own test reads (REGISTRY_MARKS)
+        raise HiveError(f"{path}: in_service: true or false")
     # A protected path is a path, or a pattern of paths (matches): printable, relative, with no empty or dot part.
     if not (isinstance(config["protected"], list) and all(isinstance(p, str) and plain_path(p) for p in config["protected"])):
         raise HiveError(f"{path}: protected: a list of paths or path patterns (dir/** for everything below a folder)")
@@ -2419,11 +2421,18 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     for candidate in queue:
         if within and time.monotonic() >= weighing_until:
             break  # the plan's own time: what it has not weighed waits, oldest deal first at the next run
-        # Its commits that are not the project's, counted no further than the limit: one with too many is refused
-        # without its history being carried to the other steps.
-        count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}",
-                    timeout=COUNT_SECONDS)
-        candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
+        # Its commits that are not the project's, counted: one with more than the limit is refused without its history
+        # being carried to the other steps. git walks all of a candidate's own commits before it counts them, so a
+        # count that does not end within COUNT_SECONDS is a history longer than any the project takes: refused the
+        # same way, as a pack that does not end in time is too heavy (packed_weight), and the plan goes on.
+        try:
+            count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}",
+                        timeout=COUNT_SECONDS)
+            candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
+        except HiveError as error:
+            if "timeout" not in str(error):
+                raise
+            candidate["long"] = True
         # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
         # without being carried. A history that is too long is not packed to be weighed: it is refused already.
         # Nor is one carried whose own commits hold an object larger than the project takes (oversized): a history is
@@ -2539,7 +2548,7 @@ def member_mark(login):
 
 BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, each as it packs alone)
 PACK_SECONDS = 60  # how long git may take to pack one candidate's commits before they count as too heavy
-COUNT_SECONDS = 60  # how long git may take to count a candidate's own commits (no more than limits.commits + 1 are walked)
+COUNT_SECONDS = 60  # how long git may take to count a candidate's own commits (git walks them all): beyond, the history is too long
 WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those it has not reached wait for the next run
 
 

@@ -1098,6 +1098,10 @@ class TestStructure(Base):
         self.assertEqual(hive.packed_weight(self.w.harvest, slow, self.w.tip(), most), most, "read to its end when it fits")
         self.assertEqual(hive.packed_weight(self.w.harvest, slow, self.w.tip(), most - 1), most, "and no further than one byte beyond the limit")
         self.assertEqual(hive.packed_weight(self.w.harvest, "1" * 40, self.w.tip(), 1000), 1001, "commits git cannot pack are too heavy to carry")
+        with mock.patch.object(hive, "COUNT_SECONDS", 0):  # counting its commits does not end in time: a history too long, and the plan goes on
+            counting = self.w.plan()
+        self.assertEqual({c["sha"]: (c["long"], c["large"], c["heavy"]) for c in counting["queue"]},
+                         {slow: (True, False, False), fine: (True, False, False)})
         with mock.patch.object(hive, "PACK_SECONDS", 0):  # git is stopped at once: as if it took too long
             self.assertEqual({hive.packed_weight(self.w.harvest, sha, self.w.tip(), 1 << 20) for sha in (slow, fine)}, {(1 << 20) + 1})
             real = hive.packed_weight
@@ -11816,8 +11820,9 @@ class TestTheSettingsList(unittest.TestCase):
         """The plan's job reads forks for discovery_seconds, and the fork it began within them may take one question
         to GitHub, two listings of its branches and one fetch more; it weighs candidates for WEIGH_SECONDS, and the
         candidate it began within them may take three of git's steps more (COUNT_SECONDS, and PACK_SECONDS twice). At every
-        limit's most, that leaves the job, of its minutes, some to set up, to write the candidates' file and to upload
-        it. The judging job judges for judging_seconds, starts no judgement that could end after them, and may judge
+        limit's most, that leaves the job two minutes of its own at least, for what this sum does not name: setting
+        up, writing the candidates' file and uploading it, and git's quick steps on each fork and promise. (A run
+        whose job runs out of minutes writes nothing: its plan is never used.) The judging job judges for judging_seconds, starts no judgement that could end after them, and may judge
         the project's own tip once more (judge.timeout_seconds): that leaves it its setup."""
         settings = {key: entry.get("most") for key, entry in self.settings.items()}
         reading = settings["limits.discovery_seconds"] + hive.API_SECONDS + 2 * hive.LIST_SECONDS + hive.FETCH_SECONDS
@@ -11869,6 +11874,11 @@ class TestTheSettingsList(unittest.TestCase):
             with self.subTest("guardians", wrong=wrong), self.assertRaisesRegex(hive.HiveError, r"toy\.json: guardians: "):
                 self.load({**self.MINIMAL, "guardians": wrong})
         self.assertEqual(self.load({**self.MINIMAL, "judge": {"options": {"any-name": "1", "Level": 9}}})["judge"]["options"], {"any-name": "1", "Level": 9})
+        # The registry's own mark is true or false, as the list says: a string would read as true where its test reads it.
+        for wrong in ("false", 0, 1, None, []):
+            with self.subTest("in_service", wrong=wrong), self.assertRaisesRegex(hive.HiveError, r"toy\.json: in_service: true or false\Z"):
+                self.load({**self.MINIMAL, "in_service": wrong})
+        self.assertIn("files", self.load({**self.MINIMAL, "in_service": True})["limits"])
         self.assertEqual(set(hive.JUDGE_KEYS), {key.partition(".")[2] for key in self.settings if key.startswith("judge.")})
         # Every key the list holds, at its default, in one file: it loads. (The list and the keys the hive knows are one.)
         every = dict(self.MINIMAL, guardians=None)
