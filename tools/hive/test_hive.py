@@ -6483,9 +6483,15 @@ class TestVolunteerSide(Volunteer):
         dealt = self.w.deal(self.alice, "toy-0001")
         self.assertEqual(self.begin("toy-0001", dealt)[0], 0, self.err)
         self.alice.write("lib.c", LIB + "int the_work;\n")
+        # (A limit that is no whole number is a file that does not load: said as such, in one line, before anything is made.)
         own.write_text(json.dumps({**json.loads(kept), "limits": {**json.loads(kept).get("limits", {}), "commits": "five"}}))
         self.assertEqual((self.submit("toy-0001", dealt), len(self.err.splitlines())), ((2, ""), 1), self.err)
-        self.assertRegex(self.err, unforeseen.format(kind="TypeError"))
+        self.assertRegex(self.err, r"\Ahive: [ -~]+/hive/projects/toy\.json: limits\.commits: a whole number, 1 at least\n\Z")
+        self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing was pushed")
+        # (And a protected path that is no text: the command stops where the candidate's paths are held against it.)
+        own.write_text(json.dumps({**json.loads(kept), "protected": [*json.loads(kept).get("protected", []), 5]}))
+        self.assertEqual((self.submit("toy-0001", dealt), len(self.err.splitlines())), ((2, ""), 1), self.err)
+        self.assertRegex(self.err, unforeseen.format(kind="AttributeError"))
         self.assertEqual(self.fork_branches(), ["refs/heads/main"], "nothing was pushed")
         own.write_text(kept)
         self.unforeseen = False
@@ -11703,7 +11709,7 @@ class TestTheSettingsList(unittest.TestCase):
                     with self.subTest(key, bound=bound):
                         self.assertEqual((self.loads(self.laid(base, key, entry[bound])), self.loads(self.laid(base, key, entry[bound] + outside))),
                                          (True, False))
-        self.assertGreaterEqual(bounded, 22)
+        self.assertGreaterEqual(bounded, 21)
         # A wait of none at all is for a file that names one account alone, and no other.
         wait, alone = self.settings["backoff_hours"], self.laid(base, "members.only", [7])
         self.assertEqual((wait["least"], wait["least_alone"]), (1, 0))
@@ -11715,27 +11721,26 @@ class TestTheSettingsList(unittest.TestCase):
                          [True, False])
         self.assertEqual([key for key, entry in self.settings.items() if "most_entries" in entry], ["judge.history"])
         # The bounds are the hive's own constants, and every limit has its least.
-        self.assertEqual({key: self.settings[key]["most"] for key in ("deal_hours", "grace_hours", "backoff_hours", "members.active_days",
-                                                                      "limits.heads_per_fork", "limits.history_bytes")},
+        self.assertEqual({key: entry["most"] for key, entry in self.settings.items() if "most" in entry},
                          {"deal_hours": hive.BACKOFF_MAX_HOURS, "grace_hours": hive.BACKOFF_MAX_HOURS, "backoff_hours": hive.BACKOFF_MAX_HOURS,
-                          "members.active_days": hive.ACTIVE_DAYS_MAX, "limits.heads_per_fork": hive.HEADS_PER_FORK_MAX,
-                          "limits.history_bytes": hive.BUNDLE_BYTES})
-        self.assertEqual({key: entry.get("least") for key, entry in self.settings.items() if entry["section"] == "limits"},
-                         {f"limits.{key}": 1 for key in hive.DEFAULTS["limits"]})
+                          "members.active_days": hive.ACTIVE_DAYS_MAX})
+        self.assertEqual({key: (entry.get("least"), entry.get("most")) for key, entry in self.settings.items() if entry["section"] == "limits"},
+                         {f"limits.{key}": (1, None) for key in hive.DEFAULTS["limits"]},
+                         "one at least, and no most of the file's: the hive's own bounds hold whatever a project's file says")
 
     def test_what_a_project_takes_from_a_candidate_and_what_a_run_spends_are_whole_numbers_of_one_or_more(self):
         """limits.*: a file that gives one of them as nought, as a negative number, as a number that is not whole or
-        as anything else does not load, at any step and for any worker; the two the hive itself bounds go no further
-        than its own bound. The projects the registry declares load as they are."""
+        as anything else does not load, at any step and for any worker. The file sets no most: the hive's own bounds
+        (the branches it lists of one fork, what a plan carries) hold by themselves, above or below a project's
+        limit. The projects the registry declares load as they are."""
         for key in hive.DEFAULTS["limits"]:
             for wrong in (0, -1, 1.5, "20", None, True, [20], {}):
                 with self.subTest(key, wrong=wrong):
-                    with self.assertRaisesRegex(hive.HiveError, rf"limits\.{key}: a whole number, 1 at least"):
+                    with self.assertRaisesRegex(hive.HiveError, rf"limits\.{key}: a whole number, 1 at least\Z"):
                         self.load({**self.MINIMAL, "limits": {key: wrong}})
             self.assertEqual(self.load({**self.MINIMAL, "limits": {key: 1}})["limits"][key], 1)
-        for key, most in (("heads_per_fork", hive.HEADS_PER_FORK_MAX), ("history_bytes", hive.BUNDLE_BYTES)):
-            with self.assertRaisesRegex(hive.HiveError, rf"limits\.{key}: a whole number, 1 at least and {most} at most"):
-                self.load({**self.MINIMAL, "limits": {key: most + 1}})
+        for key, own in (("heads_per_fork", hive.HEADS_PER_FORK_MAX), ("history_bytes", hive.BUNDLE_BYTES)):
+            self.assertEqual(self.load({**self.MINIMAL, "limits": {key: own + 1}})["limits"][key], own + 1, "a limit beyond the hive's own bound still loads")
         self.assertEqual(self.load(self.MINIMAL)["limits"], hive.DEFAULTS["limits"], "a file that gives none has the hive's own")
         for path in sorted((self.registry / "hive/projects").glob("*.json")):
             self.assertEqual(hive.load_config(path)["limits"], {**hive.DEFAULTS["limits"], **json.loads(path.read_text()).get("limits", {})}, path.name)

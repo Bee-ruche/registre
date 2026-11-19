@@ -491,14 +491,12 @@ def load_config(path):
     for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 0 if alone else 1)):
         if type(config[key]) is not int or not least <= config[key] <= BACKOFF_MAX_HOURS:
             raise HiveError(f"{path}: {key}: a whole number of hours, from {least} to {BACKOFF_MAX_HOURS}")
-    # What the project takes from one candidate and what a run spends (limits): whole numbers, one at least. Two have
-    # a most, which is the hive's own: a fork with more branches than HEADS_PER_FORK_MAX is not listed at all, and a
-    # candidate's commits weigh no more than a plan carries to the other steps (BUNDLE_BYTES).
-    most = {"heads_per_fork": HEADS_PER_FORK_MAX, "history_bytes": BUNDLE_BYTES}
+    # What the project takes from one candidate and what a run spends (limits): whole numbers, one at least. None has
+    # a most of the file's: the hive's own bounds (the branches it lists of one fork, what one fetch writes, what a
+    # plan carries) hold by themselves, whatever a project's file says.
     for key in DEFAULTS["limits"]:
-        value = config["limits"][key]
-        if type(value) is not int or not 1 <= value <= most.get(key, value):
-            raise HiveError(f"{path}: limits.{key}: a whole number, 1 at least" + (f" and {most[key]} at most" if key in most else ""))
+        if type(config["limits"][key]) is not int or config["limits"][key] < 1:
+            raise HiveError(f"{path}: limits.{key}: a whole number, 1 at least")
     if type(config["members"]["deals_per_day"]) is not int or config["members"]["deals_per_day"] < 1:
         raise HiveError(f"{path}: members.deals_per_day: a whole number, 1 at least")
     if type(config["members"]["preferences"]) is not bool:
