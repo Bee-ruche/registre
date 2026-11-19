@@ -732,6 +732,39 @@ class TestJudgeRuns(Case):
         self.assertEqual(self.summary(self.make())["totals"]["judge_runs"], 4, "one for a candidate and a run, as the hive records them")
 
 
+class TestTheTrustedBase(Case):
+    """A project may say how many active members its guardians cover (docs/protocol.md, "How tasks are dealt"); the
+    feed then says how many members are active, how many are covered, and whether a new member is dealt a task now."""
+
+    BASE = {"active": 3, "active_days": 30, "cover": 4, "takes_new": True, "active_marks": ["feedfacefeedface", "0123456789abcdef", "fedcba9876543210"]}
+
+    def made(self, members):
+        self.ledger([verdict(1, "2026-11-10T09:00:00Z", "alice", 101, "toy-0001")])
+        self.put("feed.json", {**feed({"toy-0001": "done", "toy-0002": "open"}), **({} if members is None else {"members": members})})
+        files = self.make()
+        return files, self.summary(files), self.harmless(files)
+
+    def test_the_page_says_how_many_members_are_active_and_how_many_the_projects_guardians_cover(self):
+        files, data, seen = self.made(self.BASE)
+        self.assertEqual(data["trusted_base"], {"active": 3, "active_days": 30, "cover": 4, "takes_new": True})
+        self.assertIn("Members: 3 active (holding a task, or with a contribution accepted in the last 30 days); the project's guardians cover 4. A new member is dealt a task now.", seen.said)
+        files, data, seen = self.made({**self.BASE, "active": 4, "takes_new": False})
+        self.assertIn("Members: 4 active (holding a task, or with a contribution accepted in the last 30 days); the project's guardians cover 4. A new member is dealt a task once there "
+                      "is room.", seen.said)
+        self.assertNotIn("feedfacefeedface", "".join(files.values()), "the members' marks are the workers' to read, not the page's")
+
+    def test_a_project_that_sets_no_such_bound_has_the_page_it_had(self):
+        without, data, _ = self.made(None)
+        self.assertIsNone(data["trusted_base"])
+        for members in ({**self.BASE, "cover": None}, {**self.BASE, "cover": "4"}, {**self.BASE, "cover": 0}, {**self.BASE, "cover": True},
+                        {**self.BASE, "active": -1}, {**self.BASE, "active": 3.0}, {**self.BASE, "active_days": 0}, {**self.BASE, "takes_new": "yes"},
+                        {**self.BASE, "active": '"><script>alert(1)</script>'}, {**self.BASE, "cover": 10 ** 12}, [], "full", 7):
+            files, data, seen = self.made(members)
+            self.assertEqual((data["trusted_base"], {name: text for name, text in files.items() if name != "summary.json"}),
+                             (None, {name: text for name, text in without.items() if name != "summary.json"}), members)
+            self.assertNotIn("Members:", seen.said)
+
+
 class TestRulings(Case):
     """A project's guardians may admit a commit the hive refused (docs/protocol.md, "Guardians"). The ledger then holds
     two verdicts on one commit, the refusal and the acceptance that names the ruling, and lines of rulings that did

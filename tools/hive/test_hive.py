@@ -5011,6 +5011,8 @@ WORKER_LINES = [re.compile(line + r"\Z") for line in (
     r"WAIT: the hive's feed is not one this tool reads: update your clone of the registry",
     rf"WAIT until {INSTANT}: your last deal ended without an accepted candidate; the hive deals you nothing before then",
     rf"WAIT: your ask of {INSTANT} is pushed and the hive has not answered it yet",
+    r"WAIT: the project's trusted base covers [1-9][0-9]* active member\(s\) and has them: the hive deals no task to a new member for now; "
+    r"come back later",
     r"WAIT: your candidate is pushed and the hive has not answered it yet",
     r"WAIT: the hive dealt you a task that your clone of the registry does not list as open: update it",
     rf"WAIT: your deal ends at {INSTANT}, under 1 hour from now: too late to start",
@@ -11108,6 +11110,424 @@ class TestGuardians(Base):
         submit = f"Hive-Task: toy-0001\nHive-Action: submit\nHive-Deal: {NOW}\nHive-Member: alice\n"
         self.assertIsNone(hive.read_ruling(submit + f"Hive-Commit: {sha}\n" + waived), "a candidate's marker is no ruling, whatever lines it adds")
         self.assertEqual(hive.read_marker(submit + f"Hive-Commit: {sha}\n" + waived), hive.read_marker(submit), "and stays the marker it was")
+
+
+class TestTheBaseCoversItsMembers(Base):
+    """A project's base of trusted accounts keeps pace with its members. Its file says how many active members one
+    guardian covers; the hive counts the members itself (an account that holds a live deal, or a candidate of whose
+    own was accepted within the project's window, and that the project's file takes today) and deals no task to a
+    NEW member beyond what the project's guardians cover. The members that are active go on; a new member that is
+    passed over pays nothing, and is served by the run that finds room."""
+
+    APART = [{"id": f"toy-{number:04d}", "title": f"Work in file {number}", "files": [f"src/t{number}.c"]} for number in range(1, 10)]
+    config = {"judge": GUARDED, "guardians": GUARDIANS, "members": {"per_guardian": 2}}  # one guardian: two active members covered
+    LOGINS = {"alice": 101, "bob": 102, "carol": 103, "dave": 104, "erin": 105}
+
+    def setUp(self):
+        super().setUp()
+        self.apart(self.w)
+
+    def apart(self, world):
+        """The project's tasks: nine, each on a file of its own, so that every asker can be dealt one at once."""
+        (world.registry / "hive/tasks/toy.jsonl").write_text("".join(json.dumps(task) + "\n" for task in self.APART))
+        return world
+
+    def forks(self, *logins, world=None):
+        world = world or self.w
+        return [world.forks.get(login) or world.fork(login, self.LOGINS[login]) for login in logins]
+
+    def finish(self, world=None, judge=judge_that_flags):
+        """The rest of the run whose plan was just made: its deals recorded, its candidates judged and written."""
+        world = world or self.w
+        world.record()
+        verdicts, _ = world.judge(judge)
+        return world.apply(verdicts)[0]
+
+    def dealt_to(self, *forks):
+        """One run in which these forks ask and are each dealt a task: who was, in the plan's order."""
+        for fork in forks:
+            fork.ready()
+        made = self.w.plan()
+        self.finish()
+        return [deal["member"] for deal in made["deals"]]
+
+    def accepted(self, *forks):
+        """One run in which each of these forks pushes its work for the task it holds, and the judge accepts it."""
+        for fork in forks:
+            self.work(fork)
+        self.w.plan()
+        self.assertEqual({o["result"] for o in self.finish()}, {"accepted"})
+
+    def members(self):
+        """What the feed says of the project's trusted base, but for the hashes: (active, cover, takes a new member)."""
+        said = self.w.feed_file()["members"]
+        return said["active"], said["cover"], said["takes_new"]
+
+    def work(self, fork, world=None):
+        """The fork's candidate for the task it holds, pushed: one line in the task's own file."""
+        world = world or self.w
+        task = next(task for task, (login, state) in world.deals().items() if login == fork.login and state == "live")
+        return fork.fresh(f"hive/submit/{task}").submit(task, path=f"src/t{int(task[-4:])}.c", content=f"int t{fork.id};\n")
+
+    def deal_lines(self, world=None):
+        """The deals the ledger holds, in its order: [(login, task)]."""
+        return [(e["member"], e["task"]) for e in (world or self.w).load()[2].events if e["type"] == "deal"]
+
+    def standing(self, member_id, world=None):
+        config, _, ledger = (world or self.w).load()
+        return ledger.standing(member_id, hive.now(), config)
+
+    def named(self, login, world=None):
+        """The ledger's lines that name an account, by its number, its fork's or its login."""
+        number = self.LOGINS[login]
+        return [e for e in (world or self.w).load()[2].events if e.get("member_id") == number or e.get("repo_id") == number + 1000 or e.get("member") == login]
+
+    def unused(self, sha, world=None):
+        """True if an ask is one the hive still reads: its commit is in no list of what it does not read again."""
+        return all(sha not in shas for shas in hive.read_ignored((world or self.w).state).values())
+
+    def test_a_project_deals_to_no_new_member_beyond_what_its_guardians_cover_and_goes_on_with_those_it_has(self):
+        bob, carol, dave = self.forks("bob", "carol", "dave")
+        asks = {fork.login: fork.ready() for fork in (self.alice, bob, carol, dave)}
+        made = self.w.plan()
+        taken = [deal["member"] for deal in made["deals"]]
+        self.assertEqual((len(taken), made["conditional"]), (2, []), "four ask, and the project's one guardian covers two members")
+        left = sorted(set(asks) - set(taken))
+        self.finish()
+        self.assertEqual([login for login, _ in self.deal_lines()], taken)
+        for login in left:
+            self.assertEqual(self.named(login), [], "no line names the member that was passed over")
+            self.assertEqual((self.standing(self.LOGINS[login]), self.unused(asks[login])), ((1, None, 0), True),
+                             "it stands where a member that never asked stands, and its ask is still read")
+        self.assertEqual(self.w.feed_file()["members"], {"active": 2, "active_days": 30, "cover": 2, "takes_new": False,
+                                                         "active_marks": sorted(hive.member_mark(login) for login in taken)})
+        self.assertEqual(self.w.plan()["deals"], [], "the base is full: the next plan deals to no new member either")
+        # The two members the project has go on: each pushes its work and asks again, and is dealt its next task in the
+        # run that accepts it. The two that were passed over still wait.
+        for login in taken:
+            self.work(self.w.forks[login])
+            self.w.forks[login].ready()
+        self.w.plan()
+        self.assertEqual(sorted(o["result"] for o in self.finish()), ["accepted", "accepted"])
+        self.assertEqual(sorted(login for login, _ in self.deal_lines()), sorted(taken * 2), "a second task for each member the project has, and no other deal")
+        self.assertEqual(self.w.feed_file()["members"]["active"], 2)
+        for login in left:
+            self.assertEqual((self.standing(self.LOGINS[login]), self.unused(asks[login])), ((1, None, 0), True))
+
+    def test_accounts_that_were_dealt_tasks_and_let_them_run_out_hold_no_place_once_their_deals_are_over(self):
+        """A task in hand holds a place for as long as its deal lives, and no longer: as many accounts as the project's
+        guardians cover are dealt a task and push nothing. Once their deals are over, none of them is active, and a
+        newcomer is dealt a task in the very run that finds them over."""
+        bob, carol = self.forks("bob", "carol")
+        self.assertEqual(sorted(self.dealt_to(self.alice, bob)), ["alice", "bob"])
+        carol.ready()
+        self.assertEqual((self.w.plan()["deals"], self.members()), ([], (2, 2, False)), "while their deals live, they hold the two places")
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T16:00:01Z"}):  # the deals' three hours and the hour of grace are past
+            made = self.w.plan()
+            self.assertEqual((sorted(e["member_id"] for e in made["expiries"]), [deal["member"] for deal in made["deals"]]), ([101, 102], ["carol"]))
+            self.finish()
+            self.assertEqual(self.members(), (1, 2, True), "the newcomer alone, with its task in hand")
+
+    def test_a_member_whose_candidate_was_refused_holds_no_place_after_its_deal_has_ended(self):
+        self.w.set_config({**self.config, "members": {"per_guardian": 1}})
+        bob, = self.forks("bob")
+        self.dealt_to(self.alice)
+        self.work(self.alice)
+        bob.ready()
+        self.assertEqual(self.w.plan()["deals"], [], "while its candidate waits, its deal lives: the one place is taken")
+        self.assertEqual([o["reason"] for o in self.finish(judge=lambda *answer: {"code": 1})], ["judge_refused"])
+        self.assertEqual(self.members(), (0, 1, True), "refused: the deal is over, and nothing the project took holds the place")
+        self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], ["bob"])
+
+    def test_a_member_is_active_for_so_many_days_after_a_candidate_of_its_own_was_accepted_to_the_second(self):
+        """members.active_days: how long an accepted candidate keeps its member active, counted from the instant of
+        the acceptance's line. Up to that instant the place is the member's, with no task in hand and no ask; a
+        second later it is free, and the newcomer that waited is dealt a task."""
+        self.w.set_config({**self.config, "members": {"per_guardian": 1, "active_days": 2}})
+        bob, = self.forks("bob")
+        self.dealt_to(self.alice)
+        self.accepted(self.alice)
+        self.assertEqual([e["at"] for e in self.w.load()[2].events if e["type"] == "verdict"], [NOW])
+        bob.ready()
+        self.assertEqual((self.w.plan()["deals"], self.members(), self.w.deals()), ([], (1, 1, False), {self.deal_lines()[0][1]: ("alice", "closed")}),
+                         "no live deal: the acceptance holds the place")
+        for instant, dealt in (("2026-11-14T12:00:00Z", []), ("2026-11-14T12:00:01Z", ["bob"])):
+            with mock.patch.dict(os.environ, {"HIVE_NOW": instant}):
+                self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], dealt, instant)
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-14T12:00:01Z"}):
+            self.finish()
+            self.assertEqual((self.members(), self.w.feed_file()["members"]["active_marks"]), ((1, 1, False), [hive.member_mark("bob")]))
+
+    def test_a_member_that_holds_a_live_deal_is_active_whatever_the_window(self):
+        """A task in hand is a place held, however long ago it was dealt: here a deal lasts three days and an
+        acceptance keeps a member active for one. Two days on, the member's deal is older than that and still
+        lives: it is active, and the newcomer waits."""
+        self.w.set_config({**self.config, "deal_hours": 72, "members": {"per_guardian": 1, "active_days": 1}})
+        bob, = self.forks("bob")
+        self.dealt_to(self.alice)
+        bob.ready()
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-14T12:00:00Z"}):
+            made = self.w.plan()
+            self.assertEqual((made["expiries"], made["deals"]), ([], []))
+            self.finish()
+            self.assertEqual(self.members(), (1, 1, False))
+            self.assertTrue(self.w.next("bob").startswith("WAIT: the project's trusted base covers 1 active member(s) and has them"))
+
+    def test_an_account_the_project_bans_or_no_longer_invites_frees_its_place_at_once(self):
+        """An account the project's file does not take today is no member of it, whatever the ledger holds: one it
+        bans (by its number, or by the login of its deal's line), or one it does not name where it is open by
+        invitation. With a task in hand or with an acceptance in the window, it holds no place from the run that
+        reads the file, and the newcomer that waited is dealt a task in that run."""
+        for name, members in (("banned by its number", {"banned": [101]}), ("banned by the login of its lines", {"banned": ["Alice"]}),
+                              ("not named, in a project open by invitation now", {"only": [102, 103]})):
+            for held in ("a task in hand", "an acceptance in the window"):
+                with self.subTest(name, held=held):
+                    world = self.apart(World(tempfile.mkdtemp(dir=self.tmp.name), {**self.config, "members": {"per_guardian": 1}}))
+                    alice, bob = self.forks("alice", "bob", world=world)
+                    alice.ready()
+                    world.plan()
+                    self.finish(world)
+                    if held == "an acceptance in the window":
+                        self.work(alice, world)
+                        world.plan()
+                        self.assertEqual([o["result"] for o in self.finish(world)], ["accepted"])
+                    bob.ready()
+                    self.assertEqual((world.plan()["deals"], world.feed_file()["members"]["active"]), ([], 1), "the one place is that member's")
+                    world.set_config({**self.config, "members": {"per_guardian": 1, **members}})
+                    self.assertEqual([deal["member"] for deal in world.plan()["deals"]], ["bob"])
+                    self.finish(world)
+                    said = world.feed_file()["members"]
+                    self.assertEqual((said["active"], said["active_marks"]), (1, [hive.member_mark("bob")]), "the newcomer's, from that run on")
+
+    def test_a_member_whose_candidate_waits_is_dealt_its_next_task_in_a_full_project_and_a_newcomer_is_not(self):
+        """A member that pushed its candidate and asks for the next holds a live deal: it is active, and the plan keeps
+        its next task for it as it would without the bound, in a project that has the members it covers. The plan
+        counts it as the member it is, and the newcomer that asks in the same plan is passed over."""
+        self.w.set_config({**self.config, "members": {"per_guardian": 1}})
+        bob, = self.forks("bob")
+        self.dealt_to(self.alice)
+        self.work(self.alice)
+        self.alice.ready()
+        bob.ready()
+        made = self.w.plan()
+        self.assertEqual(([deal["member"] for deal in made["conditional"]], made["deals"]), (["alice"], []))
+        self.assertEqual([o["result"] for o in self.finish()], ["accepted"])
+        self.assertEqual(([login for login, _ in self.deal_lines()], self.named("bob"), self.members()), (["alice", "alice"], [], (1, 1, False)))
+
+    def test_a_new_member_is_admitted_when_the_project_names_one_more_guardian(self):
+        self.w.set_config({**self.config, "members": {"per_guardian": 1}})
+        bob, carol = self.forks("bob", "carol")
+        self.alice.ready()
+        self.w.plan()
+        self.finish()
+        bob.ready()
+        carol.ready()
+        self.assertEqual(self.w.plan()["deals"], [])
+        self.w.set_config({**self.config, "guardians": {**GUARDIANS, "accounts": [201, 202]}, "members": {"per_guardian": 1}})
+        made = self.w.plan()
+        self.assertEqual(len(made["deals"]), 1, "two guardians cover two members: one more than the project has")
+        self.finish()
+        self.assertEqual(self.w.feed_file()["members"], {"active": 2, "active_days": 30, "cover": 2, "takes_new": False,
+                                                         "active_marks": sorted(hive.member_mark(login) for login in ("alice", made["deals"][0]["member"]))})
+
+    def test_the_order_of_the_askers_is_the_same_under_the_bound_which_holds_new_members_back_and_moves_nobody_ahead(self):
+        """On the same draw: below the bound the plan is, deal for deal, the plan without it; at the bound the new
+        members it deals to are the first of that same order, with the same tasks; and where members the project has
+        ask among new ones, they are dealt in the order they would have been, the new ones between them passed over."""
+        bob, carol, dave, erin = self.forks("bob", "carol", "dave", "erin")
+
+        def planned(members):
+            self.w.set_config({**self.config, "members": members})
+            with mock.patch.object(hive.secrets, "token_hex", return_value="ab" * 16):
+                made = self.w.plan()
+            return [(deal["member"], deal["task"]) for deal in (*made["deals"], *made["conditional"])], sorted(made)
+
+        for fork in (self.alice, bob, carol, dave, erin):
+            fork.ready()
+        free, keys = planned({})
+        self.assertEqual(len(free), 5, "no bound: each asker is dealt a task")
+        self.assertEqual(planned({"per_guardian": 5}), (free, keys), "five members covered: the same plan, deal for deal and key for key")
+        self.assertEqual(planned({"per_guardian": 9}), (free, keys))
+        for covered in (1, 2, 4):
+            self.assertEqual(planned({"per_guardian": covered}), (free[:covered], keys), "the first of the same order, each with the task it would have had")
+        # Two members the project has, and three new ones, all asking.
+        self.w.set_config({**self.config, "members": {"per_guardian": 2}})
+        with mock.patch.object(hive.secrets, "token_hex", return_value="cd" * 16):
+            self.w.plan()
+        self.finish()
+        has = [login for login, _ in self.deal_lines()]
+        for login in has:
+            self.work(self.w.forks[login])
+            self.w.forks[login].ready()
+        free, _ = planned({})
+        bound, _ = planned({"per_guardian": 2})
+        self.assertEqual((len(free), [login for login, _ in bound]), (5, [login for login, _ in free if login in has]),
+                         "the two members the project has, in the order they had among the five")
+
+    def test_two_new_members_ask_where_there_is_room_for_one_and_the_other_is_passed_over_at_no_cost(self):
+        bob, carol = self.forks("bob", "carol")
+        self.alice.ready()
+        self.w.plan()
+        self.finish()  # one member, of the two the project's guardian covers
+        asks = {"bob": bob.ready(), "carol": carol.ready()}
+        with mock.patch.object(hive.secrets, "token_hex", return_value="ef" * 16):
+            self.w.set_config({"judge": GUARDED, "guardians": GUARDIANS})
+            order = [deal["member"] for deal in self.w.plan()["deals"]]  # the order of the two, as a plan without the bound deals them
+            self.w.set_config(self.config)
+            made = self.w.plan()
+        self.assertEqual((sorted(order), [deal["member"] for deal in made["deals"]]), (["bob", "carol"], order[:1]), "the first of today's order")
+        written = len((self.w.state / "ledger.jsonl").read_text().splitlines())
+        self.finish()
+        first, other = order
+        lines = (self.w.state / "ledger.jsonl").read_text().splitlines()
+        self.assertEqual((len(lines), json.loads(lines[-1])["member"]), (written + 1, first), "one line more: the deal of the one that was admitted")
+        self.assertEqual(self.named(other), [], "and none of the other")
+        self.assertEqual((self.standing(self.LOGINS[other]), self.unused(asks[other]), self.unused(asks[first])), ((1, None, 0), True, False),
+                         "no wait, no deal counted, and its ask still read")
+        self.assertTrue(self.w.next(first).startswith("TASK toy-"))
+        self.assertEqual(self.w.next(other), "WAIT: the project's trusted base covers 2 active member(s) and has them: the hive deals no task to a new "
+                                             "member for now; come back later\n")
+
+    def test_the_steps_that_write_take_no_plan_that_deals_to_more_new_members_than_the_projects_guardians_cover(self):
+        """The plan comes from the step that read the forks. Before they write or push anything, the steps that hold a
+        key count the project's active members themselves, in the ledger as the plan read it, and hold the plan's
+        deals against what the project's file says its guardians cover: a plan that admits one new member more, or
+        one at all where the base has the members it covers, is not the hive's, and nothing of it is written. Nor is
+        a plan that frees a place by saying a deal is over which the ledger does not hold as live, or whose time is
+        not up on a task that is open. (That a member's fork held no candidate for a deal whose time is up is the
+        plan step's reading of the fork: no step that writes reads one.)"""
+        bob, carol = self.forks("bob", "carol")
+        self.dealt_to(self.alice)  # one member, with a task in hand, of the two the project's guardian covers
+        bob.ready()
+        carol.ready()
+        made = self.w.plan()
+        dealt, = made["deals"]
+        other = {"bob": bob, "carol": carol}[({"bob", "carol"} - {dealt["member"]}).pop()]
+        more = {"task": next(task["id"] for task in self.APART if task["id"] not in self.w.deals() and task["id"] != dealt["task"]),
+                "member": other.login, "member_id": other.id, "repo_id": other.id + 1000}
+        written, tip = (self.w.state / "ledger.jsonl").read_text(), self.w.tip()
+
+        def refused(said, **changes):
+            for step in (lambda: self.w.record(**changes), lambda: self.w.apply({}, **changes)):
+                with self.assertRaisesRegex(hive.HiveError, said + ": nothing is written"):
+                    step()
+            self.assertEqual(((self.w.state / "ledger.jsonl").read_text(), self.w.tip()), (written, tip))
+
+        beyond = "more new members than the project's guardians cover"
+        refused(beyond, deals=[dealt, more])  # one new member more than the base covers
+        refused(beyond, conditional=[{**more, "after": ["1" * 40], "asks": ["2" * 40]}])  # the same, as a deal kept for after the judging
+        held, = [deal for deal in self.w.load()[2].deals().values() if deal["member_id"] == 101]
+        over = {"task": held["task"], "member_id": 101, "deal": held["at"], "fault": False}
+        refused("a deal is over whose time is not up, on a task that is open", expiries=[over], deals=[dealt, more])  # a place freed by a deal that still runs
+        refused("a deal is over whose time is not up, on a task that is open", expiries=[{**over, "fault": True}])
+        for unheld in ({**over, "deal": "2026-11-12T11:11:11Z"}, {**over, "member_id": other.id}, {**over, "task": more["task"]}):
+            refused("a deal is over that the ledger does not hold as live", expiries=[unheld], deals=[dealt, more])
+        self.finish()  # the plan as the first step made it is recorded: the base now has the two members it covers
+        written = (self.w.state / "ledger.jsonl").read_text()
+        self.assertEqual((self.w.plan()["deals"], self.members()), ([], (2, 2, False)))
+        refused(beyond, deals=[more])  # a new member where the base is full
+        again = {"task": more["task"], "member": "alice", "member_id": 101, "repo_id": 1101}
+        self.w.record(deals=[again])
+        self.assertEqual(self.deal_lines()[-1], ("alice", more["task"]), "a deal to a member that is active is none of this rule's")
+
+    def test_how_many_members_a_guardian_covers_is_a_whole_number_in_a_project_that_names_a_guardian(self):
+        path = self.w.registry / "hive/projects/toy.json"
+        self.assertEqual((hive.load_config(path)["members"]["per_guardian"], hive.load_config(path)["members"]["active_days"], hive.cover_of(hive.load_config(path))),
+                         (2, 30, 2))
+        for members, cover in (({}, None), ({"per_guardian": None}, None), ({"per_guardian": 1}, 1), ({"per_guardian": 40, "active_days": 1}, 40),
+                               ({"active_days": hive.ACTIVE_DAYS_MAX}, None)):
+            self.w.set_config({**self.config, "members": members})
+            self.assertEqual(hive.cover_of(hive.load_config(path)), cover, members)
+        self.w.set_config({**self.config, "guardians": {**GUARDIANS, "accounts": [201, 202, 203]}, "members": {"per_guardian": 4}})
+        self.assertEqual(hive.cover_of(hive.load_config(path)), 12, "what one guardian covers, times the guardians the file names")
+        for wrong in ({"per_guardian": 0}, {"per_guardian": -2}, {"per_guardian": 2.0}, {"per_guardian": "2"}, {"per_guardian": True},
+                      {"per_guardian": [2]}, {"per_guardian": {}}, {"active_days": 0}, {"active_days": -30}, {"active_days": 1.5},
+                      {"active_days": "30"}, {"active_days": None}, {"active_days": True}, {"active_days": hive.ACTIVE_DAYS_MAX + 1},
+                      {"per_guardian": 2, "active_days": 0}):
+            self.w.set_config({**self.config, "members": wrong})
+            with self.subTest(wrong=wrong):
+                for load in (lambda: hive.load_config(path), lambda: hive.hive_project(self.w.registry, "toy")):
+                    with self.assertRaisesRegex(hive.HiveError, "members.per_guardian|members.active_days"):
+                        load()
+        self.w.set_config({"judge": GUARDED, "members": {"per_guardian": 2}})
+        with self.assertRaisesRegex(hive.HiveError, "members.per_guardian: the project names no guardian .*would admit no member at all"):
+            hive.load_config(path)
+        self.w.set_config({"judge": GUARDED, "members": {"active_days": 7}})
+        self.assertEqual((hive.load_config(path)["members"]["active_days"], hive.cover_of(hive.load_config(path))), (7, None),
+                         "a window alone, in a project without guardians, bounds nothing")
+
+    def test_a_project_that_sets_no_such_bound_runs_as_before(self):
+        """A project whose file says nothing of what a guardian covers has no bound: its plans are, key for key, the
+        plans they were, and its ledger is, line for line, the one it writes with a bound it never reaches, with or
+        without guardians. The projects the registry declares load with what their files say, and nothing added."""
+        def history(config):
+            """The same asks, work and runs under a project's file, on the same draws: (the ledger's lines, each plan's
+            keys and deals, what the feed says of the members)."""
+            drawn = iter(range(10 ** 6))
+            with mock.patch.object(hive.secrets, "token_hex", side_effect=lambda size: hashlib.sha256(f"same{next(drawn)}".encode()).hexdigest()[:2 * size]):
+                world = self.apart(World(tempfile.mkdtemp(dir=self.tmp.name), config))
+                forks, plans = self.forks("alice", "bob", "carol", "dave", world=world), []
+                for fork in forks:
+                    fork.ready()
+                for _ in range(2):
+                    made = world.plan()
+                    plans.append((sorted(made), [(deal["member"], deal["task"]) for deal in (*made["deals"], *made["conditional"])]))
+                    self.finish(world)
+                    for fork in forks:
+                        self.work(fork, world)
+                        fork.ready()
+                return [json.loads(line) for line in (world.state / "ledger.jsonl").read_text().splitlines()], plans, world.feed_file()["members"]
+
+        keys = ["accounts", "at", "bundle_sha256", "conditional", "deals", "expiries", "ignored", "key", "landed", "ledger", "project", "protocol",
+                "queue", "tip"]
+        lines, plans, members = history({"judge": GUARDED})
+        self.assertEqual(([named for named, _ in plans], [len(deals) for _, deals in plans]), ([keys] * 2, [4, 4]), "every asker is dealt, at each run")
+        self.assertEqual(members, {"active": 4, "active_days": 30, "cover": None, "takes_new": True,
+                                   "active_marks": sorted(hive.member_mark(login) for login in ("alice", "bob", "carol", "dave"))})
+        for name, config, cover in (("guardians, and no bound", {"judge": GUARDED, "guardians": GUARDIANS}, None),
+                                    ("a bound the project never reaches", {"judge": GUARDED, "guardians": GUARDIANS, "members": {"per_guardian": 50}}, 50)):
+            with self.subTest(name):
+                self.assertEqual(history(config), (lines, plans, {**members, "cover": cover}))
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])  # set when the tests run on a copy
+        for path in sorted((registry / "hive/projects").glob("*.json")):
+            config, raw = hive.load_config(path), json.loads(path.read_text())
+            self.assertEqual((config["members"], hive.cover_of(config)), ({**hive.DEFAULTS["members"], **raw.get("members", {})}, None), path.name)
+            self.assertNotIn("per_guardian", raw.get("members", {}), path.name)
+
+    def test_next_tells_a_new_account_to_come_back_later_when_the_base_is_full_and_says_the_usual_lines_otherwise(self):
+        """The feed says how many members the project's guardians cover, whether a new member is dealt a task now, and
+        which members are active, under the hash of each login. A worker whose account is not one of them, in a
+        project that deals to no new member now, is told to come back later, whether or not it has asked. The feed is
+        believed for that in the very shape the hive writes: otherwise the worker asks as it would."""
+        self.w.set_config({**self.config, "members": {"per_guardian": 1}})
+        bob, = self.forks("bob")
+        full = "WAIT: the project's trusted base covers 1 active member(s) and has them: the hive deals no task to a new member for now; come back later\n"
+        self.assertTrue(self.w.next("bob").startswith("WAIT: the hive has not published a feed"))
+        self.dealt_to(self.alice)
+        self.assertEqual((self.w.next("bob"), self.w.next("alice").splitlines()[0][:9]), (full, "TASK toy-"), "the one member holds a task")
+        self.assertTrue(any(known.match(full.rstrip("\n")) for known in WORKER_LINES), "a line of the tool's own list")
+        self.accepted(self.alice)
+        self.assertEqual((self.w.next("bob"), self.w.next("alice")[:5], self.members()), (full, "ASK: ", (1, 1, False)),
+                         "its work is accepted: it holds no task, it is active, and it may ask for the next")
+        bob.ready()
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T19:00:00Z"}):  # seven hours on: its ask has waited, and the answer is the same
+            self.w.plan()
+            self.finish()
+            self.assertEqual(self.w.next("bob"), full)
+        feed = self.w.feed_file()
+        for shaped in ({"cover": "1"}, {"cover": 0}, {"cover": True}, {"takes_new": "no"}, {"takes_new": None}, {"active_marks": "none"},
+                       {"active_marks": [hive.member_mark("bob")]}, {"takes_new": True}):
+            (self.w.state / "feed.json").write_text(json.dumps({**feed, "members": {**feed["members"], **shaped}}))
+            with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T19:00:00Z"}):
+                self.assertTrue(self.w.next("bob").startswith("ASK-UNANSWERED since "), shaped)
+        for members in (None, [], "full", {}):
+            (self.w.state / "feed.json").write_text(json.dumps({**feed, "members": members}))
+            self.assertTrue(self.w.next("carol", cwd=bob.work).startswith("ASK: you hold no task"), members)
+        self.w.set_config({**self.config, "members": {"per_guardian": 2}})
+        with mock.patch.dict(os.environ, {"HIVE_NOW": "2026-11-12T20:00:00Z"}):
+            self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], ["bob"], "one more member covered: the ask that waited is served")
+            self.finish()
+            self.assertEqual((self.w.next("bob").splitlines()[0][:9], self.members()), ("TASK toy-", (2, 2, False)))
 
 
 class TestTheWorkersGuide(unittest.TestCase):

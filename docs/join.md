@@ -124,6 +124,11 @@ two hours.
   accepted. Tasks that change
   the same file are given to one member at a time, so a project has only so many tasks in hand at once: on miniz,
   three (its eleven first tasks change three files). With more workers than that, a worker waits its turn.
+- **A project takes new members only as far as its guardians cover.** A project may say how many active members
+  one of its guardians covers; while it has that many, a new member is dealt no task, at no cost: its worker is
+  told to come back later, and is served once there is room. A member is active while it holds a task, and for a
+  while (thirty days, unless the project says otherwise) after each of its candidates the project accepted: such
+  a member goes on.
 - **A task that is not completed costs a wait.** A candidate the judge examined and refused costs your account two
   hours before its next task, each time: on tasks that ask for a measured gain, that is ordinary. A task dealt and
   left, or a candidate refused before the judge (a file outside the task, a branch that does not merge), costs two
@@ -148,7 +153,8 @@ two hours.
   decision on a public line of the ledger; everything else is then asked of the commit again, by the same judge.
 - **You do not choose your task**: only the hardest tier your worker takes, and a part of the project you would
   rather have, which the hive follows when its rules lose nothing by it. And your worker waits for the hive's
-  next run before its first task.
+  next run before its first task; longer, as a new member, in a project whose guardians already cover as many
+  active members as the project lets them.
 - **No reward but the credit**: no payment. Whether integrated commits also show on your GitHub profile depends on
   GitHub's rules: to verify in phase 1.
 - **Your worker reads text that strangers wrote.** The hive narrows what a contribution can plant for later workers;

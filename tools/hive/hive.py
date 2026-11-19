@@ -126,6 +126,7 @@ UNANSWERED_RUNS = 6  # a deal the hive spent this many runs on without an answer
 VOID_MEMORY_DAYS = 7  # how long a promised push the hive gave up on is still looked for in the project's history
 UNREAD_HOURS = 24  # a deal whose member's fork could not be read for this long after its time is closed, at no cost to the member
 BACKOFF_MAX_HOURS = 7 * 24
+ACTIVE_DAYS_MAX = 3650  # the longest a project may count a member active after a deal (members.active_days)
 JUDGED_REASONS = ("judge_refused", "goal_not_met", "requirement_not_met")  # the judge examined the candidate: a real attempt
 NEAR_REASONS = ("not_proven",)  # examined, correct, the task's own figure reached: only a proof is missing or short
 MEASURED_REASONS = ("goal_not_met", "requirement_not_met", "not_proven")  # the judge ran, the candidate is correct, a figure is short: the line keeps the figures
@@ -186,7 +187,10 @@ DEFAULTS = {
                "heads_per_fork": 30, "judgements_per_sweep": 20, "discovery_seconds": 900, "judging_seconds": 14400, "queue": 500},
     # deals_per_day: the deals an account may be given in a day, not counting those whose candidate was accepted
     # preferences: whether the hive follows, when its rules lose nothing by it, the part of the project an ask prefers
-    "members": {"min_account_age_days": 90, "deals_per_day": 5, "banned": [], "only": None, "preferences": True},
+    # per_guardian: how many active members one guardian of the project covers; none: the project sets no such bound
+    # active_days: for how many days after a candidate of its own was accepted a member stays active (active_members)
+    "members": {"min_account_age_days": 90, "deals_per_day": 5, "banned": [], "only": None, "preferences": True,
+                "per_guardian": None, "active_days": 30},
     "models": [],  # the model identifiers the project keeps statistics for; any other is recorded as undeclared
     "judge": {},
     # guardians: the accounts the project trusts to admit a refused commit, and the figures they may waive (guardians_of);
@@ -511,6 +515,19 @@ def load_config(path):
     if not (isinstance(judge["kind"], str) and judge["kind"] in JUDGES):
         raise HiveError(f"{path}: judge.kind: a kind of judge this tool holds ({', '.join(sorted(JUDGES))})")
     config["guardians"] = guardians_of(raw.get("guardians"), judge, path)
+    # The members a project's trusted base covers (cover_of). A member stays active for a whole number of days after an
+    # accepted candidate, one at least; a bound per guardian is a whole number of members, one at least, in a project that
+    # names a guardian: with none to count, the bound would be nought and the project would admit nobody, which is
+    # a mistake of the file to mend, never a rule to run.
+    if type(config["members"]["active_days"]) is not int or not 1 <= config["members"]["active_days"] <= ACTIVE_DAYS_MAX:
+        raise HiveError(f"{path}: members.active_days: a whole number of days, from 1 to {ACTIVE_DAYS_MAX}")
+    per_guardian = config["members"]["per_guardian"]
+    if per_guardian is not None and (type(per_guardian) is not int or per_guardian < 1):
+        raise HiveError(f"{path}: members.per_guardian: how many active members one guardian covers: a whole number, 1 at least (or "
+                        "none: no such bound)")
+    if per_guardian is not None and config["guardians"] is None:
+        raise HiveError(f"{path}: members.per_guardian: the project names no guardian (guardians.accounts): a bound for each guardian, "
+                        "with no guardian, would admit no member at all")
     return config
 
 
@@ -558,6 +575,44 @@ def guardians_of(raw, judge, path):
 def guardian_accounts(config):
     """The numbers of the accounts the project names as guardians: none for a project that names none."""
     return set((config.get("guardians") or {}).get("accounts", ()))
+
+
+def cover_of(config):
+    """How many active members the project's trusted base covers: what its file says one guardian covers
+    (members.per_guardian) times the number of accounts it names as guardians; None for a project that sets no such
+    bound. A project's base of trusted accounts keeps pace with its members: the project's lead says how many members
+    one guardian covers, the hive counts the members itself (active_members), and it deals to no NEW member
+    beyond what the base covers (plan); the members it has go on, whatever their number."""
+    per_guardian = config["members"].get("per_guardian")
+    return None if per_guardian is None else per_guardian * len(guardian_accounts(config))
+
+
+def active_members(ledger, instant, config):
+    """The project's active members at an instant, by a ledger and the project's file: the numbers of the accounts
+    that hold a place in what the project's trusted base covers (cover_of). A member is active when it holds a live
+    deal (a task is being worked on now, however long ago it was dealt), or when a candidate of its own was ACCEPTED
+    within members.active_days before the instant (a verdict of acceptance dated in that window, to the second; one
+    a guardian's ruling brought is one). Nothing else makes a member active: not an ask, not a deal that ran out,
+    not a candidate that was refused. A place is held by work the project took, or by a task in hand; an account
+    whose deal ended otherwise holds none from then on, and what it waits before its next deal is what any member
+    waits (Ledger.standing).
+
+    And an account the project's file does not take today is no member of it, whatever the ledger holds: one it
+    bans, or one it does not name where it is open by invitation (barred, asked with the account's number and with
+    each login the lines that count give for it: its deal's, its acceptance's). Its place is free from the run
+    that reads the file.
+
+    The same reading at every step: the plan asks it of the ledger once the deals it found over are closed, the
+    steps that write of the ledger as the plan counted it (check_cover), the feed of the ledger as it stands."""
+    since, until, logins = iso(instant - dt.timedelta(days=config["members"]["active_days"])), iso(instant), {}
+    for deal in ledger.deals().values():
+        if deal["state"] == "live":
+            logins.setdefault(deal["member_id"], set()).add(deal["member"])
+    for event in ledger.events:
+        if event.get("type") == "verdict" and event.get("result") == "accepted" and type(event.get("member_id")) is int \
+                and stamp(event.get("at")) and since <= event["at"] <= until:
+            logins.setdefault(event["member_id"], set()).add(event["member"] if isinstance(event.get("member"), str) else "")
+    return {member_id for member_id, named in logins.items() if not any(barred({"id": member_id, "login": login}, config) for login in named)}
 
 
 def waivable(config):
@@ -2075,6 +2130,40 @@ def check_rulings(plan_, config, tasks, ledger):
     return answers
 
 
+def check_cover(plan_, config, tasks, read, counted):
+    """Holds the plan's deals against what the project's trusted base covers (cover_of): what a step that writes asks
+    before it writes or pushes anything, from the project's file, its tasks and the ledger, at the plan's own
+    instant. `read`: the ledger as the plan read it, before the deals the plan says are over; `counted`: the same
+    with them (as_the_plan_counted). A project that sets no bound asks nothing here.
+
+    The members that are active (active_members) are counted in `counted`, as the plan counted them: a place is
+    held by a live deal, and the deals the plan says are over hold none. So a step first holds each of those
+    against the ledger and the registry, as far as they tell: it is a deal the ledger holds as live, of that
+    account and that instant, and either its time is up at the plan's instant (its end and the project's grace are
+    past) or its task is no longer open (closed, listed no more, or done). What the plan step alone read stays the
+    plan's word: that the member's fork, read whole, held no candidate for a deal whose time is up.
+
+    Then the accounts the plan deals to, the deals it keeps for after the judging included, that are not active
+    are new members: with the members that are active, they are no more than the base covers. A plan that frees a
+    place by a deal that is not over, that admits one new member more than the base covers, or one at all where
+    the base has the members it covers, is not the hive's: HiveError, and nothing of it is written."""
+    cover = cover_of(config)
+    if cover is None:
+        return
+    instant, held, done = parse_iso(plan_["at"]), read.deals(), read.done()
+    for expiry in plan_["expiries"]:
+        deal, task = held.get(expiry["task"]), tasks.get(expiry["task"])
+        if not (deal and deal["state"] == "live" and deal["member_id"] == expiry["member_id"] and deal["at"] == expiry["deal"]):
+            raise HiveError("the plan says a deal is over that the ledger does not hold as live: nothing is written")
+        still_open = task is not None and not task.get("closed") and expiry["task"] not in done
+        if still_open and instant <= parse_iso(deal["until"]) + dt.timedelta(hours=config["grace_hours"]):
+            raise HiveError("the plan says a deal is over whose time is not up, on a task that is open: nothing is written")
+    active = active_members(counted, instant, config)
+    new = {deal["member_id"] for deal in (*plan_["deals"], *plan_["conditional"])} - active
+    if new and len(active) + len(new) > cover:
+        raise HiveError("the plan deals to more new members than the project's guardians cover: nothing is written")
+
+
 def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False):
     """The run's plan: everything the later steps need to know about the forks, read once, now. The step that makes
     it runs nobody's code and holds no secret; no later step can change it; the steps that write read it and never
@@ -2113,6 +2202,12 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
        Tasks that share a file are never held by two members at
        once: such a task is dealt only when the others are free too. A member that holds a candidate in this run is dealt
        conditionally: its new deal is recorded, and its ask used, only if that candidate is accepted in this run.
+       Where the project's file says how many active members one guardian covers, a NEW member (an asker that is
+       not active: it holds no live deal, and no candidate of its own was accepted within the project's window:
+       active_members) is dealt a task only while the active members, those this plan has just admitted included,
+       are fewer than the project's guardians cover (cover_of); beyond that it is passed over, at no cost, and its
+       ask waits for a plan that finds room. Members the project has go on as they would, and the order of the
+       askers is the one above.
     The draws use a key drawn AFTER the forks were read.
 
     A MEMBER MAY SAY WHICH PART OF THE PROJECT IT PREFERS, and the hive follows it only when that costs its rules
@@ -2305,7 +2400,19 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         if "admit" in candidate:
             dealable -= {candidate["task"]} | rivals[candidate["task"]]
     dealt, conditional_deals, offered = [], [], config["members"]["preferences"]
+    # The members the project's trusted base covers (cover_of). A member that is active, by the ledger as it stands
+    # here (active_members: it holds a deal that is still live now that the deals found over are closed, or a
+    # candidate of its own was accepted within the project's window), is served as it would be without the bound;
+    # an asker that holds a candidate in this run holds a live deal, and is one. An asker that is not active is a
+    # NEW member: it is dealt a task only while the active members, and the new ones this plan has dealt to before
+    # it, are fewer than the base covers. Otherwise it is passed over: no deal, nothing against it, its ask left
+    # where it is, for the plan that finds room (a deal ends without an acceptance, a member's last acceptance
+    # leaves the window, the project turns an account away or names one more guardian). The askers come in the
+    # order above, which reads none of this: the bound holds an asker back, and moves nobody ahead.
+    cover, active, admitted = cover_of(config), active_members(ledger, instant, config), set()
     for klass, _, member_id, tier, conditional in askers:
+        if cover is not None and member_id not in active and len(active) + len(admitted) >= cover:
+            continue
         mine = [t for t in dealable if int(tasks[t].get("tier", 1)) <= tier]
         if not mine:
             continue
@@ -2325,6 +2432,8 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
             said = {"prefer": {"file": part, "kept": False, "because": because} if because else {"file": part, "kept": True}}
         task_id = min(among, key=lambda t: draw(key, member_id, t))
         dealable -= {task_id} | rivals[task_id]
+        if member_id not in active:
+            admitted.add(member_id)  # a new member of this plan: it counts for the askers that come after it
         fork = asks[member_id][0]
         line = {"task": task_id, "member": fork["login"], "member_id": member_id, "repo_id": fork["repo_id"], **said}
         if conditional:
@@ -2555,17 +2664,20 @@ def read_plan(plan_, config):
     return instant, plan_
 
 
-def as_the_plan_counted(ledger, plan_):
+def as_the_plan_counted(ledger, plan_, expiries=True):
     """The ledger as the plan counted with it when it dealt: the lines the plan read (same_ledger holds that they are
     this ledger's first ones), then, in memory only, what the plan itself added before it dealt (plan): the promised
     pushes it found in the project's history, or found missing from it (settle), and the deals it found over. A step
     that writes holds what a deal says of its member against THIS, never against the ledger as it stands when the
     step runs: the plan's own lines are not written yet when the first writing step starts, and by the time a step is
-    run again the run has written more (an answer to that very member's candidate, for a conditional deal)."""
+    run again the run has written more (an answer to that very member's candidate, for a conditional deal).
+    expiries=False: the same before the deals the plan found over are closed: what a step holds those very deals
+    against (check_cover)."""
     counted = ledger.first(plan_["ledger"]["lines"])
     counted.append(settle(counted, parse_iso(plan_["at"]), plan_["landed"]), write=False)
-    counted.append([{"type": "expired", "at": plan_["at"], "run": plan_["key"], "task": e["task"], "member_id": e["member_id"],
-                     "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]], write=False)
+    if expiries:
+        counted.append([{"type": "expired", "at": plan_["at"], "run": plan_["key"], "task": e["task"], "member_id": e["member_id"],
+                         "deal": e["deal"], "fault": e["fault"]} for e in plan_["expiries"]], write=False)
     return counted
 
 
@@ -3066,6 +3178,7 @@ def record(plan_, config, tasks, ledger, state_folder):
     counted = as_the_plan_counted(ledger, plan_)
     for deal in (*plan_["deals"], *plan_["conditional"]):
         deal_prefer(deal, tasks, config, counted)  # a preference that is not the registry's, or not true, stops the step before it writes anything
+    check_cover(plan_, config, tasks, as_the_plan_counted(ledger, plan_, expiries=False), counted)  # nor is a new member admitted beyond what the guardians cover
     # And so does a ruling the project's file and the ledger do not bear out. This step writes no answer to a ruling:
     # the write step does, once it has seen that the project's tip is still the plan's.
     check_rulings(plan_, config, tasks, counted)
@@ -3110,7 +3223,8 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
     counted = as_the_plan_counted(ledger, plan_)
     for deal in (*plan_["deals"], *plan_["conditional"]):
         deal_prefer(deal, tasks, config, counted)  # a preference that is not the registry's, or not true, stops the step before it pushes or writes anything
-    void_rulings = check_rulings(plan_, config, tasks, counted)  # and so does a ruling the project's file and the ledger do not bear out
+    check_cover(plan_, config, tasks, as_the_plan_counted(ledger, plan_, expiries=False), counted)  # and so does a new member beyond what the guardians cover
+    void_rulings = check_rulings(plan_, config, tasks, counted)  # and a ruling the project's file and the ledger do not bear out
     # What this step writes in the ledger is dated now, when it is written: a wait counts from the moment its member
     # can see the answer, however long the judging took. The commits it derives are dated at the plan's instant, as
     # the judging step dated them: the same commits.
@@ -3207,7 +3321,10 @@ def apply(repo, remote, plan_, verdicts, config, tasks, ledger, state_folder, al
 def build_feed(config, tasks, ledger, tip, plan_=None):
     """What a worker reads: the project's tasks and their state, and for each member that holds a deal (under a hash
     of its login, which the worker computes for its own) its task and until when. It holds counts and the tasks' own
-    (trusted) texts: nothing a contributor wrote."""
+    (trusted) texts: nothing a contributor wrote. « members » says where the project's trusted base stands
+    (cover_of): how many members are active, for how many days an acceptance keeps one so, how many its guardians cover
+    (none where the project sets no bound), whether a new member is dealt a task now, and the active members under
+    the same hash of their logins: whole numbers, a yes or a no, and hashes."""
     instant = now()
     done, refusals, deals, proven = ledger.done(), {}, ledger.deals(), ledger.accepted_members()
     refused_members = {}
@@ -3243,10 +3360,19 @@ def build_feed(config, tasks, ledger, tip, plan_=None):
         wait = ledger.standing(member_id, instant, config)[1]
         if wait:
             waits[member_mark(login)] = wait
+    # The members the project's trusted base covers: how many are active now (active_members), for how many days an
+    # accepted candidate keeps its member active, how many the project's guardians cover (none: the project sets no
+    # such bound), whether a new member is dealt a task now, and the active members themselves, each under the
+    # hash of its login, by which a worker finds whether it is one.
+    cover, active = cover_of(config), active_members(ledger, instant, config)
+    base = {"active": len(active), "active_days": config["members"]["active_days"], "cover": cover,
+            "takes_new": cover is None or len(active) < cover,
+            "active_marks": sorted(member_mark(members[member_id]) for member_id in active if member_id in members)}
     return {"protocol": PROTOCOL, "project": config["project"], "repo": config["repo"], "branch": config["branch"],
             "generated_at": iso(instant), "tip": tip, "check": config.get("check", ""),
             "min_account_age_days": config["members"]["min_account_age_days"],
-            "deals_per_day": config["members"]["deals_per_day"], "deals": held, "wait": waits, "tasks": listed}
+            "deals_per_day": config["members"]["deals_per_day"], "deals": held, "wait": waits, "tasks": listed,
+            "members": base}
 
 
 def build_stats(ledger):
@@ -3602,8 +3728,10 @@ def cmd_feed(args):
 # What a worker believes:
 #   - the registry this file runs from: the hive's own code, the projects' settings and their tasks. Trusted;
 #   - the hive's state (--state): believed for what the hive did for THIS member and for nothing else: the task it
-#     dealt it and until when, its wait, whether its candidate was seen and its ask used, and whole numbers (how
-#     often a task was refused). Every other fact comes from the registry, and no text of the state is printed;
+#     dealt it and until when, its wait, whether its candidate was seen and its ask used, whether it is one of the
+#     project's active members where the project's trusted base has all the members it covers (base_full), and whole
+#     numbers (how often a task was refused, how many members the base covers). Every other fact comes from the
+#     registry, and no text of the state is printed;
 #   - the fork's work tree and its .git folder: not trusted once project code ran there, even in the sandbox (which
 #     may leave the repository writable). So each command first checks that the clone's own git settings are the
 #     ones a clone has (plain_clone), runs git on the folders it names with every program a setting could start
@@ -5038,6 +5166,21 @@ def my_deal(feed, login):
     return (deal if ok else None), (wait if until and until > now() else None)
 
 
+def base_full(feed, login):
+    """How many active members the project's trusted base covers, if the feed says that the project has them and
+    deals no task to a new member now, and that this login is not one of its active members; else None. The feed is
+    believed here for whole numbers, a no, and the presence of a hash this tool computes from the login: no text of
+    it. A feed that does not say so in the very shape the hive writes says nothing, and the worker asks as it would
+    without it: the hive itself holds the bound when it deals (plan)."""
+    base = feed.get("members")
+    if not isinstance(base, dict) or base.get("takes_new") is not False:
+        return None
+    cover, marks = base.get("cover"), base.get("active_marks")
+    if type(cover) is not int or not 1 <= cover <= 10 ** 9 or not isinstance(marks, list) or member_mark(login) in marks:
+        return None
+    return cover
+
+
 def feed_counts(feed, task_id):
     """The whole numbers the feed gives about a task: how many candidates the judge refused, for which of this
     file's own reason codes, and the hint. Numbers under this file's own names: no text of the feed."""
@@ -5114,11 +5257,12 @@ def cmd_next(args):
       TASK <id>        the hive dealt it this task (then DEAL, UNTIL, the task's data, CHECK, THEN)
       ASK              it holds no task and no ask is waiting: « ready » asks the hive for one
       ASK-UNANSWERED   its ask has waited ASK_PATIENCE_HOURS: the user's to look at
-      WAIT             nothing to do in this run, for one of eight reasons, each with its own sentence:
+      WAIT             nothing to do in this run, for one of nine reasons, each with its own sentence:
                        the project is paused; no feed yet; a feed this tool does not read; the wait after a deal
-                       that ended without an accepted candidate; an ask the hive has not answered yet; a
-                       candidate pushed and not answered yet; a task the registry does not list as open; too
-                       little left of the deal to start."""
+                       that ended without an accepted candidate; a project whose trusted base has the members it
+                       covers, for an account that is not one of them (base_full); an ask the hive has not
+                       answered yet; a candidate pushed and not answered yet; a task the registry does not list as
+                       open; too little left of the deal to start."""
     if not LOGIN.match(args.login):
         raise HiveError("--login: your GitHub login")
     clone = plain_clone()
@@ -5142,9 +5286,14 @@ def cmd_next(args):
     again = max(1, config["deal_hours"] - WORK_MARGIN_HOURS)
     deal, wait = my_deal(feed, args.login)
     if deal is None:
-        asked = None if wait else waiting_ask(clone, fork, args.login, state)
+        covered = None if wait else base_full(feed, args.login)
+        asked = None if wait or covered is not None else waiting_ask(clone, fork, args.login, state)
         if wait:
             print(f"WAIT until {wait}: your last deal ended without an accepted candidate; the hive deals you nothing before then")
+        elif covered is not None:
+            # (Whether or not an ask is pushed: one that is stays where it is, and is served when there is room.)
+            print(f"WAIT: the project's trusted base covers {covered} active member(s) and has them: the hive deals no task to a new "
+                  "member for now; come back later")
         elif asked is None:
             print(f"ASK: you hold no task. If this worker runs at least every {again} hours, ask for one: hive.py ready --project "
                   f"{config['project']} {said_again(args)}")
