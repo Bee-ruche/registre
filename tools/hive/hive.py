@@ -2432,6 +2432,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         except HiveError as error:
             if "timeout" not in str(error):
                 raise
+            log(f"{candidate['sha'][:12]}: its commits could not be counted within {COUNT_SECONDS} s: taken as too long a history")
             candidate["long"] = True
         # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
         # without being carried. A history that is too long is not packed to be weighed: it is refused already.
