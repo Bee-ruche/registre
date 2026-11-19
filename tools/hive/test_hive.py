@@ -11815,13 +11815,13 @@ class TestTheSettingsList(unittest.TestCase):
     def test_what_a_run_may_spend_by_a_projects_limits_fits_within_its_jobs_minutes(self):
         """The plan's job reads forks for discovery_seconds, and the fork it began within them may take one question
         to GitHub, two listings of its branches and one fetch more; it weighs candidates for WEIGH_SECONDS, and the
-        candidate it began within them may take three of git's steps more, each bounded by PACK_SECONDS. At every
+        candidate it began within them may take three of git's steps more (COUNT_SECONDS, and PACK_SECONDS twice). At every
         limit's most, that leaves the job, of its minutes, some to set up, to write the candidates' file and to upload
         it. The judging job judges for judging_seconds, starts no judgement that could end after them, and may judge
         the project's own tip once more (judge.timeout_seconds): that leaves it its setup."""
         settings = {key: entry.get("most") for key, entry in self.settings.items()}
         reading = settings["limits.discovery_seconds"] + hive.API_SECONDS + 2 * hive.LIST_SECONDS + hive.FETCH_SECONDS
-        weighing = hive.WEIGH_SECONDS + 3 * hive.PACK_SECONDS
+        weighing = hive.WEIGH_SECONDS + hive.COUNT_SECONDS + 2 * hive.PACK_SECONDS
         for workflow, minutes in self.job_minutes("plan").items():
             with self.subTest(workflow, job="plan"):
                 self.assertGreaterEqual(minutes * 60 - (reading + weighing), 2 * 60, f"{reading} s of reading and {weighing} s of weighing in {minutes} minutes")

@@ -217,7 +217,7 @@ LIMITS_MOST = {
     "discovery_seconds": 900,  # the plan's job has 30 minutes (the workflows' timeout-minutes): 15 of reading forks, and the
                                # last fork begun within them (a question to GitHub, two listings and a fetch: API_SECONDS,
                                # LIST_SECONDS, FETCH_SECONDS); 5 of weighing candidates (WEIGH_SECONDS) and the last one begun
-                               # (PACK_SECONDS thrice); and the rest to set up, to write the candidates' file and to upload
+                               # (COUNT_SECONDS, and PACK_SECONDS twice); and the rest to set up, to write the candidates' file and to upload
     "judging_seconds": 14_400,  # the judging job has 330 minutes: 4 h of judging, one more judgement of the project's tip
                                 # (judge.timeout_seconds, 1 h at most), and half an hour to set up
     "queue": 10_000,  # what a plan lists: each candidate is weighed in WEIGH_SECONDS, and the plan carries BUNDLE_OBJECTS at most
@@ -2422,7 +2422,7 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
         # Its commits that are not the project's, counted no further than the limit: one with too many is refused
         # without its history being carried to the other steps.
         count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}",
-                    timeout=PACK_SECONDS)  # (at most limits.commits + 1 commits are walked: within the time one candidate's weighing has)
+                    timeout=COUNT_SECONDS)
         candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
         # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
         # without being carried. A history that is too long is not packed to be weighed: it is refused already.
@@ -2539,6 +2539,7 @@ def member_mark(login):
 
 BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, each as it packs alone)
 PACK_SECONDS = 60  # how long git may take to pack one candidate's commits before they count as too heavy
+COUNT_SECONDS = 60  # how long git may take to count a candidate's own commits (no more than limits.commits + 1 are walked)
 WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those it has not reached wait for the next run
 
 
