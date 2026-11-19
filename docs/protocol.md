@@ -719,8 +719,12 @@ hour and the fork's own number, which adding forks to the list does not shift.
   takes from one candidate and what a run spends (`limits`) are whole numbers, from 1 to a most for each that the
   hive's own table sets (`LIMITS_MOST`: what its machine and its workflows carry: one fetch of a fork writes four
   times `history_bytes`, a file is read whole, git is told how many commits to count, the plan's and the judging
-  jobs have their own time); a file that says otherwise, or names under `limits` or `members` a setting the hive
-  does not know, does not load. The hive's own constants bound what a run does besides (the branches it lists of
+  jobs have their own time), and `files` times `file_bytes` is 256 MiB at most: what all of a candidate's files may
+  weigh together. A file that says otherwise, that names a setting the hive does not know (at its top, or under
+  `limits`, `members` or `judge`: a key mistyped would leave a setting at its default), or that gives one of these
+  blocks as anything but settings by name, does not load; `judge.options` are the project's plug-in's own and take
+  any name, and `in_service` is a mark the registry's own test reads, which the hive does not read. The hive's own
+  constants bound what a run does besides (the branches it lists of
   one fork, what all the fetches of a run leave, what a plan carries to the other steps). Presets name no guardian:
   what guardians may waive depends on a project's judge, and `members.per_guardian` has recommendations of its own
   for a project that names them.
