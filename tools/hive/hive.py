@@ -200,6 +200,28 @@ DEFAULTS = {
     "grace_hours": 1,  # how long after that the hive still waits before the deal expires
     "backoff_hours": 2,  # the wait after a deal that ended badly; doubled at each one in a row, until an acceptance
 }
+# The most a project's file may give each of its limits (load_config). Literal values, the table's own: each keeps what
+# the hive does with the setting within what its machine and its workflow can carry, whatever else the file says.
+LIMITS_MOST = {
+    "changed_lines": 100_000,  # counted by git's numstat of one candidate; far beyond any change a person could read
+    "files": 1_000,  # the hive lists up to 4 x files + 100 entries of a candidate's change before it stops: a few thousand
+    "file_bytes": 16 << 20,  # read whole into memory, the old side up to four times this: 64 MiB at most (OBJECT_BYTES' value)
+    "line_bytes": 1 << 20,  # a line is read inside a file that file_bytes already bounds; a megabyte is far beyond any line of code
+    "commits": 10_000,  # git is told --max-count=commits + 1: well under 2^31; and each commit is one of HISTORY_OBJECTS' 200 000
+    "history_bytes": 256 << 20,  # one fetch writes up to 4 x this (FETCH_WEIGHTS), and the first candidate is always carried:
+                                 # 1 GiB a fetch at most, and a quarter of what the plan carries (BUNDLE_BYTES' value, 1 GiB)
+    "heads_per_fork": 2_000,  # a fork with more branches than HEADS_PER_FORK_MAX' value is not listed at all
+    "judgements_per_sweep": 1_000,  # a run judges no further than judging_seconds allows: a bound on the run's own list
+    "discovery_seconds": 1_200,  # the plan's job has 30 minutes (the workflows' timeout-minutes): 20 of reading forks, 5 of
+                                 # weighing candidates (WEIGH_SECONDS), and the rest to set up and to write the plan
+    "judging_seconds": 14_400,  # the judging job has 330 minutes: 4 h of judging, one more judgement of the project's tip
+                                # (judge.timeout_seconds, 1 h at most), and half an hour to set up
+    "queue": 10_000,  # what a plan lists: each candidate is weighed in WEIGH_SECONDS, and the plan carries BUNDLE_OBJECTS at most
+}
+LIMITS_LEAST = 1
+ACCOUNT_AGE_MOST = 3650  # the oldest a project may ask an account to be (members.min_account_age_days): ten years
+REPETITIONS_MOST = 1_000  # how many times the common judge may take each measure (judge.repetitions)
+JUDGEMENT_SECONDS_MOST = 3_600  # the longest one judgement may take (judge.timeout_seconds): the judging job keeps an hour for one
 REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "task_closed": "the task was closed while the candidate waited",
     "unrelated": "the candidate shares no history with the project",
@@ -491,16 +513,33 @@ def load_config(path):
     for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 0 if alone else 1)):
         if type(config[key]) is not int or not least <= config[key] <= BACKOFF_MAX_HOURS:
             raise HiveError(f"{path}: {key}: a whole number of hours, from {least} to {BACKOFF_MAX_HOURS}")
-    # What the project takes from one candidate and what a run spends (limits): whole numbers, one at least. None has
-    # a most of the file's: the hive's own bounds (the branches it lists of one fork, what one fetch writes, what a
-    # plan carries) hold by themselves, whatever a project's file says.
+    # The keys of « limits » and « members » are the hive's: one it does not know is a mistake of the file (a key
+    # mistyped would leave the setting at its default without a word), and the file does not load.
+    for block in ("limits", "members"):
+        given = raw.get(block)
+        if given is not None and not isinstance(given, dict):
+            raise HiveError(f"{path}: {block}: its settings, by name")
+        unknown = sorted(set(given or {}) - set(DEFAULTS[block]))
+        if unknown:
+            raise HiveError(f"{path}: {block}.{safe_text(unknown[0], 60)}: not a setting the hive knows (its settings: {', '.join(DEFAULTS[block])})")
+    # What the project takes from one candidate and what a run spends (limits): whole numbers, from 1 to the most the
+    # hive takes for each (LIMITS_MOST: what its machine and its workflow carry). The hive's own constants bound what
+    # a run does besides.
     for key in DEFAULTS["limits"]:
-        if type(config["limits"][key]) is not int or config["limits"][key] < 1:
-            raise HiveError(f"{path}: limits.{key}: a whole number, 1 at least")
+        if type(config["limits"][key]) is not int or not LIMITS_LEAST <= config["limits"][key] <= LIMITS_MOST[key]:
+            raise HiveError(f"{path}: limits.{key}: a whole number, from {LIMITS_LEAST} to {LIMITS_MOST[key]}")
     if type(config["members"]["deals_per_day"]) is not int or config["members"]["deals_per_day"] < 1:
         raise HiveError(f"{path}: members.deals_per_day: a whole number, 1 at least")
     if type(config["members"]["preferences"]) is not bool:
         raise HiveError(f"{path}: members.preferences: true or false")
+    age = config["members"]["min_account_age_days"]
+    if type(age) is not int or not 0 <= age <= ACCOUNT_AGE_MOST:
+        raise HiveError(f"{path}: members.min_account_age_days: a whole number of days, from 0 to {ACCOUNT_AGE_MOST}")
+    if type(config.get("paused", False)) is not bool:
+        raise HiveError(f"{path}: paused: true or false")
+    # A protected path is a path, or a pattern of paths (matches): printable, relative, with no empty or dot part.
+    if not (isinstance(config["protected"], list) and all(isinstance(p, str) and plain_path(p) for p in config["protected"])):
+        raise HiveError(f"{path}: protected: a list of paths or path patterns (dir/** for everything below a folder)")
     config["protected"] = [*ALWAYS_PROTECTED, *config["protected"]]
     if not (isinstance(config["models"], list) and all(isinstance(m, str) and MODEL.match(m) for m in config["models"])):
         raise HiveError(f"{path}: models: a list of model identifiers")
@@ -520,7 +559,18 @@ def load_config(path):
     judge.setdefault("kind", "common")
     if not (isinstance(judge["kind"], str) and judge["kind"] in JUDGES):
         raise HiveError(f"{path}: judge.kind: a kind of judge this tool holds ({', '.join(sorted(JUDGES))})")
+    # Read by the judge's own functions when the judging step makes them (the_common_judge, the_reference_judge):
+    # held here, so that a file that gives them otherwise stops every step, not the judging alone.
+    for key, most in (("repetitions", REPETITIONS_MOST), ("timeout_seconds", JUDGEMENT_SECONDS_MOST)):
+        if key in judge and (type(judge[key]) is not int or not 1 <= judge[key] <= most):
+            raise HiveError(f"{path}: judge.{key}: a whole number, from 1 to {most}")
     config["guardians"] = guardians_of(raw.get("guardians"), judge, path)
+    # A banned account is one whose forks the hive does not read; a guardian is one whose fork it reads for its
+    # rulings. An account named both is a file that says two things of it, and the file does not load. (By number:
+    # a login a ban lists says nothing of who holds it now.)
+    both = guardian_accounts(config) & {b for b in config["members"]["banned"] if type(b) is int}
+    if both:
+        raise HiveError(f"{path}: guardians.accounts: account {min(both)} is banned (members.banned): a guardian is never one")
     # The members a project's trusted base covers (cover_of). A member stays active for a whole number of days after an
     # accepted candidate, one at least; a bound per guardian is a whole number of members, one at least, in a project that
     # names a guardian: with none to count, the bound would be nought and the project would admit nobody, which is
