@@ -10249,7 +10249,7 @@ class TestGuardians(Base):
                 ("the waived figure, beyond the ruling's bound", "toy-0001", "/* SUSPECT */\n", answering(suspects=2), {}, "requirement_not_met", True),
                 ("the task's goal", "toy-0004", "/* FAST SUSPECT */\n", answering(gain=0.0), {}, "goal_not_met", True),
                 ("the proof of the task's goal", "toy-0004", "/* FAST SUSPECT */\n", answering(sure_gain=0), {}, "not_proven", True),
-                ("a limit of the project's", "toy-0001", "/* SUSPECT */\n", answering(), {"changed_lines": 0}, "too_large", False)):
+                ("a limit of the project's", "toy-0001", "/* SUSPECT */\n", answering(), {"line_bytes": 5}, "line_too_long", False)):
             with self.subTest(name):
                 world, alice, gina = self.another()
                 candidate = alice.submit(task, content=LIB + text)
@@ -10780,11 +10780,16 @@ class TestGuardians(Base):
         self.assertEqual((made["queue"], "rulings" in made, self.hour(), self.written()), ([], False, [], written))
         bob.submit("toy-0005", content=LIB + "/* REFUSE */\n")
         self.assertEqual(([o["login"] for o in self.hour()], self.lines()), (["bob"], []))
-        # A run that plans the commit under the ruling the draw took, and has no judgement left for it: that ruling has
-        # no answer yet, and the one that lost the draw has none before it.
+        # A run that plans the commit under the ruling the draw took, and has no judgement left for it (it judges one
+        # candidate, and another member's, of an older deal, comes first): that ruling has no answer yet, and the one
+        # that lost the draw has none before it.
         guardians = {"guardians": {**GUARDIANS, "accounts": [201, 202]}}
-        self.w.set_config({**self.config, **guardians, "limits": {"judgements_per_sweep": 0}})
-        self.assertEqual((self.one(self.hour())["result"], [void["reason"] for void in self.w.made["rulings"]], self.lines()), ("skipped", ["duplicate"], []))
+        carol = self.w.fork("carol", 103)
+        self.w.deal(carol, "toy-0002", at="2026-11-12T10:00:00Z")
+        carol.submit("toy-0002", path="src/c.c", content="int c;\n")
+        self.w.set_config({**self.config, **guardians, "limits": {"judgements_per_sweep": 1}})
+        self.assertEqual(({o["login"]: o["result"] for o in self.hour()}, [void["reason"] for void in self.w.made["rulings"]], self.lines()),
+                         ({"carol": "accepted", "alice": "skipped"}, ["duplicate"], []))
         self.w.set_config({**self.config, **guardians})
         judged = len(judge_by_content.seen)
         self.assertEqual((self.one(self.hour())["result"], len(judge_by_content.seen)), ("accepted", judged + 1))
@@ -11528,6 +11533,246 @@ class TestTheBaseCoversItsMembers(Base):
             self.assertEqual([deal["member"] for deal in self.w.plan()["deals"]], ["bob"], "one more member covered: the ask that waited is served")
             self.finish()
             self.assertEqual((self.w.next("bob").splitlines()[0][:9], self.members()), ("TASK toy-", (2, 2, False)))
+
+
+class TestTheSettingsList(unittest.TestCase):
+    """The registry describes every setting of a project's file in one list (hive/settings.json): its type, what the
+    hive takes when the file says nothing, the bounds the hive enforces, and recommended values for three ways of
+    opening a project. A project's lead sets a project from that list; this class holds it to the code that reads
+    the file, so that neither changes alone."""
+
+    MINIMAL = {"protocol": 1, "project": "toy", "repo": "Bee-ruche/toy", "published": "stable", "tasks": "hive/tasks/toy.jsonl"}
+    # What a file needs beside a value, for some values to mean anything: a figure the project keeps and requires by a
+    # maximum, and a guardian that may waive it (a bound for each guardian needs a guardian).
+    FIGURE = {"judge": {"metrics": ["suspects"], "require": [{"name": "suspects", "max": 0}]}}
+    GUARDED = {**FIGURE, "guardians": {"accounts": [7], "waive": {"suspects": 1}}}
+    WAYS = ("trial", "invitation", "open")
+    FIELDS = {"key", "section", "type", "required", "default", "fixed", "least", "most", "least_alone", "most_entries", "presets", "always", "what"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "toy.json"
+        registry = Path(os.environ.get("HIVE_REGISTRY") or Path(hive.__file__).resolve().parents[2])  # set when the tests run on a copy
+        self.registry = registry
+        self.listed = json.loads((registry / "hive/settings.json").read_text(encoding="utf-8"))
+        self.settings = {entry["key"]: entry for entry in self.listed["settings"]}
+
+    def load(self, file):
+        """What the hive makes of a project's file."""
+        self.path.write_text(json.dumps(file))
+        return hive.load_config(self.path)
+
+    def loads(self, file):
+        try:
+            self.load(file)
+        except hive.HiveError:
+            return False
+        return True
+
+    @staticmethod
+    def laid(file, key, value):
+        """A copy of a project's file with one setting given, by its dotted key."""
+        copy = json.loads(json.dumps(file))
+        *folders, last = key.split(".")
+        place = copy
+        for folder in folders:
+            place = place.setdefault(folder, {})
+        place[last] = value
+        return copy
+
+    @staticmethod
+    def taken(config, key):
+        """What a loaded configuration holds under a dotted key; None where the file gave no such block."""
+        value = config
+        for part in key.split("."):
+            if value is None:
+                return None
+            value = value[part]
+        return value
+
+    def test_the_list_is_well_formed_one_entry_for_each_key_in_a_fixed_vocabulary_of_sections_and_types(self):
+        self.assertEqual(sorted(self.listed), ["about", "not_settings", "presets", "sections", "settings", "types"])
+        self.assertEqual(self.listed["sections"], ["project", "opening", "trust", "pace", "limits", "judge", "protected"])
+        self.assertEqual(len(self.settings), len(self.listed["settings"]), "each key once")
+        self.assertEqual(sorted(self.listed["presets"]), sorted(("about", *self.WAYS)))
+        for text in (self.listed["about"], *self.listed["presets"].values(), *self.listed["types"].values(), *self.listed["not_settings"]):
+            self.assertTrue(isinstance(text, str) and text.strip() == text and len(text) > 10, text)
+        self.assertIn("recommendations", self.listed["presets"]["about"], "the file says what a preset is: a recommendation its lead may change")
+        for key, entry in self.settings.items():
+            with self.subTest(key):
+                self.assertTrue(re.fullmatch(r"[a-z_]+(\.[a-z_]+)?", key))
+                self.assertLessEqual(set(entry), self.FIELDS)
+                self.assertIn(entry["section"], self.listed["sections"])
+                self.assertIn(entry["type"], self.listed["types"])
+                self.assertTrue(isinstance(entry["what"], str) and len(entry["what"]) > 20 and entry["what"].endswith("."), "one or two plain sentences")
+                self.assertNotEqual("required" in entry, "default" in entry, "required, or with what the hive takes when the file says nothing")
+                self.assertIn(entry.get("required", True), (True,))
+                self.assertLessEqual(set(entry.get("presets", {})), set(self.WAYS))
+                for value in entry.get("presets", {}).values():
+                    if isinstance(value, dict) and "ask" in value:
+                        self.assertEqual((sorted(value), value["accounts"] in ("one", "some"), entry["type"] in ("accounts", "accounts or none")),
+                                         (["accounts", "ask"], True, True), "a list of accounts that only the lead can give")
+        self.assertEqual({entry["section"] for entry in self.settings.values()}, set(self.listed["sections"]), "no section without a setting")
+        self.assertEqual({entry["type"] for entry in self.settings.values()}, set(self.listed["types"]), "no type without a setting")
+        for kind in hive.JUDGES:
+            self.assertIn(kind, self.listed["types"]["judge kind"])
+
+    def test_the_list_describes_every_setting_the_hive_reads_from_a_projects_file_and_no_other(self):
+        """The settings are found where the hive reads them: every key it takes from a project's configuration, from
+        its member rules, its limits, its judge's settings and its guardians, in the tool's own source; and every key
+        of what the hive takes by default. The list has an entry for each, and none for anything else."""
+        source = Path(hive.__file__).read_text(encoding="utf-8")
+
+        def read(*patterns):
+            return {key for pattern in patterns for key in re.findall(pattern, source)}
+
+        name = r'"([a-z_]+)"'
+        top = read(rf"\bconfig\[{name}\]", rf"\bconfig\.get\({name}", rf"\braw\.get\({name}")
+        blocks = {"members": read(rf'config\["members"\]\[{name}\]', rf'config\["members"\]\.get\({name}', rf"\brules\[{name}\]"),
+                  "limits": read(rf'config\["limits"\]\[{name}\]', rf"\blimits\[{name}\]", rf"\blimits\.get\({name}"),
+                  "judge": read(rf'config\["judge"\]\[{name}\]', rf'config\["judge"\]\.get\({name}', rf"\bjudge\[{name}\]", rf"\bjudge\.setdefault\({name}",
+                                rf"\bsettings\[{name}\]", rf"\bsettings\.get\({name}"),
+                  "guardians": read(rf'\(config\.get\("guardians"\) or \{{\}}\)\.get\({name}', rf"\braw\[{name}\]")}
+        self.assertLessEqual(set(blocks), top, "the blocks of a project's file are keys of it")
+        self.assertTrue(all(blocks.values()))
+        found = (top - set(blocks)) | {f"{block}.{key}" for block, keys in blocks.items() for key in keys}
+        self.assertEqual(sorted(self.settings), sorted(found), "the list and the code name the same settings")
+        flat = {key for key in hive.DEFAULTS if key not in blocks} | {f"{block}.{key}" for block in ("members", "limits") for key in hive.DEFAULTS[block]}
+        self.assertLessEqual(flat, set(self.settings), "every key of what the hive takes by default is described")
+        self.assertEqual({key.partition(".")[2] for key in self.settings if key.startswith("members.")}, set(hive.DEFAULTS["members"]))
+        self.assertEqual({key.partition(".")[2] for key in self.settings if key.startswith("limits.")}, set(hive.DEFAULTS["limits"]))
+        # The two keys of « guardians » are all it takes: a third does not load.
+        self.assertTrue(self.loads({**self.MINIMAL, **self.GUARDED}))
+        self.assertFalse(self.loads({**self.MINIMAL, **self.FIGURE, "guardians": {**self.GUARDED["guardians"], "minimum": 1}}))
+        # And the files the registry holds say nothing the list does not describe.
+        for path in sorted((self.registry / "hive/projects").glob("*.json")):
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            said = {key for key in raw if key not in blocks} | {f"{block}.{key}" for block in blocks for key in (raw.get(block) or {})}
+            self.assertLessEqual(said, set(self.settings), path.name)
+            hive.load_config(path)
+
+    def test_each_default_of_the_list_is_what_the_hive_takes_for_a_file_that_says_nothing_of_the_setting(self):
+        config = self.load(self.MINIMAL)
+        with mock.patch.object(hive, "common_judge") as common, mock.patch.object(hive, "reference_judge") as reference:
+            hive.the_common_judge("registry", config["judge"], "work")
+            hive.the_reference_judge("registry", config["judge"], "work")
+        judged = {"judge.repetitions": common.call_args.kwargs["repetitions"], "judge.options": dict(common.call_args.kwargs["options"]),
+                  "judge.timeout_seconds": common.call_args.kwargs["timeout"]}
+        self.assertEqual(reference.call_args.kwargs["timeout"], judged["judge.timeout_seconds"], "the two kinds of judge take the same time by default")
+        checked = 0
+        for key, entry in self.settings.items():
+            if "default" not in entry:
+                continue
+            checked += 1
+            with self.subTest(key):
+                if key in judged:  # read by the judge's own function, when it is made
+                    self.assertEqual(judged[key], entry["default"])
+                elif key == "check":
+                    self.assertEqual(config.get("check", ""), entry["default"])
+                elif key == "paused":
+                    with mock.patch("sys.stderr"):
+                        self.assertEqual(hive.paused(config), entry["default"])
+                elif key == "protected":
+                    self.assertEqual((config["protected"], entry["always"]), ([*hive.ALWAYS_PROTECTED, *entry["default"]], list(hive.ALWAYS_PROTECTED)),
+                                     "what the file lists, after what the hive always protects")
+                else:
+                    self.assertEqual(self.taken(config, key), entry["default"])
+        self.assertEqual(checked, len(self.settings) - len(self.MINIMAL), "every setting but those a file must give")
+
+    def test_a_file_must_give_each_setting_the_list_marks_required_and_a_fixed_one_has_one_value(self):
+        required = sorted(key for key, entry in self.settings.items() if entry.get("required"))
+        self.assertEqual(required, sorted(self.MINIMAL), "the smallest file that loads is the required settings, and nothing else")
+        self.assertTrue(self.loads(self.MINIMAL))
+        for key in required:
+            self.assertFalse(self.loads({k: v for k, v in self.MINIMAL.items() if k != key}), key)
+        self.assertEqual({key: entry["fixed"] for key, entry in self.settings.items() if "fixed" in entry},
+                         {"protocol": hive.PROTOCOL, "tasks": "hive/tasks/<project>.jsonl"})
+        self.assertEqual(self.MINIMAL["tasks"], self.settings["tasks"]["fixed"].replace("<project>", self.MINIMAL["project"]))
+        for key, other in (("protocol", hive.PROTOCOL + 1), ("tasks", "hive/tasks/other.jsonl")):
+            self.assertFalse(self.loads({**self.MINIMAL, key: other}), key)
+
+    def test_each_bound_of_the_list_is_one_the_hive_enforces_a_file_at_the_bound_loads_and_just_outside_does_not(self):
+        base = {**self.MINIMAL, **self.GUARDED}
+        self.assertTrue(self.loads(base))
+        bounded = 0
+        for key, entry in self.settings.items():
+            for bound, outside in (("least", -1), ("most", 1)):
+                if bound in entry:
+                    bounded += 1
+                    with self.subTest(key, bound=bound):
+                        self.assertEqual((self.loads(self.laid(base, key, entry[bound])), self.loads(self.laid(base, key, entry[bound] + outside))),
+                                         (True, False))
+        self.assertGreaterEqual(bounded, 22)
+        # A wait of none at all is for a file that names one account alone, and no other.
+        wait, alone = self.settings["backoff_hours"], self.laid(base, "members.only", [7])
+        self.assertEqual((wait["least"], wait["least_alone"]), (1, 0))
+        self.assertEqual([self.loads(self.laid(file, "backoff_hours", hours)) for file, hours in ((alone, 0), (alone, -1), (base, 0))], [True, False, False])
+        self.assertEqual([key for key, entry in self.settings.items() if "least_alone" in entry], ["backoff_hours"])
+        # A bound on how many entries a list holds.
+        history = self.settings["judge.history"]["most_entries"]
+        self.assertEqual([self.loads(self.laid(base, "judge.history", [f"{number:040x}" for number in range(entries)])) for entries in (history, history + 1)],
+                         [True, False])
+        self.assertEqual([key for key, entry in self.settings.items() if "most_entries" in entry], ["judge.history"])
+        # The bounds are the hive's own constants, and every limit has its least.
+        self.assertEqual({key: self.settings[key]["most"] for key in ("deal_hours", "grace_hours", "backoff_hours", "members.active_days",
+                                                                      "limits.heads_per_fork", "limits.history_bytes")},
+                         {"deal_hours": hive.BACKOFF_MAX_HOURS, "grace_hours": hive.BACKOFF_MAX_HOURS, "backoff_hours": hive.BACKOFF_MAX_HOURS,
+                          "members.active_days": hive.ACTIVE_DAYS_MAX, "limits.heads_per_fork": hive.HEADS_PER_FORK_MAX,
+                          "limits.history_bytes": hive.BUNDLE_BYTES})
+        self.assertEqual({key: entry.get("least") for key, entry in self.settings.items() if entry["section"] == "limits"},
+                         {f"limits.{key}": 1 for key in hive.DEFAULTS["limits"]})
+
+    def test_what_a_project_takes_from_a_candidate_and_what_a_run_spends_are_whole_numbers_of_one_or_more(self):
+        """limits.*: a file that gives one of them as nought, as a negative number, as a number that is not whole or
+        as anything else does not load, at any step and for any worker; the two the hive itself bounds go no further
+        than its own bound. The projects the registry declares load as they are."""
+        for key in hive.DEFAULTS["limits"]:
+            for wrong in (0, -1, 1.5, "20", None, True, [20], {}):
+                with self.subTest(key, wrong=wrong):
+                    with self.assertRaisesRegex(hive.HiveError, rf"limits\.{key}: a whole number, 1 at least"):
+                        self.load({**self.MINIMAL, "limits": {key: wrong}})
+            self.assertEqual(self.load({**self.MINIMAL, "limits": {key: 1}})["limits"][key], 1)
+        for key, most in (("heads_per_fork", hive.HEADS_PER_FORK_MAX), ("history_bytes", hive.BUNDLE_BYTES)):
+            with self.assertRaisesRegex(hive.HiveError, rf"limits\.{key}: a whole number, 1 at least and {most} at most"):
+                self.load({**self.MINIMAL, "limits": {key: most + 1}})
+        self.assertEqual(self.load(self.MINIMAL)["limits"], hive.DEFAULTS["limits"], "a file that gives none has the hive's own")
+        for path in sorted((self.registry / "hive/projects").glob("*.json")):
+            self.assertEqual(hive.load_config(path)["limits"], {**hive.DEFAULTS["limits"], **json.loads(path.read_text()).get("limits", {})}, path.name)
+
+    def test_each_preset_of_the_list_laid_over_the_smallest_file_gives_a_file_that_loads(self):
+        """The three ways of opening a project, each as the list recommends it: the values it names, with the accounts
+        only the lead can give (one, or some) and the pieces such a file needs (a figure a guardian may waive, where
+        it names guardians). Each loads; « trial » names one account alone; each value lies within the setting's bounds."""
+        for way in self.WAYS:
+            for some in (1, 3):  # « some » accounts: one is some, and so are three
+                with self.subTest(way, accounts=some):
+                    file = {**self.MINIMAL, **self.FIGURE}
+                    for key, entry in self.settings.items():
+                        if way not in entry.get("presets", {}):
+                            continue
+                        value = entry["presets"][way]
+                        if isinstance(value, dict) and "ask" in value:
+                            value = list(range(7, 7 + (1 if value["accounts"] == "one" else some)))
+                        elif value is not None:
+                            self.assertTrue(entry.get("least", value) <= value or (value == entry.get("least_alone") and way == "trial"), key)
+                            self.assertLessEqual(value, entry.get("most", value), key)
+                        file = self.laid(file, key, value)
+                    if "guardians" in file:
+                        file = self.laid(file, "guardians.waive", {"suspects": 2})
+                    config = self.load(file)
+                    self.assertEqual((config["branch"], config["deal_hours"], config["members"]["min_account_age_days"]), ("hive", 3, 90))
+                    guardians = len(config["guardians"]["accounts"])
+                    if way == "trial":
+                        self.assertEqual((hive.one_account_alone(config), config["members"]["only"], config["guardians"]["accounts"], config["backoff_hours"],
+                                          config["members"]["deals_per_day"], hive.cover_of(config)), (True, [7], [7], 0, 50, None),
+                                         "one account alone, the lead's own, which is its guardian too: no wait, and no bound on members")
+                    elif way == "invitation":
+                        self.assertEqual((len(config["members"]["only"]), guardians, config["backoff_hours"], config["members"]["deals_per_day"],
+                                          hive.cover_of(config)), (some, some, 2, 5, 10 * some))
+                    else:
+                        self.assertEqual((config["members"]["only"], guardians, config["backoff_hours"], config["members"]["deals_per_day"],
+                                          hive.cover_of(config)), (None, some, 2, 5, 20 * some))
 
 
 class TestTheWorkersGuide(unittest.TestCase):

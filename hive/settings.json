@@ -1,0 +1,93 @@
+{
+ "about": "Every setting of a project's file (hive/projects/<project>.json), as tools/hive/hive.py reads it: one entry for each, and no other. 'required': the file must give it; otherwise 'default' is what the hive takes when the file says nothing. 'least' and 'most' are bounds the hive enforces when it loads the file (a file outside them does not load); a setting without them is not bounded there. 'fixed': the one value the hive takes. A test of the hive (tools/hive/test_hive.py, TestTheSettingsList) holds this list to the code: neither changes alone.",
+ "presets": {
+  "about": "Recommended values for three ways of opening a project. They are recommendations: a project's lead may change any of them, within the bounds. A setting that names no value for a way of opening keeps its default. A value written {\"ask\": ..., \"accounts\": ...} is a list of GitHub account numbers that only the lead can give ('one': exactly one; 'some': one or more).",
+  "trial": "One account, the project lead's own, to try the whole pipeline: no wait, many deals a day.",
+  "invitation": "A pilot: the accounts the lead names, the hive's ordinary pace, a trusted base sized to them.",
+  "open": "Open to any GitHub account old enough, with a trusted base sized to the members."
+ },
+ "sections": ["project", "opening", "trust", "pace", "limits", "judge", "protected"],
+ "types": {
+  "protocol": "the version of the hive's protocol, a whole number",
+  "identifier": "lower-case letters, digits and hyphens",
+  "repository": "a GitHub repository, as owner/name",
+  "branch": "a branch's own name, with no refs/ or heads/ in front",
+  "path": "a path in the registry",
+  "command": "one command line",
+  "boolean": "true or false",
+  "whole number": "a whole number",
+  "whole number or none": "a whole number, or null",
+  "days": "a whole number of days",
+  "hours": "a whole number of hours",
+  "seconds": "a whole number of seconds",
+  "bytes": "a whole number of bytes",
+  "accounts": "a list of GitHub account numbers",
+  "accounts or none": "a list of GitHub account numbers, or null",
+  "accounts and logins": "a list of GitHub account numbers; a login is taken too",
+  "models": "a list of model identifiers (letters, digits, dots, dashes and underscores, no space)",
+  "judge kind": "one of the kinds of judge the hive holds: common, reference",
+  "options": "names and their values",
+  "commits": "a list of full commit ids",
+  "figures": "a list of names of the judge's figures",
+  "conditions": "a list of conditions on kept figures: {name, min or max, and optionally and: [conditions]}",
+  "waivers": "figures, each with the most a guardian's ruling may let it reach",
+  "patterns": "a list of paths or path patterns (dir/** for everything below a folder)"
+ },
+ "settings": [
+  {"key": "protocol", "section": "project", "type": "protocol", "required": true, "fixed": 1, "what": "The version of the hive's protocol the file is written for. A file that names another does not load."},
+  {"key": "project", "section": "project", "type": "identifier", "required": true, "what": "The project's name in the hive: lower-case letters, digits and hyphens. It is also the name of its file and of its state folder: a file whose project is not its own name does not load."},
+  {"key": "repo", "section": "project", "type": "repository", "required": true, "what": "The GitHub repository the hive reads and writes for this project."},
+  {"key": "branch", "section": "project", "type": "branch", "default": "main", "presets": {"trial": "hive", "invitation": "hive", "open": "hive"}, "what": "The branch the hive writes: what its judge accepted, one commit per task. Never the branch the project publishes: a file that names one branch for both does not load."},
+  {"key": "published", "section": "project", "type": "branch", "required": true, "what": "The branch people take the project from. The hive never writes it: the project's maintainers move it to what they have read."},
+  {"key": "tasks", "section": "project", "type": "path", "required": true, "fixed": "hive/tasks/<project>.jsonl", "what": "Where the project's tasks are listed: one place, which bears the project's name."},
+  {"key": "check", "section": "project", "type": "command", "default": "", "what": "The project's own quick check: one command line a worker runs in the project's sandbox before it submits. Empty: the project has none."},
+  {"key": "paused", "section": "project", "type": "boolean", "default": false, "what": "True stops every step of the hive for this project: nothing is read, dealt, judged or written."},
+
+  {"key": "members.only", "section": "opening", "type": "accounts or none", "default": null, "presets": {"trial": {"ask": "the lead's own account", "accounts": "one"}, "invitation": {"ask": "the accounts the lead invites", "accounts": "some"}, "open": null}, "what": "Null: any account that meets the other rules may work. A list: only these accounts, by GitHub account number (a number survives a change of login). A file that names one account alone is a trial: it may ask no wait, and its one account, named guardian too, may admit a commit of its own."},
+  {"key": "members.min_account_age_days", "section": "opening", "type": "days", "default": 90, "presets": {"trial": 90, "invitation": 90, "open": 90}, "what": "How old a GitHub account must be for the hive to read its fork: accounts made for the occasion wait."},
+  {"key": "members.banned", "section": "opening", "type": "accounts and logins", "default": [], "what": "Accounts whose forks the hive does not read, and whose work no guardian's ruling brings in. Ban by number: a number is the same everywhere, and a login can change hands."},
+  {"key": "members.preferences", "section": "opening", "type": "boolean", "default": true, "what": "Whether the hive follows, when its rules lose nothing by it, the part of the project a member's worker says it prefers."},
+  {"key": "models", "section": "opening", "type": "models", "default": [], "what": "The models the project keeps statistics for; a worker that declares another is recorded as undeclared."},
+
+  {"key": "guardians.accounts", "section": "trust", "type": "accounts", "default": null, "presets": {"trial": {"ask": "the lead's own account", "accounts": "one"}, "invitation": {"ask": "one or two trusted accounts", "accounts": "some"}, "open": {"ask": "the project's trusted base", "accounts": "some"}}, "what": "The accounts the project trusts, by GitHub account number, each once, one at least. A guardian decides alone and at once, in public, on one named commit; it holds no key. A file names its guardians together with what they may waive (guardians.waive), or names neither: then the project takes no ruling."},
+  {"key": "guardians.waive", "section": "trust", "type": "waivers", "default": null, "what": "The figures a guardian may let go for one commit, and how far, one at least: only a figure the project keeps and requires by a single maximum, with a bound that is that maximum at least. The commit is judged again in full, that figure aside. Given together with guardians.accounts, or not at all."},
+  {"key": "members.per_guardian", "section": "trust", "type": "whole number or none", "default": null, "least": 1, "presets": {"trial": null, "invitation": 10, "open": 20}, "what": "How many active members one guardian covers. Beyond guardians times this number, the hive deals no task to a new member; those that are active go on. Null: no such bound. A file that sets it without naming a guardian does not load."},
+  {"key": "members.active_days", "section": "trust", "type": "days", "default": 30, "least": 1, "most": 3650, "what": "A member is active while it holds a task, and for this many days after each candidate of its own that the project accepted."},
+
+  {"key": "deal_hours", "section": "pace", "type": "hours", "default": 3, "least": 1, "most": 168, "presets": {"trial": 3, "invitation": 3, "open": 3}, "what": "How long a member has to push its candidate once a task is dealt to it."},
+  {"key": "grace_hours", "section": "pace", "type": "hours", "default": 1, "least": 0, "most": 168, "what": "How long after that the hive still waits before the deal runs out."},
+  {"key": "backoff_hours", "section": "pace", "type": "hours", "default": 2, "least": 1, "least_alone": 0, "most": 168, "presets": {"trial": 0, "invitation": 2, "open": 2}, "what": "The wait after a deal that ended without an accepted candidate; doubled at each one in a row for deals left or refused before the judge. An hour at least; none at all (0) only while the file names one account alone as its members."},
+  {"key": "members.deals_per_day", "section": "pace", "type": "whole number", "default": 5, "least": 1, "presets": {"trial": 50, "invitation": 5, "open": 5}, "what": "How many tasks an account may be dealt in a day, those whose candidate was accepted left out."},
+
+  {"key": "limits.changed_lines", "section": "limits", "type": "whole number", "default": 400, "least": 1, "what": "The most lines a candidate may change."},
+  {"key": "limits.files", "section": "limits", "type": "whole number", "default": 20, "least": 1, "what": "The most files a candidate may change."},
+  {"key": "limits.file_bytes", "section": "limits", "type": "bytes", "default": 1000000, "least": 1, "what": "The largest file a candidate may leave changed, or bring in any of its own commits."},
+  {"key": "limits.line_bytes", "section": "limits", "type": "bytes", "default": 400, "least": 1, "what": "The longest line a candidate may add."},
+  {"key": "limits.commits", "section": "limits", "type": "whole number", "default": 50, "least": 1, "what": "The most commits a candidate may add to the project's history."},
+  {"key": "limits.history_bytes", "section": "limits", "type": "bytes", "default": 33554432, "least": 1, "most": 1073741824, "what": "What a candidate's own commits may weigh together, as git packs them on the project's tip. No more than a plan carries to the other steps."},
+  {"key": "limits.heads_per_fork", "section": "limits", "type": "whole number", "default": 30, "least": 1, "most": 2000, "what": "How many new branch tips of one fork the hive reads in a run; a fork with more is not read until it has fewer. No more than the branches the hive lists of one fork."},
+  {"key": "limits.judgements_per_sweep", "section": "limits", "type": "whole number", "default": 20, "least": 1, "what": "How many candidates one run judges; the others wait for the next, oldest deal first."},
+  {"key": "limits.discovery_seconds", "section": "limits", "type": "seconds", "default": 900, "least": 1, "what": "How long a run spends reading forks; those it has not reached wait for the next run."},
+  {"key": "limits.judging_seconds", "section": "limits", "type": "seconds", "default": 14400, "least": 1, "what": "How long a run spends judging: no judgement is started that could end after it."},
+  {"key": "limits.queue", "section": "limits", "type": "whole number", "default": 500, "least": 1, "what": "How many candidates a plan lists at most."},
+
+  {"key": "judge.kind", "section": "judge", "type": "judge kind", "default": "common", "what": "How a candidate is found right. common: outputs identical to the base, and measures taken beside it (a faster or smaller same thing). reference: the unit a task names answers exactly as the project's reference does (a port, a rewrite)."},
+  {"key": "judge.repetitions", "section": "judge", "type": "whole number", "default": 10, "what": "common judge: how many times each measure is taken."},
+  {"key": "judge.timeout_seconds", "section": "judge", "type": "seconds", "default": 3600, "what": "The longest one judgement may take."},
+  {"key": "judge.options", "section": "judge", "type": "options", "default": {}, "what": "common judge: options handed to the project's own plug-in; a task may add its own."},
+  {"key": "judge.history", "section": "judge", "type": "commits", "default": [], "most_entries": 16, "what": "Commits of the project's own history its judge reads by id (a corpus as the project had it, for instance): full ids, sixteen at most."},
+  {"key": "judge.metrics", "section": "judge", "type": "figures", "default": [], "what": "The judge's figures the hive keeps on a verdict's line. A goal, a requirement, a proof or a waiver can only name one of these."},
+  {"key": "judge.confirm", "section": "judge", "type": "figures", "default": [], "what": "The judge's proofs the project takes: kept figures named sure_<measure>, those the judged program cannot bear upon. Every goal on a figure must hold one."},
+  {"key": "judge.require", "section": "judge", "type": "conditions", "default": [], "what": "What the project requires of every contribution, whatever its task: conditions on kept figures. They can only refuse."},
+
+  {"key": "protected", "section": "protected", "type": "patterns", "default": [], "always": ["hive/**"], "what": "Paths no candidate may change, beside those the hive protects in every project: the project's sandbox, its judge, its tests."}
+ ],
+ "not_settings": [
+  "Where project code runs (the project's sandbox, the judge's containers, without network) is the hive's, the same for every project: no project file changes it.",
+  "What a member may write (branches of its own fork, nothing else) and what the hive keeps of a fork's text (nothing) are the hive's.",
+  "The hive's own code and the commit of it that runs are the registry's: a project's file names a kind of judge, never brings one.",
+  "What is protected in every project, at any depth of its tree: the hive's own files (hive/ at the root), CI and editor automation, what steers git, and the files and folders coding agents read as instructions. A project's file adds paths to these; it removes none.",
+  "The hive's own counts and bounds: three failures that are a candidate's own before it is refused, six runs without an answer before a deal is closed at no cost, a day for a fork that could not be read, a wait that doubles up to seven days, what one fetch and one plan may carry.",
+  "A project's tasks are a file of their own (hive/tasks/<project>.jsonl); a task says its files, its tier, its goal and its options there, not in the project's file."
+ ]
+}
