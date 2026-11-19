@@ -200,6 +200,43 @@ DEFAULTS = {
     "grace_hours": 1,  # how long after that the hive still waits before the deal expires
     "backoff_hours": 2,  # the wait after a deal that ended badly; doubled at each one in a row, until an acceptance
 }
+# The most a project's file may give each of its limits (load_config). Literal values, the table's own: each keeps what
+# the hive does with the setting within what its machine and its workflow can carry, whatever else the file says.
+LIMITS_MOST = {
+    "changed_lines": 100_000,  # counted by git's numstat of one candidate; far beyond any change a person could read
+    "files": 1_000,  # the hive lists up to 4 x files + 100 entries of a candidate's change before it stops: a few thousand
+                     # (and files x file_bytes is bounded together: CHANGED_BYTES_MOST)
+    "file_bytes": 16 << 20,  # one file read whole into memory, the old side up to four times this: 64 MiB at most (OBJECT_BYTES'
+                             # value); what all of a candidate's files weigh together is CHANGED_BYTES_MOST's
+    "line_bytes": 1 << 20,  # a line is read inside a file that file_bytes already bounds; a megabyte is far beyond any line of code
+    "commits": 10_000,  # git is told --max-count=commits + 1: well under 2^31; and each commit is one of HISTORY_OBJECTS' 200 000
+    "history_bytes": 256 << 20,  # one fetch writes up to 4 x this (FETCH_WEIGHTS), and the first candidate is always carried:
+                                 # 1 GiB a fetch at most, and a quarter of what the plan carries (BUNDLE_BYTES' value, 1 GiB)
+    "heads_per_fork": 2_000,  # a fork with more branches than HEADS_PER_FORK_MAX' value is not listed at all
+    "judgements_per_sweep": 1_000,  # a run judges no further than judging_seconds allows: a bound on the run's own list
+    "discovery_seconds": 900,  # the plan's job has 30 minutes (the workflows' timeout-minutes): 15 of reading forks, and the
+                               # last fork begun within them (a question to GitHub, two listings and a fetch: API_SECONDS,
+                               # LIST_SECONDS, FETCH_SECONDS); 5 of weighing candidates (WEIGH_SECONDS) and the last one begun
+                               # (COUNT_SECONDS, and PACK_SECONDS twice); and the rest to set up, to write the candidates' file and to upload
+    "judging_seconds": 14_400,  # the judging job has 330 minutes: 4 h of judging, one more judgement of the project's tip
+                                # (judge.timeout_seconds, 1 h at most), and half an hour to set up
+    "queue": 10_000,  # what a plan lists: each candidate is weighed in WEIGH_SECONDS, and the plan carries BUNDLE_OBJECTS at most
+}
+LIMITS_LEAST = 1
+# What all the files one candidate leaves changed may weigh together, at most (limits.files x limits.file_bytes, held when
+# a project's file loads): each is read whole, one after the other, in the judging step and again in the writing step,
+# and the merged tree is written out for the judge beside the project's own. A candidate's commits may weigh 256 MiB
+# as git packs them (history_bytes' most), and text packs to little: the bound is on the files themselves, as large.
+CHANGED_BYTES_MOST = 256 << 20
+# Keys of a project's file that the hive does not read: marks the registry's own tests read (in_service: a project not
+# yet in service is paused, or open by invitation). A file may carry them; it carries no key the hive does not know.
+REGISTRY_MARKS = ("in_service",)
+# The judge's settings a project's file may give (judge): those load_config holds, and those the judge's own functions
+# read when the judging step makes them (the_common_judge, the_reference_judge).
+JUDGE_KEYS = ("kind", "metrics", "require", "confirm", "history", "repetitions", "timeout_seconds", "options")
+ACCOUNT_AGE_MOST = 3650  # the oldest a project may ask an account to be (members.min_account_age_days): ten years
+REPETITIONS_MOST = 1_000  # how many times the common judge may take each measure (judge.repetitions)
+JUDGEMENT_SECONDS_MOST = 3_600  # the longest one judgement may take (judge.timeout_seconds): the judging job keeps an hour for one
 REASONS = {  # every refusal a member can read back (docs/protocol.md)
     "task_closed": "the task was closed while the candidate waited",
     "unrelated": "the candidate shares no history with the project",
@@ -464,6 +501,19 @@ def load_config(path):
         raw = json.load(f)
     if not isinstance(raw, dict) or raw.get("protocol") != PROTOCOL:
         raise HiveError(f"{path}: protocol {PROTOCOL} expected")
+    # The keys of a project's file are the hive's: one it does not know is a mistake of the file (a key mistyped would
+    # leave a setting at its default without a word: a protection, a requirement or a pause dropped), and the file does
+    # not load. So for the file itself, and for its blocks of settings, each read by name.
+    known = {"protocol", "project", "repo", "published", "tasks", "check", "paused", *DEFAULTS, *REGISTRY_MARKS}
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        raise HiveError(f"{path}: {safe_text(unknown[0], 60)}: not a setting the hive knows")
+    for block, keys in (("limits", DEFAULTS["limits"]), ("members", DEFAULTS["members"]), ("judge", JUDGE_KEYS)):
+        if block in raw and not isinstance(raw[block], dict):
+            raise HiveError(f"{path}: {block}: its settings, by name")
+        unknown = sorted(set(raw.get(block) or {}) - set(keys))
+        if unknown:
+            raise HiveError(f"{path}: {block}.{safe_text(unknown[0], 60)}: not a setting the hive knows (its settings: {', '.join(keys)})")
     config = {**DEFAULTS, **raw}
     for key in ("limits", "members"):
         config[key] = {**DEFAULTS[key], **(raw.get(key) or {})}
@@ -491,10 +541,28 @@ def load_config(path):
     for key, least in (("deal_hours", 1), ("grace_hours", 0), ("backoff_hours", 0 if alone else 1)):
         if type(config[key]) is not int or not least <= config[key] <= BACKOFF_MAX_HOURS:
             raise HiveError(f"{path}: {key}: a whole number of hours, from {least} to {BACKOFF_MAX_HOURS}")
+    # What the project takes from one candidate and what a run spends (limits): whole numbers, from 1 to the most the
+    # hive takes for each (LIMITS_MOST: what its machine and its workflow carry), and the files a candidate may leave
+    # changed no heavier together than CHANGED_BYTES_MOST. The hive's own constants bound what a run does besides.
+    for key in DEFAULTS["limits"]:
+        if type(config["limits"][key]) is not int or not LIMITS_LEAST <= config["limits"][key] <= LIMITS_MOST[key]:
+            raise HiveError(f"{path}: limits.{key}: a whole number, from {LIMITS_LEAST} to {LIMITS_MOST[key]}")
+    if config["limits"]["files"] * config["limits"]["file_bytes"] > CHANGED_BYTES_MOST:
+        raise HiveError(f"{path}: limits.files x limits.file_bytes: what a candidate's files may weigh together, {CHANGED_BYTES_MOST} at most")
     if type(config["members"]["deals_per_day"]) is not int or config["members"]["deals_per_day"] < 1:
         raise HiveError(f"{path}: members.deals_per_day: a whole number, 1 at least")
     if type(config["members"]["preferences"]) is not bool:
         raise HiveError(f"{path}: members.preferences: true or false")
+    age = config["members"]["min_account_age_days"]
+    if type(age) is not int or not 0 <= age <= ACCOUNT_AGE_MOST:
+        raise HiveError(f"{path}: members.min_account_age_days: a whole number of days, from 0 to {ACCOUNT_AGE_MOST}")
+    if type(config.get("paused", False)) is not bool:
+        raise HiveError(f"{path}: paused: true or false")
+    if type(raw.get("in_service", False)) is not bool:  # a mark the registry's own test reads (REGISTRY_MARKS)
+        raise HiveError(f"{path}: in_service: true or false")
+    # A protected path is a path, or a pattern of paths (matches): printable, relative, with no empty or dot part.
+    if not (isinstance(config["protected"], list) and all(isinstance(p, str) and plain_path(p) for p in config["protected"])):
+        raise HiveError(f"{path}: protected: a list of paths or path patterns (dir/** for everything below a folder)")
     config["protected"] = [*ALWAYS_PROTECTED, *config["protected"]]
     if not (isinstance(config["models"], list) and all(isinstance(m, str) and MODEL.match(m) for m in config["models"])):
         raise HiveError(f"{path}: models: a list of model identifiers")
@@ -514,7 +582,18 @@ def load_config(path):
     judge.setdefault("kind", "common")
     if not (isinstance(judge["kind"], str) and judge["kind"] in JUDGES):
         raise HiveError(f"{path}: judge.kind: a kind of judge this tool holds ({', '.join(sorted(JUDGES))})")
+    # Read by the judge's own functions when the judging step makes them (the_common_judge, the_reference_judge):
+    # held here, so that a file that gives them otherwise stops every step, not the judging alone.
+    for key, most in (("repetitions", REPETITIONS_MOST), ("timeout_seconds", JUDGEMENT_SECONDS_MOST)):
+        if key in judge and (type(judge[key]) is not int or not 1 <= judge[key] <= most):
+            raise HiveError(f"{path}: judge.{key}: a whole number, from 1 to {most}")
     config["guardians"] = guardians_of(raw.get("guardians"), judge, path)
+    # A banned account is one whose forks the hive does not read; a guardian is one whose fork it reads for its
+    # rulings. An account named both is a file that says two things of it, and the file does not load. (By number:
+    # a login a ban lists says nothing of who holds it now.)
+    both = guardian_accounts(config) & {b for b in config["members"]["banned"] if type(b) is int}
+    if both:
+        raise HiveError(f"{path}: guardians.accounts: account {min(both)} is banned (members.banned): a guardian is never one")
     # The members a project's trusted base covers (cover_of). A member stays active for a whole number of days after an
     # accepted candidate, one at least; a bound per guardian is a whole number of members, one at least, in a project that
     # names a guardian: with none to count, the bound would be nought and the project would admit nobody, which is
@@ -1062,12 +1141,15 @@ def stamp(value):
 # GitHub's API (read only), replaceable in tests
 
 
+API_SECONDS = 120  # how long one question to GitHub's API may take (the list of forks, an account)
+
+
 class GhApi:
     """What the hive reads from GitHub, through the gh CLI (REST only)."""
 
     def _json_lines(self, *args):
         try:
-            result = subprocess.run(["gh", "api", *args], capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+            result = subprocess.run(["gh", "api", *args], capture_output=True, text=True, timeout=API_SECONDS, stdin=subprocess.DEVNULL)
         except (subprocess.TimeoutExpired, OSError) as error:
             raise HiveError(f"gh api: {type(error).__name__}") from None
         if result.returncode != 0:
@@ -1571,6 +1653,7 @@ def plain_ref(ref):
 
 
 FETCH_SECONDS = 90  # how long one fetch of a fork may take
+LIST_SECONDS = 30  # how long one listing of a fork's branches may take (listed_heads)
 FETCH_WEIGHTS = 4  # one fetch of a fork writes at most this many times what the project takes from one candidate (limits.history_bytes)
 FETCH_FLOOR = 1 << 20  # ... and never less than this, whatever the project's limit: git's own small files are written too
 FETCHED_BYTES = 4 << 30  # what the fetches of one run may leave in the hive's clone, all forks together
@@ -1695,7 +1778,7 @@ def listed_heads(repo, url, allow_local=False, branches=None):
     branches: a dictionary the caller gives to be told, beside that, which commit each branch is at: it is filled
     with {branch: commit id} for every branch of the same listing. A member's marker counts at whatever branch
     carries it, and needs none of it; a guardian's ruling counts at one branch, by its name (discover)."""
-    listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=30, env=transport(allow_local))
+    listed = git_capped(repo, "ls-remote", "--heads", url, limit=HEADS_PER_FORK_MAX * HEAD_LINE_BYTES, timeout=LIST_SECONDS, env=transport(allow_local))
     if listed is None:
         return None
     heads = {}
@@ -2338,10 +2421,19 @@ def plan(repo, tip, config, tasks, ledger, api, state_folder, allow_local=False)
     for candidate in queue:
         if within and time.monotonic() >= weighing_until:
             break  # the plan's own time: what it has not weighed waits, oldest deal first at the next run
-        # Its commits that are not the project's, counted no further than the limit: one with too many is refused
-        # without its history being carried to the other steps.
-        count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}")
-        candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
+        # Its commits that are not the project's, counted: one with more than the limit is refused without its history
+        # being carried to the other steps. git walks all of a candidate's own commits before it counts them, so a
+        # count that does not end within COUNT_SECONDS is a history longer than any the project takes: refused the
+        # same way, as a pack that does not end in time is too heavy (packed_weight), and the plan goes on.
+        try:
+            count = git(repo, "rev-list", "--count", f"--max-count={config['limits']['commits'] + 1}", candidate["sha"], f"^{need_sha(tip)}",
+                        timeout=COUNT_SECONDS)
+            candidate["long"] = int(count.stdout.strip()) > config["limits"]["commits"]
+        except HiveError as error:
+            if "timeout" not in str(error):
+                raise
+            log(f"{candidate['sha'][:12]}: its commits could not be counted within {COUNT_SECONDS} s: taken as too long a history")
+            candidate["long"] = True
         # And what they weigh in the file the plan hands over (packed_weight): one too heavy is refused the same way,
         # without being carried. A history that is too long is not packed to be weighed: it is refused already.
         # Nor is one carried whose own commits hold an object larger than the project takes (oversized): a history is
@@ -2457,6 +2549,7 @@ def member_mark(login):
 
 BUNDLE_BYTES = 1 << 30  # what the plan carries to the other steps at most (the candidates' commits, each as it packs alone)
 PACK_SECONDS = 60  # how long git may take to pack one candidate's commits before they count as too heavy
+COUNT_SECONDS = 60  # how long git may take to count a candidate's own commits (git walks them all): beyond, the history is too long
 WEIGH_SECONDS = 300  # how long a plan spends weighing candidates in all: those it has not reached wait for the next run
 
 
