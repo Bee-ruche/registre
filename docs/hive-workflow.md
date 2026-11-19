@@ -123,8 +123,8 @@ Five things carry it:
    18 November 2026 the two projects' files name one commit of the registry again (`d9c7427`): the first
    project's tasks miniz-0010 and miniz-0022 are closed there, a task that failed in a member's hands goes first
    to another member, while they are tested the two projects ask no wait, a refusal on the suspects says which
-   of the judge's checks it was, a project may name guardians (the first names one, the founder's account, the second none), and a
-   project's file may say how many active members one guardian covers, which neither does
+   of the judge's checks it was, a project may name guardians (the first names one, the founder's account, the
+   second none), and a project's file may say how many active members one guardian covers, which neither does
    ([decisions.md](decisions.md)); nothing of `tools/judge/` differs from the commits they named before.
 
 ## The file
