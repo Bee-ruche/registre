@@ -22,6 +22,17 @@
     "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
     "out_of_scope": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "depends_on": {"type": "array", "items": {"type": "string"}},
+    "prerequisites": {
+      "description": "ruche-0159: what a bee needs to work well (software, document, file), each with up to two soft checks answered by reading only; bee take compares the answers and warns, it never refuses (docs/tasks.md)",
+      "type": "array", "minItems": 1, "maxItems": 10,
+      "items": {"type": "object", "additionalProperties": false, "required": ["kind", "what"], "properties": {
+        "kind": {"enum": ["software", "document", "file"]}, "what": {"type": "string", "minLength": 3}, "how": {"type": "string", "minLength": 3},
+        "checks": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["sha256"], "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+          {"type": "object", "additionalProperties": false, "required": ["size"], "properties": {"size": {"type": "integer", "minimum": 0}}},
+          {"type": "object", "additionalProperties": false, "required": ["format"], "properties": {"format": {"type": "string", "minLength": 1}}},
+          {"type": "object", "additionalProperties": false, "required": ["version"], "properties": {"version": {"type": "string", "minLength": 1}}},
+          {"type": "object", "additionalProperties": false, "required": ["question", "answer"], "properties": {"question": {"type": "string", "minLength": 3}, "answer": {"type": "string", "minLength": 1}}}]}}}}},
     "node": {"type": "string", "pattern": "^(root|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$", "description": "Node of the tree of meaning the task belongs to, if it is more precise than its project's (a zone: projects/lossless-compression/miniz/tinfl); default: tree/projects/<category>/<project>/ (docs/tree.md)"},
     "status": {"enum": ["proposed", "open", "reserved", "in_review", "integrated", "refused", "abandoned"]},
     "reservation": {

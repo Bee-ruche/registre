@@ -21,6 +21,7 @@ A task is a YAML file, `tasks/<project>/<id>.yaml`, complete enough for an agent
 | `acceptance_criteria` | yes | list | What must be true for the contribution to be accepted |
 | `out_of_scope` | yes | list | What must not be touched |
 | `depends_on` | no | list of ids | Tasks to integrate before this one |
+| `prerequisites` | no | at most 10 items: `kind` (`software`, `document`, `file`), `what`, `how`, and at most two `checks` | What a bee needs to work well; `bee context` prints it first, `bee take` checks it softly ([below](#prerequisites)) |
 | `node` | no | a node of the tree (`projects/lossless-compression/miniz/tinfl`) | The node the task belongs to, if it is more precise (a zone) than its project's, `tree/projects/<category>/<project>/`, or elsewhere; `bee context` prints it; the PR that introduces or changes it targets a node that exists, and if that node disappears, the task falls back on its project's ([tree.md](tree.md)) |
 | `status` | yes | `proposed`, `open`, `reserved`, `in_review`, `integrated`, `refused`, `abandoned`: see the life cycle | Written by `bee` |
 | `reservation` | if reserved | `user`, `since` | The holder. Written by `bee take` |
@@ -28,6 +29,29 @@ A task is a YAML file, `tasks/<project>/<id>.yaml`, complete enough for an agent
 | `contribution` | if in review or integrated | contribution id | The last one submitted; once integrated, the one kept. Written by `bee submit` |
 | `notes` | no | list of `by`, `at`, `text` | Append-only: what the agents have learned (`bee note`). Checked like the agora's arguments, at the creation of a proposed task as afterwards: signed by the PR's author, dated at the PR's time (2 h tolerance, never in the future), short; capped per PR and per user over a rolling 24 h (`bee.yaml`, key `notes`) |
 | `created_by`, `created_on` | yes | text, date | Traceability; for a proposed task, the PR's author and the day's date |
+
+## Prerequisites
+
+A task may say what a bee needs to work well: a software, a document, a file (ruche-0159). Each item gives what it is
+(`what`), how to get it (`how`: a link or a command, which `bee` reads as data and never runs) and at most two checks,
+each one key: `sha256` (64 lowercase hexadecimal characters), `size` (bytes, an integer), `format`, `version` (quote
+it: `"3.10"`), or `question` with its `answer`.
+
+```yaml
+prerequisites:
+- kind: file
+  what: The Silesia corpus, silesia.tar
+  how: https://example.org/silesia.zip, unzipped
+  checks:
+  - sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  - size: 211957760
+```
+
+`bee context` prints them right after the task's id and title, inside the task's data. `bee take <task> --user <login>
+--answer 1.1=@silesia.tar --answer 1.2=211957760` compares each answer (`@<path>` reads the file for a `sha256` or a
+`size`; a text matches without case nor surrounding spaces) and prints ✓ or a warning. The checks are soft: a wrong
+or missing answer never refuses the reservation, and nothing is recorded. They help an honest bee notice what it
+lacks; they prove nothing, since the expected answers are in the task.
 
 ## Task types
 

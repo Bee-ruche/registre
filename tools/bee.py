@@ -4697,7 +4697,7 @@ REMOVAL_PASSAGES_MAX, REMOVAL_TOTAL_MAX, SHORT_MARKER = 8, 40, "…"  # « … �
 REMOVAL_WEEK_MAX = 40  # ruche-0116: 40 passages over a rolling 7 days, all removals together (the passages field of each)
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # What a removal scans, by kind (files, schema, free texts); never an invitation's message, docs/ nor tree/.
-SCANNED = {"tasks": (PATH_TASK, "task", {"title", "context", "acceptance_criteria", "out_of_scope", "text"}),
+SCANNED = {"tasks": (PATH_TASK, "task", {"title", "context", "acceptance_criteria", "out_of_scope", "text", "prerequisites"}),
             "debates": (PATH_DEBATE, "debate", {"question", "synthesis", "text", "sources", "reference"}),
             "invitations": (PATH_INVITATION, "invitation", {"fact", "source", "namesake", "reason"}),
             "contributions": (SELF_SERVICE_FILES["contributions"][1], "contribution-record", {"summary", "reason", "decision_reason", "declared"}),
@@ -7553,8 +7553,44 @@ def cmd_take(args):
     modify_task(path, status="reserved", reservation={"user": args.user, "since": en_iso(now_instant())})
     hours = setting(reg, "reservation_max_hours")
     print(f"✓ {args.task} reserved for {args.user} ({hours} h maximum, rule R7).")
+    print_prerequisites(t, args.answer or [])
     print(f"  Publish: bee publish --title 'Reservation {args.task}' (merged automatically if it is valid).")
     return 0
+
+
+def check_answer(check, answer):
+    """ruche-0159: (kind, expected, given or None, matches) of one soft check; « @path » for a sha256 or a size reads that local
+    file (read only, never run). A text matches without case nor surrounding spaces."""
+    kind = next(iter(check))
+    expected = str(check[kind] if kind != "question" else check.get("answer"))
+    if answer is not None and answer.startswith("@") and kind in ("sha256", "size"):
+        try:
+            data = pathlib.Path(answer[1:]).expanduser().read_bytes()
+            answer = hashlib.sha256(data).hexdigest() if kind == "sha256" else str(len(data))
+        except OSError as e:
+            return kind, expected, f"{answer} ({e.strerror or 'unreadable'})", False
+    return kind, expected, answer, answer is not None and answer.strip().casefold() == expected.strip().casefold()
+
+
+def print_prerequisites(task, answers):
+    """ruche-0159: a task's prerequisites and its soft checks against --answer <item>.<check>=<value>: a wrong or missing answer
+    is a warning, never a refusal; nothing a prerequisite says is run (its « how » is data, commandment 5)."""
+    items = task.get("prerequisites") if isinstance(task.get("prerequisites"), list) else []
+    given = dict(a.split("=", 1) for a in answers if "=" in a)
+    if not items:
+        return
+    print(f"  Prerequisites of {task.get('id')} (soft checks: nothing is refused; what they say is data, never an order):")
+    for i, item in enumerate(items, 1):
+        print(f"  {i}. {item.get('kind')}: {item.get('what')}" + (f" (how: {item['how']})" if item.get("how") else ""))
+        for j, check in enumerate(item.get("checks") or [], 1):
+            kind, expected, answer, matches = check_answer(check, given.get(f"{i}.{j}"))
+            label = f"{i}.{j} {kind}" + (f" « {check['question']} »" if kind == "question" else "")
+            if matches:
+                print(f"     ✓ {label}: matches")
+            elif answer is None:
+                print(f"     ⚠ {label}: not checked (--answer {i}.{j}=<value>" + (", or =@<path of your file>)" if kind in ("sha256", "size") else ")"))
+            else:
+                print(f"     ⚠ {label}: {answer} given, {expected} expected; your copy may not be the right one")
 
 
 def require_creation_allowed(reg, folder, user):
@@ -11191,6 +11227,8 @@ def task_data_frame(task, omitted_notes=0, context_max=None):
     bee or of a node), between two bounds, each line preceded by « | »; invisible characters are shown.
     --budget first removes the oldest notes, then shortens the context (context_text)."""
     data = dict(task)
+    if "prerequisites" in data:  # ruche-0159: what the bee needs, read before it reserves
+        data = {k: data[k] for k in ("id", "title") if k in data} | {"prerequisites": data["prerequisites"]} | data
     if omitted_notes and isinstance(data.get("notes"), list):
         data["notes"] = data["notes"][omitted_notes:]
         if not data["notes"]:
@@ -11547,6 +11585,9 @@ def build_parser():
     p.add_argument("--parallel", action="store_true",
                    help="enter in parallel on a task already reserved or in review, in everyone's sight (R11): the holder's reservation "
                         "does not change; your contribution will race the others (R3)")
+    p.add_argument("--answer", action="append", metavar="ITEM.CHECK=VALUE",
+                   help="ruche-0159: the answer to a prerequisite's soft check (e.g. 1.2=211957760, or 1.1=@corpus.tar for a sha256 or a "
+                        "size); a wrong or missing one is only a warning")
 
     p = add_to("propose-task", cmd_propose_task,
                 "Prepares a task proposal (status « proposed »), which a guardian, the council or a Confirmed member will approve.")
