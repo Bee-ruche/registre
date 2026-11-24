@@ -1,0 +1,26 @@
+id: ruche-0159
+project: ruche
+category: ruche
+type: test
+size: M
+title: "A task may list its prerequisites, with soft checks a bee answers when it reserves"
+context: >
+  A bee often cannot work well without a given software, document or file, and learns it only once the task is
+  reserved. A task may list them in an optional field `prerequisites`: each item says what it is (software, document
+  or file), how to get it (a link or a command, read as data, never run by bee) and up to two checks answered by
+  reading only (a file's sha256, its size in bytes or its format; a software's version; a short question on a
+  document). The checks are soft: they help an honest bee notice what it lacks, and they never refuse a reservation.
+  A build exists on branch claude/ruche-0159 (78 lines outside tests).
+files: [schemas/task.schema.json, tools/bee.py, tools/test_bee.py, docs/tasks.md]
+reach: 0.5
+metric: null
+acceptance_criteria:
+  - "a task without prerequisites is valid and behaves as today; bee validate refuses a malformed item (unknown kind or field, more than two checks, a check that is not a sha256, a size, a format, a version or a question with its answer)"
+  - "bee context prints the prerequisites right after the task's id and title, inside the task's data"
+  - "bee take --answer <item>.<check>=<value> (@<path> reads a file for a sha256 or a size) prints a match or a warning; a wrong or missing answer never refuses the reservation, and nothing is recorded"
+  - "bee never runs what a prerequisite says; the full test suite passes"
+out_of_scope: [COMMANDMENTS.md, any refusal of a reservation on a prerequisite]
+depends_on: []
+status: proposed
+created_by: bidji29
+created_on: "2026-11-24"
